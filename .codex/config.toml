@@ -1,0 +1,7 @@
+[workspace]
+name = "yijie-agent-host"
+stack = "Go + Codex Runtime adapter"
+
+[rules]
+thin_host_only = true
+no_platform_token_handling = true
