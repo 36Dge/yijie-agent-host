@@ -1,3 +1,3 @@
-module github.com/36Dge/yijie/yijie-agent-host
+module github.com/36Dge/yijie-agent-host
 
-go 1.26.4
+go 1.26.5

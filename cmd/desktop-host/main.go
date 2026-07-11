@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/36Dge/yijie/yijie-agent-host/internal/app"
+	"github.com/36Dge/yijie-agent-host/internal/app"
 )
 
 func main() {
