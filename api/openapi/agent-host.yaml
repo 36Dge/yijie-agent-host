@@ -1,0 +1,939 @@
+openapi: 3.0.3
+info:
+  title: Yijie Agent Host Local API
+  version: 0.1.0
+  description: |
+    Local loopback HTTP and Server-Sent Events contract for the Yijie Desktop
+    Agent Host sidecar. The Host is a thin adapter over the pinned Codex Runtime;
+    it is not a public or service-to-service API.
+
+    The three system endpoints are unauthenticated so the process can be
+    diagnosed before Runtime initialization. Every session, turn, and event
+    endpoint requires the owner-only bearer token generated in the Host home.
+
+    This document is authoritative for HTTP paths, authentication, request and
+    response envelopes, status codes, headers, and SSE framing. The JSON value
+    carried by each SSE `data` line is governed by the AgentSessionEvent JSON
+    Schema, not by a duplicate OpenAPI schema.
+  contact:
+    name: Yijie Agent Host owners
+servers:
+  - url: http://127.0.0.1:{port}
+    description: Desktop sidecar loopback listener. It must not be exposed on a non-loopback interface.
+    variables:
+      port:
+        default: "18080"
+        description: Port selected for the local Agent Host process.
+security:
+  - localBearer: []
+tags:
+  - name: System
+    description: Unauthenticated liveness, readiness, and sanitized Runtime identity.
+  - name: Sessions
+    description: Persistent task-to-Agent-session and Runtime-thread mappings.
+  - name: Turns
+    description: Text turn lifecycle operations for one Agent session.
+  - name: Events
+    description: Process-local, bounded SSE replay and live delivery.
+paths:
+  /healthz:
+    get:
+      operationId: getAgentHostHealth
+      summary: Check Host process liveness
+      description: |
+        Reports only that the Agent Host HTTP process is alive. Runtime may be
+        unconfigured, unavailable, or failed while this endpoint still returns
+        `200`.
+      tags: [System]
+      security: []
+      responses:
+        "200":
+          description: The Agent Host process is alive.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                service: yijie-agent-host
+                status: ok
+  /readyz:
+    get:
+      operationId: getAgentHostReadiness
+      summary: Check Runtime readiness
+      description: |
+        Returns `200` only after the managed Codex Runtime completed its
+        initialization handshake. This is the gate clients should observe before
+        enabling session operations.
+      tags: [System]
+      security: []
+      responses:
+        "200":
+          description: The managed Runtime is initialized and ready.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+              example:
+                status: ready
+                runtime_state: ready
+        "503":
+          description: The managed Runtime is not ready.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotReadyResponse"
+              example:
+                status: not_ready
+                runtime_state: failed
+  /v1/status:
+    get:
+      operationId: getAgentHostStatus
+      summary: Get sanitized Host and Runtime status
+      description: |
+        Returns the pinned Runtime identity and lifecycle state without exposing
+        local binary, manifest, credential, or home-directory paths.
+      tags: [System]
+      security: []
+      responses:
+        "200":
+          description: Current sanitized Agent Host status.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHostStatus"
+  /v1/tasks/{task_id}/agent-sessions:
+    parameters:
+      - $ref: "#/components/parameters/TaskId"
+    post:
+      operationId: startAgentSession
+      summary: Start the Agent session for a task
+      description: |
+        Creates the one Agent session allowed for `task_id`, starts a persistent
+        Runtime thread in `cwd`, and stores only the recovery mapping and status.
+        A failed Runtime start can leave a queryable failed session reserved for
+        the task.
+      tags: [Sessions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartSessionRequest"
+      responses:
+        "201":
+          description: The session and Runtime thread were created and bound.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "400":
+          description: |
+            `invalid_request`: malformed or oversized JSON, an unknown field, an
+            invalid task identifier, or a `cwd` that is not an existing absolute
+            directory.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: invalid_request
+                  message: request parameters are invalid
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: "`task_session_exists`: the task already owns an Agent session."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: task_session_exists
+                  message: task already has an agent session
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/RuntimeRequestFailed"
+  /v1/agent-sessions/{agent_session_id}/resume:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+    post:
+      operationId: resumeAgentSession
+      summary: Resume the session's Runtime thread
+      description: |
+        Resumes the persisted Runtime thread mapping after a Runtime restart and
+        refreshes the current/last turn state. It does not restore SSE content
+        from an earlier Host process.
+      tags: [Sessions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TraceRequest"
+      responses:
+        "200":
+          description: The Runtime thread was resumed and session state refreshed.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          description: "`session_not_usable`: the session has no Runtime thread that can be resumed."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: session_not_usable
+                  message: agent session cannot perform this operation
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/RuntimeRequestFailed"
+  /v1/agent-sessions/{agent_session_id}:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+    get:
+      operationId: getAgentSession
+      summary: Get the persisted Agent session state
+      description: Returns mapping and lifecycle state only; message content is not persisted by the Host.
+      tags: [Sessions]
+      responses:
+        "200":
+          description: Current Agent session state.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /v1/agent-sessions/{agent_session_id}/turns:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+    post:
+      operationId: startAgentTurn
+      summary: Start a text turn
+      description: |
+        Starts one text-only Runtime turn. At most one turn may be active for a
+        session. The accepted response identifies the turn; progress and terminal
+        state are delivered through the event stream.
+      tags: [Turns]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartTurnRequest"
+      responses:
+        "202":
+          description: The Runtime accepted the turn.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartTurnResponse"
+        "400":
+          description: |
+            `invalid_request`: malformed or oversized JSON, an unknown field, an
+            invalid session identifier, blank/oversized input, or an unsupported
+            reasoning effort.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: invalid_request
+                  message: request parameters are invalid
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          description: |
+            `turn_active` when another turn is active, or `session_not_usable`
+            when the session has no usable Runtime thread.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                turnActive:
+                  value:
+                    error:
+                      code: turn_active
+                      message: agent session already has an active turn
+                sessionNotUsable:
+                  value:
+                    error:
+                      code: session_not_usable
+                      message: agent session cannot perform this operation
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/RuntimeRequestFailed"
+  /v1/agent-sessions/{agent_session_id}/turns/{turn_id}/interrupt:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+      - $ref: "#/components/parameters/TurnId"
+    post:
+      operationId: interruptAgentTurn
+      summary: Interrupt the active turn
+      description: Only the session's current active `turn_id` can be interrupted.
+      tags: [Turns]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TraceRequest"
+      responses:
+        "204":
+          description: The interrupt request was delivered to Runtime. Terminal state follows by SSE.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          description: "`turn_not_active`: `turn_id` is not the session's active turn."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: turn_not_active
+                  message: turn is not active for this agent session
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "502":
+          $ref: "#/components/responses/RuntimeRequestFailed"
+  /v1/agent-sessions/{agent_session_id}/events:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+    get:
+      operationId: streamAgentSessionEvents
+      summary: Replay and stream Agent session events
+      description: |
+        Opens a Server-Sent Events stream. Each event frame has:
+
+        - `id: <stream_id>:<sequence>`;
+        - `event: <event_type>`;
+        - one single-line `data:` value containing an AgentSessionEvent JSON object.
+
+        Sequence is strictly increasing only within a `stream_id`. Event content
+        is retained in bounded process memory (512 events in the desktop Host),
+        is not persisted by Agent Host, and is delivered at least once across
+        reconnect/replay; consumers deduplicate with `event_id`.
+
+        `Last-Event-ID` takes precedence over both query parameters and carries
+        the complete cursor. Without that header, `after > 0` requires the
+        matching `stream_id`. The server replays retained events with sequence
+        greater than `after`, then continues with live events. A heartbeat comment
+        `: heartbeat` is sent every 15 seconds when no event is written. Slow
+        consumers may be disconnected and should reconnect with their last fully
+        processed event ID.
+      tags: [Events]
+      externalDocs:
+        description: Authoritative AgentSessionEvent JSON Schema
+        url: https://contracts.yijie.ai/agent/session-event.schema.json
+      parameters:
+        - $ref: "#/components/parameters/EventStreamId"
+        - $ref: "#/components/parameters/EventAfter"
+        - $ref: "#/components/parameters/LastEventId"
+      responses:
+        "200":
+          description: |
+            Retained events were replayed and the connection is subscribed for
+            live events. The body remains open until client cancellation, write
+            failure, Host shutdown, or slow-consumer disconnection.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+            X-Accel-Buffering:
+              description: Disables reverse-proxy response buffering.
+              required: true
+              schema:
+                type: string
+                enum: ["no"]
+            X-Yijie-Event-Stream-ID:
+              description: Actual process-local stream identifier used by every returned SSE event ID.
+              required: true
+              schema:
+                type: string
+                format: uuid
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  UTF-8 SSE frames. Each non-heartbeat frame's `data` value is a
+                  compact, single-line JSON instance of AgentSessionEvent. See
+                  `jsonschema/agent/session-event.schema.json` in this repository.
+                x-yijie-event-data-schema: ../../jsonschema/agent/session-event.schema.json
+              example: |
+                id: 019f8b05-de28-7031-bab1-931dba37a6e9:1
+                event: thread.started
+                data: {"schema_version":1,"event_id":"019f8b06-0ea1-7c0d-97a7-3cd3bdeaf2e0","stream_id":"019f8b05-de28-7031-bab1-931dba37a6e9","sequence":1,"occurred_at":"2026-07-23T10:00:00Z","task_id":"019f8b00-a433-71c4-9ce6-54ea5de8236d","agent_session_id":"019f8b02-385a-7469-abeb-92f4d1f5e49c","codex_thread_id":"019f8b03-6d0b-7fd0-a273-9b6bc6796610","event_type":"thread.started","terminal":false,"payload":{"model":"MiniMax-M3","model_provider":"minimax"}}
+
+        "400":
+          description: |
+            `invalid_request` for an invalid session identifier;
+            `invalid_event_cursor` for malformed `Last-Event-ID`, an invalid
+            unsigned sequence, `after > 0` without a stream ID, or a sequence
+            greater than the latest event.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                invalidCursor:
+                  value:
+                    error:
+                      code: invalid_event_cursor
+                      message: event cursor is invalid
+                invalidSessionId:
+                  value:
+                    error:
+                      code: invalid_request
+                      message: request parameters are invalid
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          description: |
+            `event_stream_changed` when the supplied stream ID belongs to an
+            earlier Host process; `event_replay_unavailable` when the requested
+            sequence has fallen out of the bounded replay window. Clients must
+            reconcile current session state instead of silently skipping either
+            condition.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                streamChanged:
+                  value:
+                    error:
+                      code: event_stream_changed
+                      message: event stream changed after Host restart
+                replayUnavailable:
+                  value:
+                    error:
+                      code: event_replay_unavailable
+                      message: requested events are no longer available
+        "500":
+          description: |
+            `streaming_unsupported` when the HTTP writer cannot flush streaming
+            responses; otherwise `internal_error`.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                streamingUnsupported:
+                  value:
+                    error:
+                      code: streaming_unsupported
+                      message: streaming is unavailable
+                internalError:
+                  value:
+                    error:
+                      code: internal_error
+                      message: Agent Host operation failed
+components:
+  securitySchemes:
+    localBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque owner-only local token
+      description: |
+        Agent Host generates a 256-bit opaque token in
+        `$YIJIE_AGENT_HOST_HOME/api-token`, protected from group/other access.
+        Only the same-user Desktop/local client may read it. Never place this
+        token in a URL, log, browser storage, persisted task payload, or example.
+        The current Host requires the exact ASCII authorization prefix `Bearer `.
+  parameters:
+    TaskId:
+      name: task_id
+      in: path
+      required: true
+      description: Control-plane task identifier. One Agent session may be reserved per task.
+      schema:
+        type: string
+        format: uuid
+    AgentSessionId:
+      name: agent_session_id
+      in: path
+      required: true
+      description: Agent Host-generated session identifier.
+      schema:
+        type: string
+        format: uuid
+    TurnId:
+      name: turn_id
+      in: path
+      required: true
+      description: Codex Runtime-generated turn identifier.
+      schema:
+        type: string
+        format: uuid
+    EventStreamId:
+      name: stream_id
+      in: query
+      required: false
+      description: |
+        Expected process-local stream identifier. Required when `after > 0`
+        unless `Last-Event-ID` supplies the complete cursor. A mismatch returns
+        `409 event_stream_changed`.
+      schema:
+        type: string
+        format: uuid
+    EventAfter:
+      name: after
+      in: query
+      required: false
+      description: |
+        Unsigned 64-bit sequence after which events are replayed. Defaults to
+        zero. Values greater than zero require a matching stream ID. Ignored when
+        `Last-Event-ID` is present.
+      schema:
+        type: integer
+        format: uint64
+        minimum: 0
+        maximum: 18446744073709551615
+        default: 0
+    LastEventId:
+      name: Last-Event-ID
+      in: header
+      required: false
+      description: |
+        Complete SSE cursor `<stream_id>:<sequence>`. Sequence is a decimal
+        unsigned 64-bit integer from 1 through 18446744073709551615 with no
+        leading zero. The header overrides `stream_id` and `after` query parameters.
+      schema:
+        type: string
+        pattern: "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}:[1-9][0-9]*$"
+  headers:
+    NoStore:
+      description: Prevents credentials, status, and session data from being cached.
+      required: true
+      schema:
+        type: string
+        enum: [no-store]
+  responses:
+    BadRequest:
+      description: "`invalid_request`: request JSON or parameters are invalid."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: invalid_request
+              message: request parameters are invalid
+    Unauthorized:
+      description: "`unauthorized`: a valid local Agent Host bearer token is required."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: unauthorized
+              message: valid Agent Host bearer token required
+    SessionNotFound:
+      description: "`session_not_found`: no Agent session exists for the identifier."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: session_not_found
+              message: agent session was not found
+    RuntimeRequestFailed:
+      description: "`runtime_request_failed`: the managed Codex Runtime request failed. The provider's raw error is not exposed."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: runtime_request_failed
+              message: Codex Runtime request failed
+    InternalError:
+      description: "`internal_error`: the Agent Host operation failed without exposing an internal stack or secret."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: internal_error
+              message: Agent Host operation failed
+  schemas:
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [service, status]
+      properties:
+        service:
+          type: string
+          enum: [yijie-agent-host]
+        status:
+          type: string
+          enum: [ok]
+    ReadyResponse:
+      type: object
+      additionalProperties: false
+      required: [status, runtime_state]
+      properties:
+        status:
+          type: string
+          enum: [ready]
+        runtime_state:
+          type: string
+          enum: [ready]
+    NotReadyResponse:
+      type: object
+      additionalProperties: false
+      required: [status, runtime_state]
+      properties:
+        status:
+          type: string
+          enum: [not_ready]
+        runtime_state:
+          $ref: "#/components/schemas/RuntimeState"
+    AgentHostStatus:
+      type: object
+      additionalProperties: false
+      required: [service, status, environment, runtime_mode, runtime]
+      properties:
+        service:
+          type: string
+          enum: [yijie-agent-host]
+        status:
+          type: string
+          enum: [ok, degraded]
+        environment:
+          type: string
+          minLength: 1
+        runtime_mode:
+          type: string
+          enum: [managed-stdio]
+        runtime:
+          $ref: "#/components/schemas/RuntimeStatus"
+    RuntimeStatus:
+      type: object
+      additionalProperties: false
+      required: [state, ready, transport, experimental_api]
+      properties:
+        state:
+          $ref: "#/components/schemas/RuntimeState"
+        ready:
+          type: boolean
+        runtime_version:
+          type: string
+          enum: [0.144.6]
+        upstream_tag:
+          type: string
+          enum: [rust-v0.144.6]
+        upstream_commit:
+          type: string
+          enum: [5d1fbf26c43abc65a203928b2e31561cb039e06d]
+        transport:
+          type: string
+          enum: [stdio]
+        experimental_api:
+          type: boolean
+          enum: [false]
+        failure_code:
+          type: string
+          enum:
+            - runtime_not_configured
+            - runtime_config_invalid
+            - provider_config_failed
+            - artifact_verification_failed
+            - startup_cancelled
+            - runtime_start_failed
+            - initialize_failed
+            - initialize_response_invalid
+            - initialized_notification_failed
+            - runtime_exited
+            - runtime_disconnected
+            - protocol_failure
+        model_provider:
+          type: string
+          enum: [minimax]
+        model:
+          type: string
+          enum: [MiniMax-M3]
+    RuntimeState:
+      type: string
+      enum:
+        - not_configured
+        - verifying
+        - starting
+        - initializing
+        - ready
+        - stopping
+        - stopped
+        - failed
+    TraceRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Correlation metadata copied to subsequent events. `{}` is valid. These
+        values are correlation context, not authentication or authorization input.
+      properties:
+        trace_id:
+          type: string
+        request_id:
+          type: string
+        tenant_id:
+          type: string
+        user_id:
+          type: string
+    StartSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [cwd]
+      properties:
+        trace_id:
+          type: string
+          description: Optional correlation identifier copied to session events.
+        request_id:
+          type: string
+          description: Optional request correlation identifier copied to session events.
+        tenant_id:
+          type: string
+          description: Optional correlation context only; it does not grant tenant access.
+        user_id:
+          type: string
+          description: Optional correlation context only; it does not authenticate a user.
+        cwd:
+          type: string
+          minLength: 1
+          pattern: ^/
+          description: Existing absolute local directory. Host resolves symlinks and stores the canonical path.
+    StartTurnRequest:
+      type: object
+      additionalProperties: false
+      required: [input]
+      properties:
+        trace_id:
+          type: string
+          description: Optional correlation identifier copied to events from this operation onward.
+        request_id:
+          type: string
+          description: Optional request correlation identifier copied to events from this operation onward.
+        tenant_id:
+          type: string
+          description: Optional correlation context only; it does not grant tenant access.
+        user_id:
+          type: string
+          description: Optional correlation context only; it does not authenticate a user.
+        input:
+          type: string
+          minLength: 1
+          pattern: \S
+          description: |
+            Text-only turn input. It must contain a non-whitespace character and
+            must not exceed 1 MiB in UTF-8 bytes. The complete JSON body is also
+            capped at 1 MiB.
+        reasoning_effort:
+          type: string
+          enum: ["", none, high]
+          default: none
+          description: Omit or send the empty string for `none`; clients should prefer omission, `none`, or `high`.
+    SessionResponse:
+      type: object
+      additionalProperties: false
+      required: [session]
+      properties:
+        session:
+          $ref: "#/components/schemas/AgentSession"
+    AgentSession:
+      type: object
+      additionalProperties: false
+      required:
+        - task_id
+        - agent_session_id
+        - codex_thread_id
+        - active_turn_id
+        - state
+        - cwd
+        - model
+        - model_provider
+        - failure_code
+        - created_at
+        - updated_at
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        agent_session_id:
+          type: string
+          format: uuid
+        codex_thread_id:
+          $ref: "#/components/schemas/UuidOrEmpty"
+        active_turn_id:
+          $ref: "#/components/schemas/UuidOrEmpty"
+        state:
+          type: string
+          enum: [starting, idle, active, failed]
+        cwd:
+          type: string
+          minLength: 1
+          pattern: ^/
+        model:
+          type: string
+          enum: ["", MiniMax-M3]
+        model_provider:
+          type: string
+          enum: ["", minimax]
+        failure_code:
+          type: string
+          enum:
+            - ""
+            - thread_start_failed
+            - thread_start_response_invalid
+            - provider_identity_mismatch
+            - thread_resume_failed
+            - thread_resume_response_invalid
+            - turn_start_failed
+            - turn_start_response_invalid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    UuidOrEmpty:
+      description: A UUID when bound, otherwise the empty string.
+      type: string
+      pattern: "^$|^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
+    StartTurnResponse:
+      type: object
+      additionalProperties: false
+      required: [turn_id]
+      properties:
+        turn_id:
+          type: string
+          format: uuid
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - unauthorized
+                - invalid_request
+                - session_not_found
+                - task_session_exists
+                - turn_active
+                - turn_not_active
+                - session_not_usable
+                - event_stream_changed
+                - event_replay_unavailable
+                - invalid_event_cursor
+                - runtime_request_failed
+                - streaming_unsupported
+                - internal_error
+            message:
+              type: string
+              minLength: 1

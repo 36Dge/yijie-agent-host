@@ -37,7 +37,7 @@ Host 映射事件：
 - `turn/completed` → `turn.completed`；
 - `error` 和 `warning` → 同名稳定事件。
 
-公共语义由相邻 `yijie-contracts` 的 Agent Host Protobuf、`AgentSessionEvent` Protobuf、AsyncAPI 和 JSON Schema 定义。Host HTTP 是当前 Desktop 本机传输适配；不另建冲突 DTO 语义。
+公共语义由相邻 `yijie-contracts` 的 Agent Host HTTP/SSE OpenAPI、Agent Host Protobuf、`AgentSessionEvent` Protobuf、AsyncAPI 和 JSON Schema 定义。Host 用版本和 SHA-256 锁定精确快照，HTTP handler 直接消费生成 DTO；不再维护平行的手写请求/响应结构。
 
 ## ID 与持久化
 
@@ -75,6 +75,7 @@ Host 不持久化输入、delta、完成消息、provider 原始响应、API Key
 ## 验证门禁
 
 ```bash
+make contract-check
 make lint
 make test
 make runtime-test

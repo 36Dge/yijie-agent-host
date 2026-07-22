@@ -53,7 +53,8 @@
 ## Contract First 与 Runtime 兼容
 
 - Agent Host 服务、任务事件和公共 schema 以相邻 `yijie-contracts` 为源；
-- 修改事件或服务协议时，先更新并检查 `protobuf/yijie/services/agent_host/v1/`、`protobuf/yijie/events/v1/` 或对应 JSON Schema，再生成代码；
+- HTTP/SSE 权威契约位于 `yijie-contracts/openapi/agent-host/agent-host.yaml` 和 `jsonschema/agent/session-event.schema.json`；本仓只保存版本/哈希锁定的精确快照、生成 DTO及 producer 一致性测试；
+- 修改事件或服务协议时，先更新并检查 `openapi/agent-host/`、`protobuf/yijie/services/agent_host/v1/`、`protobuf/yijie/events/v1/` 或对应 JSON Schema，再同步并生成代码；
 - 不手写与生成契约重复的 DTO，也不直接编辑生成文件；
 - Codex app-server transport、端点、协议版本、能力探测和兼容范围必须结合 `yijie-codex` 的固定版本确认；
 - 未知事件和新增字段应按兼容策略处理，不因单个未知事件终止整个 session；
@@ -113,7 +114,9 @@ make lint          # gofmt 检查、go vet 和 shell 语法
 make test          # race 单元测试、transport 和故障覆盖
 make runtime-test  # 固定产物握手和 provider/thread 配置，不调用模型
 make runtime-turn-test # 人工显式 MiniMax 垂直切片，最多 2 次短请求
-make generate      # 当前为占位，不能视为契约生成完成
+make sync-contracts # 从相邻 yijie-contracts 同步固定快照并生成 DTO
+make contract-check # 校验快照、版本、哈希及生成物；make test 会先执行
+make generate      # 仅从已锁定的本地 OpenAPI 快照生成 Go DTO
 make dev           # 启动 desktop-host；未配置 Runtime 时 readiness 为 false
 ```
 

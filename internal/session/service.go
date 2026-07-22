@@ -28,7 +28,31 @@ const (
 	EventWarning                  = "warning"
 	maxPendingNotifications       = 256
 	maxPendingNotificationsThread = 32
+
+	RuntimeNotificationError                 = "error"
+	RuntimeNotificationItemAgentMessageDelta = "item/agentMessage/delta"
+	RuntimeNotificationItemCompleted         = "item/completed"
+	RuntimeNotificationItemStarted           = "item/started"
+	RuntimeNotificationThreadStarted         = "thread/started"
+	RuntimeNotificationTurnCompleted         = "turn/completed"
+	RuntimeNotificationTurnStarted           = "turn/started"
+	RuntimeNotificationWarning               = "warning"
 )
+
+var runtimeNotifications = []string{
+	RuntimeNotificationError,
+	RuntimeNotificationItemAgentMessageDelta,
+	RuntimeNotificationItemCompleted,
+	RuntimeNotificationItemStarted,
+	RuntimeNotificationThreadStarted,
+	RuntimeNotificationTurnCompleted,
+	RuntimeNotificationTurnStarted,
+	RuntimeNotificationWarning,
+}
+
+func SupportedRuntimeNotifications() []string {
+	return append([]string(nil), runtimeNotifications...)
+}
 
 var bearerPattern = regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9._~+/=-]+`)
 
@@ -109,11 +133,11 @@ func (s *Service) StartSession(ctx context.Context, input StartSessionInput) (Re
 	}
 	if err := requireUUID("codex_thread_id", thread.ID); err != nil {
 		_, _ = s.store.MarkFailed(sessionID, "thread_start_response_invalid")
-		return Record{}, err
+		return Record{}, fmt.Errorf("%w: thread/start returned an invalid thread id", ErrRuntimeRequest)
 	}
 	if thread.Model != codex.MiniMaxModel || thread.ModelProvider != codex.MiniMaxProviderID {
 		_, _ = s.store.MarkFailed(sessionID, "provider_identity_mismatch")
-		return Record{}, errors.New("thread/start returned an unexpected model provider identity")
+		return Record{}, fmt.Errorf("%w: thread/start returned an unexpected model provider identity", ErrRuntimeRequest)
 	}
 	record, err = s.store.BindThread(
 		sessionID,
@@ -145,9 +169,13 @@ func (s *Service) ResumeSession(ctx context.Context, sessionID string, trace Tra
 		_, _ = s.store.MarkFailed(sessionID, "thread_resume_failed")
 		return Record{}, fmt.Errorf("%w: %v", ErrRuntimeRequest, err)
 	}
+	if !validUUID(thread.ID) || thread.ID != record.CodexThreadID {
+		_, _ = s.store.MarkFailed(sessionID, "thread_resume_response_invalid")
+		return Record{}, fmt.Errorf("%w: thread/resume returned an unexpected thread id", ErrRuntimeRequest)
+	}
 	if thread.Model != codex.MiniMaxModel || thread.ModelProvider != codex.MiniMaxProviderID {
 		_, _ = s.store.MarkFailed(sessionID, "provider_identity_mismatch")
-		return Record{}, errors.New("thread/resume returned an unexpected model provider identity")
+		return Record{}, fmt.Errorf("%w: thread/resume returned an unexpected model provider identity", ErrRuntimeRequest)
 	}
 	activeTurnID, lastTurnID, lastStatus := resumedTurnState(thread.Turns)
 	record, err = s.store.Resume(
@@ -193,7 +221,7 @@ func (s *Service) StartTurn(ctx context.Context, input StartTurnInput) (codex.Tu
 	}
 	if err := requireUUID("turn_id", turn.ID); err != nil {
 		_, _ = s.store.TurnStartFailed(input.AgentSessionID, "turn_start_response_invalid")
-		return codex.TurnInfo{}, err
+		return codex.TurnInfo{}, fmt.Errorf("%w: turn/start returned an invalid turn id", ErrRuntimeRequest)
 	}
 	if _, err := s.store.BindTurn(input.AgentSessionID, turn.ID); err != nil {
 		return codex.TurnInfo{}, err
@@ -242,7 +270,7 @@ func (s *Service) HandleNotification(method string, params json.RawMessage) {
 		return
 	}
 	threadID, err := notificationThreadID(method, params)
-	if err != nil || threadID == "" {
+	if err != nil || threadID == "" || requireUUID("codex_thread_id", threadID) != nil {
 		s.logger.Warn("discarding malformed Codex notification", "method", method)
 		return
 	}
@@ -261,7 +289,7 @@ func (s *Service) HandleNotification(method string, params json.RawMessage) {
 
 func (s *Service) processNotification(method string, params json.RawMessage) error {
 	switch method {
-	case "thread/started":
+	case RuntimeNotificationThreadStarted:
 		var notification struct {
 			Thread struct {
 				ID string `json:"id"`
@@ -281,10 +309,17 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 				ModelProvider: record.ModelProvider,
 			},
 		})
-	case "turn/started":
+	case RuntimeNotificationTurnStarted:
 		var notification turnNotification
 		if err := json.Unmarshal(params, &notification); err != nil {
 			return err
+		}
+		if err := requireUUID("turn_id", notification.Turn.ID); err != nil {
+			return err
+		}
+		status := normalizeTurnStatus(notification.Turn.Status)
+		if status != "in_progress" {
+			return errors.New("turn/started notification status is not in progress")
 		}
 		record, err := s.store.GetByThread(notification.ThreadID)
 		if err != nil {
@@ -297,12 +332,21 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		return s.publish(record, Event{
 			TurnID:    notification.Turn.ID,
 			EventType: EventTurnStarted,
-			Payload:   EventPayload{Status: normalizeTurnStatus(notification.Turn.Status)},
+			Payload:   EventPayload{Status: status},
 		})
-	case "item/started", "item/completed":
+	case RuntimeNotificationItemStarted, RuntimeNotificationItemCompleted:
 		var notification itemNotification
 		if err := json.Unmarshal(params, &notification); err != nil {
 			return err
+		}
+		if err := requireUUID("turn_id", notification.TurnID); err != nil {
+			return err
+		}
+		if notification.Item.ID == "" {
+			return errors.New("item notification omitted item id")
+		}
+		if notification.Item.Type == "" {
+			return errors.New("item notification omitted item type")
 		}
 		record, err := s.store.GetByThread(notification.ThreadID)
 		if err != nil {
@@ -310,7 +354,7 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		}
 		eventType := EventItemStarted
 		text := ""
-		if method == "item/completed" {
+		if method == RuntimeNotificationItemCompleted {
 			eventType = EventItemCompleted
 			if notification.Item.Type == "agentMessage" {
 				text = notification.Item.Text
@@ -325,7 +369,7 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 				Text:     text,
 			},
 		})
-	case "item/agentMessage/delta":
+	case RuntimeNotificationItemAgentMessageDelta:
 		var notification struct {
 			ThreadID string `json:"threadId"`
 			TurnID   string `json:"turnId"`
@@ -335,6 +379,12 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		if err := json.Unmarshal(params, &notification); err != nil {
 			return err
 		}
+		if err := requireUUID("turn_id", notification.TurnID); err != nil {
+			return err
+		}
+		if notification.ItemID == "" {
+			return errors.New("agent message delta notification omitted item id")
+		}
 		record, err := s.store.GetByThread(notification.ThreadID)
 		if err != nil {
 			return err
@@ -343,12 +393,20 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 			TurnID:    notification.TurnID,
 			ItemID:    notification.ItemID,
 			EventType: EventItemAgentMessageDelta,
-			Payload:   EventPayload{Delta: notification.Delta},
+			Payload:   EventPayload{Delta: stringPointer(notification.Delta)},
 		})
-	case "turn/completed":
+	case RuntimeNotificationTurnCompleted:
 		var notification turnNotification
 		if err := json.Unmarshal(params, &notification); err != nil {
 			return err
+		}
+		if err := requireUUID("turn_id", notification.Turn.ID); err != nil {
+			return err
+		}
+		switch notification.Turn.Status {
+		case "completed", "interrupted", "failed":
+		default:
+			return errors.New("turn/completed notification status is not terminal")
 		}
 		record, err := s.store.GetByThread(notification.ThreadID)
 		if err != nil {
@@ -362,7 +420,7 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		payload := EventPayload{Status: status}
 		if notification.Turn.Error != nil {
 			payload.Code = normalizeCodexErrorCode(notification.Turn.Error.CodexErrorInfo)
-			payload.Message = sanitizeMessage(notification.Turn.Error.Message)
+			payload.Message = stringPointer(sanitizeMessage(notification.Turn.Error.Message))
 		}
 		return s.publish(record, Event{
 			TurnID:    notification.Turn.ID,
@@ -370,7 +428,7 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 			Terminal:  true,
 			Payload:   payload,
 		})
-	case "error":
+	case RuntimeNotificationError:
 		var notification struct {
 			ThreadID  string    `json:"threadId"`
 			TurnID    string    `json:"turnId"`
@@ -378,6 +436,9 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 			WillRetry bool      `json:"willRetry"`
 		}
 		if err := json.Unmarshal(params, &notification); err != nil {
+			return err
+		}
+		if err := requireUUID("turn_id", notification.TurnID); err != nil {
 			return err
 		}
 		record, err := s.store.GetByThread(notification.ThreadID)
@@ -390,11 +451,11 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 			EventType: EventError,
 			Payload: EventPayload{
 				Code:      normalizeCodexErrorCode(notification.Error.CodexErrorInfo),
-				Message:   sanitizeMessage(notification.Error.Message),
+				Message:   stringPointer(sanitizeMessage(notification.Error.Message)),
 				WillRetry: &willRetry,
 			},
 		})
-	case "warning":
+	case RuntimeNotificationWarning:
 		var notification struct {
 			ThreadID string `json:"threadId"`
 			Message  string `json:"message"`
@@ -410,7 +471,7 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		return s.publish(record, Event{
 			EventType: EventWarning,
 			Payload: EventPayload{
-				Message:   sanitizeMessage(notification.Message),
+				Message:   stringPointer(sanitizeMessage(notification.Message)),
 				WillRetry: &willRetry,
 			},
 		})
@@ -483,16 +544,16 @@ func (s *Service) flushPending(threadID string) {
 }
 
 func supportedNotification(method string) bool {
-	switch method {
-	case "thread/started", "turn/started", "item/started", "item/agentMessage/delta", "item/completed", "turn/completed", "error", "warning":
-		return true
-	default:
-		return false
+	for _, supported := range runtimeNotifications {
+		if method == supported {
+			return true
+		}
 	}
+	return false
 }
 
 func notificationThreadID(method string, params json.RawMessage) (string, error) {
-	if method == "thread/started" {
+	if method == RuntimeNotificationThreadStarted {
 		var notification struct {
 			Thread struct {
 				ID string `json:"id"`
@@ -585,4 +646,8 @@ func sanitizeMessage(message string) string {
 		message = message[:4096]
 	}
 	return message
+}
+
+func stringPointer(value string) *string {
+	return &value
 }

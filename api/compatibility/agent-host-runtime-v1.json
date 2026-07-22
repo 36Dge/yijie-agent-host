@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "contracts_version": "0.2.0",
+  "runtime": {
+    "repository": "https://github.com/36Dge/yijie-codex.git",
+    "repository_commit": "a9b343964f8e74e11ba86059613464ec343d5eb0",
+    "upstream_tag": "rust-v0.144.6",
+    "upstream_commit": "5d1fbf26c43abc65a203928b2e31561cb039e06d",
+    "version": "0.144.6",
+    "transport": "stdio",
+    "experimental_api": false,
+    "schema_file_count": 267,
+    "schema_tree_sha256": "82ee9de771cf1d41bac16d87380f1121e7794107aa3aa526ad702d5d1bf7afe1"
+  },
+  "host_projection": {
+    "transport": "local-http-sse",
+    "authentication": "owner-only-bearer",
+    "sandbox": "read-only",
+    "approval_policy": "never",
+    "runtime_methods": [
+      "thread/resume",
+      "thread/start",
+      "turn/interrupt",
+      "turn/start"
+    ],
+    "runtime_notifications": [
+      "error",
+      "item/agentMessage/delta",
+      "item/completed",
+      "item/started",
+      "thread/started",
+      "turn/completed",
+      "turn/started",
+      "warning"
+    ]
+  }
+}

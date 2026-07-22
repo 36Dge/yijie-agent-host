@@ -15,11 +15,16 @@ import (
 	"time"
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	agenthostcontract "github.com/36Dge/yijie-agent-host/internal/contracts"
 	"github.com/36Dge/yijie-agent-host/internal/security"
 	"github.com/36Dge/yijie-agent-host/internal/session"
+	"github.com/google/uuid"
 )
 
-const ServiceName = "yijie-agent-host"
+const (
+	ServiceName                 = "yijie-agent-host"
+	defaultSSEHeartbeatInterval = 15 * time.Second
+)
 
 type Config struct {
 	Environment string
@@ -30,14 +35,6 @@ type Config struct {
 
 type RuntimeStatusProvider interface {
 	Snapshot() codex.Status
-}
-
-type Status struct {
-	Service     string       `json:"service"`
-	Status      string       `json:"status"`
-	Environment string       `json:"environment"`
-	RuntimeMode string       `json:"runtime_mode"`
-	Runtime     codex.Status `json:"runtime"`
 }
 
 func LoadConfig() (Config, error) {
@@ -114,41 +111,43 @@ type SessionService interface {
 func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionService, apiToken string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{
-			"service": ServiceName,
-			"status":  "ok",
+		writeJSON(w, http.StatusOK, agenthostcontract.HealthResponse{
+			Service: agenthostcontract.HealthResponseServiceYijieAgentHost,
+			Status:  agenthostcontract.HealthResponseStatusOk,
 		})
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
 		status := runtime.Snapshot()
 		if !status.Ready {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-				"status":        "not_ready",
-				"runtime_state": status.State,
+			writeJSON(w, http.StatusServiceUnavailable, agenthostcontract.NotReadyResponse{
+				Status:       agenthostcontract.NotReady,
+				RuntimeState: agenthostcontract.RuntimeState(status.State),
 			})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]string{
-			"status":        "ready",
-			"runtime_state": status.State,
+		writeJSON(w, http.StatusOK, agenthostcontract.ReadyResponse{
+			Status:       agenthostcontract.ReadyResponseStatusReady,
+			RuntimeState: agenthostcontract.ReadyResponseRuntimeStateReady,
 		})
 	})
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, _ *http.Request) {
 		runtimeStatus := runtime.Snapshot()
-		serviceStatus := "degraded"
+		serviceStatus := agenthostcontract.AgentHostStatusStatusDegraded
 		if runtimeStatus.Ready {
-			serviceStatus = "ok"
+			serviceStatus = agenthostcontract.AgentHostStatusStatusOk
 		}
-		writeJSON(w, http.StatusOK, Status{
-			Service:     ServiceName,
+		writeJSON(w, http.StatusOK, agenthostcontract.AgentHostStatus{
+			Service:     agenthostcontract.AgentHostStatusServiceYijieAgentHost,
 			Status:      serviceStatus,
 			Environment: config.Environment,
-			RuntimeMode: "managed-stdio",
-			Runtime:     runtimeStatus,
+			RuntimeMode: agenthostcontract.ManagedStdio,
+			Runtime:     runtimeStatusView(runtimeStatus),
 		})
 	})
 	if sessions != nil {
-		handler := &sessionHandler{service: sessions, apiToken: apiToken}
+		handler := &sessionHandler{
+			service: sessions, apiToken: apiToken, heartbeatInterval: defaultSSEHeartbeatInterval,
+		}
 		mux.Handle("POST /v1/tasks/{task_id}/agent-sessions", handler.authorize(http.HandlerFunc(handler.startSession)))
 		mux.Handle("POST /v1/agent-sessions/{agent_session_id}/resume", handler.authorize(http.HandlerFunc(handler.resumeSession)))
 		mux.Handle("GET /v1/agent-sessions/{agent_session_id}", handler.authorize(http.HandlerFunc(handler.getSession)))
@@ -160,21 +159,15 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 }
 
 type sessionHandler struct {
-	service  SessionService
-	apiToken string
-}
-
-type traceRequest struct {
-	TraceID   string `json:"trace_id,omitempty"`
-	RequestID string `json:"request_id,omitempty"`
-	TenantID  string `json:"tenant_id,omitempty"`
-	UserID    string `json:"user_id,omitempty"`
+	service           SessionService
+	apiToken          string
+	heartbeatInterval time.Duration
 }
 
 func (h *sessionHandler) authorize(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !security.TokenMatches(h.apiToken, r.Header.Get("Authorization")) {
-			writeAPIError(w, http.StatusUnauthorized, "unauthorized", "valid Agent Host bearer token required")
+			writeAPIError(w, http.StatusUnauthorized, agenthostcontract.ErrorResponseErrorCodeUnauthorized, "valid Agent Host bearer token required")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -182,42 +175,39 @@ func (h *sessionHandler) authorize(next http.Handler) http.Handler {
 }
 
 func (h *sessionHandler) startSession(w http.ResponseWriter, r *http.Request) {
-	var request struct {
-		traceRequest
-		Cwd string `json:"cwd"`
-	}
+	var request agenthostcontract.StartSessionRequest
 	if err := decodeRequest(w, r, &request); err != nil {
-		writeAPIError(w, http.StatusBadRequest, "invalid_request", "request body is invalid")
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidRequest, "request body is invalid")
 		return
 	}
 	record, err := h.service.StartSession(r.Context(), session.StartSessionInput{
 		TaskID: r.PathValue("task_id"),
 		Cwd:    request.Cwd,
-		Trace:  request.traceRequest.context(),
+		Trace:  traceContext(request.TraceId, request.RequestId, request.TenantId, request.UserId),
 	})
 	if err != nil {
 		writeSessionError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"session": sessionView(record)})
+	writeSessionResponse(w, http.StatusCreated, record)
 }
 
 func (h *sessionHandler) resumeSession(w http.ResponseWriter, r *http.Request) {
-	var request traceRequest
+	var request agenthostcontract.TraceRequest
 	if err := decodeRequest(w, r, &request); err != nil {
-		writeAPIError(w, http.StatusBadRequest, "invalid_request", "request body is invalid")
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidRequest, "request body is invalid")
 		return
 	}
 	record, err := h.service.ResumeSession(
 		r.Context(),
 		r.PathValue("agent_session_id"),
-		request.context(),
+		traceContext(request.TraceId, request.RequestId, request.TenantId, request.UserId),
 	)
 	if err != nil {
 		writeSessionError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"session": sessionView(record)})
+	writeSessionResponse(w, http.StatusOK, record)
 }
 
 func (h *sessionHandler) getSession(w http.ResponseWriter, r *http.Request) {
@@ -226,43 +216,44 @@ func (h *sessionHandler) getSession(w http.ResponseWriter, r *http.Request) {
 		writeSessionError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"session": sessionView(record)})
+	writeSessionResponse(w, http.StatusOK, record)
 }
 
 func (h *sessionHandler) startTurn(w http.ResponseWriter, r *http.Request) {
-	var request struct {
-		traceRequest
-		Input           string `json:"input"`
-		ReasoningEffort string `json:"reasoning_effort,omitempty"`
-	}
+	var request agenthostcontract.StartTurnRequest
 	if err := decodeRequest(w, r, &request); err != nil {
-		writeAPIError(w, http.StatusBadRequest, "invalid_request", "request body is invalid")
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidRequest, "request body is invalid")
 		return
 	}
 	turn, err := h.service.StartTurn(r.Context(), session.StartTurnInput{
 		AgentSessionID:  r.PathValue("agent_session_id"),
 		Input:           request.Input,
-		ReasoningEffort: request.ReasoningEffort,
-		Trace:           request.traceRequest.context(),
+		ReasoningEffort: reasoningEffort(request.ReasoningEffort),
+		Trace:           traceContext(request.TraceId, request.RequestId, request.TenantId, request.UserId),
 	})
 	if err != nil {
 		writeSessionError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]string{"turn_id": turn.ID})
+	turnID, err := uuid.Parse(turn.ID)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, agenthostcontract.ErrorResponseErrorCodeInternalError, "Agent Host operation failed")
+		return
+	}
+	writeJSON(w, http.StatusAccepted, agenthostcontract.StartTurnResponse{TurnId: turnID})
 }
 
 func (h *sessionHandler) interruptTurn(w http.ResponseWriter, r *http.Request) {
-	var request traceRequest
+	var request agenthostcontract.TraceRequest
 	if err := decodeRequest(w, r, &request); err != nil {
-		writeAPIError(w, http.StatusBadRequest, "invalid_request", "request body is invalid")
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidRequest, "request body is invalid")
 		return
 	}
 	if err := h.service.InterruptTurn(
 		r.Context(),
 		r.PathValue("agent_session_id"),
 		r.PathValue("turn_id"),
-		request.context(),
+		traceContext(request.TraceId, request.RequestId, request.TenantId, request.UserId),
 	); err != nil {
 		writeSessionError(w, err)
 		return
@@ -274,7 +265,7 @@ func (h *sessionHandler) interruptTurn(w http.ResponseWriter, r *http.Request) {
 func (h *sessionHandler) events(w http.ResponseWriter, r *http.Request) {
 	streamID, after, err := eventCursor(r)
 	if err != nil {
-		writeAPIError(w, http.StatusBadRequest, "invalid_event_cursor", "event cursor is invalid")
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event cursor is invalid")
 		return
 	}
 	actualStreamID, replay, updates, cancel, err := h.service.SubscribeEvents(
@@ -287,7 +278,7 @@ func (h *sessionHandler) events(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeAPIError(w, http.StatusInternalServerError, "streaming_unsupported", "streaming is unavailable")
+		writeAPIError(w, http.StatusInternalServerError, agenthostcontract.ErrorResponseErrorCodeStreamingUnsupported, "streaming is unavailable")
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -301,7 +292,11 @@ func (h *sessionHandler) events(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	flusher.Flush()
-	heartbeat := time.NewTicker(15 * time.Second)
+	heartbeatInterval := h.heartbeatInterval
+	if heartbeatInterval <= 0 {
+		heartbeatInterval = defaultSSEHeartbeatInterval
+	}
+	heartbeat := time.NewTimer(heartbeatInterval)
 	defer heartbeat.Stop()
 	for {
 		select {
@@ -313,21 +308,48 @@ func (h *sessionHandler) events(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			flusher.Flush()
+			resetTimer(heartbeat, heartbeatInterval)
 		case <-heartbeat.C:
 			if _, err := io.WriteString(w, ": heartbeat\n\n"); err != nil {
 				return
 			}
 			flusher.Flush()
+			heartbeat.Reset(heartbeatInterval)
 		case <-r.Context().Done():
 			return
 		}
 	}
 }
 
-func (r traceRequest) context() session.TraceContext {
-	return session.TraceContext{
-		TraceID: r.TraceID, RequestID: r.RequestID, TenantID: r.TenantID, UserID: r.UserID,
+func resetTimer(timer *time.Timer, interval time.Duration) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
 	}
+	timer.Reset(interval)
+}
+
+func traceContext(traceID, requestID, tenantID, userID *string) session.TraceContext {
+	return session.TraceContext{
+		TraceID: stringValue(traceID), RequestID: stringValue(requestID),
+		TenantID: stringValue(tenantID), UserID: stringValue(userID),
+	}
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func reasoningEffort(value *agenthostcontract.StartTurnRequestReasoningEffort) string {
+	if value == nil {
+		return ""
+	}
+	return string(*value)
 }
 
 func decodeRequest(w http.ResponseWriter, r *http.Request, destination any) error {
@@ -349,19 +371,27 @@ func decodeRequest(w http.ResponseWriter, r *http.Request, destination any) erro
 func eventCursor(r *http.Request) (string, uint64, error) {
 	streamID := r.URL.Query().Get("stream_id")
 	afterText := r.URL.Query().Get("after")
+	fromLastEventID := false
 	if lastEventID := r.Header.Get("Last-Event-ID"); lastEventID != "" {
 		parts := strings.Split(lastEventID, ":")
-		if len(parts) != 2 {
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 			return "", 0, errors.New("invalid Last-Event-ID")
+		}
+		if parts[1][0] == '0' {
+			return "", 0, errors.New("invalid Last-Event-ID sequence")
 		}
 		streamID = parts[0]
 		afterText = parts[1]
+		fromLastEventID = true
 	}
 	if afterText == "" {
 		return streamID, 0, nil
 	}
 	after, err := strconv.ParseUint(afterText, 10, 64)
-	return streamID, after, err
+	if err != nil || (fromLastEventID && after == 0) || (after > 0 && streamID == "") {
+		return "", 0, errors.New("invalid event cursor")
+	}
+	return streamID, after, nil
 }
 
 func writeSSEEvent(w io.Writer, event session.Event) error {
@@ -376,53 +406,105 @@ func writeSSEEvent(w io.Writer, event session.Event) error {
 	return err
 }
 
-func sessionView(record session.Record) map[string]any {
-	return map[string]any{
-		"task_id":          record.TaskID,
-		"agent_session_id": record.AgentSessionID,
-		"codex_thread_id":  record.CodexThreadID,
-		"active_turn_id":   record.ActiveTurnID,
-		"state":            record.State,
-		"cwd":              record.Cwd,
-		"model":            record.Model,
-		"model_provider":   record.ModelProvider,
-		"failure_code":     record.FailureCode,
-		"created_at":       record.CreatedAt,
-		"updated_at":       record.UpdatedAt,
+func writeSessionResponse(w http.ResponseWriter, status int, record session.Record) {
+	response, err := sessionResponse(record)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, agenthostcontract.ErrorResponseErrorCodeInternalError, "Agent Host operation failed")
+		return
 	}
+	writeJSON(w, status, response)
+}
+
+func sessionResponse(record session.Record) (agenthostcontract.SessionResponse, error) {
+	taskID, err := uuid.Parse(record.TaskID)
+	if err != nil {
+		return agenthostcontract.SessionResponse{}, fmt.Errorf("invalid persisted task id: %w", err)
+	}
+	agentSessionID, err := uuid.Parse(record.AgentSessionID)
+	if err != nil {
+		return agenthostcontract.SessionResponse{}, fmt.Errorf("invalid persisted agent session id: %w", err)
+	}
+	return agenthostcontract.SessionResponse{Session: agenthostcontract.AgentSession{
+		TaskId:         taskID,
+		AgentSessionId: agentSessionID,
+		CodexThreadId:  record.CodexThreadID,
+		ActiveTurnId:   record.ActiveTurnID,
+		State:          agenthostcontract.AgentSessionState(record.State),
+		Cwd:            record.Cwd,
+		Model:          agenthostcontract.AgentSessionModel(record.Model),
+		ModelProvider:  agenthostcontract.AgentSessionModelProvider(record.ModelProvider),
+		FailureCode:    agenthostcontract.AgentSessionFailureCode(record.FailureCode),
+		CreatedAt:      record.CreatedAt,
+		UpdatedAt:      record.UpdatedAt,
+	}}, nil
+}
+
+func runtimeStatusView(status codex.Status) agenthostcontract.RuntimeStatus {
+	view := agenthostcontract.RuntimeStatus{
+		State:           agenthostcontract.RuntimeState(status.State),
+		Ready:           status.Ready,
+		Transport:       agenthostcontract.RuntimeStatusTransport(status.Transport),
+		ExperimentalApi: agenthostcontract.RuntimeStatusExperimentalApi(status.ExperimentalAPI),
+	}
+	if status.RuntimeVersion != "" {
+		value := agenthostcontract.RuntimeStatusRuntimeVersion(status.RuntimeVersion)
+		view.RuntimeVersion = &value
+	}
+	if status.UpstreamTag != "" {
+		value := agenthostcontract.RuntimeStatusUpstreamTag(status.UpstreamTag)
+		view.UpstreamTag = &value
+	}
+	if status.UpstreamCommit != "" {
+		value := agenthostcontract.RuntimeStatusUpstreamCommit(status.UpstreamCommit)
+		view.UpstreamCommit = &value
+	}
+	if status.FailureCode != "" {
+		value := agenthostcontract.RuntimeStatusFailureCode(status.FailureCode)
+		view.FailureCode = &value
+	}
+	if status.ModelProvider != "" {
+		value := agenthostcontract.RuntimeStatusModelProvider(status.ModelProvider)
+		view.ModelProvider = &value
+	}
+	if status.Model != "" {
+		value := agenthostcontract.RuntimeStatusModel(status.Model)
+		view.Model = &value
+	}
+	return view
 }
 
 func writeSessionError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, session.ErrNotFound):
-		writeAPIError(w, http.StatusNotFound, "session_not_found", "agent session was not found")
+		writeAPIError(w, http.StatusNotFound, agenthostcontract.ErrorResponseErrorCodeSessionNotFound, "agent session was not found")
 	case errors.Is(err, session.ErrTaskExists):
-		writeAPIError(w, http.StatusConflict, "task_session_exists", "task already has an agent session")
+		writeAPIError(w, http.StatusConflict, agenthostcontract.ErrorResponseErrorCodeTaskSessionExists, "task already has an agent session")
 	case errors.Is(err, session.ErrTurnActive):
-		writeAPIError(w, http.StatusConflict, "turn_active", "agent session already has an active turn")
+		writeAPIError(w, http.StatusConflict, agenthostcontract.ErrorResponseErrorCodeTurnActive, "agent session already has an active turn")
 	case errors.Is(err, session.ErrTurnNotActive):
-		writeAPIError(w, http.StatusConflict, "turn_not_active", "turn is not active for this agent session")
+		writeAPIError(w, http.StatusConflict, agenthostcontract.ErrorResponseErrorCodeTurnNotActive, "turn is not active for this agent session")
 	case errors.Is(err, session.ErrSessionNotUsable):
-		writeAPIError(w, http.StatusConflict, "session_not_usable", "agent session cannot perform this operation")
+		writeAPIError(w, http.StatusConflict, agenthostcontract.ErrorResponseErrorCodeSessionNotUsable, "agent session cannot perform this operation")
 	case errors.Is(err, session.ErrStreamChanged):
-		writeAPIError(w, http.StatusConflict, "event_stream_changed", "event stream changed after Host restart")
+		writeAPIError(w, http.StatusConflict, agenthostcontract.ErrorResponseErrorCodeEventStreamChanged, "event stream changed after Host restart")
 	case errors.Is(err, session.ErrReplayUnavailable):
-		writeAPIError(w, http.StatusConflict, "event_replay_unavailable", "requested events are no longer available")
+		writeAPIError(w, http.StatusConflict, agenthostcontract.ErrorResponseErrorCodeEventReplayUnavailable, "requested events are no longer available")
 	case errors.Is(err, session.ErrInvalidSequence):
-		writeAPIError(w, http.StatusBadRequest, "invalid_event_cursor", "event cursor is invalid")
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event cursor is invalid")
 	case errors.Is(err, session.ErrInvalidArgument):
-		writeAPIError(w, http.StatusBadRequest, "invalid_request", "request parameters are invalid")
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidRequest, "request parameters are invalid")
 	case errors.Is(err, session.ErrRuntimeRequest):
-		writeAPIError(w, http.StatusBadGateway, "runtime_request_failed", "Codex Runtime request failed")
+		writeAPIError(w, http.StatusBadGateway, agenthostcontract.ErrorResponseErrorCodeRuntimeRequestFailed, "Codex Runtime request failed")
 	default:
-		writeAPIError(w, http.StatusInternalServerError, "internal_error", "Agent Host operation failed")
+		writeAPIError(w, http.StatusInternalServerError, agenthostcontract.ErrorResponseErrorCodeInternalError, "Agent Host operation failed")
 	}
 }
 
-func writeAPIError(w http.ResponseWriter, status int, code, message string) {
-	writeJSON(w, status, map[string]any{
-		"error": map[string]string{"code": code, "message": message},
-	})
+func writeAPIError(w http.ResponseWriter, status int, code agenthostcontract.ErrorResponseErrorCode, message string) {
+	var response agenthostcontract.ErrorResponse
+	response.Error.Code = code
+	response.Error.Message = message
+	writeJSON(w, status, response)
 }
 
 func loadMiniMaxAPIKey() (string, error) {

@@ -11,6 +11,7 @@ Agent Host Runtime Baseline 2 已完成真实 thread/turn 的只读最小垂直�
 - MiniMax 中国站 `https://api.minimaxi.com/v1`、Responses API、`MiniMax-M3`；
 - 支持 `thread/start`、`thread/resume`、`turn/start` 和 `turn/interrupt`；
 - 将要求的 8 类 Runtime 通知映射为稳定、脱敏、可关联的 SSE 事件；
+- HTTP/SSE 接口以 `yijie-contracts` 的 Agent Host OpenAPI 为权威源，Host 固定契约快照并直接使用生成 DTO；
 - 使用 bbolt 持久化 `task_id → agent_session_id → codex_thread_id → turn_id`，不持久化消息正文；
 - 每进程事件流有独立 `stream_id` 和单调 `sequence`，支持有界进程内重放；
 - 会话 HTTP API 使用 Host 自动生成的本机 bearer token；Runtime 固定 `read-only`、`approvalPolicy=never`。
@@ -55,10 +56,14 @@ GET  /v1/agent-sessions/{agent_session_id}/events
 ## 验证
 
 ```bash
-make lint          # gofmt、go vet 和 shell 语法
-make test          # race 单测和故障测试；不依赖真实 Runtime
+make sync-contracts # 从相邻 yijie-contracts 同步已确认的契约候选并重新生成 DTO
+make contract-check # 校验契约版本、快照哈希、相邻源和生成物，无网络依赖
+make lint           # gofmt、go vet 和 shell 语法
+make test           # 契约同步检查、race 单测和故障测试；不依赖真实 Runtime
 make runtime-test  # 固定产物握手 + MiniMax 配置/thread 启动；不请求模型
 make runtime-turn-test # 显式真实测试，最多 2 次短 MiniMax 请求，不在 CI
 ```
+
+`api/contracts.lock` 固定当前消费的 `contracts-v0.2.0` 候选版本以及 OpenAPI、Runtime 兼容清单和 Agent session 事件 JSON Schema 的 SHA-256；不得手改 `api/` 快照或 `internal/contracts/agenthost.gen.go`。测试会用快照 Schema 直接校验 Host 实际序列化的 8 类事件。契约 tag 发布后，再按发布说明将候选引用更新为不可变 tag。
 
 `make runtime-turn-test` 默认从 `.local/secrets/minimax-api-key` 读取 Key，也可使用上述环境变量；脚本和测试不会输出 Key。它验证一次正常完成、Runtime 重启后的 `thread/resume`，以及一次 `turn/interrupt`。

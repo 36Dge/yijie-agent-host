@@ -1,0 +1,389 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.yijie.ai/agent/session-event.schema.json",
+  "title": "AgentSessionEvent",
+  "description": "A sanitized Agent Host event. The event_type discriminator selects one payload, correlation-ID, and terminal-state variant. Sequence is monotonic only within one stream_id. A new Host process creates a new stream_id and does not replay content from an earlier process.",
+  "oneOf": [
+    {
+      "title": "ThreadStartedEvent",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event_id",
+        "stream_id",
+        "sequence",
+        "occurred_at",
+        "task_id",
+        "agent_session_id",
+        "codex_thread_id",
+        "event_type",
+        "terminal",
+        "payload"
+      ],
+      "properties": {
+        "schema_version": { "$ref": "#/definitions/schemaVersion" },
+        "event_id": { "$ref": "#/definitions/eventId" },
+        "stream_id": { "$ref": "#/definitions/streamId" },
+        "sequence": { "$ref": "#/definitions/sequence" },
+        "occurred_at": { "$ref": "#/definitions/occurredAt" },
+        "trace_id": { "$ref": "#/definitions/traceId" },
+        "request_id": { "$ref": "#/definitions/requestId" },
+        "tenant_id": { "$ref": "#/definitions/tenantId" },
+        "user_id": { "$ref": "#/definitions/userId" },
+        "task_id": { "$ref": "#/definitions/taskId" },
+        "agent_session_id": { "$ref": "#/definitions/agentSessionId" },
+        "codex_thread_id": { "$ref": "#/definitions/codexThreadId" },
+        "event_type": { "const": "thread.started" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/threadStartedPayload" }
+      }
+    },
+    {
+      "title": "TurnStartedEvent",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event_id",
+        "stream_id",
+        "sequence",
+        "occurred_at",
+        "task_id",
+        "agent_session_id",
+        "codex_thread_id",
+        "turn_id",
+        "event_type",
+        "terminal",
+        "payload"
+      ],
+      "properties": {
+        "schema_version": { "$ref": "#/definitions/schemaVersion" },
+        "event_id": { "$ref": "#/definitions/eventId" },
+        "stream_id": { "$ref": "#/definitions/streamId" },
+        "sequence": { "$ref": "#/definitions/sequence" },
+        "occurred_at": { "$ref": "#/definitions/occurredAt" },
+        "trace_id": { "$ref": "#/definitions/traceId" },
+        "request_id": { "$ref": "#/definitions/requestId" },
+        "tenant_id": { "$ref": "#/definitions/tenantId" },
+        "user_id": { "$ref": "#/definitions/userId" },
+        "task_id": { "$ref": "#/definitions/taskId" },
+        "agent_session_id": { "$ref": "#/definitions/agentSessionId" },
+        "codex_thread_id": { "$ref": "#/definitions/codexThreadId" },
+        "turn_id": { "$ref": "#/definitions/turnId" },
+        "event_type": { "const": "turn.started" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/turnStartedPayload" }
+      }
+    },
+    {
+      "title": "ItemStartedEvent",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event_id",
+        "stream_id",
+        "sequence",
+        "occurred_at",
+        "task_id",
+        "agent_session_id",
+        "codex_thread_id",
+        "turn_id",
+        "item_id",
+        "event_type",
+        "terminal",
+        "payload"
+      ],
+      "properties": {
+        "schema_version": { "$ref": "#/definitions/schemaVersion" },
+        "event_id": { "$ref": "#/definitions/eventId" },
+        "stream_id": { "$ref": "#/definitions/streamId" },
+        "sequence": { "$ref": "#/definitions/sequence" },
+        "occurred_at": { "$ref": "#/definitions/occurredAt" },
+        "trace_id": { "$ref": "#/definitions/traceId" },
+        "request_id": { "$ref": "#/definitions/requestId" },
+        "tenant_id": { "$ref": "#/definitions/tenantId" },
+        "user_id": { "$ref": "#/definitions/userId" },
+        "task_id": { "$ref": "#/definitions/taskId" },
+        "agent_session_id": { "$ref": "#/definitions/agentSessionId" },
+        "codex_thread_id": { "$ref": "#/definitions/codexThreadId" },
+        "turn_id": { "$ref": "#/definitions/turnId" },
+        "item_id": { "$ref": "#/definitions/itemId" },
+        "event_type": { "const": "item.started" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/itemLifecyclePayload" }
+      }
+    },
+    {
+      "title": "AgentMessageDeltaEvent",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event_id",
+        "stream_id",
+        "sequence",
+        "occurred_at",
+        "task_id",
+        "agent_session_id",
+        "codex_thread_id",
+        "turn_id",
+        "item_id",
+        "event_type",
+        "terminal",
+        "payload"
+      ],
+      "properties": {
+        "schema_version": { "$ref": "#/definitions/schemaVersion" },
+        "event_id": { "$ref": "#/definitions/eventId" },
+        "stream_id": { "$ref": "#/definitions/streamId" },
+        "sequence": { "$ref": "#/definitions/sequence" },
+        "occurred_at": { "$ref": "#/definitions/occurredAt" },
+        "trace_id": { "$ref": "#/definitions/traceId" },
+        "request_id": { "$ref": "#/definitions/requestId" },
+        "tenant_id": { "$ref": "#/definitions/tenantId" },
+        "user_id": { "$ref": "#/definitions/userId" },
+        "task_id": { "$ref": "#/definitions/taskId" },
+        "agent_session_id": { "$ref": "#/definitions/agentSessionId" },
+        "codex_thread_id": { "$ref": "#/definitions/codexThreadId" },
+        "turn_id": { "$ref": "#/definitions/turnId" },
+        "item_id": { "$ref": "#/definitions/itemId" },
+        "event_type": { "const": "item.agent_message.delta" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/agentMessageDeltaPayload" }
+      }
+    },
+    {
+      "title": "ItemCompletedEvent",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event_id",
+        "stream_id",
+        "sequence",
+        "occurred_at",
+        "task_id",
+        "agent_session_id",
+        "codex_thread_id",
+        "turn_id",
+        "item_id",
+        "event_type",
+        "terminal",
+        "payload"
+      ],
+      "properties": {
+        "schema_version": { "$ref": "#/definitions/schemaVersion" },
+        "event_id": { "$ref": "#/definitions/eventId" },
+        "stream_id": { "$ref": "#/definitions/streamId" },
+        "sequence": { "$ref": "#/definitions/sequence" },
+        "occurred_at": { "$ref": "#/definitions/occurredAt" },
+        "trace_id": { "$ref": "#/definitions/traceId" },
+        "request_id": { "$ref": "#/definitions/requestId" },
+        "tenant_id": { "$ref": "#/definitions/tenantId" },
+        "user_id": { "$ref": "#/definitions/userId" },
+        "task_id": { "$ref": "#/definitions/taskId" },
+        "agent_session_id": { "$ref": "#/definitions/agentSessionId" },
+        "codex_thread_id": { "$ref": "#/definitions/codexThreadId" },
+        "turn_id": { "$ref": "#/definitions/turnId" },
+        "item_id": { "$ref": "#/definitions/itemId" },
+        "event_type": { "const": "item.completed" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/itemLifecyclePayload" }
+      }
+    },
+    {
+      "title": "TurnCompletedEvent",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event_id",
+        "stream_id",
+        "sequence",
+        "occurred_at",
+        "task_id",
+        "agent_session_id",
+        "codex_thread_id",
+        "turn_id",
+        "event_type",
+        "terminal",
+        "payload"
+      ],
+      "properties": {
+        "schema_version": { "$ref": "#/definitions/schemaVersion" },
+        "event_id": { "$ref": "#/definitions/eventId" },
+        "stream_id": { "$ref": "#/definitions/streamId" },
+        "sequence": { "$ref": "#/definitions/sequence" },
+        "occurred_at": { "$ref": "#/definitions/occurredAt" },
+        "trace_id": { "$ref": "#/definitions/traceId" },
+        "request_id": { "$ref": "#/definitions/requestId" },
+        "tenant_id": { "$ref": "#/definitions/tenantId" },
+        "user_id": { "$ref": "#/definitions/userId" },
+        "task_id": { "$ref": "#/definitions/taskId" },
+        "agent_session_id": { "$ref": "#/definitions/agentSessionId" },
+        "codex_thread_id": { "$ref": "#/definitions/codexThreadId" },
+        "turn_id": { "$ref": "#/definitions/turnId" },
+        "event_type": { "const": "turn.completed" },
+        "terminal": { "const": true },
+        "payload": { "$ref": "#/definitions/turnCompletedPayload" }
+      }
+    },
+    {
+      "title": "AgentErrorEvent",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event_id",
+        "stream_id",
+        "sequence",
+        "occurred_at",
+        "task_id",
+        "agent_session_id",
+        "codex_thread_id",
+        "turn_id",
+        "event_type",
+        "terminal",
+        "payload"
+      ],
+      "properties": {
+        "schema_version": { "$ref": "#/definitions/schemaVersion" },
+        "event_id": { "$ref": "#/definitions/eventId" },
+        "stream_id": { "$ref": "#/definitions/streamId" },
+        "sequence": { "$ref": "#/definitions/sequence" },
+        "occurred_at": { "$ref": "#/definitions/occurredAt" },
+        "trace_id": { "$ref": "#/definitions/traceId" },
+        "request_id": { "$ref": "#/definitions/requestId" },
+        "tenant_id": { "$ref": "#/definitions/tenantId" },
+        "user_id": { "$ref": "#/definitions/userId" },
+        "task_id": { "$ref": "#/definitions/taskId" },
+        "agent_session_id": { "$ref": "#/definitions/agentSessionId" },
+        "codex_thread_id": { "$ref": "#/definitions/codexThreadId" },
+        "turn_id": { "$ref": "#/definitions/turnId" },
+        "event_type": { "const": "error" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/agentProblemPayload" }
+      }
+    },
+    {
+      "title": "AgentWarningEvent",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event_id",
+        "stream_id",
+        "sequence",
+        "occurred_at",
+        "task_id",
+        "agent_session_id",
+        "codex_thread_id",
+        "event_type",
+        "terminal",
+        "payload"
+      ],
+      "properties": {
+        "schema_version": { "$ref": "#/definitions/schemaVersion" },
+        "event_id": { "$ref": "#/definitions/eventId" },
+        "stream_id": { "$ref": "#/definitions/streamId" },
+        "sequence": { "$ref": "#/definitions/sequence" },
+        "occurred_at": { "$ref": "#/definitions/occurredAt" },
+        "trace_id": { "$ref": "#/definitions/traceId" },
+        "request_id": { "$ref": "#/definitions/requestId" },
+        "tenant_id": { "$ref": "#/definitions/tenantId" },
+        "user_id": { "$ref": "#/definitions/userId" },
+        "task_id": { "$ref": "#/definitions/taskId" },
+        "agent_session_id": { "$ref": "#/definitions/agentSessionId" },
+        "codex_thread_id": { "$ref": "#/definitions/codexThreadId" },
+        "event_type": { "const": "warning" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/agentWarningPayload" }
+      }
+    }
+  ],
+  "definitions": {
+    "schemaVersion": { "const": 1 },
+    "eventId": { "type": "string", "format": "uuid" },
+    "streamId": { "type": "string", "format": "uuid" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "traceId": { "type": "string", "minLength": 1 },
+    "requestId": { "type": "string", "minLength": 1 },
+    "tenantId": { "type": "string", "minLength": 1 },
+    "userId": { "type": "string", "minLength": 1 },
+    "taskId": { "type": "string", "format": "uuid" },
+    "agentSessionId": { "type": "string", "format": "uuid" },
+    "codexThreadId": { "type": "string", "format": "uuid" },
+    "turnId": { "type": "string", "format": "uuid" },
+    "itemId": { "type": "string", "minLength": 1 },
+    "threadStartedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "model_provider"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "model_provider": { "type": "string", "minLength": 1 }
+      }
+    },
+    "turnStartedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "const": "in_progress" }
+      }
+    },
+    "turnCompletedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["completed", "interrupted", "failed"]
+        },
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "itemLifecyclePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_type"],
+      "properties": {
+        "item_type": { "type": "string", "minLength": 1 },
+        "text": { "type": "string" }
+      }
+    },
+    "agentMessageDeltaPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["delta"],
+      "properties": {
+        "delta": { "type": "string" }
+      }
+    },
+    "agentProblemPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message", "will_retry"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "will_retry": { "type": "boolean" }
+      }
+    },
+    "agentWarningPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message", "will_retry"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "will_retry": { "const": false }
+      }
+    }
+  }
+}

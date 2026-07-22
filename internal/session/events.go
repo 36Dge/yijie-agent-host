@@ -15,15 +15,15 @@ var (
 )
 
 type EventPayload struct {
-	Model         string `json:"model,omitempty"`
-	ModelProvider string `json:"model_provider,omitempty"`
-	Status        string `json:"status,omitempty"`
-	ItemType      string `json:"item_type,omitempty"`
-	Text          string `json:"text,omitempty"`
-	Delta         string `json:"delta,omitempty"`
-	Code          string `json:"code,omitempty"`
-	Message       string `json:"message,omitempty"`
-	WillRetry     *bool  `json:"will_retry,omitempty"`
+	Model         string  `json:"model,omitempty"`
+	ModelProvider string  `json:"model_provider,omitempty"`
+	Status        string  `json:"status,omitempty"`
+	ItemType      string  `json:"item_type,omitempty"`
+	Text          string  `json:"text,omitempty"`
+	Delta         *string `json:"delta,omitempty"`
+	Code          string  `json:"code,omitempty"`
+	Message       *string `json:"message,omitempty"`
+	WillRetry     *bool   `json:"will_retry,omitempty"`
 }
 
 type Event struct {
@@ -113,6 +113,9 @@ func (h *EventHub) Subscribe(
 ) (string, []Event, <-chan Event, func(), error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if expectedStreamID != "" && !validUUID(expectedStreamID) {
+		return "", nil, nil, nil, ErrInvalidSequence
+	}
 	stream, err := h.streamLocked(sessionID)
 	if err != nil {
 		return "", nil, nil, nil, err

@@ -11,7 +11,7 @@ func TestEventHubOrdersAndReplaysWithinStream(t *testing.T) {
 		event, err := hub.Publish(Event{
 			AgentSessionID: testSessionID,
 			EventType:      EventWarning,
-			Payload:        EventPayload{Message: "warning"},
+			Payload:        EventPayload{Message: stringPointer("warning")},
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -52,6 +52,9 @@ func TestEventHubOrdersAndReplaysWithinStream(t *testing.T) {
 	}
 	if _, _, _, _, err := hub.Subscribe(testSessionID, "", 1); !errors.Is(err, ErrInvalidSequence) {
 		t.Fatalf("expected sequence without stream id to fail, got %v", err)
+	}
+	if _, _, _, _, err := hub.Subscribe(testSessionID, "not-a-uuid", 0); !errors.Is(err, ErrInvalidSequence) {
+		t.Fatalf("expected malformed stream id to fail, got %v", err)
 	}
 }
 

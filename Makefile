@@ -1,9 +1,10 @@
-.PHONY: dev test runtime-test runtime-turn-test lint generate
+.PHONY: dev test runtime-test runtime-turn-test lint generate sync-contracts contract-check
 
 dev:
 	go run ./cmd/desktop-host
 
 test:
+	$(MAKE) contract-check
 	go test -race -cover ./...
 
 runtime-test:
@@ -18,4 +19,12 @@ lint:
 	bash -n scripts/*.sh
 
 generate:
-	echo "No generated assets yet"
+	go tool oapi-codegen -generate types -package agenthostcontract -o internal/contracts/agenthost.gen.go api/openapi/agent-host.yaml
+	gofmt -w internal/contracts/agenthost.gen.go
+
+sync-contracts:
+	./scripts/sync-contracts.sh
+	$(MAKE) generate
+
+contract-check:
+	./scripts/check-contracts.sh

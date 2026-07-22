@@ -10,7 +10,27 @@ import (
 	"strings"
 )
 
-const maxTurnInputBytes = 1 << 20
+const (
+	maxTurnInputBytes = 1 << 20
+
+	RuntimeMethodThreadResume  = "thread/resume"
+	RuntimeMethodThreadStart   = "thread/start"
+	RuntimeMethodTurnInterrupt = "turn/interrupt"
+	RuntimeMethodTurnStart     = "turn/start"
+	SessionApprovalPolicy      = "never"
+	SessionSandbox             = "read-only"
+)
+
+var sessionRuntimeMethods = []string{
+	RuntimeMethodThreadResume,
+	RuntimeMethodThreadStart,
+	RuntimeMethodTurnInterrupt,
+	RuntimeMethodTurnStart,
+}
+
+func SupportedSessionRuntimeMethods() []string {
+	return append([]string(nil), sessionRuntimeMethods...)
+}
 
 type NotificationHandler func(method string, params json.RawMessage)
 
@@ -77,13 +97,13 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		Model:                 MiniMaxModel,
 		ModelProvider:         MiniMaxProviderID,
 		Cwd:                   cwd,
-		ApprovalPolicy:        "never",
-		Sandbox:               "read-only",
+		ApprovalPolicy:        SessionApprovalPolicy,
+		Sandbox:               SessionSandbox,
 		DeveloperInstructions: "Runtime Baseline 2 is read-only. Do not modify files or request elevated permissions.",
 		Ephemeral:             false,
 	}
 	var response threadResponse
-	if err := m.request(ctx, "thread/start", params, &response); err != nil {
+	if err := m.request(ctx, RuntimeMethodThreadStart, params, &response); err != nil {
 		return ThreadInfo{}, err
 	}
 	return validateThreadResponse(response)
@@ -94,7 +114,7 @@ func (m *Manager) ResumeThread(ctx context.Context, threadID string) (ThreadInfo
 		return ThreadInfo{}, errors.New("Codex thread id is required")
 	}
 	var response threadResponse
-	if err := m.request(ctx, "thread/resume", struct {
+	if err := m.request(ctx, RuntimeMethodThreadResume, struct {
 		ThreadID string `json:"threadId"`
 	}{ThreadID: threadID}, &response); err != nil {
 		return ThreadInfo{}, err
@@ -143,7 +163,7 @@ func (m *Manager) StartTurn(
 		Effort: reasoningEffort,
 	}
 	var response turnStartResponse
-	if err := m.request(ctx, "turn/start", params, &response); err != nil {
+	if err := m.request(ctx, RuntimeMethodTurnStart, params, &response); err != nil {
 		return TurnInfo{}, err
 	}
 	if response.Turn.ID == "" {
@@ -156,7 +176,7 @@ func (m *Manager) InterruptTurn(ctx context.Context, threadID, turnID string) er
 	if threadID == "" || turnID == "" {
 		return errors.New("Codex thread id and turn id are required")
 	}
-	return m.request(ctx, "turn/interrupt", struct {
+	return m.request(ctx, RuntimeMethodTurnInterrupt, struct {
 		ThreadID string `json:"threadId"`
 		TurnID   string `json:"turnId"`
 	}{ThreadID: threadID, TurnID: turnID}, &struct{}{})
