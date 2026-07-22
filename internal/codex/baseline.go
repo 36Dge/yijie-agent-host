@@ -1,0 +1,268 @@
+package codex
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+const (
+	BaselineName               = "Runtime Baseline 0"
+	ExpectedSchemaVersion      = 1
+	ExpectedUpstreamURL        = "https://github.com/openai/codex.git"
+	ExpectedUpstreamTag        = "rust-v0.144.6"
+	ExpectedUpstreamCommit     = "5d1fbf26c43abc65a203928b2e31561cb039e06d"
+	ExpectedRuntimeVersion     = "0.144.6"
+	ExpectedReportedVersion    = "codex-cli 0.144.6"
+	ExpectedRustToolchain      = "1.95.0"
+	ExpectedTarget             = "aarch64-apple-darwin"
+	ExpectedTransport          = "stdio"
+	ExpectedRuntimeSHA256      = "1ef4f1daba0c5ac267e9bf661d129c3dfc59ffe5cd9ab7767b22a1e9508df1fe"
+	ExpectedRuntimeSize        = int64(355764632)
+	ExpectedSchemaTreeSHA256   = "82ee9de771cf1d41bac16d87380f1121e7794107aa3aa526ad702d5d1bf7afe1"
+	ExpectedResolvedLockSHA256 = "5cc77d7dfcc2828d3d389daf5824998c445c01e1d30367b04885813242d53f11"
+	ExpectedUpstreamLockSHA256 = "175793a40a3147db1fee08fd9db0acc59312c344b3513dd7ee316f5446d8119e"
+)
+
+type Manifest struct {
+	SchemaVersion int               `json:"schemaVersion"`
+	Baseline      string            `json:"baseline"`
+	RustToolchain string            `json:"rustToolchain"`
+	Upstream      ManifestUpstream  `json:"upstream"`
+	Runtime       ManifestRuntime   `json:"runtime"`
+	AppServer     ManifestAppServer `json:"appServer"`
+	Patches       []json.RawMessage `json:"patches"`
+	BuildLock     ManifestBuildLock `json:"buildLock"`
+}
+
+type ManifestUpstream struct {
+	URL    string `json:"url"`
+	Tag    string `json:"tag"`
+	Commit string `json:"commit"`
+}
+
+type ManifestRuntime struct {
+	Binary          string `json:"binary"`
+	ReportedVersion string `json:"reportedVersion"`
+	SHA256          string `json:"sha256"`
+	SizeBytes       int64  `json:"sizeBytes"`
+	Target          string `json:"target"`
+	Version         string `json:"version"`
+}
+
+type ManifestAppServer struct {
+	ExperimentalAPI  bool   `json:"experimentalApi"`
+	SchemaFileCount  int    `json:"schemaFileCount"`
+	SchemaTreeSHA256 string `json:"schemaTreeSha256"`
+	Transport        string `json:"transport"`
+}
+
+type ManifestBuildLock struct {
+	FromVersion            string `json:"fromVersion"`
+	NormalizedPackageCount int    `json:"normalizedPackageCount"`
+	Policy                 string `json:"policy"`
+	ResolvedLockSHA256     string `json:"resolvedLockSha256"`
+	SchemaVersion          int    `json:"schemaVersion"`
+	ToVersion              string `json:"toVersion"`
+	UpstreamLockSHA256     string `json:"upstreamLockSha256"`
+}
+
+type artifactPolicy struct {
+	runtimeSHA256 string
+	runtimeSize   int64
+}
+
+var runtimeBaseline0Policy = artifactPolicy{
+	runtimeSHA256: ExpectedRuntimeSHA256,
+	runtimeSize:   ExpectedRuntimeSize,
+}
+
+type ArtifactInfo struct {
+	RuntimeVersion  string
+	UpstreamTag     string
+	UpstreamCommit  string
+	Transport       string
+	ExperimentalAPI bool
+}
+
+func VerifyArtifact(ctx context.Context, binaryPath, manifestPath string, timeout time.Duration) (ArtifactInfo, error) {
+	return verifyArtifactWithPolicy(ctx, binaryPath, manifestPath, timeout, runtimeBaseline0Policy)
+}
+
+func verifyArtifactWithPolicy(
+	ctx context.Context,
+	binaryPath string,
+	manifestPath string,
+	timeout time.Duration,
+	policy artifactPolicy,
+) (ArtifactInfo, error) {
+	if !filepath.IsAbs(binaryPath) {
+		return ArtifactInfo{}, errors.New("runtime binary path must be absolute")
+	}
+	if !filepath.IsAbs(manifestPath) {
+		return ArtifactInfo{}, errors.New("runtime manifest path must be absolute")
+	}
+
+	manifest, err := readManifest(manifestPath)
+	if err != nil {
+		return ArtifactInfo{}, err
+	}
+	if err := validateManifest(manifest, policy); err != nil {
+		return ArtifactInfo{}, err
+	}
+
+	info, err := os.Stat(binaryPath)
+	if err != nil {
+		return ArtifactInfo{}, fmt.Errorf("stat runtime binary: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return ArtifactInfo{}, errors.New("runtime binary is not a regular file")
+	}
+	if info.Mode().Perm()&0o111 == 0 {
+		return ArtifactInfo{}, errors.New("runtime binary is not executable")
+	}
+	if filepath.Base(binaryPath) != manifest.Runtime.Binary {
+		return ArtifactInfo{}, errors.New("runtime binary name does not match manifest")
+	}
+	if info.Size() != manifest.Runtime.SizeBytes {
+		return ArtifactInfo{}, errors.New("runtime binary size does not match manifest")
+	}
+
+	digest, err := fileSHA256(binaryPath)
+	if err != nil {
+		return ArtifactInfo{}, err
+	}
+	if digest != manifest.Runtime.SHA256 {
+		return ArtifactInfo{}, errors.New("runtime binary SHA-256 does not match manifest")
+	}
+
+	versionCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	output, err := exec.CommandContext(versionCtx, binaryPath, "--version").CombinedOutput()
+	if err != nil {
+		return ArtifactInfo{}, fmt.Errorf("query runtime version: %w", err)
+	}
+	if strings.TrimSpace(string(output)) != ExpectedReportedVersion {
+		return ArtifactInfo{}, errors.New("runtime reported version does not match baseline")
+	}
+
+	return ArtifactInfo{
+		RuntimeVersion:  manifest.Runtime.Version,
+		UpstreamTag:     manifest.Upstream.Tag,
+		UpstreamCommit:  manifest.Upstream.Commit,
+		Transport:       manifest.AppServer.Transport,
+		ExperimentalAPI: manifest.AppServer.ExperimentalAPI,
+	}, nil
+}
+
+func readManifest(path string) (Manifest, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return Manifest{}, fmt.Errorf("open runtime manifest: %w", err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return Manifest{}, fmt.Errorf("stat runtime manifest: %w", err)
+	}
+	if info.Size() > 1<<20 {
+		return Manifest{}, errors.New("runtime manifest exceeds 1 MiB")
+	}
+
+	var manifest Manifest
+	decoder := json.NewDecoder(io.LimitReader(file, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&manifest); err != nil {
+		return Manifest{}, fmt.Errorf("decode runtime manifest: %w", err)
+	}
+	if err := ensureJSONEOF(decoder); err != nil {
+		return Manifest{}, err
+	}
+	return manifest, nil
+}
+
+func ensureJSONEOF(decoder *json.Decoder) error {
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("runtime manifest contains trailing JSON")
+		}
+		return fmt.Errorf("decode runtime manifest trailing data: %w", err)
+	}
+	return nil
+}
+
+func validateManifest(manifest Manifest, policy artifactPolicy) error {
+	switch {
+	case manifest.SchemaVersion != ExpectedSchemaVersion:
+		return errors.New("unsupported runtime manifest schema version")
+	case manifest.Baseline != BaselineName:
+		return errors.New("runtime manifest baseline does not match")
+	case manifest.Upstream.URL != ExpectedUpstreamURL:
+		return errors.New("runtime upstream URL does not match baseline")
+	case manifest.Upstream.Tag != ExpectedUpstreamTag:
+		return errors.New("runtime upstream tag does not match baseline")
+	case manifest.Upstream.Commit != ExpectedUpstreamCommit:
+		return errors.New("runtime upstream commit does not match baseline")
+	case manifest.Runtime.Version != ExpectedRuntimeVersion:
+		return errors.New("runtime version does not match baseline")
+	case manifest.Runtime.ReportedVersion != ExpectedReportedVersion:
+		return errors.New("runtime reported version metadata does not match baseline")
+	case manifest.Runtime.Target != ExpectedTarget:
+		return errors.New("runtime target does not match baseline")
+	case manifest.Runtime.Binary != "codex":
+		return errors.New("runtime binary name does not match baseline")
+	case manifest.Runtime.SizeBytes != policy.runtimeSize:
+		return errors.New("runtime binary size does not match pinned artifact")
+	case manifest.Runtime.SHA256 != policy.runtimeSHA256:
+		return errors.New("runtime binary SHA-256 does not match pinned artifact")
+	case manifest.RustToolchain != ExpectedRustToolchain:
+		return errors.New("runtime Rust toolchain does not match baseline")
+	case manifest.AppServer.Transport != ExpectedTransport:
+		return errors.New("runtime transport does not match baseline")
+	case manifest.AppServer.ExperimentalAPI:
+		return errors.New("experimental app-server API must remain disabled")
+	case manifest.AppServer.SchemaFileCount != 267:
+		return errors.New("app-server schema file count does not match baseline")
+	case manifest.AppServer.SchemaTreeSHA256 != ExpectedSchemaTreeSHA256:
+		return errors.New("app-server schema tree SHA-256 does not match baseline")
+	case len(manifest.Patches) != 0:
+		return errors.New("Runtime Baseline 0 requires zero patches")
+	case manifest.BuildLock.SchemaVersion != 1:
+		return errors.New("runtime build lock schema version does not match baseline")
+	case manifest.BuildLock.FromVersion != "0.0.0" || manifest.BuildLock.ToVersion != ExpectedRuntimeVersion:
+		return errors.New("runtime build lock version normalization does not match baseline")
+	case manifest.BuildLock.NormalizedPackageCount != 132:
+		return errors.New("runtime build lock package count does not match baseline")
+	case manifest.BuildLock.Policy != "local-workspace-version-normalization-only":
+		return errors.New("runtime build lock policy does not match baseline")
+	case manifest.BuildLock.ResolvedLockSHA256 != ExpectedResolvedLockSHA256:
+		return errors.New("resolved runtime build lock does not match baseline")
+	case manifest.BuildLock.UpstreamLockSHA256 != ExpectedUpstreamLockSHA256:
+		return errors.New("upstream runtime build lock does not match baseline")
+	}
+	return nil
+}
+
+func fileSHA256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open runtime binary: %w", err)
+	}
+	defer file.Close()
+
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", fmt.Errorf("hash runtime binary: %w", err)
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}

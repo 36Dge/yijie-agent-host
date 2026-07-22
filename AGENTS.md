@@ -8,15 +8,21 @@
 
 `yijie-agent-host` 是易界业务系统与 Codex Runtime 之间的薄宿主和安全适配层。它负责 Runtime 进程或连接管理、任务与 thread 映射、事件转换、Skills/Plugins 装载、MCP 工具配置、策略检查、审批承接和日志脱敏，但不是自研 Agent 平台。
 
-当前仓库仍是最小 HTTP 骨架：
+当前已完成 Agent Host Runtime Baseline 2：
 
-- 只有 `cmd/desktop-host` 和 `internal/app` 有实际实现；
-- `/healthz`、`/readyz` 和 `/v1/status` 返回静态骨架状态；
-- `YIJIE_CODEX_APP_SERVER_URL` 只被读取和展示，尚未建立 Codex app-server 连接；
-- `api/`、`internal/codex`、`internal/events`、`internal/policy`、`internal/session` 等目录仍是占位；
-- cloud runner、Runtime healthcheck、真实事件映射、审批和工具执行链尚未实现。
+- `internal/codex` 校验 Runtime Baseline 0 manifest、binary SHA-256、大小和精确版本；
+- desktop-host 以受管子进程启动固定 `codex app-server`，使用 JSONL over stdio；
+- stable API、`experimentalApi=false` 和 `initialize → initialized` 已通过真实 Runtime 集成测试；
+- transport 支持双向 request/response/notification 分类、有界消息与写队列、超时、取消、半关闭和异常退出检测；
+- 未实现的 Runtime 反向请求统一 fail closed；
+- `/healthz` 只表示 Host 存活，`/readyz` 只有 Runtime 完成握手时才成功，`/v1/status` 不暴露本地路径；
+- MiniMax 中国站 Responses API 通过子进程专用 `MINIMAX_API_KEY` 接入，Key 不进入 Runtime 配置、状态、日志或 bbolt；
+- stable `thread/start`、`thread/resume`、`turn/start`、`turn/interrupt` 和要求的 thread/turn/item/error/warning 事件已经适配；
+- `task_id → agent_session_id → codex_thread_id → turn_id` 映射使用独立 Host Home 中的 bbolt 持久化；
+- 会话内容只做当前进程内有界事件重放，不持久化，Host 重启产生新 `stream_id`；
+- 本机会话 HTTP/SSE 使用 Host 自动生成的 bearer token，Runtime 权限固定为 read-only/never。
 
-当前 `/readyz` 成功只说明 HTTP 进程可响应，不代表 Runtime 已连接或任务链路可用。Codex 不得把占位状态描述为已完成集成。
+审批、MCP、Skills/Plugins、Desktop 打包、平台身份、多租户服务认证、自动故障恢复和 cloud runner 尚未实现，不得把 Runtime Baseline 2 描述为完整 Agent 链路。
 
 ## 仓库边界
 
@@ -28,7 +34,7 @@
 - 不编写跨境电商业务 prompt，业务内容属于 `yijie-skills`；
 - 不让 Desktop 直接绕过 Agent Host 访问 Runtime 或高风险工具。
 
-宿主允许保存完成运行适配所必需的短期运行状态和 ID 映射，但不得让它演变为第二套业务数据库。是否持久化 session/thread 映射及其存储方案必须先确认。
+宿主允许保存完成运行适配所必需的短期运行状态和 ID 映射，但不得让它演变为第二套业务数据库。Baseline 2 已确认使用 bbolt 仅持久化恢复索引和状态，禁止扩展为业务主状态。
 
 ## 代码组织
 
@@ -76,24 +82,39 @@ proposal -> policy check -> approval task -> user decision -> connector executio
 - `/readyz` 在真实集成后必须反映关键依赖是否可服务，不能继续无条件返回 ready；
 - 状态接口不得泄露内部 URL 中的凭据或其他敏感配置。
 
+Baseline 2 对断线和退出的处理是撤销 readiness、失败所有等待请求并终止损坏连接，不自动重启。bbolt 映射允许显式 `thread/resume`，但自动重连/重启仍必须先定义活动 turn 幂等恢复和审批状态语义。
+
+## 已固定的 Runtime Baseline 1/2 决策
+
+- Runtime 来自相邻 `yijie-codex` Runtime Baseline 0：`rust-v0.144.6` / `5d1fbf26c43abc65a203928b2e31561cb039e06d`；
+- 只支持 `codex-cli 0.144.6`、`aarch64-apple-darwin`、stdio、stable API 和 `experimentalApi=false`；
+- Host 通过绝对 binary/manifest/`CODEX_HOME` 路径消费产物，不使用 URL 连接本地 Runtime；
+- `codex app-server` 参数固定为 `--listen stdio:// --strict-config`；该版本顶层 CLI 不公开 `--session-source`；
+- Runtime patch 数为 0；不得为 Host 适配修改 `yijie-codex/codex-rs`；
+- 模型认证固定为 MiniMax 中国站按量付费 API Key，endpoint 为 `https://api.minimaxi.com/v1`，模型为 `MiniMax-M3`，wire API 为 Responses；
+- Key 由 Host 显式从环境或 owner-only 文件读取，只以 `MINIMAX_API_KEY` 注入 Runtime；
+- Runtime Home 与 Host Home 独立；Host Home 使用 bbolt 持久化映射，并保存本机 HTTP bearer token；
+- Baseline 2 只支持 read-only/never，不接工具、审批、MCP 或 experimental API；
+- 真实模型门禁最多 2 次短请求，人工显式执行，不进入 CI。
+
 ## 必须先确认的决策
 
 以下事项不得猜测，信息不足时停止并询问用户：
 
-- Codex app-server 的 transport、地址、固定版本、认证方式和能力协商；
 - Desktop sidecar 的打包、拉起、升级、退出和故障恢复模型；
 - cloud runner 的部署、隔离、认证、并发和任务恢复模型；
-- task/session/thread 映射是否持久化以及数据库或本地存储方案；
 - 审批来源、审批凭证、风险等级、有效期和工具参数绑定规则；
 - 新依赖、协议变化、跨仓库发布顺序和任何 Runtime 核心修改。
 
 ## 开发与验证
 
 ```bash
-make lint     # gofmt 检查和 go vet
-make test     # race 单元测试和覆盖率
-make generate # 当前为占位，不能视为契约生成完成
-make dev      # 启动 desktop-host 骨架
+make lint          # gofmt 检查、go vet 和 shell 语法
+make test          # race 单元测试、transport 和故障覆盖
+make runtime-test  # 固定产物握手和 provider/thread 配置，不调用模型
+make runtime-turn-test # 人工显式 MiniMax 垂直切片，最多 2 次短请求
+make generate      # 当前为占位，不能视为契约生成完成
+make dev           # 启动 desktop-host；未配置 Runtime 时 readiness 为 false
 ```
 
 - 纯映射和策略逻辑需要表驱动单元测试，覆盖未知事件、重复事件、拒绝和终态；
