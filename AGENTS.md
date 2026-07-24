@@ -52,14 +52,31 @@
 
 ## Contract First 与 Runtime 兼容
 
+- 每个任务先标记 `contract-impact = none | additive | semantic | breaking`；分类覆盖跨进程、跨仓、跨版本及持久化/重放边界，形状不变但 Runtime 映射、错误、顺序、重放或终态变化仍属于契约影响，`none` 必须说明理由；
+- 按 `breaking > semantic > additive > none` 的最高风险唯一选择；任一受支持交互可能失效即 breaking，不确定时不能假定 additive/none；
 - Agent Host 服务、任务事件和公共 schema 以相邻 `yijie-contracts` 为源；
 - HTTP/SSE 权威契约位于 `yijie-contracts/openapi/agent-host/agent-host.yaml` 和 `jsonschema/agent/session-event.schema.json`；本仓只保存版本/哈希锁定的精确快照、生成 DTO及 producer 一致性测试；
-- 修改事件或服务协议时，先更新并检查 `openapi/agent-host/`、`protobuf/yijie/services/agent_host/v1/`、`protobuf/yijie/events/v1/` 或对应 JSON Schema，再同步并生成代码；
+- 修改事件或服务协议时，先更新并检查 `openapi/agent-host/`、`protobuf/yijie/services/agent_host/v1/`、`protobuf/yijie/events/v1/` 或对应 JSON Schema；契约形成不可变 tag/完整 commit 后，本仓固定 version、完整 commit、digest 和 generator 版本，再同步生成；
 - 不手写与生成契约重复的 DTO，也不直接编辑生成文件；
-- Codex app-server transport、端点、协议版本、能力探测和兼容范围必须结合 `yijie-codex` 的固定版本确认；
+- Codex app-server transport 以固定 `yijie-codex` Runtime canonical schema 为上游权威：先形成 Runtime 候选，再更新 contracts 兼容投影，最后同步 Host；不得机械倒置为先发明 Host schema；
 - 未知事件和新增字段应按兼容策略处理，不因单个未知事件终止整个 session；
 - 事件必须保留 `trace_id`、`task_id`、`agent_session_id` 和 `codex_thread_id` 的关联，并定义顺序、重复、断线重放和终态语义；
 - 超时、取消和用户中止必须沿 Desktop、Agent Host、Runtime 和工具调用链传播。
+
+当前 `api/contracts.lock` 只记录候选 version/ref 与三个文件 digest，尚未记录 contracts
+完整 commit 和 generator identity；`contracts-v0.2.0` tag 也尚未创建，sync 脚本可读取
+dirty sibling。因此现有 `make sync-contracts`/`contract-check` 只证明候选 snapshot
+自一致，不能证明不可变发布来源或宣称 release-ready；补齐来源锁与 clean/ref 校验是
+首个生产发布前的阻塞项。
+
+`internal/session.Event/EventPayload` 当前是 JSON Schema 尚无 Go generator 时的显式
+adapter 例外，由 Agent Runtime Team 负责，并由 schema conformance test 约束。移除
+条件是在首个生产 Agent Host 发布前评估并接入生成类型；若仍保留，必须在发布记录中
+重新批准例外、注明期限，不能无期限延续。
+
+dirty/floating sibling 只能用于本地候选验证，不能作为发布来源；下游实现不得在契约
+可消费和精确 pin 前合并或启用。兄弟元仓存在时同时遵循
+`../yijie/docs/dev/contract-first.md`。
 
 ## 策略、审批与工具边界
 
@@ -129,7 +146,8 @@ make dev           # 启动 desktop-host；未配置 Runtime 时 readiness 为 f
 ## 完成标准
 
 - 实现保持薄宿主定位，没有复制 planner、连接器或业务主状态；
-- 协议先在 `yijie-contracts` 更新并完成兼容性检查；
+- 公共 Host 协议先在 `yijie-contracts` 更新并完成兼容性检查；Runtime 与私有 bbolt 状态分别走上游投影和本仓 migration 权威源；
+- 当 `contract-impact != none` 时按权威源路由：公共 Host wire 提供契约 tag/完整 commit、digest/generator pin 和 producer conformance；Runtime 提供上游/投影引用与双向兼容；bbolt 私有状态提供 migration/version、恢复和回滚验证；不适用的 contracts 字段写 `N/A + 理由`；所有路径都记录部署/回滚顺序；`none` 只需分类理由；
 - Runtime 版本、事件语义、取消和失败恢复均有明确测试；
 - 高风险工具在缺少有效授权时默认拒绝，且审计链可追踪；
 - `make lint` 和 `make test` 通过，相关集成测试也已执行；
