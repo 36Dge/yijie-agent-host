@@ -63,11 +63,12 @@
 - 事件必须保留 `trace_id`、`task_id`、`agent_session_id` 和 `codex_thread_id` 的关联，并定义顺序、重复、断线重放和终态语义；
 - 超时、取消和用户中止必须沿 Desktop、Agent Host、Runtime 和工具调用链传播。
 
-当前 `api/contracts.lock` 只记录候选 version/ref 与三个文件 digest，尚未记录 contracts
-完整 commit 和 generator identity；`contracts-v0.2.0` tag 也尚未创建，sync 脚本可读取
-dirty sibling。因此现有 `make sync-contracts`/`contract-check` 只证明候选 snapshot
-自一致，不能证明不可变发布来源或宣称 release-ready；补齐来源锁与 clean/ref 校验是
-首个生产发布前的阻塞项。
+当前 `api/contracts.lock` 已固定 `contracts-v0.2.0`、其完整 commit、三个源文件
+digest，以及 `oapi-codegen` identity/version。`make sync-contracts` 只接受干净 Git
+仓库中可解析的完整 candidate commit 或匹配版本的不可移动 tag，并从该 commit 的 Git
+对象同步；`contract-check` 会验证 ref→commit、generator、digest、snapshot 与生成类型。
+因此 Baseline 2 的契约来源锁阻塞项已经关闭，后续版本不得退回 dirty/floating sibling
+或只记录计划 tag 的做法。
 
 `internal/session.Event/EventPayload` 当前是 JSON Schema 尚无 Go generator 时的显式
 adapter 例外，由 Agent Runtime Team 负责，并由 schema conformance test 约束。移除

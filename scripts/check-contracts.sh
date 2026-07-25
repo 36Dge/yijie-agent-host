@@ -26,17 +26,33 @@ lock_value() {
 
 CONTRACTS_VERSION="$(lock_value CONTRACTS_VERSION)"
 CONTRACTS_REF="$(lock_value CONTRACTS_REF)"
+CONTRACTS_COMMIT="$(lock_value CONTRACTS_COMMIT)"
+CONTRACTS_GENERATOR="$(lock_value CONTRACTS_GENERATOR)"
+CONTRACTS_GENERATOR_VERSION="$(lock_value CONTRACTS_GENERATOR_VERSION)"
 OPENAPI_SHA256="$(lock_value OPENAPI_SHA256)"
 RUNTIME_COMPATIBILITY_SHA256="$(lock_value RUNTIME_COMPATIBILITY_SHA256)"
 AGENT_SESSION_EVENT_SCHEMA_SHA256="$(lock_value AGENT_SESSION_EVENT_SCHEMA_SHA256)"
 semver_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
 sha256_pattern='^[0-9a-f]{64}$'
+full_commit_pattern='^[0-9a-f]{40}$'
+generator_version_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+expected_generator="github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen"
 if [[ ! "$CONTRACTS_VERSION" =~ $semver_pattern ]] ||
-  [ "$CONTRACTS_REF" != "contracts-v$CONTRACTS_VERSION" ] ||
+  { [ "$CONTRACTS_REF" != "$CONTRACTS_COMMIT" ] &&
+    [ "$CONTRACTS_REF" != "contracts-v$CONTRACTS_VERSION" ]; } ||
+  [[ ! "$CONTRACTS_COMMIT" =~ $full_commit_pattern ]] ||
+  [ "$CONTRACTS_GENERATOR" != "$expected_generator" ] ||
+  [[ ! "$CONTRACTS_GENERATOR_VERSION" =~ $generator_version_pattern ]] ||
   [[ ! "$OPENAPI_SHA256" =~ $sha256_pattern ]] ||
   [[ ! "$RUNTIME_COMPATIBILITY_SHA256" =~ $sha256_pattern ]] ||
   [[ ! "$AGENT_SESSION_EVENT_SCHEMA_SHA256" =~ $sha256_pattern ]]; then
-  echo "Agent Host contract lock contains an invalid version, ref, or digest." >&2
+  echo "Agent Host contract lock contains invalid provenance, generator, or digest metadata." >&2
+  exit 1
+fi
+
+actual_generator_version="$(go tool oapi-codegen --version | tail -n 1 | tr -d '\r')"
+if [ "$actual_generator_version" != "$CONTRACTS_GENERATOR_VERSION" ]; then
+  echo "Agent Host contract generator version does not match api/contracts.lock." >&2
   exit 1
 fi
 
@@ -61,20 +77,35 @@ if [ "$(sha256_file "$snapshot_event_schema")" != "$AGENT_SESSION_EVENT_SCHEMA_S
   exit 1
 fi
 
+temporary_dir="$(mktemp -d)"
+trap 'rm -rf "$temporary_dir"' EXIT
 contracts_repo="${YIJIE_CONTRACTS_REPO:-$repo_root/../yijie-contracts}"
-if [ -f "$contracts_repo/openapi/agent-host/agent-host.yaml" ]; then
-  cmp "$contracts_repo/openapi/agent-host/agent-host.yaml" "$snapshot_openapi"
-  cmp "$contracts_repo/compatibility/agent-host-runtime-v1.json" "$snapshot_compatibility"
-  cmp "$contracts_repo/jsonschema/agent/session-event.schema.json" "$snapshot_event_schema"
-  source_version="$(awk -F '"' '/^[[:space:]]*"version"[[:space:]]*:/ { print $4; exit }' "$contracts_repo/package.json")"
+if git -C "$contracts_repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  resolved_commit="$(git -C "$contracts_repo" rev-parse --verify "${CONTRACTS_REF}^{commit}" 2>/dev/null || true)"
+  if [ "$resolved_commit" != "$CONTRACTS_COMMIT" ]; then
+    echo "Agent Host contract ref does not resolve to the locked commit." >&2
+    exit 1
+  fi
+
+  source_openapi="$temporary_dir/agent-host.yaml"
+  source_compatibility="$temporary_dir/agent-host-runtime-v1.json"
+  source_event_schema="$temporary_dir/agent-session-event.schema.json"
+  source_package="$temporary_dir/package.json"
+  git -C "$contracts_repo" show "$CONTRACTS_COMMIT:openapi/agent-host/agent-host.yaml" >"$source_openapi"
+  git -C "$contracts_repo" show "$CONTRACTS_COMMIT:compatibility/agent-host-runtime-v1.json" >"$source_compatibility"
+  git -C "$contracts_repo" show "$CONTRACTS_COMMIT:jsonschema/agent/session-event.schema.json" >"$source_event_schema"
+  git -C "$contracts_repo" show "$CONTRACTS_COMMIT:package.json" >"$source_package"
+
+  cmp "$source_openapi" "$snapshot_openapi"
+  cmp "$source_compatibility" "$snapshot_compatibility"
+  cmp "$source_event_schema" "$snapshot_event_schema"
+  source_version="$(awk -F '"' '/^[[:space:]]*"version"[[:space:]]*:/ { print $4; exit }' "$source_package")"
   if [ "$source_version" != "$CONTRACTS_VERSION" ]; then
     echo "Agent Host contract snapshot version is stale." >&2
     exit 1
   fi
 fi
 
-temporary_dir="$(mktemp -d)"
-trap 'rm -rf "$temporary_dir"' EXIT
 generated="$temporary_dir/agenthost.gen.go"
 cd "$repo_root"
 go tool oapi-codegen \
@@ -85,4 +116,4 @@ go tool oapi-codegen \
 gofmt -w "$generated"
 cmp "$generated" internal/contracts/agenthost.gen.go
 
-echo "Verified Agent Host contract snapshot $CONTRACTS_REF and generated types."
+echo "Verified Agent Host contract snapshot $CONTRACTS_REF ($CONTRACTS_COMMIT) and $CONTRACTS_GENERATOR@$CONTRACTS_GENERATOR_VERSION."
