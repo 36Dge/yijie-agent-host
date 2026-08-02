@@ -27,10 +27,13 @@ const (
 )
 
 type Config struct {
-	Environment string
-	Port        string
-	HostHome    string
-	Runtime     codex.Config
+	Environment           string
+	Port                  string
+	HostHome              string
+	Runtime               codex.Config
+	RawReasoningV2Enabled bool
+	TitleV2Enabled        bool
+	CleanupV2Enabled      bool
 }
 
 type RuntimeStatusProvider interface {
@@ -80,8 +83,27 @@ func LoadConfig() (Config, error) {
 	if runtimeConfig.StderrTailBytes, err = intEnv("YIJIE_CODEX_STDERR_TAIL_BYTES", runtimeConfig.StderrTailBytes); err != nil {
 		return Config{}, err
 	}
+	rawV2, err := boolEnv("YIJIE_AGENT_HOST_V2_RAW_REASONING_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	titleV2, err := boolEnv("YIJIE_AGENT_HOST_V2_TITLE_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	cleanupV2, err := boolEnv("YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
 
 	hostHome := os.Getenv("YIJIE_AGENT_HOST_HOME")
+	environment := env("YIJIE_ENV", "local")
+	if (rawV2 || titleV2 || cleanupV2) && (environment != "local" || hostHome == "" || !filepath.IsAbs(hostHome)) {
+		return Config{}, errors.New("Agent Host v2 draft capabilities require an absolute Host home in the local environment")
+	}
+	if titleV2 && !runtimeConfig.MiniMax.Enabled {
+		return Config{}, errors.New("Agent Host v2 title generation requires the configured pinned model provider")
+	}
 	if runtimeConfig.MiniMax.Enabled {
 		if hostHome == "" || !filepath.IsAbs(hostHome) {
 			return Config{}, errors.New("YIJIE_AGENT_HOST_HOME must be absolute when MiniMax is enabled")
@@ -92,10 +114,13 @@ func LoadConfig() (Config, error) {
 	}
 
 	return Config{
-		Environment: env("YIJIE_ENV", "local"),
-		Port:        env("YIJIE_AGENT_HOST_PORT", "18080"),
-		HostHome:    hostHome,
-		Runtime:     runtimeConfig,
+		Environment:           environment,
+		Port:                  env("YIJIE_AGENT_HOST_PORT", "18080"),
+		HostHome:              hostHome,
+		Runtime:               runtimeConfig,
+		RawReasoningV2Enabled: rawV2,
+		TitleV2Enabled:        titleV2,
+		CleanupV2Enabled:      cleanupV2,
 	}, nil
 }
 
@@ -106,6 +131,9 @@ type SessionService interface {
 	StartTurn(context.Context, session.StartTurnInput) (codex.TurnInfo, error)
 	InterruptTurn(context.Context, string, string, session.TraceContext) error
 	SubscribeEvents(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)
+	SubscribeEventsV2(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)
+	GenerateTitle(context.Context, string, string, string) (session.TitleResult, error)
+	CleanupSession(context.Context, string, string) (session.CleanupResult, error)
 }
 
 func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionService, apiToken string) http.Handler {
@@ -154,6 +182,15 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 		mux.Handle("POST /v1/agent-sessions/{agent_session_id}/turns", handler.authorize(http.HandlerFunc(handler.startTurn)))
 		mux.Handle("POST /v1/agent-sessions/{agent_session_id}/turns/{turn_id}/interrupt", handler.authorize(http.HandlerFunc(handler.interruptTurn)))
 		mux.Handle("GET /v1/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.events)))
+		if config.RawReasoningV2Enabled {
+			mux.Handle("GET /v2/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.eventsV2)))
+		}
+		if config.TitleV2Enabled {
+			mux.Handle("POST /v2/agent-sessions/{agent_session_id}/title-generations", handler.authorize(http.HandlerFunc(handler.generateTitleV2)))
+		}
+		if config.CleanupV2Enabled {
+			mux.Handle("POST /v2/agent-sessions/{agent_session_id}/cleanup-operations", handler.authorize(http.HandlerFunc(handler.cleanupV2)))
+		}
 	}
 	return mux
 }
@@ -263,12 +300,26 @@ func (h *sessionHandler) interruptTurn(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *sessionHandler) events(w http.ResponseWriter, r *http.Request) {
+	h.streamEvents(w, r, h.service.SubscribeEvents)
+}
+
+func (h *sessionHandler) eventsV2(w http.ResponseWriter, r *http.Request) {
+	if values := r.URL.Query()["event_schema_version"]; len(values) != 1 || values[0] != "2" {
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event_schema_version=2 is required")
+		return
+	}
+	h.streamEvents(w, r, h.service.SubscribeEventsV2)
+}
+
+type eventSubscriber func(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)
+
+func (h *sessionHandler) streamEvents(w http.ResponseWriter, r *http.Request, subscribe eventSubscriber) {
 	streamID, after, err := eventCursor(r)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event cursor is invalid")
 		return
 	}
-	actualStreamID, replay, updates, cancel, err := h.service.SubscribeEvents(
+	actualStreamID, replay, updates, cancel, err := subscribe(
 		r.PathValue("agent_session_id"), streamID, after,
 	)
 	if err != nil {
@@ -319,6 +370,82 @@ func (h *sessionHandler) events(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+func (h *sessionHandler) generateTitleV2(w http.ResponseWriter, r *http.Request) {
+	var request agenthostcontract.GenerateTitleV2Request
+	if err := decodeRequest(w, r, &request); err != nil {
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidRequest, "request body is invalid")
+		return
+	}
+	result, err := h.service.GenerateTitle(r.Context(), r.PathValue("agent_session_id"), request.OperationId.String(), request.Input)
+	if err != nil {
+		switch {
+		case errors.Is(err, session.ErrInvalidArgument):
+			writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidRequest, "request parameters are invalid")
+		case errors.Is(err, session.ErrNotFound):
+			writeAPIError(w, http.StatusNotFound, agenthostcontract.ErrorResponseErrorCodeSessionNotFound, "agent session was not found")
+		case errors.Is(err, session.ErrTitleOperationConflict):
+			writeNestedError(w, http.StatusConflict, "title_operation_conflict", "title operation conflicts with an existing input")
+		case errors.Is(err, session.ErrTitleOutputInvalid):
+			writeNestedError(w, http.StatusUnprocessableEntity, "title_output_invalid", "title output is invalid")
+		default:
+			writeNestedError(w, http.StatusServiceUnavailable, "title_generation_unavailable", "title generation is unavailable")
+		}
+		return
+	}
+	operationID, err := uuid.Parse(result.OperationID)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, agenthostcontract.ErrorResponseErrorCodeInternalError, "Agent Host operation failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, agenthostcontract.GenerateTitleV2Response{OperationId: operationID, Title: result.Title})
+}
+
+func (h *sessionHandler) cleanupV2(w http.ResponseWriter, r *http.Request) {
+	var request agenthostcontract.CleanupAgentSessionV2Request
+	if err := decodeRequest(w, r, &request); err != nil {
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidRequest, "request body is invalid")
+		return
+	}
+	result, err := h.service.CleanupSession(r.Context(), r.PathValue("agent_session_id"), request.OperationId.String())
+	if err != nil {
+		if errors.Is(err, session.ErrCleanupConflict) {
+			writeNestedError(w, http.StatusConflict, "cleanup_operation_conflict", "cleanup operation conflicts with another session")
+			return
+		}
+		writeSessionError(w, err)
+		return
+	}
+	operationID, err := uuid.Parse(result.OperationID)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, agenthostcontract.ErrorResponseErrorCodeInternalError, "Agent Host operation failed")
+		return
+	}
+	if result.Outcome == "complete" {
+		writeJSON(w, http.StatusOK, agenthostcontract.CleanupAgentSessionV2CompletedResponse{
+			OperationId: operationID, Outcome: agenthostcontract.CleanupAgentSessionV2CompletedResponseOutcomeComplete,
+			Surfaces: agenthostcontract.CleanupCompletedSurfaces{
+				RuntimeThreadTree: agenthostcontract.CleanupCompletedSurfacesRuntimeThreadTreeComplete,
+				HostMapping:       agenthostcontract.CleanupCompletedSurfacesHostMappingComplete,
+				HostReplay:        agenthostcontract.CleanupCompletedSurfacesHostReplayComplete,
+			},
+		})
+		return
+	}
+	writeJSON(w, http.StatusConflict, agenthostcontract.CleanupAgentSessionV2IncompleteResponse{
+		OperationId: operationID, Outcome: agenthostcontract.CleanupAgentSessionV2IncompleteResponseOutcomeIncomplete,
+		Surfaces: agenthostcontract.CleanupIncompleteSurfaces{
+			RuntimeThreadTree: agenthostcontract.CleanupSurfaceStatus(result.RuntimeThreadTree),
+			HostMapping:       agenthostcontract.CleanupSurfaceStatus(result.HostMapping),
+			HostReplay:        agenthostcontract.CleanupSurfaceStatus(result.HostReplay),
+		},
+		Error: agenthostcontract.CleanupIncompleteError{
+			Code:       agenthostcontract.CleanupIncomplete,
+			ReasonCode: agenthostcontract.CleanupIncompleteErrorReasonCode(result.ReasonCode),
+			Message:    "agent session cleanup is incomplete",
+		},
+	})
 }
 
 func resetTimer(timer *time.Timer, interval time.Duration) {
@@ -507,6 +634,10 @@ func writeAPIError(w http.ResponseWriter, status int, code agenthostcontract.Err
 	writeJSON(w, status, response)
 }
 
+func writeNestedError(w http.ResponseWriter, status int, code, message string) {
+	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
+}
+
 func loadMiniMaxAPIKey() (string, error) {
 	direct := os.Getenv("YIJIE_MINIMAX_API_KEY")
 	filePath := os.Getenv("YIJIE_MINIMAX_API_KEY_FILE")
@@ -582,6 +713,18 @@ func intEnv(key string, fallback int) (int, error) {
 	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return 0, fmt.Errorf("parse %s: %w", key, err)
+	}
+	return parsed, nil
+}
+
+func boolEnv(key string, fallback bool) (bool, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("parse %s: %w", key, err)
 	}
 	return parsed, nil
 }

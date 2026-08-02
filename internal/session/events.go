@@ -6,7 +6,10 @@ import (
 	"time"
 )
 
-const EventSchemaVersion = 1
+const (
+	EventSchemaVersion   = 1
+	EventSchemaVersionV2 = 2
+)
 
 var (
 	ErrStreamChanged     = errors.New("event stream id changed")
@@ -15,15 +18,23 @@ var (
 )
 
 type EventPayload struct {
-	Model         string  `json:"model,omitempty"`
-	ModelProvider string  `json:"model_provider,omitempty"`
-	Status        string  `json:"status,omitempty"`
-	ItemType      string  `json:"item_type,omitempty"`
-	Text          string  `json:"text,omitempty"`
-	Delta         *string `json:"delta,omitempty"`
-	Code          string  `json:"code,omitempty"`
-	Message       *string `json:"message,omitempty"`
-	WillRetry     *bool   `json:"will_retry,omitempty"`
+	Model         string              `json:"model,omitempty"`
+	ModelProvider string              `json:"model_provider,omitempty"`
+	Status        string              `json:"status,omitempty"`
+	ItemType      string              `json:"item_type,omitempty"`
+	Text          string              `json:"text,omitempty"`
+	Delta         *string             `json:"delta,omitempty"`
+	Code          string              `json:"code,omitempty"`
+	Message       *string             `json:"message,omitempty"`
+	WillRetry     *bool               `json:"will_retry,omitempty"`
+	ContentIndex  *int                `json:"content_index,omitempty"`
+	Contents      *[]ReasoningContent `json:"contents,omitempty"`
+	ReasonCode    string              `json:"reason_code,omitempty"`
+}
+
+type ReasoningContent struct {
+	ContentIndex int    `json:"content_index"`
+	Text         string `json:"text"`
 }
 
 type Event struct {
@@ -58,10 +69,18 @@ type EventHub struct {
 	mu                 sync.Mutex
 	capacity           int
 	subscriberCapacity int
+	schemaVersion      int
 	streams            map[string]*streamState
 }
 
 func NewEventHub(capacity, subscriberCapacity int) *EventHub {
+	return NewEventHubVersion(EventSchemaVersion, capacity, subscriberCapacity)
+}
+
+func NewEventHubVersion(schemaVersion, capacity, subscriberCapacity int) *EventHub {
+	if schemaVersion != EventSchemaVersionV2 {
+		schemaVersion = EventSchemaVersion
+	}
 	if capacity < 1 {
 		capacity = 512
 	}
@@ -71,6 +90,7 @@ func NewEventHub(capacity, subscriberCapacity int) *EventHub {
 	return &EventHub{
 		capacity:           capacity,
 		subscriberCapacity: subscriberCapacity,
+		schemaVersion:      schemaVersion,
 		streams:            make(map[string]*streamState),
 	}
 }
@@ -87,7 +107,7 @@ func (h *EventHub) Publish(event Event) (Event, error) {
 		return Event{}, err
 	}
 	stream.next++
-	event.SchemaVersion = EventSchemaVersion
+	event.SchemaVersion = h.schemaVersion
 	event.EventID = eventID
 	event.StreamID = stream.id
 	event.Sequence = stream.next
@@ -105,6 +125,20 @@ func (h *EventHub) Publish(event Event) (Event, error) {
 		}
 	}
 	return event, nil
+}
+
+func (h *EventHub) DeleteSession(sessionID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	stream := h.streams[sessionID]
+	if stream == nil {
+		return
+	}
+	for id, subscriber := range stream.subscribers {
+		close(subscriber)
+		delete(stream.subscribers, id)
+	}
+	delete(h.streams, sessionID)
 }
 
 func (h *EventHub) Subscribe(

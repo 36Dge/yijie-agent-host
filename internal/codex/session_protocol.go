@@ -8,17 +8,20 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
 	maxTurnInputBytes = 1 << 20
 
-	RuntimeMethodThreadResume  = "thread/resume"
-	RuntimeMethodThreadStart   = "thread/start"
-	RuntimeMethodTurnInterrupt = "turn/interrupt"
-	RuntimeMethodTurnStart     = "turn/start"
-	SessionApprovalPolicy      = "never"
-	SessionSandbox             = "read-only"
+	RuntimeMethodThreadResume        = "thread/resume"
+	RuntimeMethodThreadStart         = "thread/start"
+	RuntimeMethodThreadDelete        = "thread/delete"
+	RuntimeNotificationThreadDeleted = "thread/deleted"
+	RuntimeMethodTurnInterrupt       = "turn/interrupt"
+	RuntimeMethodTurnStart           = "turn/start"
+	SessionApprovalPolicy            = "never"
+	SessionSandbox                   = "read-only"
 )
 
 var sessionRuntimeMethods = []string{
@@ -26,6 +29,10 @@ var sessionRuntimeMethods = []string{
 	RuntimeMethodThreadStart,
 	RuntimeMethodTurnInterrupt,
 	RuntimeMethodTurnStart,
+}
+
+func SupportedV2RuntimeMethods() []string {
+	return []string{RuntimeMethodThreadDelete}
 }
 
 func SupportedSessionRuntimeMethods() []string {
@@ -180,6 +187,42 @@ func (m *Manager) InterruptTurn(ctx context.Context, threadID, turnID string) er
 		ThreadID string `json:"threadId"`
 		TurnID   string `json:"turnId"`
 	}{ThreadID: threadID, TurnID: turnID}, &struct{}{})
+}
+
+func (m *Manager) DeleteThread(ctx context.Context, threadID string) error {
+	if threadID == "" {
+		return errors.New("Codex thread id is required")
+	}
+	m.mu.Lock()
+	if _, exists := m.deleteWaiters[threadID]; exists {
+		m.mu.Unlock()
+		return errors.New("thread/delete is already pending")
+	}
+	waiter := make(chan struct{})
+	m.deleteWaiters[threadID] = waiter
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		if current := m.deleteWaiters[threadID]; current == waiter {
+			delete(m.deleteWaiters, threadID)
+		}
+		m.mu.Unlock()
+	}()
+	if err := m.request(ctx, RuntimeMethodThreadDelete, struct {
+		ThreadID string `json:"threadId"`
+	}{ThreadID: threadID}, &struct{}{}); err != nil {
+		return err
+	}
+	timer := time.NewTimer(m.config.RequestTimeout)
+	defer timer.Stop()
+	select {
+	case <-waiter:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return errors.New("thread/delete notification was not confirmed")
+	}
 }
 
 func (m *Manager) request(ctx context.Context, method string, params, result any) error {

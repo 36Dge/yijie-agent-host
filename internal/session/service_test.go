@@ -5,21 +5,290 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	"github.com/google/uuid"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
+type fakeTitleGenerator struct {
+	title string
+	err   error
+	calls int
+}
+
+func (generator *fakeTitleGenerator) GenerateTitle(context.Context, string) (string, error) {
+	generator.calls++
+	return generator.title, generator.err
+}
+
+func TestServiceProjectsBoundedRawReasoningOnlyToNegotiatedV2WithoutLoggingBody(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "host-home"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Reserve(Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindThread(testSessionID, testThreadID, "runtime-session", codex.MiniMaxModel, codex.MiniMaxProviderID); err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	v1 := NewEventHub(16, 8)
+	v2 := NewEventHubVersion(EventSchemaVersionV2, 16, 8)
+	service := NewService(&fakeRuntime{}, store, v1, slog.New(slog.NewTextHandler(&logs, nil)), WithV2Events(v2))
+	const rawCanary = "RAW-REASONING-CANARY-126"
+	service.HandleNotification(RuntimeNotificationReasoningTextDelta, rawJSON(t, map[string]any{
+		"threadId": testThreadID, "turnId": testTurnID, "itemId": "reasoning-1",
+		"contentIndex": 0, "delta": rawCanary,
+	}))
+	service.HandleNotification(RuntimeNotificationItemCompleted, rawJSON(t, map[string]any{
+		"threadId": testThreadID, "turnId": testTurnID,
+		"item": map[string]any{"id": "reasoning-1", "type": "reasoning", "content": []string{rawCanary}},
+	}))
+
+	_, v1Replay, _, cancelV1, err := service.SubscribeEvents(testSessionID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelV1()
+	if len(v1Replay) != 1 || v1Replay[0].EventType != EventItemCompleted {
+		t.Fatalf("v1 received a raw reasoning variant: %+v", v1Replay)
+	}
+	_, v2Replay, _, cancelV2, err := service.SubscribeEventsV2(testSessionID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelV2()
+	if len(v2Replay) != 3 || v2Replay[0].EventType != EventItemReasoningTextDelta ||
+		v2Replay[1].EventType != EventItemReasoningFinalized || v2Replay[2].EventType != EventItemCompleted {
+		t.Fatalf("unexpected v2 reasoning projection: %+v", v2Replay)
+	}
+	contract := compileAgentSessionEventV2Contract(t)
+	for _, event := range v2Replay {
+		encoded, err := json.Marshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		instance, err := jsonschema.UnmarshalJSON(bytes.NewReader(encoded))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := contract.Validate(instance); err != nil {
+			t.Fatalf("v2 event violates contract: %v\n%s", err, encoded)
+		}
+	}
+	if strings.Contains(logs.String(), rawCanary) {
+		t.Fatalf("raw reasoning body entered logs: %s", logs.String())
+	}
+}
+
+func TestServiceMarksOversizeReasoningUnavailableWithoutBody(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "host-home"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Reserve(Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindThread(testSessionID, testThreadID, "runtime-session", codex.MiniMaxModel, codex.MiniMaxProviderID); err != nil {
+		t.Fatal(err)
+	}
+	v2 := NewEventHubVersion(EventSchemaVersionV2, 16, 8)
+	service := NewService(&fakeRuntime{}, store, NewEventHub(16, 8), nil, WithV2Events(v2))
+	service.HandleNotification(RuntimeNotificationReasoningTextDelta, rawJSON(t, map[string]any{
+		"threadId": testThreadID, "turnId": testTurnID, "itemId": "reasoning-oversize",
+		"contentIndex": 0, "delta": strings.Repeat("x", (16<<10)+1),
+	}))
+	_, replay, _, cancel, err := service.SubscribeEventsV2(testSessionID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if len(replay) != 1 || replay[0].EventType != EventItemReasoningFinalized || replay[0].Payload.Status != "unavailable" || replay[0].Payload.ReasonCode != "limit_exceeded" {
+		t.Fatalf("unexpected oversize reasoning result: %+v", replay)
+	}
+	if replay[0].Payload.Contents == nil || len(*replay[0].Payload.Contents) != 0 || replay[0].Payload.Delta != nil {
+		t.Fatalf("oversize raw body escaped unavailable projection: %+v", replay[0])
+	}
+}
+
+func TestServiceMarksSparseTerminalReasoningAsStreamGapWithContractValidPrefix(t *testing.T) {
+	v2 := NewEventHubVersion(EventSchemaVersionV2, 16, 8)
+	service := NewService(&fakeRuntime{}, nil, NewEventHub(16, 8), nil, WithV2Events(v2))
+	record := Record{TaskID: testTaskID, AgentSessionID: testSessionID, CodexThreadID: testThreadID}
+	if err := service.appendReasoningDelta(record, testTurnID, "reasoning-gap", 0, "verified-prefix"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.appendReasoningDelta(record, testTurnID, "reasoning-gap", 2, "after-gap"); err != nil {
+		t.Fatal(err)
+	}
+	service.finalizeInterruptedReasoning(record, testTurnID, "completed")
+	_, replay, _, cancel, err := v2.Subscribe(testSessionID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	finalized := replay[len(replay)-1]
+	if finalized.EventType != EventItemReasoningFinalized || finalized.Payload.Status != "incomplete" || finalized.Payload.ReasonCode != "stream_gap" {
+		t.Fatalf("unexpected sparse terminal result: %+v", finalized)
+	}
+	if finalized.Payload.Contents == nil || !reflect.DeepEqual(*finalized.Payload.Contents, []ReasoningContent{{ContentIndex: 0, Text: "verified-prefix"}}) {
+		t.Fatalf("sparse terminal result did not preserve only the valid prefix: %+v", finalized)
+	}
+	contract := compileAgentSessionEventV2Contract(t)
+	encoded, err := json.Marshal(finalized)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := jsonschema.UnmarshalJSON(bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := contract.Validate(instance); err != nil {
+		t.Fatalf("sparse finalized event violates contract: %v\n%s", err, encoded)
+	}
+}
+
+func TestServiceGeneratesSanitizedIdempotentTitleWithoutDurableBody(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "host-home")
+	store, err := OpenStore(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Reserve(Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	generator := &fakeTitleGenerator{title: " 设计本地聊天安全删除流程 "}
+	service := NewService(&fakeRuntime{}, store, NewEventHub(8, 2), nil, WithTitleGenerator(generator))
+	operationID := "019c0123-4567-7abc-8123-456789abcdee"
+	result, err := service.GenerateTitle(context.Background(), testSessionID, operationID, "为新的本地聊天任务设计安全的删除流程")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Title != "设计本地聊天安全删除流程" || generator.calls != 1 {
+		t.Fatalf("unexpected title result: %+v calls=%d", result, generator.calls)
+	}
+	replayed, err := service.GenerateTitle(context.Background(), testSessionID, operationID, "为新的本地聊天任务设计安全的删除流程")
+	if err != nil || replayed != result || generator.calls != 1 {
+		t.Fatalf("title idempotency failed: %+v err=%v calls=%d", replayed, err, generator.calls)
+	}
+	if _, err := service.GenerateTitle(context.Background(), testSessionID, operationID, "different input"); !errors.Is(err, ErrTitleOperationConflict) {
+		t.Fatalf("expected title operation conflict, got %v", err)
+	}
+	databaseBytes, err := os.ReadFile(filepath.Join(home, "sessions.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(databaseBytes), result.Title) {
+		t.Fatal("generated title entered Host bbolt")
+	}
+}
+
+func TestServiceRejectsUnsafeTitleOutput(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "host-home"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Reserve(Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{"# injected", "<script>alert(1)</script>", strings.Repeat("长", 41), "line one\nline two"} {
+		generator := &fakeTitleGenerator{title: title}
+		service := NewService(&fakeRuntime{}, store, NewEventHub(8, 2), nil, WithTitleGenerator(generator))
+		if _, err := service.GenerateTitle(context.Background(), testSessionID, uuid.NewString(), "synthetic input"); !errors.Is(err, ErrTitleOutputInvalid) {
+			t.Fatalf("unsafe title %q was accepted: %v", title, err)
+		}
+	}
+}
+
+func TestServiceCleanupRequiresRuntimeConfirmationThenClearsHostSurfaces(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "host-home"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Reserve(Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindThread(testSessionID, testThreadID, "runtime-session", codex.MiniMaxModel, codex.MiniMaxProviderID); err != nil {
+		t.Fatal(err)
+	}
+	v1 := NewEventHub(8, 2)
+	v2 := NewEventHubVersion(EventSchemaVersionV2, 8, 2)
+	deletedThread := ""
+	runtime := &fakeRuntime{deleteThread: func(threadID string) error { deletedThread = threadID; return nil }}
+	service := NewService(runtime, store, v1, nil, WithV2Events(v2))
+	if _, err := v1.Publish(Event{AgentSessionID: testSessionID, EventType: EventWarning}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := v2.Publish(Event{AgentSessionID: testSessionID, EventType: EventWarning}); err != nil {
+		t.Fatal(err)
+	}
+	operationID := "019c0123-4567-7abc-8123-456789abcdee"
+	result, err := service.CleanupSession(context.Background(), testSessionID, operationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Outcome != "complete" || deletedThread != testThreadID || result.RuntimeThreadTree != "complete" || result.HostMapping != "complete" || result.HostReplay != "complete" {
+		t.Fatalf("unexpected cleanup result: %+v thread=%s", result, deletedThread)
+	}
+	if _, err := store.Get(testSessionID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("mapping survived cleanup: %v", err)
+	}
+	replayed, err := service.CleanupSession(context.Background(), testSessionID, operationID)
+	if err != nil || replayed.Outcome != "complete" {
+		t.Fatalf("lost-response retry was not idempotent: %+v err=%v", replayed, err)
+	}
+	if _, _, _, _, err := v1.Subscribe(testSessionID, "", 1); !errors.Is(err, ErrInvalidSequence) {
+		t.Fatalf("v1 replay surface was not cleared: %v", err)
+	}
+}
+
+func TestServiceCleanupReportsIncompleteWithoutDeletingMapping(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "host-home"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Reserve(Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindThread(testSessionID, testThreadID, "runtime-session", codex.MiniMaxModel, codex.MiniMaxProviderID); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &fakeRuntime{deleteThread: func(string) error { return errors.New("synthetic delete failure") }}
+	service := NewService(runtime, store, NewEventHub(8, 2), nil)
+	result, err := service.CleanupSession(context.Background(), testSessionID, "019c0123-4567-7abc-8123-456789abcdee")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Outcome != "incomplete" || result.ReasonCode != "runtime_delete_unconfirmed" || result.HostMapping != "not_attempted" {
+		t.Fatalf("unexpected incomplete cleanup: %+v", result)
+	}
+	if _, err := store.Get(testSessionID); err != nil {
+		t.Fatalf("mapping was deleted after unconfirmed Runtime outcome: %v", err)
+	}
+}
+
 type fakeRuntime struct {
-	startThread func(string) (codex.ThreadInfo, error)
-	resume      func(string) (codex.ThreadInfo, error)
-	startTurn   func(string, string, string) (codex.TurnInfo, error)
-	interrupt   func(string, string) error
+	startThread  func(string) (codex.ThreadInfo, error)
+	resume       func(string) (codex.ThreadInfo, error)
+	startTurn    func(string, string, string) (codex.TurnInfo, error)
+	interrupt    func(string, string) error
+	deleteThread func(string) error
 }
 
 func (f *fakeRuntime) StartThread(_ context.Context, cwd string) (codex.ThreadInfo, error) {
@@ -35,7 +304,17 @@ func (f *fakeRuntime) StartTurn(_ context.Context, threadID, input, effort strin
 }
 
 func (f *fakeRuntime) InterruptTurn(_ context.Context, threadID, turnID string) error {
+	if f.interrupt == nil {
+		return nil
+	}
 	return f.interrupt(threadID, turnID)
+}
+
+func (f *fakeRuntime) DeleteThread(_ context.Context, threadID string) error {
+	if f.deleteThread == nil {
+		return nil
+	}
+	return f.deleteThread(threadID)
 }
 
 func TestServiceMapsThreadTurnAndAgentMessageEvents(t *testing.T) {
@@ -647,6 +926,22 @@ func compileAgentSessionEventContract(t *testing.T) *jsonschema.Schema {
 	contract, err := jsonschema.NewCompiler().Compile(contractPath)
 	if err != nil {
 		t.Fatalf("compile AgentSessionEvent JSON Schema: %v", err)
+	}
+	return contract
+}
+
+func compileAgentSessionEventV2Contract(t *testing.T) *jsonschema.Schema {
+	t.Helper()
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate Agent session v2 contract test source")
+	}
+	contractPath := filepath.Clean(filepath.Join(
+		filepath.Dir(sourceFile), "..", "..", "api", "jsonschema", "agent-session-event-v2.schema.json",
+	))
+	contract, err := jsonschema.NewCompiler().Compile(contractPath)
+	if err != nil {
+		t.Fatalf("compile AgentSessionEventV2 JSON Schema: %v", err)
 	}
 	return contract
 }

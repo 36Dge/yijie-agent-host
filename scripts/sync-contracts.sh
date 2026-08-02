@@ -32,9 +32,11 @@ trap 'rm -rf "$temporary_dir"' EXIT
 source_openapi="$temporary_dir/agent-host.yaml"
 source_compatibility="$temporary_dir/agent-host-runtime-v1.json"
 source_event_schema="$temporary_dir/agent-session-event.schema.json"
+source_event_v2_schema="$temporary_dir/agent-session-event-v2.schema.json"
 git -C "$contracts_repo" show "$contracts_commit:openapi/agent-host/agent-host.yaml" >"$source_openapi"
 git -C "$contracts_repo" show "$contracts_commit:compatibility/agent-host-runtime-v1.json" >"$source_compatibility"
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event.schema.json" >"$source_event_schema"
+git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event-v2.schema.json" >"$source_event_v2_schema"
 
 contracts_version="$(
   git -C "$contracts_repo" show "$contracts_commit:package.json" |
@@ -71,6 +73,7 @@ mkdir -p "$repo_root/api/openapi" "$repo_root/api/compatibility" "$repo_root/api
 cp "$source_openapi" "$repo_root/api/openapi/agent-host.yaml"
 cp "$source_compatibility" "$repo_root/api/compatibility/agent-host-runtime-v1.json"
 cp "$source_event_schema" "$repo_root/api/jsonschema/agent-session-event.schema.json"
+cp "$source_event_v2_schema" "$repo_root/api/jsonschema/agent-session-event-v2.schema.json"
 
 lock_file="$repo_root/api/contracts.lock"
 temporary_lock="$lock_file.tmp"
@@ -83,6 +86,7 @@ temporary_lock="$lock_file.tmp"
   printf 'OPENAPI_SHA256=%s\n' "$(sha256_file "$repo_root/api/openapi/agent-host.yaml")"
   printf 'RUNTIME_COMPATIBILITY_SHA256=%s\n' "$(sha256_file "$repo_root/api/compatibility/agent-host-runtime-v1.json")"
   printf 'AGENT_SESSION_EVENT_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event.schema.json")"
+  printf 'AGENT_SESSION_EVENT_V2_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event-v2.schema.json")"
 } >"$temporary_lock"
 mv "$temporary_lock" "$lock_file"
 

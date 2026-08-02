@@ -44,11 +44,19 @@ func run(logger *slog.Logger) error {
 		if err != nil {
 			return err
 		}
+		serviceOptions := make([]session.ServiceOption, 0, 2)
+		if config.RawReasoningV2Enabled {
+			serviceOptions = append(serviceOptions, session.WithV2Events(session.NewEventHubVersion(session.EventSchemaVersionV2, 512, 64)))
+		}
+		if config.TitleV2Enabled {
+			serviceOptions = append(serviceOptions, session.WithTitleGenerator(runtime))
+		}
 		sessionService = session.NewService(
 			runtime,
 			sessionStore,
 			session.NewEventHub(512, 64),
 			logger,
+			serviceOptions...,
 		)
 		if err := runtime.SetNotificationHandler(sessionService.HandleNotification); err != nil {
 			return err

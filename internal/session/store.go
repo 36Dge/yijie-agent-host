@@ -1,11 +1,16 @@
 package session
 
 import (
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
@@ -27,13 +32,19 @@ var (
 	ErrSessionNotUsable = errors.New("agent session is not ready for this operation")
 	ErrInvalidArgument  = errors.New("invalid argument")
 	ErrRuntimeRequest   = errors.New("Codex Runtime request failed")
+	ErrCleanupConflict  = errors.New("cleanup operation conflicts with another session")
 )
 
 var (
-	sessionsBucket = []byte("sessions")
-	tasksBucket    = []byte("task_index")
-	threadsBucket  = []byte("thread_index")
+	sessionsBucket        = []byte("sessions")
+	tasksBucket           = []byte("task_index")
+	threadsBucket         = []byte("thread_index")
+	metadataBucket        = []byte("metadata")
+	cleanupReceiptsBucket = []byte("cleanup_receipts_v2")
+	storeSchemaVersionKey = []byte("schema_version")
 )
+
+const storeSchemaVersion = "2"
 
 type TraceContext struct {
 	TraceID   string `json:"trace_id,omitempty"`
@@ -61,20 +72,21 @@ type Record struct {
 }
 
 type Store struct {
-	db *bolt.DB
+	db         *bolt.DB
+	receiptKey [32]byte
 }
 
 func OpenStore(hostHome string) (*Store, error) {
 	if hostHome == "" || !filepath.IsAbs(hostHome) {
 		return nil, errors.New("Agent Host home must be an absolute path")
 	}
-	if err := os.MkdirAll(hostHome, 0o700); err != nil {
-		return nil, fmt.Errorf("create Agent Host home: %w", err)
-	}
-	if err := os.Chmod(hostHome, 0o700); err != nil {
-		return nil, fmt.Errorf("protect Agent Host home: %w", err)
+	if err := preparePrivateDirectory(hostHome); err != nil {
+		return nil, err
 	}
 	dbPath := filepath.Join(hostHome, "sessions.db")
+	if err := preparePrivateFileIfExists(dbPath); err != nil {
+		return nil, err
+	}
 	db, err := bolt.Open(dbPath, 0o600, &bolt.Options{Timeout: time.Second})
 	if err != nil {
 		return nil, fmt.Errorf("open Agent Host session store: %w", err)
@@ -83,19 +95,238 @@ func OpenStore(hostHome string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("protect Agent Host session store: %w", err)
 	}
-	store := &Store{db: db}
+	if err := validatePrivateFile(dbPath); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	receiptKey, err := loadOrCreateReceiptKey(hostHome)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	store := &Store{db: db, receiptKey: receiptKey}
 	if err := db.Update(func(tx *bolt.Tx) error {
-		for _, bucket := range [][]byte{sessionsBucket, tasksBucket, threadsBucket} {
+		for _, bucket := range [][]byte{sessionsBucket, tasksBucket, threadsBucket, metadataBucket, cleanupReceiptsBucket} {
 			if _, err := tx.CreateBucketIfNotExists(bucket); err != nil {
 				return err
 			}
 		}
-		return nil
+		metadata := tx.Bucket(metadataBucket)
+		version := metadata.Get(storeSchemaVersionKey)
+		if version != nil && string(version) != "1" && string(version) != storeSchemaVersion {
+			return fmt.Errorf("unsupported Agent Host store schema version %q", version)
+		}
+		if version == nil || string(version) == "1" {
+			if err := metadata.Put(storeSchemaVersionKey, []byte(storeSchemaVersion)); err != nil {
+				return err
+			}
+		}
+		return purgeExpiredCleanupReceipts(tx, time.Now().UTC())
 	}); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("initialize Agent Host session store: %w", err)
 	}
 	return store, nil
+}
+
+func purgeExpiredCleanupReceipts(tx *bolt.Tx, now time.Time) error {
+	bucket := tx.Bucket(cleanupReceiptsBucket)
+	cursor := bucket.Cursor()
+	for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
+		var receipt CleanupReceipt
+		if err := json.Unmarshal(value, &receipt); err != nil {
+			return fmt.Errorf("decode cleanup receipt: %w", err)
+		}
+		if !receipt.ExpiresAt.After(now) {
+			if err := cursor.Delete(); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+type CleanupReceipt struct {
+	SchemaVersion int       `json:"schema_version"`
+	OperationID   string    `json:"operation_id"`
+	SessionHash   string    `json:"keyed_session_hash"`
+	Outcome       string    `json:"outcome"`
+	RuntimeTree   string    `json:"runtime_thread_tree"`
+	HostMapping   string    `json:"host_mapping"`
+	HostReplay    string    `json:"host_replay"`
+	CreatedAt     time.Time `json:"created_at"`
+	ExpiresAt     time.Time `json:"expires_at"`
+}
+
+func (s *Store) CleanupReceipt(operationID, sessionID string) (CleanupReceipt, error) {
+	var receipt CleanupReceipt
+	err := s.db.View(func(tx *bolt.Tx) error {
+		value := tx.Bucket(cleanupReceiptsBucket).Get([]byte(operationID))
+		if value == nil {
+			return ErrNotFound
+		}
+		if err := json.Unmarshal(value, &receipt); err != nil {
+			return fmt.Errorf("decode cleanup receipt: %w", err)
+		}
+		if receipt.ExpiresAt.Before(time.Now().UTC()) {
+			return ErrNotFound
+		}
+		if !hmac.Equal([]byte(receipt.SessionHash), []byte(s.keyedSessionHash(sessionID))) {
+			return ErrCleanupConflict
+		}
+		return nil
+	})
+	return receipt, err
+}
+
+func (s *Store) DeleteSessionWithReceipt(operationID, sessionID string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		record, err := loadRecord(tx, sessionID)
+		if err != nil {
+			return err
+		}
+		if record.ActiveTurnID != "" {
+			return ErrTurnActive
+		}
+		if existing := tx.Bucket(cleanupReceiptsBucket).Get([]byte(operationID)); existing != nil {
+			var receipt CleanupReceipt
+			if json.Unmarshal(existing, &receipt) != nil || !hmac.Equal([]byte(receipt.SessionHash), []byte(s.keyedSessionHash(sessionID))) {
+				return ErrCleanupConflict
+			}
+			return nil
+		}
+		if err := tx.Bucket(tasksBucket).Delete([]byte(record.TaskID)); err != nil {
+			return err
+		}
+		if err := tx.Bucket(threadsBucket).Delete([]byte(record.CodexThreadID)); err != nil {
+			return err
+		}
+		if err := tx.Bucket(sessionsBucket).Delete([]byte(sessionID)); err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		receipt := CleanupReceipt{
+			SchemaVersion: 1, OperationID: operationID, SessionHash: s.keyedSessionHash(sessionID),
+			Outcome: "complete", RuntimeTree: "complete", HostMapping: "complete", HostReplay: "complete",
+			CreatedAt: now, ExpiresAt: now.Add(30 * 24 * time.Hour),
+		}
+		encoded, err := json.Marshal(receipt)
+		if err != nil {
+			return err
+		}
+		return tx.Bucket(cleanupReceiptsBucket).Put([]byte(operationID), encoded)
+	})
+}
+
+func (s *Store) keyedSessionHash(sessionID string) string {
+	hash := hmac.New(sha256.New, s.receiptKey[:])
+	_, _ = hash.Write([]byte(sessionID))
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func loadOrCreateReceiptKey(hostHome string) ([32]byte, error) {
+	var key [32]byte
+	path := filepath.Join(hostHome, "cleanup-receipt.key")
+	if err := preparePrivateFileIfExists(path); err != nil {
+		return key, err
+	}
+	content, err := os.ReadFile(path)
+	if err == nil {
+		if len(content) != len(key) {
+			return key, errors.New("cleanup receipt key has invalid length")
+		}
+		copy(key[:], content)
+		return key, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return key, fmt.Errorf("read cleanup receipt key: %w", err)
+	}
+	if _, err := rand.Read(key[:]); err != nil {
+		return key, fmt.Errorf("generate cleanup receipt key: %w", err)
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return key, fmt.Errorf("create cleanup receipt key: %w", err)
+	}
+	if _, err := file.Write(key[:]); err != nil {
+		_ = file.Close()
+		return key, fmt.Errorf("write cleanup receipt key: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return key, fmt.Errorf("sync cleanup receipt key: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return key, fmt.Errorf("close cleanup receipt key: %w", err)
+	}
+	if err := validatePrivateFile(path); err != nil {
+		return key, err
+	}
+	return key, nil
+}
+
+func preparePrivateDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			return fmt.Errorf("create Agent Host home: %w", err)
+		}
+		info, err = os.Lstat(path)
+	}
+	if err != nil {
+		return fmt.Errorf("inspect Agent Host home: %w", err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || int(stat.Uid) != os.Geteuid() {
+		return errors.New("Agent Host home is not a safe owner directory")
+	}
+	if err := os.Chmod(path, 0o700); err != nil {
+		return fmt.Errorf("protect Agent Host home: %w", err)
+	}
+	return nil
+}
+
+func preparePrivateFileIfExists(path string) error {
+	_, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect private Host file: %w", err)
+	}
+	if err := validatePrivateFileIdentity(path); err != nil {
+		return err
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("protect private Host file: %w", err)
+	}
+	return validatePrivateFile(path)
+}
+
+func validatePrivateFile(path string) error {
+	if err := validatePrivateFileIdentity(path); err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect private Host file: %w", err)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		return errors.New("private Host file is accessible to group or other users")
+	}
+	return nil
+}
+
+func validatePrivateFileIdentity(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect private Host file: %w", err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || int(stat.Uid) != os.Geteuid() || stat.Nlink != 1 {
+		return errors.New("private Host file is not a safe owner-only regular file")
+	}
+	return nil
 }
 
 func (s *Store) Close() error {

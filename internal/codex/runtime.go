@@ -125,6 +125,9 @@ type Manager struct {
 	stderr   *tailBuffer
 
 	notificationHandler NotificationHandler
+	deleteWaiters       map[string]chan struct{}
+	titleCollectors     map[string]*titleCollector
+	pendingTitleStarts  int
 }
 
 func NewManager(config Config, logger *slog.Logger) *Manager {
@@ -139,6 +142,8 @@ func NewManager(config Config, logger *slog.Logger) *Manager {
 			Transport:       ExpectedTransport,
 			ExperimentalAPI: false,
 		},
+		deleteWaiters:   make(map[string]chan struct{}),
+		titleCollectors: make(map[string]*titleCollector),
 	}
 }
 
@@ -375,6 +380,41 @@ func (m *Manager) handleClientFailure(err error) {
 func (m *Manager) handleNotification(method string, params json.RawMessage) {
 	m.logger.Debug("Codex Runtime notification", "method", method)
 	m.mu.Lock()
+	if method == "thread/started" {
+		var notification struct {
+			Thread struct {
+				ID        string `json:"id"`
+				Ephemeral bool   `json:"ephemeral"`
+			} `json:"thread"`
+		}
+		if json.Unmarshal(params, &notification) == nil && notification.Thread.ID != "" {
+			if _, private := m.titleCollectors[notification.Thread.ID]; private || (m.pendingTitleStarts > 0 && notification.Thread.Ephemeral) {
+				m.mu.Unlock()
+				return
+			}
+		}
+	}
+	if method == RuntimeNotificationThreadDeleted {
+		var notification struct {
+			ThreadID string `json:"threadId"`
+		}
+		if json.Unmarshal(params, &notification) == nil {
+			if waiter := m.deleteWaiters[notification.ThreadID]; waiter != nil {
+				close(waiter)
+				delete(m.deleteWaiters, notification.ThreadID)
+			}
+		}
+	}
+	var correlated struct {
+		ThreadID string `json:"threadId"`
+	}
+	if json.Unmarshal(params, &correlated) == nil && correlated.ThreadID != "" {
+		if collector := m.titleCollectors[correlated.ThreadID]; collector != nil {
+			m.mu.Unlock()
+			collector.handle(method, params)
+			return
+		}
+	}
 	handler := m.notificationHandler
 	m.mu.Unlock()
 	if handler != nil {

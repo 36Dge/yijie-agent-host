@@ -23,6 +23,8 @@ const (
 	EventItemStarted              = "item.started"
 	EventItemAgentMessageDelta    = "item.agent_message.delta"
 	EventItemCompleted            = "item.completed"
+	EventItemReasoningTextDelta   = "item.reasoning_text.delta"
+	EventItemReasoningFinalized   = "item.reasoning_text.finalized"
 	EventTurnCompleted            = "turn.completed"
 	EventError                    = "error"
 	EventWarning                  = "warning"
@@ -32,6 +34,7 @@ const (
 	RuntimeNotificationError                 = "error"
 	RuntimeNotificationItemAgentMessageDelta = "item/agentMessage/delta"
 	RuntimeNotificationItemCompleted         = "item/completed"
+	RuntimeNotificationReasoningTextDelta    = "item/reasoning/textDelta"
 	RuntimeNotificationItemStarted           = "item/started"
 	RuntimeNotificationThreadStarted         = "thread/started"
 	RuntimeNotificationTurnCompleted         = "turn/completed"
@@ -50,6 +53,10 @@ var runtimeNotifications = []string{
 	RuntimeNotificationWarning,
 }
 
+func SupportedV2RuntimeNotifications() []string {
+	return []string{RuntimeNotificationReasoningTextDelta}
+}
+
 func SupportedRuntimeNotifications() []string {
 	return append([]string(nil), runtimeNotifications...)
 }
@@ -61,6 +68,61 @@ type Runtime interface {
 	ResumeThread(context.Context, string) (codex.ThreadInfo, error)
 	StartTurn(context.Context, string, string, string) (codex.TurnInfo, error)
 	InterruptTurn(context.Context, string, string) error
+	DeleteThread(context.Context, string) error
+}
+
+type CleanupResult struct {
+	OperationID       string
+	Outcome           string
+	RuntimeThreadTree string
+	HostMapping       string
+	HostReplay        string
+	ReasonCode        string
+}
+
+func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID string) (CleanupResult, error) {
+	if err := requireUUID("agent_session_id", sessionID); err != nil {
+		return CleanupResult{}, err
+	}
+	if err := requireUUID("operation_id", operationID); err != nil {
+		return CleanupResult{}, err
+	}
+	if receipt, err := s.store.CleanupReceipt(operationID, sessionID); err == nil {
+		return CleanupResult{OperationID: operationID, Outcome: receipt.Outcome, RuntimeThreadTree: receipt.RuntimeTree, HostMapping: receipt.HostMapping, HostReplay: receipt.HostReplay}, nil
+	} else if errors.Is(err, ErrCleanupConflict) {
+		return CleanupResult{}, ErrCleanupConflict
+	}
+	record, err := s.store.Get(sessionID)
+	if err != nil {
+		return CleanupResult{}, err
+	}
+	if record.ActiveTurnID != "" || record.State == StateActive || record.State == StateStarting {
+		return incompleteCleanup(operationID, "active_turn", "not_attempted", "not_attempted", "not_attempted"), nil
+	}
+	if err := s.runtime.DeleteThread(ctx, record.CodexThreadID); err != nil {
+		return incompleteCleanup(operationID, "runtime_delete_unconfirmed", "incomplete", "not_attempted", "not_attempted"), nil
+	}
+	if err := s.store.DeleteSessionWithReceipt(operationID, sessionID); err != nil {
+		return incompleteCleanup(operationID, "host_mapping_cleanup_failed", "complete", "incomplete", "not_attempted"), nil
+	}
+	if s.events != nil {
+		s.events.DeleteSession(sessionID)
+	}
+	if s.eventsV2 != nil {
+		s.eventsV2.DeleteSession(sessionID)
+	}
+	s.reasoningMu.Lock()
+	for key := range s.reasoning {
+		if key.sessionID == sessionID {
+			delete(s.reasoning, key)
+		}
+	}
+	s.reasoningMu.Unlock()
+	return CleanupResult{OperationID: operationID, Outcome: "complete", RuntimeThreadTree: "complete", HostMapping: "complete", HostReplay: "complete"}, nil
+}
+
+func incompleteCleanup(operationID, reason, runtimeTree, mapping, replay string) CleanupResult {
+	return CleanupResult{OperationID: operationID, Outcome: "incomplete", RuntimeThreadTree: runtimeTree, HostMapping: mapping, HostReplay: replay, ReasonCode: reason}
 }
 
 type StartSessionInput struct {
@@ -82,27 +144,47 @@ type pendingNotification struct {
 }
 
 type Service struct {
-	runtime Runtime
-	store   *Store
-	events  *EventHub
-	logger  *slog.Logger
+	runtime  Runtime
+	store    *Store
+	events   *EventHub
+	eventsV2 *EventHub
+	logger   *slog.Logger
 
-	pendingMu    sync.Mutex
-	pending      map[string][]pendingNotification
-	pendingCount int
+	pendingMu       sync.Mutex
+	pending         map[string][]pendingNotification
+	pendingCount    int
+	reasoningMu     sync.Mutex
+	reasoning       map[reasoningTurnKey]*reasoningTurnState
+	titleMu         sync.Mutex
+	titleGenerator  TitleGenerator
+	titleOperations map[string]*titleOperation
 }
 
-func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Logger) *Service {
+type ServiceOption func(*Service)
+
+func WithV2Events(events *EventHub) ServiceOption {
+	return func(service *Service) { service.eventsV2 = events }
+}
+
+func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Logger, options ...ServiceOption) *Service {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	return &Service{
-		runtime: runtime,
-		store:   store,
-		events:  events,
-		logger:  logger,
-		pending: make(map[string][]pendingNotification),
+	service := &Service{
+		runtime:         runtime,
+		store:           store,
+		events:          events,
+		logger:          logger,
+		pending:         make(map[string][]pendingNotification),
+		reasoning:       make(map[reasoningTurnKey]*reasoningTurnState),
+		titleOperations: make(map[string]*titleOperation),
 	}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service
 }
 
 func (s *Service) StartSession(ctx context.Context, input StartSessionInput) (Record, error) {
@@ -265,6 +347,22 @@ func (s *Service) SubscribeEvents(
 	return s.events.Subscribe(sessionID, streamID, after)
 }
 
+func (s *Service) SubscribeEventsV2(
+	sessionID, streamID string,
+	after uint64,
+) (string, []Event, <-chan Event, func(), error) {
+	if s.eventsV2 == nil {
+		return "", nil, nil, nil, ErrSessionNotUsable
+	}
+	if err := requireUUID("agent_session_id", sessionID); err != nil {
+		return "", nil, nil, nil, err
+	}
+	if _, err := s.store.Get(sessionID); err != nil {
+		return "", nil, nil, nil, err
+	}
+	return s.eventsV2.Subscribe(sessionID, streamID, after)
+}
+
 func (s *Service) HandleNotification(method string, params json.RawMessage) {
 	if !supportedNotification(method) {
 		return
@@ -359,6 +457,11 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 			if notification.Item.Type == "agentMessage" {
 				text = notification.Item.Text
 			}
+			if notification.Item.Type == "reasoning" {
+				if err := s.finalizeReasoning(record, notification.TurnID, notification.Item.ID, notification.Item.Content); err != nil {
+					return err
+				}
+			}
 		}
 		return s.publish(record, Event{
 			TurnID:    notification.TurnID,
@@ -395,6 +498,28 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 			EventType: EventItemAgentMessageDelta,
 			Payload:   EventPayload{Delta: stringPointer(notification.Delta)},
 		})
+	case RuntimeNotificationReasoningTextDelta:
+		var notification struct {
+			ThreadID     string `json:"threadId"`
+			TurnID       string `json:"turnId"`
+			ItemID       string `json:"itemId"`
+			Delta        string `json:"delta"`
+			ContentIndex int    `json:"contentIndex"`
+		}
+		if err := json.Unmarshal(params, &notification); err != nil {
+			return err
+		}
+		if err := requireUUID("turn_id", notification.TurnID); err != nil {
+			return err
+		}
+		if notification.ItemID == "" {
+			return errors.New("reasoning delta notification omitted item id")
+		}
+		record, err := s.store.GetByThread(notification.ThreadID)
+		if err != nil {
+			return err
+		}
+		return s.appendReasoningDelta(record, notification.TurnID, notification.ItemID, notification.ContentIndex, notification.Delta)
 	case RuntimeNotificationTurnCompleted:
 		var notification turnNotification
 		if err := json.Unmarshal(params, &notification); err != nil {
@@ -422,6 +547,7 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 			payload.Code = normalizeCodexErrorCode(notification.Turn.Error.CodexErrorInfo)
 			payload.Message = stringPointer(sanitizeMessage(notification.Turn.Error.Message))
 		}
+		s.finalizeInterruptedReasoning(record, notification.Turn.ID, status)
 		return s.publish(record, Event{
 			TurnID:    notification.Turn.ID,
 			EventType: EventTurnCompleted,
@@ -498,13 +624,35 @@ type itemNotification struct {
 	ThreadID string `json:"threadId"`
 	TurnID   string `json:"turnId"`
 	Item     struct {
-		ID   string `json:"id"`
-		Type string `json:"type"`
-		Text string `json:"text"`
+		ID      string   `json:"id"`
+		Type    string   `json:"type"`
+		Text    string   `json:"text"`
+		Content []string `json:"content"`
 	} `json:"item"`
 }
 
 func (s *Service) publish(record Record, event Event) error {
+	decorateEvent(record, &event)
+	if _, err := s.events.Publish(event); err != nil {
+		return err
+	}
+	if s.eventsV2 != nil {
+		_, err := s.eventsV2.Publish(event)
+		return err
+	}
+	return nil
+}
+
+func (s *Service) publishV2(record Record, event Event) error {
+	if s.eventsV2 == nil {
+		return nil
+	}
+	decorateEvent(record, &event)
+	_, err := s.eventsV2.Publish(event)
+	return err
+}
+
+func decorateEvent(record Record, event *Event) {
 	event.TaskID = record.TaskID
 	event.AgentSessionID = record.AgentSessionID
 	event.CodexThreadID = record.CodexThreadID
@@ -512,8 +660,186 @@ func (s *Service) publish(record Record, event Event) error {
 	event.RequestID = record.Trace.RequestID
 	event.TenantID = record.Trace.TenantID
 	event.UserID = record.Trace.UserID
-	_, err := s.events.Publish(event)
-	return err
+}
+
+type reasoningTurnKey struct{ sessionID, turnID string }
+type reasoningItemState struct {
+	parts     map[int]string
+	finalized bool
+}
+type reasoningTurnState struct {
+	items      map[string]*reasoningItemState
+	totalBytes int
+}
+
+func (s *Service) appendReasoningDelta(record Record, turnID, itemID string, contentIndex int, delta string) error {
+	if s.eventsV2 == nil {
+		return nil
+	}
+	if contentIndex < 0 || contentIndex > 7 || delta == "" {
+		return s.publishReasoningUnavailable(record, turnID, itemID, "protocol_error")
+	}
+	if len([]byte(delta)) > 16<<10 {
+		return s.publishReasoningUnavailable(record, turnID, itemID, "limit_exceeded")
+	}
+	s.reasoningMu.Lock()
+	state, item, ok := s.reasoningItemLocked(record.AgentSessionID, turnID, itemID)
+	if !ok {
+		s.reasoningMu.Unlock()
+		return s.publishReasoningUnavailable(record, turnID, itemID, "limit_exceeded")
+	}
+	if item.finalized {
+		s.reasoningMu.Unlock()
+		return nil
+	}
+	part := item.parts[contentIndex] + delta
+	newPartBytes := len([]byte(part))
+	itemBytes := 0
+	for index, value := range item.parts {
+		if index == contentIndex {
+			continue
+		}
+		itemBytes += len([]byte(value))
+	}
+	itemBytes += newPartBytes
+	if newPartBytes > 64<<10 || itemBytes > 128<<10 || state.totalBytes+len([]byte(delta)) > 256<<10 {
+		item.finalized = true
+		item.parts = nil
+		s.reasoningMu.Unlock()
+		return s.publishReasoningUnavailable(record, turnID, itemID, "limit_exceeded")
+	}
+	item.parts[contentIndex] = part
+	state.totalBytes += len([]byte(delta))
+	s.reasoningMu.Unlock()
+	index := contentIndex
+	return s.publishV2(record, Event{TurnID: turnID, ItemID: itemID, EventType: EventItemReasoningTextDelta, Payload: EventPayload{ContentIndex: &index, Delta: stringPointer(delta)}})
+}
+
+func (s *Service) finalizeReasoning(record Record, turnID, itemID string, contents []string) error {
+	if s.eventsV2 == nil {
+		return nil
+	}
+	parts, total, valid := validateReasoningContents(contents)
+	s.reasoningMu.Lock()
+	state, item, registered := s.reasoningItemLocked(record.AgentSessionID, turnID, itemID)
+	if registered && item.finalized {
+		s.reasoningMu.Unlock()
+		return nil
+	}
+	turnWithinLimit := false
+	if registered && !item.finalized {
+		oldBytes := reasoningPartBytes(item.parts)
+		turnTotal := state.totalBytes - oldBytes + total
+		turnWithinLimit = turnTotal <= 256<<10
+		item.finalized = true
+		item.parts = nil
+		state.totalBytes = turnTotal
+	}
+	s.reasoningMu.Unlock()
+	if !registered || !valid || total > 128<<10 || !turnWithinLimit {
+		return s.publishReasoningUnavailable(record, turnID, itemID, "limit_exceeded")
+	}
+	return s.publishV2(record, Event{TurnID: turnID, ItemID: itemID, EventType: EventItemReasoningFinalized, Payload: EventPayload{Status: "complete", Contents: &parts}})
+}
+
+func validateReasoningContents(contents []string) ([]ReasoningContent, int, bool) {
+	if len(contents) == 0 || len(contents) > 8 {
+		return nil, 0, false
+	}
+	parts := make([]ReasoningContent, 0, len(contents))
+	total := 0
+	for index, value := range contents {
+		bytes := len([]byte(value))
+		if bytes == 0 || bytes > 64<<10 {
+			return nil, 0, false
+		}
+		total += bytes
+		parts = append(parts, ReasoningContent{ContentIndex: index, Text: value})
+	}
+	return parts, total, total <= 128<<10
+}
+
+func (s *Service) reasoningItemLocked(sessionID, turnID, itemID string) (*reasoningTurnState, *reasoningItemState, bool) {
+	key := reasoningTurnKey{sessionID: sessionID, turnID: turnID}
+	state := s.reasoning[key]
+	if state == nil {
+		state = &reasoningTurnState{items: make(map[string]*reasoningItemState)}
+		s.reasoning[key] = state
+	}
+	item := state.items[itemID]
+	if item == nil {
+		if len(state.items) >= 8 {
+			return state, nil, false
+		}
+		item = &reasoningItemState{parts: make(map[int]string)}
+		state.items[itemID] = item
+	}
+	return state, item, true
+}
+
+func (s *Service) publishReasoningUnavailable(record Record, turnID, itemID, reason string) error {
+	s.reasoningMu.Lock()
+	if state, item, ok := s.reasoningItemLocked(record.AgentSessionID, turnID, itemID); ok && !item.finalized {
+		state.totalBytes -= reasoningPartBytes(item.parts)
+		item.finalized = true
+		item.parts = nil
+	}
+	s.reasoningMu.Unlock()
+	contents := []ReasoningContent{}
+	return s.publishV2(record, Event{TurnID: turnID, ItemID: itemID, EventType: EventItemReasoningFinalized, Payload: EventPayload{Status: "unavailable", ReasonCode: reason, Contents: &contents}})
+}
+
+func reasoningPartBytes(parts map[int]string) int {
+	total := 0
+	for _, part := range parts {
+		total += len([]byte(part))
+	}
+	return total
+}
+
+func (s *Service) finalizeInterruptedReasoning(record Record, turnID, status string) {
+	key := reasoningTurnKey{sessionID: record.AgentSessionID, turnID: turnID}
+	s.reasoningMu.Lock()
+	state := s.reasoning[key]
+	delete(s.reasoning, key)
+	s.reasoningMu.Unlock()
+	if state == nil {
+		return
+	}
+	baseReason := "runtime_error"
+	if status == "interrupted" {
+		baseReason = "turn_interrupted"
+	} else if status == "completed" {
+		baseReason = "stream_gap"
+	}
+	for itemID, item := range state.items {
+		if item.finalized || len(item.parts) == 0 {
+			continue
+		}
+		indexes := make([]int, 0, len(item.parts))
+		for index := range item.parts {
+			indexes = append(indexes, index)
+		}
+		sort.Ints(indexes)
+		contents := make([]ReasoningContent, 0, len(indexes))
+		gap := false
+		reason := baseReason
+		for expected, index := range indexes {
+			if index != expected {
+				gap = true
+				break
+			}
+			contents = append(contents, ReasoningContent{ContentIndex: index, Text: item.parts[index]})
+		}
+		if gap {
+			reason = "stream_gap"
+		}
+		if len(contents) == 0 {
+			_ = s.publishReasoningUnavailable(record, turnID, itemID, reason)
+			continue
+		}
+		_ = s.publishV2(record, Event{TurnID: turnID, ItemID: itemID, EventType: EventItemReasoningFinalized, Payload: EventPayload{Status: "incomplete", ReasonCode: reason, Contents: &contents}})
+	}
 }
 
 func (s *Service) queuePending(threadID, method string, params json.RawMessage) {
@@ -544,6 +870,9 @@ func (s *Service) flushPending(threadID string) {
 }
 
 func supportedNotification(method string) bool {
+	if method == RuntimeNotificationReasoningTextDelta {
+		return true
+	}
 	for _, supported := range runtimeNotifications {
 		if method == supported {
 			return true

@@ -13,8 +13,8 @@ info:
 
     This document is authoritative for HTTP paths, authentication, request and
     response envelopes, status codes, headers, and SSE framing. The JSON value
-    carried by each SSE `data` line is governed by the AgentSessionEvent JSON
-    Schema, not by a duplicate OpenAPI schema.
+    carried by each SSE `data` line is governed by the explicitly negotiated
+    AgentSessionEvent v1 or v2 JSON Schema, not by a duplicate OpenAPI schema.
   contact:
     name: Yijie Agent Host owners
 servers:
@@ -512,6 +512,206 @@ paths:
                     error:
                       code: internal_error
                       message: Agent Host operation failed
+  /v2/agent-sessions/{agent_session_id}/title-generations:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+    post:
+      operationId: generateAgentSessionTitleV2
+      summary: Generate one isolated title candidate
+      description: |
+        Runs the fixed `title-v1` prompt in a pathless ephemeral Runtime thread
+        that is isolated from the user's project, persistent thread, and event
+        stream. The Host accepts only the first user text, invokes no tools, and
+        returns only a validated plain-text title. Prompt text, raw provider
+        response, ephemeral identifiers, and project paths never enter the
+        response, logs, metrics, traces, or persistent Host state.
+
+        `operation_id` is scoped to this Agent session and canonical input. The
+        same operation and input may return its process-local completed result;
+        reuse with different input returns `title_operation_conflict`. An unknown
+        provider result is not retried under a new operation ID. This candidate
+        does not enable the operation or authorize provider calls.
+      tags: [Sessions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateTitleV2Request"
+      responses:
+        "200":
+          description: A sanitized title candidate was generated.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateTitleV2Response"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          $ref: "#/components/responses/TitleOperationConflict"
+        "422":
+          $ref: "#/components/responses/TitleOutputInvalid"
+        "503":
+          $ref: "#/components/responses/TitleGenerationUnavailable"
+  /v2/agent-sessions/{agent_session_id}/cleanup-operations:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+    post:
+      operationId: cleanupAgentSessionV2
+      summary: Remove the Host-managed live surfaces for one Agent session
+      description: |
+        Performs the Host portion of the Desktop deletion saga. The Host first
+        rejects an active or unconfirmed turn and verifies exclusive ownership of
+        the mapped Runtime thread tree. It then verifies Runtime `thread/delete`,
+        including the deletion notification and descendants, before clearing the
+        Host bbolt mapping and in-memory replay state.
+
+        `200` means all three Host-managed live surfaces are confirmed complete.
+        Any partial or uncertain result is `409 cleanup_incomplete` with a
+        content-free per-surface result and remains retryable under the same
+        `operation_id`. To resolve a lost success response after the mapping is
+        removed, Host retains for 30 days only a content-free receipt containing
+        operation ID, keyed session hash, surface outcomes, timestamps, and schema
+        version; it contains no raw session/thread ID, body, title, reasoning, or
+        path. A completed Host result does not claim that Desktop SQLCipher/
+        checkpoint, Runtime WAL/log bytes, OS snapshots, backups, or SSD history
+        were erased; Desktop may report full session deletion only after its
+        separately approved local transaction and checkpoint also complete.
+      tags: [Sessions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CleanupAgentSessionV2Request"
+      responses:
+        "200":
+          description: Runtime thread tree, Host mapping, and Host replay are all absent from active stores.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleanupAgentSessionV2CompletedResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          description: >-
+            `cleanup_incomplete` when any required surface is partial, blocked, or
+            uncertain; `cleanup_operation_conflict` when an operation ID is reused
+            for a different target or canonical request.
+          x-yijie-error-codes: [cleanup_incomplete, cleanup_operation_conflict]
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/CleanupAgentSessionV2IncompleteResponse"
+                  - $ref: "#/components/schemas/CleanupOperationConflictError"
+  /v2/agent-sessions/{agent_session_id}/events:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+    get:
+      operationId: streamAgentSessionEventsV2
+      summary: Replay and stream explicitly negotiated Agent session events v2
+      description: |
+        Opens the v2 Server-Sent Events stream. The required
+        `event_schema_version=2` query parameter prevents accidental v2 output to a
+        v1 consumer. Framing, cursor precedence, bounded in-memory replay, heartbeat,
+        at-least-once delivery, and stream-change semantics are identical to the v1
+        endpoint. Every non-heartbeat `data` value is a compact single-line
+        AgentSessionEventV2 JSON object. The Host must not persist raw-reasoning text
+        in bbolt, any durable replay store, logs, metrics, traces, audit, or error
+        bodies; bounded process-memory replay remains permitted.
+
+        The v2 stream preserves the eight v1 lifecycle variants and adds only
+        `item.reasoning_text.delta` and `item.reasoning_text.finalized`. A single SSE
+        event remains bounded by the Host's 1 MiB hard limit; the stricter reasoning
+        caps are authoritative in the v2 JSON Schema and associated conformance docs.
+      tags: [Events]
+      externalDocs:
+        description: Authoritative AgentSessionEventV2 JSON Schema
+        url: https://contracts.yijie.ai/agent/session-event-v2.schema.json
+      parameters:
+        - $ref: "#/components/parameters/EventSchemaVersionV2"
+        - $ref: "#/components/parameters/EventStreamId"
+        - $ref: "#/components/parameters/EventAfter"
+        - $ref: "#/components/parameters/LastEventId"
+      responses:
+        "200":
+          description: Retained v2 events were replayed and the connection is subscribed for live v2 events.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+            X-Accel-Buffering:
+              description: Disables reverse-proxy response buffering.
+              required: true
+              schema:
+                type: string
+                enum: ["no"]
+            X-Yijie-Event-Stream-ID:
+              description: Actual process-local stream identifier used by every returned SSE event ID.
+              required: true
+              schema:
+                type: string
+                format: uuid
+            X-Yijie-Event-Schema-Version:
+              description: Confirms that every returned data event uses AgentSessionEventV2.
+              required: true
+              schema:
+                type: integer
+                enum: [2]
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: UTF-8 SSE frames whose data values validate as AgentSessionEventV2.
+                x-yijie-event-data-schema: ../../jsonschema/agent/session-event-v2.schema.json
+        "400":
+          description: "`invalid_request` or `invalid_event_cursor`: schema negotiation, identifier, or cursor is invalid."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          description: "`event_stream_changed` or `event_replay_unavailable`: the requested v2 cursor cannot be resumed safely."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "`streaming_unsupported` or `internal_error`: the v2 stream cannot be served safely."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   securitySchemes:
     localBearer:
@@ -585,6 +785,15 @@ components:
       schema:
         type: string
         pattern: "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}:[1-9][0-9]*$"
+    EventSchemaVersionV2:
+      name: event_schema_version
+      in: query
+      required: true
+      description: Explicit negotiation guard. Only integer value 2 is accepted on the v2 event stream.
+      schema:
+        type: integer
+        format: int32
+        enum: [2]
   headers:
     NoStore:
       description: Prevents credentials, status, and session data from being cached.
@@ -658,6 +867,39 @@ components:
             error:
               code: internal_error
               message: Agent Host operation failed
+    TitleOperationConflict:
+      description: "`title_operation_conflict`: the operation ID was already used with different canonical input."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TitleOperationConflictError"
+    TitleOutputInvalid:
+      description: "`title_output_invalid`: provider output failed the strict object or plain-title validator."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TitleOutputInvalidError"
+    TitleGenerationUnavailable:
+      description: "`title_generation_unavailable`: the isolated title operation did not produce a known valid result."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+        Retry-After:
+          description: Optional bounded delay in seconds before a controlled retry of the same operation.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 60
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TitleGenerationUnavailableError"
   schemas:
     HealthResponse:
       type: object
@@ -833,6 +1075,205 @@ components:
           enum: ["", none, high]
           default: none
           description: Omit or send the empty string for `none`; clients should prefer omission, `none`, or `high`.
+    GenerateTitleV2Request:
+      type: object
+      additionalProperties: false
+      required: [operation_id, input]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+          description: Idempotent title-generation operation identifier selected by Desktop.
+        trace_id:
+          type: string
+          minLength: 1
+          description: Correlation only; never authorization input.
+        request_id:
+          type: string
+          minLength: 1
+          description: Correlation only; never authorization input.
+        input:
+          type: string
+          minLength: 1
+          pattern: \S
+          maxLength: 8192
+          x-yijie-max-utf8-bytes: 8192
+          description: First user text only; non-blank and at most 8 KiB UTF-8.
+    GenerateTitleV2Response:
+      type: object
+      additionalProperties: false
+      required: [operation_id, title]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          x-yijie-max-graphemes: 40
+          description: >-
+            NFC, one-line untrusted plain text with 1..40 grapheme clusters and no
+            control, bidi-control, HTML, or Markdown syntax.
+    CleanupAgentSessionV2Request:
+      type: object
+      additionalProperties: false
+      required: [operation_id]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+          description: Idempotent deletion-saga operation identifier selected by Desktop.
+        trace_id:
+          type: string
+          minLength: 1
+          description: Correlation only; never authorization input.
+        request_id:
+          type: string
+          minLength: 1
+          description: Correlation only; never authorization input.
+    CleanupAgentSessionV2CompletedResponse:
+      type: object
+      additionalProperties: false
+      required: [operation_id, outcome, surfaces]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+          enum: [complete]
+        surfaces:
+          $ref: "#/components/schemas/CleanupCompletedSurfaces"
+    CleanupCompletedSurfaces:
+      type: object
+      additionalProperties: false
+      required: [runtime_thread_tree, host_mapping, host_replay]
+      properties:
+        runtime_thread_tree:
+          type: string
+          enum: [complete]
+        host_mapping:
+          type: string
+          enum: [complete]
+        host_replay:
+          type: string
+          enum: [complete]
+    CleanupAgentSessionV2IncompleteResponse:
+      type: object
+      additionalProperties: false
+      required: [operation_id, outcome, surfaces, error]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+          enum: [incomplete]
+        surfaces:
+          $ref: "#/components/schemas/CleanupIncompleteSurfaces"
+        error:
+          $ref: "#/components/schemas/CleanupIncompleteError"
+    CleanupIncompleteSurfaces:
+      type: object
+      additionalProperties: false
+      required: [runtime_thread_tree, host_mapping, host_replay]
+      properties:
+        runtime_thread_tree:
+          $ref: "#/components/schemas/CleanupSurfaceStatus"
+        host_mapping:
+          $ref: "#/components/schemas/CleanupSurfaceStatus"
+        host_replay:
+          $ref: "#/components/schemas/CleanupSurfaceStatus"
+    CleanupSurfaceStatus:
+      type: string
+      enum: [complete, incomplete, not_attempted]
+    CleanupIncompleteError:
+      type: object
+      additionalProperties: false
+      required: [code, reason_code, message]
+      properties:
+        code:
+          type: string
+          enum: [cleanup_incomplete]
+        reason_code:
+          type: string
+          enum:
+            - active_turn
+            - terminal_unconfirmed
+            - shared_thread_mapping
+            - runtime_delete_failed
+            - runtime_delete_unconfirmed
+            - host_mapping_cleanup_failed
+            - host_replay_cleanup_failed
+            - operation_state_unavailable
+            - internal_error
+        message:
+          type: string
+          minLength: 1
+    TitleOperationConflictError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [title_operation_conflict]
+            message:
+              type: string
+              minLength: 1
+    TitleOutputInvalidError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [title_output_invalid]
+            message:
+              type: string
+              minLength: 1
+    TitleGenerationUnavailableError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [title_generation_unavailable]
+            message:
+              type: string
+              minLength: 1
+    CleanupOperationConflictError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [cleanup_operation_conflict]
+            message:
+              type: string
+              minLength: 1
     SessionResponse:
       type: object
       additionalProperties: false

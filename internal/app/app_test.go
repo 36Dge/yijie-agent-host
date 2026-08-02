@@ -445,6 +445,96 @@ func (appFakeRuntime) StartTurn(context.Context, string, string, string) (codex.
 }
 
 func (appFakeRuntime) InterruptTurn(context.Context, string, string) error { return nil }
+func (appFakeRuntime) DeleteThread(context.Context, string) error          { return nil }
+func (appFakeRuntime) GenerateTitle(context.Context, string) (string, error) {
+	return "设计本地聊天安全删除流程", nil
+}
+
+func TestV2DraftRoutesAreFlaggedAndMatchTitleCleanupContracts(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "host-home")
+	store, err := session.OpenStore(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	const (
+		taskID      = "019c0123-4567-7abc-8123-456789abcdea"
+		sessionID   = "019c0123-4567-7abc-8123-456789abcdeb"
+		threadID    = "019c0123-4567-7abc-8123-456789abcdec"
+		operationID = "019fbd88-cbc3-7bf1-934d-7b05cd693f60"
+	)
+	if err := store.Reserve(session.Record{TaskID: taskID, AgentSessionID: sessionID, Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindThread(sessionID, threadID, "runtime-session", codex.MiniMaxModel, codex.MiniMaxProviderID); err != nil {
+		t.Fatal(err)
+	}
+	runtime := appFakeRuntime{}
+	service := session.NewService(runtime, store, session.NewEventHub(16, 8), nil,
+		session.WithV2Events(session.NewEventHubVersion(session.EventSchemaVersionV2, 16, 8)),
+		session.WithTitleGenerator(runtime),
+	)
+	disabled := NewHandler(Config{Environment: "local"}, staticRuntimeStatus{}, service, "api-token")
+	disabledResponse := httptest.NewRecorder()
+	disabled.ServeHTTP(disabledResponse, authorizedRequest(http.MethodPost, "/v2/agent-sessions/"+sessionID+"/title-generations", `{}`))
+	if disabledResponse.Code != http.StatusNotFound {
+		t.Fatalf("v2 draft route enabled by default: %d", disabledResponse.Code)
+	}
+
+	enabled := NewHandler(Config{Environment: "local", RawReasoningV2Enabled: true, TitleV2Enabled: true, CleanupV2Enabled: true}, staticRuntimeStatus{}, service, "api-token")
+	titleRequest := authorizedRequest(http.MethodPost, "/v2/agent-sessions/"+sessionID+"/title-generations",
+		`{"operation_id":"`+operationID+`","input":"为新的本地聊天任务设计安全的删除流程"}`)
+	titleResponse := httptest.NewRecorder()
+	enabled.ServeHTTP(titleResponse, titleRequest)
+	if titleResponse.Code != http.StatusOK || !strings.Contains(titleResponse.Body.String(), `"title":"设计本地聊天安全删除流程"`) {
+		t.Fatalf("unexpected title v2 response: %d %s", titleResponse.Code, titleResponse.Body.String())
+	}
+	assertOpenAPIJSON(t, "GenerateTitleV2Response", titleResponse.Body.Bytes())
+
+	missingNegotiation := httptest.NewRecorder()
+	enabled.ServeHTTP(missingNegotiation, authorizedRequest(http.MethodGet, "/v2/agent-sessions/"+sessionID+"/events", ""))
+	if missingNegotiation.Code != http.StatusBadRequest {
+		t.Fatalf("v2 event stream accepted missing negotiation: %d", missingNegotiation.Code)
+	}
+
+	cleanupOperation := "019fbd88-cbc3-7bf1-934d-7b05cd693f61"
+	cleanupResponse := httptest.NewRecorder()
+	enabled.ServeHTTP(cleanupResponse, authorizedRequest(http.MethodPost, "/v2/agent-sessions/"+sessionID+"/cleanup-operations", `{"operation_id":"`+cleanupOperation+`"}`))
+	if cleanupResponse.Code != http.StatusOK || !strings.Contains(cleanupResponse.Body.String(), `"runtime_thread_tree":"complete"`) {
+		t.Fatalf("unexpected cleanup v2 response: %d %s", cleanupResponse.Code, cleanupResponse.Body.String())
+	}
+	assertOpenAPIJSON(t, "CleanupAgentSessionV2CompletedResponse", cleanupResponse.Body.Bytes())
+}
+
+func TestLoadConfigKeepsV2DraftCapabilitiesOffAndLocalOnly(t *testing.T) {
+	for _, key := range []string{
+		"YIJIE_AGENT_HOST_V2_RAW_REASONING_ENABLED", "YIJIE_AGENT_HOST_V2_TITLE_ENABLED", "YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED",
+		"YIJIE_MODEL_PROVIDER", "YIJIE_MINIMAX_API_KEY", "YIJIE_MINIMAX_API_KEY_FILE", "YIJIE_AGENT_HOST_HOME", "YIJIE_ENV",
+	} {
+		t.Setenv(key, "")
+	}
+	config, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.RawReasoningV2Enabled || config.TitleV2Enabled || config.CleanupV2Enabled {
+		t.Fatalf("v2 draft capability enabled by default: %#v", config)
+	}
+
+	home := filepath.Join(t.TempDir(), "host-home")
+	t.Setenv("YIJIE_ENV", "local")
+	t.Setenv("YIJIE_AGENT_HOST_HOME", home)
+	t.Setenv("YIJIE_AGENT_HOST_V2_RAW_REASONING_ENABLED", "true")
+	t.Setenv("YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED", "true")
+	config, err = LoadConfig()
+	if err != nil || !config.RawReasoningV2Enabled || !config.CleanupV2Enabled {
+		t.Fatalf("load local v2 flags: %#v err=%v", config, err)
+	}
+	t.Setenv("YIJIE_ENV", "production")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("v2 draft capabilities must reject production")
+	}
+}
 
 func TestSessionHTTPAndSSEVerticalSlice(t *testing.T) {
 	store, err := session.OpenStore(filepath.Join(t.TempDir(), "host-home"))

@@ -49,8 +49,12 @@ func TestRuntimeHelperProcess(t *testing.T) {
 	}
 
 	mode := os.Getenv("YIJIE_FAKE_MODE")
-	if mode == "baseline2" {
-		if os.Getenv(MiniMaxRuntimeEnvKey) != "test-minimax-key" {
+	if mode == "baseline2" || mode == "title" {
+		expectedKey := "test-minimax-key"
+		if mode == "title" {
+			expectedKey = "synthetic-test-key"
+		}
+		if os.Getenv(MiniMaxRuntimeEnvKey) != expectedKey {
 			fmt.Fprintln(os.Stderr, "scoped MiniMax credential missing")
 			os.Exit(27)
 		}
@@ -117,17 +121,29 @@ func TestRuntimeHelperProcess(t *testing.T) {
 				})
 			}
 		case "thread/start":
-			if mode != "baseline2" {
+			if mode != "baseline2" && mode != "title" {
 				os.Exit(29)
 			}
 			if message.Params["model"] != MiniMaxModel || message.Params["modelProvider"] != MiniMaxProviderID ||
 				message.Params["approvalPolicy"] != "never" || message.Params["sandbox"] != "read-only" {
 				os.Exit(30)
 			}
+			if mode == "title" {
+				if message.Params["ephemeral"] != true {
+					os.Exit(31)
+				}
+				if _, hasCwd := message.Params["cwd"]; hasCwd {
+					os.Exit(32)
+				}
+			}
 			thread := map[string]any{
 				"id":        "019c0123-4567-7abc-8123-456789abcdec",
 				"sessionId": "019c0123-4567-7abc-8123-456789abcdea",
 				"turns":     []any{},
+			}
+			if mode == "title" {
+				thread["ephemeral"] = true
+				thread["path"] = nil
 			}
 			_ = encoder.Encode(map[string]any{
 				"id": message.ID,
@@ -153,6 +169,26 @@ func TestRuntimeHelperProcess(t *testing.T) {
 				},
 			})
 		case "turn/start":
+			if mode == "title" {
+				if message.Params["effort"] != "none" || message.Params["outputSchema"] == nil {
+					os.Exit(33)
+				}
+				turn := map[string]any{"id": "019c0123-4567-7abc-8123-456789abcded", "status": "inProgress"}
+				_ = encoder.Encode(map[string]any{"id": message.ID, "result": map[string]any{"turn": turn}})
+				titleJSON := `{"title":"设计本地聊天安全删除流程"}`
+				_ = encoder.Encode(map[string]any{"method": "item/agentMessage/delta", "params": map[string]any{
+					"threadId": "019c0123-4567-7abc-8123-456789abcdec", "turnId": turn["id"], "itemId": "title-item", "delta": titleJSON,
+				}})
+				_ = encoder.Encode(map[string]any{"method": "item/completed", "params": map[string]any{
+					"threadId": "019c0123-4567-7abc-8123-456789abcdec", "turnId": turn["id"],
+					"item": map[string]any{"id": "title-item", "type": "agentMessage", "text": titleJSON},
+				}})
+				turn["status"] = "completed"
+				_ = encoder.Encode(map[string]any{"method": "turn/completed", "params": map[string]any{
+					"threadId": "019c0123-4567-7abc-8123-456789abcdec", "turn": turn,
+				}})
+				continue
+			}
 			turn := map[string]any{
 				"id": "019c0123-4567-7abc-8123-456789abcded", "status": "inProgress",
 			}
@@ -191,6 +227,14 @@ func TestRuntimeHelperProcess(t *testing.T) {
 			})
 		case "turn/interrupt":
 			_ = encoder.Encode(map[string]any{"id": message.ID, "result": map[string]any{}})
+		case "thread/delete":
+			_ = encoder.Encode(map[string]any{"id": message.ID, "result": map[string]any{}})
+			_ = encoder.Encode(map[string]any{
+				"method": RuntimeNotificationThreadDeleted,
+				"params": map[string]any{"threadId": "019c0123-4567-7abc-8123-456789abcdec"},
+			})
+		case "thread/unsubscribe":
+			_ = encoder.Encode(map[string]any{"id": message.ID, "result": map[string]any{"status": "unsubscribed"}})
 		default:
 			if string(message.ID) == `"server-request-1"` {
 				if int(message.Error["code"].(float64)) != methodNotFoundCode {
@@ -277,7 +321,6 @@ func TestManagerHandshakeAndGracefulShutdown(t *testing.T) {
 	setCredentialFixtures(t)
 	config := newRuntimeFixture(t)
 	manager := NewManager(config, nil)
-
 	if err := manager.Start(context.Background()); err != nil {
 		t.Fatalf("start runtime: %v", err)
 	}
@@ -473,6 +516,50 @@ func TestManagerBaseline2ThreadTurnMethods(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatalf("timed out waiting for %s", method)
 		}
+	}
+	if err := manager.DeleteThread(context.Background(), thread.ID); err != nil {
+		t.Fatalf("delete thread with confirmation: %v", err)
+	}
+	select {
+	case method := <-notifications:
+		if method != RuntimeNotificationThreadDeleted {
+			t.Fatalf("expected delete notification, got %s", method)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for delete notification forwarding")
+	}
+}
+
+func TestManagerGeneratesTitleWithPathlessEphemeralStrictFixture(t *testing.T) {
+	t.Setenv("YIJIE_FAKE_MODE", "title")
+	config := newRuntimeFixture(t)
+	config.MiniMax = MiniMaxConfig{Enabled: true, APIKey: "synthetic-test-key"}
+	manager := NewManager(config, nil)
+	notifications := make(chan string, 1)
+	if err := manager.SetNotificationHandler(func(method string, _ json.RawMessage) {
+		notifications <- method
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = manager.Shutdown(ctx)
+	})
+	title, err := manager.GenerateTitle(context.Background(), "为新的本地聊天任务设计安全的删除流程")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title != "设计本地聊天安全删除流程" {
+		t.Fatalf("unexpected generated title %q", title)
+	}
+	select {
+	case method := <-notifications:
+		t.Fatalf("title notification leaked into the main session handler: %s", method)
+	case <-time.After(50 * time.Millisecond):
 	}
 }
 

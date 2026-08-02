@@ -4,8 +4,10 @@
 package agenthostcontract
 
 import (
+	"encoding/json"
 	"time"
 
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -151,6 +153,171 @@ func (e AgentSessionState) Valid() bool {
 	case AgentSessionStateIdle:
 		return true
 	case AgentSessionStateStarting:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CleanupAgentSessionV2CompletedResponseOutcome.
+const (
+	CleanupAgentSessionV2CompletedResponseOutcomeComplete CleanupAgentSessionV2CompletedResponseOutcome = "complete"
+)
+
+// Valid indicates whether the value is a known member of the CleanupAgentSessionV2CompletedResponseOutcome enum.
+func (e CleanupAgentSessionV2CompletedResponseOutcome) Valid() bool {
+	switch e {
+	case CleanupAgentSessionV2CompletedResponseOutcomeComplete:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CleanupAgentSessionV2IncompleteResponseOutcome.
+const (
+	CleanupAgentSessionV2IncompleteResponseOutcomeIncomplete CleanupAgentSessionV2IncompleteResponseOutcome = "incomplete"
+)
+
+// Valid indicates whether the value is a known member of the CleanupAgentSessionV2IncompleteResponseOutcome enum.
+func (e CleanupAgentSessionV2IncompleteResponseOutcome) Valid() bool {
+	switch e {
+	case CleanupAgentSessionV2IncompleteResponseOutcomeIncomplete:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CleanupCompletedSurfacesHostMapping.
+const (
+	CleanupCompletedSurfacesHostMappingComplete CleanupCompletedSurfacesHostMapping = "complete"
+)
+
+// Valid indicates whether the value is a known member of the CleanupCompletedSurfacesHostMapping enum.
+func (e CleanupCompletedSurfacesHostMapping) Valid() bool {
+	switch e {
+	case CleanupCompletedSurfacesHostMappingComplete:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CleanupCompletedSurfacesHostReplay.
+const (
+	CleanupCompletedSurfacesHostReplayComplete CleanupCompletedSurfacesHostReplay = "complete"
+)
+
+// Valid indicates whether the value is a known member of the CleanupCompletedSurfacesHostReplay enum.
+func (e CleanupCompletedSurfacesHostReplay) Valid() bool {
+	switch e {
+	case CleanupCompletedSurfacesHostReplayComplete:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CleanupCompletedSurfacesRuntimeThreadTree.
+const (
+	CleanupCompletedSurfacesRuntimeThreadTreeComplete CleanupCompletedSurfacesRuntimeThreadTree = "complete"
+)
+
+// Valid indicates whether the value is a known member of the CleanupCompletedSurfacesRuntimeThreadTree enum.
+func (e CleanupCompletedSurfacesRuntimeThreadTree) Valid() bool {
+	switch e {
+	case CleanupCompletedSurfacesRuntimeThreadTreeComplete:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CleanupIncompleteErrorCode.
+const (
+	CleanupIncomplete CleanupIncompleteErrorCode = "cleanup_incomplete"
+)
+
+// Valid indicates whether the value is a known member of the CleanupIncompleteErrorCode enum.
+func (e CleanupIncompleteErrorCode) Valid() bool {
+	switch e {
+	case CleanupIncomplete:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CleanupIncompleteErrorReasonCode.
+const (
+	CleanupIncompleteErrorReasonCodeActiveTurn                CleanupIncompleteErrorReasonCode = "active_turn"
+	CleanupIncompleteErrorReasonCodeHostMappingCleanupFailed  CleanupIncompleteErrorReasonCode = "host_mapping_cleanup_failed"
+	CleanupIncompleteErrorReasonCodeHostReplayCleanupFailed   CleanupIncompleteErrorReasonCode = "host_replay_cleanup_failed"
+	CleanupIncompleteErrorReasonCodeInternalError             CleanupIncompleteErrorReasonCode = "internal_error"
+	CleanupIncompleteErrorReasonCodeOperationStateUnavailable CleanupIncompleteErrorReasonCode = "operation_state_unavailable"
+	CleanupIncompleteErrorReasonCodeRuntimeDeleteFailed       CleanupIncompleteErrorReasonCode = "runtime_delete_failed"
+	CleanupIncompleteErrorReasonCodeRuntimeDeleteUnconfirmed  CleanupIncompleteErrorReasonCode = "runtime_delete_unconfirmed"
+	CleanupIncompleteErrorReasonCodeSharedThreadMapping       CleanupIncompleteErrorReasonCode = "shared_thread_mapping"
+	CleanupIncompleteErrorReasonCodeTerminalUnconfirmed       CleanupIncompleteErrorReasonCode = "terminal_unconfirmed"
+)
+
+// Valid indicates whether the value is a known member of the CleanupIncompleteErrorReasonCode enum.
+func (e CleanupIncompleteErrorReasonCode) Valid() bool {
+	switch e {
+	case CleanupIncompleteErrorReasonCodeActiveTurn:
+		return true
+	case CleanupIncompleteErrorReasonCodeHostMappingCleanupFailed:
+		return true
+	case CleanupIncompleteErrorReasonCodeHostReplayCleanupFailed:
+		return true
+	case CleanupIncompleteErrorReasonCodeInternalError:
+		return true
+	case CleanupIncompleteErrorReasonCodeOperationStateUnavailable:
+		return true
+	case CleanupIncompleteErrorReasonCodeRuntimeDeleteFailed:
+		return true
+	case CleanupIncompleteErrorReasonCodeRuntimeDeleteUnconfirmed:
+		return true
+	case CleanupIncompleteErrorReasonCodeSharedThreadMapping:
+		return true
+	case CleanupIncompleteErrorReasonCodeTerminalUnconfirmed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CleanupOperationConflictErrorErrorCode.
+const (
+	CleanupOperationConflict CleanupOperationConflictErrorErrorCode = "cleanup_operation_conflict"
+)
+
+// Valid indicates whether the value is a known member of the CleanupOperationConflictErrorErrorCode enum.
+func (e CleanupOperationConflictErrorErrorCode) Valid() bool {
+	switch e {
+	case CleanupOperationConflict:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CleanupSurfaceStatus.
+const (
+	CleanupSurfaceStatusComplete     CleanupSurfaceStatus = "complete"
+	CleanupSurfaceStatusIncomplete   CleanupSurfaceStatus = "incomplete"
+	CleanupSurfaceStatusNotAttempted CleanupSurfaceStatus = "not_attempted"
+)
+
+// Valid indicates whether the value is a known member of the CleanupSurfaceStatus enum.
+func (e CleanupSurfaceStatus) Valid() bool {
+	switch e {
+	case CleanupSurfaceStatusComplete:
+		return true
+	case CleanupSurfaceStatusIncomplete:
+		return true
+	case CleanupSurfaceStatusNotAttempted:
 		return true
 	default:
 		return false
@@ -493,6 +660,81 @@ func (e StartTurnRequestReasoningEffort) Valid() bool {
 	}
 }
 
+// Defines values for TitleGenerationUnavailableErrorErrorCode.
+const (
+	TitleGenerationUnavailableErrorErrorCodeTitleGenerationUnavailable TitleGenerationUnavailableErrorErrorCode = "title_generation_unavailable"
+)
+
+// Valid indicates whether the value is a known member of the TitleGenerationUnavailableErrorErrorCode enum.
+func (e TitleGenerationUnavailableErrorErrorCode) Valid() bool {
+	switch e {
+	case TitleGenerationUnavailableErrorErrorCodeTitleGenerationUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TitleOperationConflictErrorErrorCode.
+const (
+	TitleOperationConflictErrorErrorCodeTitleOperationConflict TitleOperationConflictErrorErrorCode = "title_operation_conflict"
+)
+
+// Valid indicates whether the value is a known member of the TitleOperationConflictErrorErrorCode enum.
+func (e TitleOperationConflictErrorErrorCode) Valid() bool {
+	switch e {
+	case TitleOperationConflictErrorErrorCodeTitleOperationConflict:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TitleOutputInvalidErrorErrorCode.
+const (
+	TitleOutputInvalidErrorErrorCodeTitleOutputInvalid TitleOutputInvalidErrorErrorCode = "title_output_invalid"
+)
+
+// Valid indicates whether the value is a known member of the TitleOutputInvalidErrorErrorCode enum.
+func (e TitleOutputInvalidErrorErrorCode) Valid() bool {
+	switch e {
+	case TitleOutputInvalidErrorErrorCodeTitleOutputInvalid:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EventSchemaVersionV2.
+const (
+	EventSchemaVersionV2N2 EventSchemaVersionV2 = 2
+)
+
+// Valid indicates whether the value is a known member of the EventSchemaVersionV2 enum.
+func (e EventSchemaVersionV2) Valid() bool {
+	switch e {
+	case EventSchemaVersionV2N2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StreamAgentSessionEventsV2ParamsEventSchemaVersion.
+const (
+	StreamAgentSessionEventsV2ParamsEventSchemaVersionN2 StreamAgentSessionEventsV2ParamsEventSchemaVersion = 2
+)
+
+// Valid indicates whether the value is a known member of the StreamAgentSessionEventsV2ParamsEventSchemaVersion enum.
+func (e StreamAgentSessionEventsV2ParamsEventSchemaVersion) Valid() bool {
+	switch e {
+	case StreamAgentSessionEventsV2ParamsEventSchemaVersionN2:
+		return true
+	default:
+		return false
+	}
+}
+
 // AgentHostStatus defines model for AgentHostStatus.
 type AgentHostStatus struct {
 	Environment string                     `json:"environment"`
@@ -541,6 +783,89 @@ type AgentSessionModelProvider string
 // AgentSessionState defines model for AgentSession.State.
 type AgentSessionState string
 
+// CleanupAgentSessionV2CompletedResponse defines model for CleanupAgentSessionV2CompletedResponse.
+type CleanupAgentSessionV2CompletedResponse struct {
+	OperationId openapi_types.UUID                            `json:"operation_id"`
+	Outcome     CleanupAgentSessionV2CompletedResponseOutcome `json:"outcome"`
+	Surfaces    CleanupCompletedSurfaces                      `json:"surfaces"`
+}
+
+// CleanupAgentSessionV2CompletedResponseOutcome defines model for CleanupAgentSessionV2CompletedResponse.Outcome.
+type CleanupAgentSessionV2CompletedResponseOutcome string
+
+// CleanupAgentSessionV2IncompleteResponse defines model for CleanupAgentSessionV2IncompleteResponse.
+type CleanupAgentSessionV2IncompleteResponse struct {
+	Error       CleanupIncompleteError                         `json:"error"`
+	OperationId openapi_types.UUID                             `json:"operation_id"`
+	Outcome     CleanupAgentSessionV2IncompleteResponseOutcome `json:"outcome"`
+	Surfaces    CleanupIncompleteSurfaces                      `json:"surfaces"`
+}
+
+// CleanupAgentSessionV2IncompleteResponseOutcome defines model for CleanupAgentSessionV2IncompleteResponse.Outcome.
+type CleanupAgentSessionV2IncompleteResponseOutcome string
+
+// CleanupAgentSessionV2Request defines model for CleanupAgentSessionV2Request.
+type CleanupAgentSessionV2Request struct {
+	// OperationId Idempotent deletion-saga operation identifier selected by Desktop.
+	OperationId openapi_types.UUID `json:"operation_id"`
+
+	// RequestId Correlation only; never authorization input.
+	RequestId *string `json:"request_id,omitempty"`
+
+	// TraceId Correlation only; never authorization input.
+	TraceId *string `json:"trace_id,omitempty"`
+}
+
+// CleanupCompletedSurfaces defines model for CleanupCompletedSurfaces.
+type CleanupCompletedSurfaces struct {
+	HostMapping       CleanupCompletedSurfacesHostMapping       `json:"host_mapping"`
+	HostReplay        CleanupCompletedSurfacesHostReplay        `json:"host_replay"`
+	RuntimeThreadTree CleanupCompletedSurfacesRuntimeThreadTree `json:"runtime_thread_tree"`
+}
+
+// CleanupCompletedSurfacesHostMapping defines model for CleanupCompletedSurfaces.HostMapping.
+type CleanupCompletedSurfacesHostMapping string
+
+// CleanupCompletedSurfacesHostReplay defines model for CleanupCompletedSurfaces.HostReplay.
+type CleanupCompletedSurfacesHostReplay string
+
+// CleanupCompletedSurfacesRuntimeThreadTree defines model for CleanupCompletedSurfaces.RuntimeThreadTree.
+type CleanupCompletedSurfacesRuntimeThreadTree string
+
+// CleanupIncompleteError defines model for CleanupIncompleteError.
+type CleanupIncompleteError struct {
+	Code       CleanupIncompleteErrorCode       `json:"code"`
+	Message    string                           `json:"message"`
+	ReasonCode CleanupIncompleteErrorReasonCode `json:"reason_code"`
+}
+
+// CleanupIncompleteErrorCode defines model for CleanupIncompleteError.Code.
+type CleanupIncompleteErrorCode string
+
+// CleanupIncompleteErrorReasonCode defines model for CleanupIncompleteError.ReasonCode.
+type CleanupIncompleteErrorReasonCode string
+
+// CleanupIncompleteSurfaces defines model for CleanupIncompleteSurfaces.
+type CleanupIncompleteSurfaces struct {
+	HostMapping       CleanupSurfaceStatus `json:"host_mapping"`
+	HostReplay        CleanupSurfaceStatus `json:"host_replay"`
+	RuntimeThreadTree CleanupSurfaceStatus `json:"runtime_thread_tree"`
+}
+
+// CleanupOperationConflictError defines model for CleanupOperationConflictError.
+type CleanupOperationConflictError struct {
+	Error struct {
+		Code    CleanupOperationConflictErrorErrorCode `json:"code"`
+		Message string                                 `json:"message"`
+	} `json:"error"`
+}
+
+// CleanupOperationConflictErrorErrorCode defines model for CleanupOperationConflictError.Error.Code.
+type CleanupOperationConflictErrorErrorCode string
+
+// CleanupSurfaceStatus defines model for CleanupSurfaceStatus.
+type CleanupSurfaceStatus string
+
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
 	Error struct {
@@ -551,6 +876,29 @@ type ErrorResponse struct {
 
 // ErrorResponseErrorCode defines model for ErrorResponse.Error.Code.
 type ErrorResponseErrorCode string
+
+// GenerateTitleV2Request defines model for GenerateTitleV2Request.
+type GenerateTitleV2Request struct {
+	// Input First user text only; non-blank and at most 8 KiB UTF-8.
+	Input string `json:"input"`
+
+	// OperationId Idempotent title-generation operation identifier selected by Desktop.
+	OperationId openapi_types.UUID `json:"operation_id"`
+
+	// RequestId Correlation only; never authorization input.
+	RequestId *string `json:"request_id,omitempty"`
+
+	// TraceId Correlation only; never authorization input.
+	TraceId *string `json:"trace_id,omitempty"`
+}
+
+// GenerateTitleV2Response defines model for GenerateTitleV2Response.
+type GenerateTitleV2Response struct {
+	OperationId openapi_types.UUID `json:"operation_id"`
+
+	// Title NFC, one-line untrusted plain text with 1..40 grapheme clusters and no control, bidi-control, HTML, or Markdown syntax.
+	Title string `json:"title"`
+}
 
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
@@ -680,6 +1028,39 @@ type StartTurnResponse struct {
 	TurnId openapi_types.UUID `json:"turn_id"`
 }
 
+// TitleGenerationUnavailableError defines model for TitleGenerationUnavailableError.
+type TitleGenerationUnavailableError struct {
+	Error struct {
+		Code    TitleGenerationUnavailableErrorErrorCode `json:"code"`
+		Message string                                   `json:"message"`
+	} `json:"error"`
+}
+
+// TitleGenerationUnavailableErrorErrorCode defines model for TitleGenerationUnavailableError.Error.Code.
+type TitleGenerationUnavailableErrorErrorCode string
+
+// TitleOperationConflictError defines model for TitleOperationConflictError.
+type TitleOperationConflictError struct {
+	Error struct {
+		Code    TitleOperationConflictErrorErrorCode `json:"code"`
+		Message string                               `json:"message"`
+	} `json:"error"`
+}
+
+// TitleOperationConflictErrorErrorCode defines model for TitleOperationConflictError.Error.Code.
+type TitleOperationConflictErrorErrorCode string
+
+// TitleOutputInvalidError defines model for TitleOutputInvalidError.
+type TitleOutputInvalidError struct {
+	Error struct {
+		Code    TitleOutputInvalidErrorErrorCode `json:"code"`
+		Message string                           `json:"message"`
+	} `json:"error"`
+}
+
+// TitleOutputInvalidErrorErrorCode defines model for TitleOutputInvalidError.Error.Code.
+type TitleOutputInvalidErrorErrorCode string
+
 // TraceRequest Correlation metadata copied to subsequent events. `{}` is valid. These
 // values are correlation context, not authentication or authorization input.
 type TraceRequest struct {
@@ -697,6 +1078,9 @@ type AgentSessionId = openapi_types.UUID
 
 // EventAfter defines model for EventAfter.
 type EventAfter = uint64
+
+// EventSchemaVersionV2 defines model for EventSchemaVersionV2.
+type EventSchemaVersionV2 int32
 
 // EventStreamId defines model for EventStreamId.
 type EventStreamId = openapi_types.UUID
@@ -722,6 +1106,15 @@ type RuntimeRequestFailed = ErrorResponse
 // SessionNotFound defines model for SessionNotFound.
 type SessionNotFound = ErrorResponse
 
+// TitleGenerationUnavailable defines model for TitleGenerationUnavailable.
+type TitleGenerationUnavailable = TitleGenerationUnavailableError
+
+// TitleOperationConflict defines model for TitleOperationConflict.
+type TitleOperationConflict = TitleOperationConflictError
+
+// TitleOutputInvalid defines model for TitleOutputInvalid.
+type TitleOutputInvalid = TitleOutputInvalidError
+
 // Unauthorized defines model for Unauthorized.
 type Unauthorized = ErrorResponse
 
@@ -746,6 +1139,35 @@ type StreamAgentSessionEventsParams struct {
 	LastEventID *LastEventId `json:"Last-Event-ID,omitempty"`
 }
 
+// CleanupAgentSessionV2409JSONResponseBody defines parameters for CleanupAgentSessionV2.
+type CleanupAgentSessionV2409JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// StreamAgentSessionEventsV2Params defines parameters for StreamAgentSessionEventsV2.
+type StreamAgentSessionEventsV2Params struct {
+	// EventSchemaVersion Explicit negotiation guard. Only integer value 2 is accepted on the v2 event stream.
+	EventSchemaVersion StreamAgentSessionEventsV2ParamsEventSchemaVersion `form:"event_schema_version" json:"event_schema_version"`
+
+	// StreamId Expected process-local stream identifier. Required when `after > 0`
+	// unless `Last-Event-ID` supplies the complete cursor. A mismatch returns
+	// `409 event_stream_changed`.
+	StreamId *EventStreamId `form:"stream_id,omitempty" json:"stream_id,omitempty"`
+
+	// After Unsigned 64-bit sequence after which events are replayed. Defaults to
+	// zero. Values greater than zero require a matching stream ID. Ignored when
+	// `Last-Event-ID` is present.
+	After *EventAfter `form:"after,omitempty" json:"after,omitempty"`
+
+	// LastEventID Complete SSE cursor `<stream_id>:<sequence>`. Sequence is a decimal
+	// unsigned 64-bit integer from 1 through 18446744073709551615 with no
+	// leading zero. The header overrides `stream_id` and `after` query parameters.
+	LastEventID *LastEventId `json:"Last-Event-ID,omitempty"`
+}
+
+// StreamAgentSessionEventsV2ParamsEventSchemaVersion defines parameters for StreamAgentSessionEventsV2.
+type StreamAgentSessionEventsV2ParamsEventSchemaVersion int32
+
 // ResumeAgentSessionJSONRequestBody defines body for ResumeAgentSession for application/json ContentType.
 type ResumeAgentSessionJSONRequestBody = TraceRequest
 
@@ -757,3 +1179,71 @@ type InterruptAgentTurnJSONRequestBody = TraceRequest
 
 // StartAgentSessionJSONRequestBody defines body for StartAgentSession for application/json ContentType.
 type StartAgentSessionJSONRequestBody = StartSessionRequest
+
+// CleanupAgentSessionV2JSONRequestBody defines body for CleanupAgentSessionV2 for application/json ContentType.
+type CleanupAgentSessionV2JSONRequestBody = CleanupAgentSessionV2Request
+
+// GenerateAgentSessionTitleV2JSONRequestBody defines body for GenerateAgentSessionTitleV2 for application/json ContentType.
+type GenerateAgentSessionTitleV2JSONRequestBody = GenerateTitleV2Request
+
+// AsCleanupAgentSessionV2IncompleteResponse returns the union data inside the CleanupAgentSessionV2409JSONResponseBody as a CleanupAgentSessionV2IncompleteResponse
+func (t CleanupAgentSessionV2409JSONResponseBody) AsCleanupAgentSessionV2IncompleteResponse() (CleanupAgentSessionV2IncompleteResponse, error) {
+	var body CleanupAgentSessionV2IncompleteResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCleanupAgentSessionV2IncompleteResponse overwrites any union data inside the CleanupAgentSessionV2409JSONResponseBody as the provided CleanupAgentSessionV2IncompleteResponse
+func (t *CleanupAgentSessionV2409JSONResponseBody) FromCleanupAgentSessionV2IncompleteResponse(v CleanupAgentSessionV2IncompleteResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCleanupAgentSessionV2IncompleteResponse performs a merge with any union data inside the CleanupAgentSessionV2409JSONResponseBody, using the provided CleanupAgentSessionV2IncompleteResponse
+func (t *CleanupAgentSessionV2409JSONResponseBody) MergeCleanupAgentSessionV2IncompleteResponse(v CleanupAgentSessionV2IncompleteResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCleanupOperationConflictError returns the union data inside the CleanupAgentSessionV2409JSONResponseBody as a CleanupOperationConflictError
+func (t CleanupAgentSessionV2409JSONResponseBody) AsCleanupOperationConflictError() (CleanupOperationConflictError, error) {
+	var body CleanupOperationConflictError
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCleanupOperationConflictError overwrites any union data inside the CleanupAgentSessionV2409JSONResponseBody as the provided CleanupOperationConflictError
+func (t *CleanupAgentSessionV2409JSONResponseBody) FromCleanupOperationConflictError(v CleanupOperationConflictError) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCleanupOperationConflictError performs a merge with any union data inside the CleanupAgentSessionV2409JSONResponseBody, using the provided CleanupOperationConflictError
+func (t *CleanupAgentSessionV2409JSONResponseBody) MergeCleanupOperationConflictError(v CleanupOperationConflictError) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t CleanupAgentSessionV2409JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *CleanupAgentSessionV2409JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
