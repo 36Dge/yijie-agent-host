@@ -17,3 +17,4 @@ data: {"agent_session_id":"019fbe00-0000-7000-8000-000000000003","codex_thread_i
 id: 019fbe00-0000-7000-8000-000000000001:5
 event: turn.completed
 data: {"agent_session_id":"019fbe00-0000-7000-8000-000000000003","codex_thread_id":"019fbe00-0000-7000-8000-000000000004","event_id":"019fbe00-0000-7000-8000-000000000015","event_type":"turn.completed","occurred_at":"2026-08-04T00:00:00Z","payload":{"status":"completed"},"schema_version":2,"sequence":5,"stream_id":"019fbe00-0000-7000-8000-000000000001","task_id":"019fbe00-0000-7000-8000-000000000002","terminal":true,"turn_id":"019fbe00-0000-7000-8000-000000000005"}
+

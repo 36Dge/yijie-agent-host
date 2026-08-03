@@ -7,9 +7,9 @@
     "eval-case.schema.json": "c2ffb1631fe6d1709356ab61ea841a4b74b9e9ffd0a5880edec6cc7365d6a60c",
     "dataset.jsonl": "523609b44fd244fff18b930c992375999276c2e0d5786efadfd8858ec623b308",
     "split.json": "abeecfa113ba6a7eecee9be6e3d2ba97377c596bdddf4553cabc50668916afc7",
-    "desktop-events.sse": "105be2f38905fa3a61c165bd42adefa74c79c6fa09ab8a499ad8ae0744d5aad0",
+    "desktop-events.sse": "e8c2d5ebca2182b7b07ad30761c07b5986139f2ff8ec9bbbf9b4ecaae6d6a0e6",
     "desktop-consumer.json": "5ad29b750693ecf95a0cabab4fe7c2ada6f6dbb9b10f9f99c3d5c25654d32cf1",
-    "generate.go": "349937302fcbbbfb66506d56140efa9fbbecca772d783c5fad3af8b24d159c56",
+    "generate.go": "2d8ba42b0eea2d3bd6642634efabb47e68a0ded6e144d46f78544c9a648c294c",
     "feat126_eval_test.go": "3590ec732c4665b5fed541adad672153cabc196d9938e16acf3c264b8d1921f1"
   }
 }

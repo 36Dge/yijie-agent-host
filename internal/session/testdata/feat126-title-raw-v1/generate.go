@@ -183,9 +183,6 @@ func writeDesktopEvents(path string) {
 			panic(err)
 		}
 		separator := "\n\n"
-		if index == len(events)-1 {
-			separator = "\n"
-		}
 		if _, err := fmt.Fprintf(file, "id: %s:%d\nevent: %s\ndata: %s%s", stream, index+1, item["event_type"], data, separator); err != nil {
 			panic(err)
 		}
