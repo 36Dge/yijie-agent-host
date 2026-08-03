@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.yijie.local/eval/feat126-title-raw-v1/case.schema.json",
+  "title": "FEAT-126 deterministic fake-provider evaluation case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "split",
+    "category",
+    "locale",
+    "prompt",
+    "fake_title_output",
+    "expected_title",
+    "expected_title_accepted",
+    "semantic_keyword",
+    "raw_scenario",
+    "raw_text",
+    "expected_raw_gate",
+    "expected_raw_status"
+  ],
+  "properties": {
+    "id": {"type": "string", "pattern": "^(normal|adversarial)-[0-9]{3}$"},
+    "split": {"enum": ["train", "holdout"]},
+    "category": {"enum": ["normal", "adversarial"]},
+    "locale": {"enum": ["zh-CN", "en-US", "ja-JP", "es-ES", "de-DE"]},
+    "prompt": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "fake_title_output": {"type": "string", "minLength": 1, "maxLength": 256},
+    "expected_title": {"type": ["string", "null"], "maxLength": 80},
+    "expected_title_accepted": {"type": "boolean"},
+    "semantic_keyword": {"type": "string", "maxLength": 32},
+    "raw_scenario": {"enum": ["complete", "missing", "gap", "invalid", "oversize", "plaintext_injection"]},
+    "raw_text": {"type": "string", "maxLength": 4096},
+    "expected_raw_gate": {"enum": ["pass", "fail"]},
+    "expected_raw_status": {"enum": ["complete", "incomplete", "unavailable", "missing"]}
+  }
+}

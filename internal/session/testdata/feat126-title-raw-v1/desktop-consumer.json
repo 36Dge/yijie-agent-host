@@ -1,0 +1,26 @@
+{
+  "datasetId": "feat126-title-raw-v1",
+  "reasoningResponse": {
+    "data": [
+      {
+        "finalizedAtMs": 1785801600000,
+        "itemOrdinal": 0,
+        "parts": [
+          {
+            "contentIndex": 0,
+            "text": "先核对约束。\n<script>not executable</script>\n再给出结论。"
+          }
+        ],
+        "reasonCode": null,
+        "status": "complete"
+      }
+    ],
+    "requestId": "019fbe00-0000-7000-8000-000000000021",
+    "schemaVersion": 1
+  },
+  "titleScenario": {
+    "lateModelTitle": "迟到模型标题",
+    "modelTitle": "订单风险检查 000",
+    "userTitle": "人工确认标题"
+  }
+}

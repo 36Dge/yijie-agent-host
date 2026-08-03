@@ -1,0 +1,34 @@
+{
+  "dataset_id": "feat126-title-raw-v1",
+  "schema_version": 1,
+  "authority": "yijie-agent-host",
+  "provider": "deterministic-fake",
+  "generated_on": "2026-08-04",
+  "contract_impact": "additive-test-only",
+  "baselines": {
+    "contracts": "29317b6426578749dc698fc2ad32b986ee5c8e9f",
+    "host": "3e8df026110f0c895262329c2384d3896598f3d9",
+    "desktop": "35f27447398529cca4dec85fa1f67e779c7a7cbd",
+    "runtime": "3aa317cebbbc9c743f6b1a18522be11a7ebb5d6f"
+  },
+  "counts": {
+    "normal": 200,
+    "adversarial": 50,
+    "train": 200,
+    "holdout": 50
+  },
+  "split_policy": "case ordinal modulo 5 equals 0 is holdout",
+  "title_gate": {
+    "schema_and_sanitizer_percent": 100,
+    "semantic_success_min_percent": 95,
+    "late_user_title_overwrite_max": 0,
+    "leak_or_extra_action_max": 0
+  },
+  "raw_gate": {
+    "valid_required_percent": 100,
+    "negative_detection_percent": 100,
+    "execution_or_body_leak_max": 0,
+    "negative_scenarios": ["missing", "gap", "invalid", "oversize"]
+  },
+  "data_policy": "synthetic-only; no real user data, credentials, project paths or external provider calls"
+}

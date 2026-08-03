@@ -1,4 +1,4 @@
-.PHONY: dev test runtime-test runtime-turn-test lint generate sync-contracts contract-check
+.PHONY: dev test runtime-test runtime-turn-test feat126-eval lint generate sync-contracts contract-check
 
 dev:
 	go run ./cmd/desktop-host
@@ -12,6 +12,9 @@ runtime-test:
 
 runtime-turn-test:
 	./scripts/test-runtime-turn-integration.sh
+
+feat126-eval:
+	go test ./internal/session -run '^TestFEAT126FakeProviderEval$$' -count=1 -v
 
 lint:
 	@test -z "$$(gofmt -l $$(find cmd internal -type f -name '*.go'))" || (gofmt -l $$(find cmd internal -type f -name '*.go') && exit 1)
