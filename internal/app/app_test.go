@@ -31,14 +31,18 @@ func (s staticRuntimeStatus) Snapshot() codex.Status {
 }
 
 func TestHealthzReportsProcessHealth(t *testing.T) {
+	const instanceNonce = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	response := httptest.NewRecorder()
 	runtime := staticRuntimeStatus{status: codex.Status{State: codex.StateFailed}}
 
-	NewHandler(Config{Environment: "test", Port: "0"}, runtime, nil, "").ServeHTTP(response, request)
+	NewHandler(Config{Environment: "test", Port: "0", InstanceNonce: instanceNonce}, runtime, nil, "").ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", response.Code)
+	}
+	if response.Header().Get("X-Yijie-Host-Instance-Nonce") != instanceNonce {
+		t.Fatalf("health response did not bind the spawned instance: %v", response.Header())
 	}
 	var payload agenthostcontract.HealthResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
@@ -52,6 +56,7 @@ func TestHealthzReportsProcessHealth(t *testing.T) {
 }
 
 func TestReadyzReflectsRuntimeReadiness(t *testing.T) {
+	const instanceNonce = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
 	tests := []struct {
 		name       string
 		status     codex.Status
@@ -77,7 +82,7 @@ func TestReadyzReflectsRuntimeReadiness(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 			response := httptest.NewRecorder()
 			NewHandler(
-				Config{Environment: "test", Port: "0"},
+				Config{Environment: "test", Port: "0", InstanceNonce: instanceNonce},
 				staticRuntimeStatus{status: test.status},
 				nil,
 				"",
@@ -85,6 +90,9 @@ func TestReadyzReflectsRuntimeReadiness(t *testing.T) {
 
 			if response.Code != test.wantCode {
 				t.Fatalf("expected status %d, got %d", test.wantCode, response.Code)
+			}
+			if response.Header().Get("X-Yijie-Host-Instance-Nonce") != instanceNonce {
+				t.Fatalf("ready response did not bind the spawned instance: %v", response.Header())
 			}
 			var payload struct {
 				Status string `json:"status"`
@@ -496,6 +504,15 @@ func TestV2DraftRoutesAreFlaggedAndMatchTitleCleanupContracts(t *testing.T) {
 	if missingNegotiation.Code != http.StatusBadRequest {
 		t.Fatalf("v2 event stream accepted missing negotiation: %d", missingNegotiation.Code)
 	}
+	streamRequest := authorizedRequest(http.MethodGet, "/v2/agent-sessions/"+sessionID+"/events?event_schema_version=2", "")
+	streamContext, cancelStream := context.WithCancel(streamRequest.Context())
+	cancelStream()
+	streamRequest = streamRequest.WithContext(streamContext)
+	streamResponse := httptest.NewRecorder()
+	enabled.ServeHTTP(streamResponse, streamRequest)
+	if streamResponse.Code != http.StatusOK || streamResponse.Header().Get("X-Yijie-Event-Schema-Version") != "2" {
+		t.Fatalf("v2 stream omitted schema response header: status=%d headers=%v", streamResponse.Code, streamResponse.Header())
+	}
 
 	cleanupOperation := "019fbd88-cbc3-7bf1-934d-7b05cd693f61"
 	cleanupResponse := httptest.NewRecorder()
@@ -510,6 +527,7 @@ func TestLoadConfigKeepsV2DraftCapabilitiesOffAndLocalOnly(t *testing.T) {
 	for _, key := range []string{
 		"YIJIE_AGENT_HOST_V2_RAW_REASONING_ENABLED", "YIJIE_AGENT_HOST_V2_TITLE_ENABLED", "YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED",
 		"YIJIE_MODEL_PROVIDER", "YIJIE_MINIMAX_API_KEY", "YIJIE_MINIMAX_API_KEY_FILE", "YIJIE_AGENT_HOST_HOME", "YIJIE_ENV",
+		"YIJIE_AGENT_HOST_INSTANCE_NONCE",
 	} {
 		t.Setenv(key, "")
 	}
@@ -533,6 +551,14 @@ func TestLoadConfigKeepsV2DraftCapabilitiesOffAndLocalOnly(t *testing.T) {
 	t.Setenv("YIJIE_ENV", "production")
 	if _, err := LoadConfig(); err == nil {
 		t.Fatal("v2 draft capabilities must reject production")
+	}
+	t.Setenv("YIJIE_AGENT_HOST_V2_TITLE_ENABLED", "true")
+	t.Setenv("YIJIE_ENV", "local")
+	t.Setenv("YIJIE_MODEL_PROVIDER", "minimax")
+	t.Setenv("YIJIE_MINIMAX_API_KEY", "synthetic-test-key")
+	t.Setenv("YIJIE_CODEX_HOME", filepath.Join(t.TempDir(), "codex-home"))
+	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "cannot capability-disable tools") {
+		t.Fatalf("title flag was not held closed for the pinned Runtime: %v", err)
 	}
 }
 

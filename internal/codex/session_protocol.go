@@ -225,6 +225,11 @@ func (m *Manager) DeleteThread(ctx context.Context, threadID string) error {
 	}
 }
 
+func IsThreadNotFound(err error, threadID string) bool {
+	var rpcError *RPCError
+	return errors.As(err, &rpcError) && rpcError.Code == -32600 && rpcError.Message == "thread not found: "+threadID
+}
+
 func (m *Manager) request(ctx context.Context, method string, params, result any) error {
 	m.mu.Lock()
 	client := m.client

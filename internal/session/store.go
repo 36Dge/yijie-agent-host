@@ -20,6 +20,7 @@ const (
 	StateStarting = "starting"
 	StateIdle     = "idle"
 	StateActive   = "active"
+	StateCleaning = "cleaning"
 	StateFailed   = "failed"
 )
 
@@ -36,15 +37,16 @@ var (
 )
 
 var (
-	sessionsBucket        = []byte("sessions")
-	tasksBucket           = []byte("task_index")
-	threadsBucket         = []byte("thread_index")
-	metadataBucket        = []byte("metadata")
-	cleanupReceiptsBucket = []byte("cleanup_receipts_v2")
-	storeSchemaVersionKey = []byte("schema_version")
+	sessionsBucket          = []byte("sessions")
+	tasksBucket             = []byte("task_index")
+	threadsBucket           = []byte("thread_index")
+	metadataBucket          = []byte("metadata")
+	cleanupReceiptsBucket   = []byte("cleanup_receipts_v2")
+	cleanupOperationsBucket = []byte("cleanup_operations_v3")
+	storeSchemaVersionKey   = []byte("schema_version")
 )
 
-const storeSchemaVersion = "2"
+const storeSchemaVersion = "3"
 
 type TraceContext struct {
 	TraceID   string `json:"trace_id,omitempty"`
@@ -54,21 +56,22 @@ type TraceContext struct {
 }
 
 type Record struct {
-	TaskID           string       `json:"task_id"`
-	AgentSessionID   string       `json:"agent_session_id"`
-	CodexThreadID    string       `json:"codex_thread_id,omitempty"`
-	RuntimeSessionID string       `json:"runtime_session_id,omitempty"`
-	ActiveTurnID     string       `json:"active_turn_id,omitempty"`
-	LastTurnID       string       `json:"last_turn_id,omitempty"`
-	LastTurnStatus   string       `json:"last_turn_status,omitempty"`
-	State            string       `json:"state"`
-	Cwd              string       `json:"cwd"`
-	Model            string       `json:"model,omitempty"`
-	ModelProvider    string       `json:"model_provider,omitempty"`
-	FailureCode      string       `json:"failure_code,omitempty"`
-	Trace            TraceContext `json:"trace"`
-	CreatedAt        time.Time    `json:"created_at"`
-	UpdatedAt        time.Time    `json:"updated_at"`
+	TaskID             string       `json:"task_id"`
+	AgentSessionID     string       `json:"agent_session_id"`
+	CodexThreadID      string       `json:"codex_thread_id,omitempty"`
+	RuntimeSessionID   string       `json:"runtime_session_id,omitempty"`
+	ActiveTurnID       string       `json:"active_turn_id,omitempty"`
+	LastTurnID         string       `json:"last_turn_id,omitempty"`
+	LastTurnStatus     string       `json:"last_turn_status,omitempty"`
+	State              string       `json:"state"`
+	Cwd                string       `json:"cwd"`
+	Model              string       `json:"model,omitempty"`
+	ModelProvider      string       `json:"model_provider,omitempty"`
+	FailureCode        string       `json:"failure_code,omitempty"`
+	CleanupOperationID string       `json:"cleanup_operation_id,omitempty"`
+	Trace              TraceContext `json:"trace"`
+	CreatedAt          time.Time    `json:"created_at"`
+	UpdatedAt          time.Time    `json:"updated_at"`
 }
 
 type Store struct {
@@ -106,17 +109,17 @@ func OpenStore(hostHome string) (*Store, error) {
 	}
 	store := &Store{db: db, receiptKey: receiptKey}
 	if err := db.Update(func(tx *bolt.Tx) error {
-		for _, bucket := range [][]byte{sessionsBucket, tasksBucket, threadsBucket, metadataBucket, cleanupReceiptsBucket} {
+		for _, bucket := range [][]byte{sessionsBucket, tasksBucket, threadsBucket, metadataBucket, cleanupReceiptsBucket, cleanupOperationsBucket} {
 			if _, err := tx.CreateBucketIfNotExists(bucket); err != nil {
 				return err
 			}
 		}
 		metadata := tx.Bucket(metadataBucket)
 		version := metadata.Get(storeSchemaVersionKey)
-		if version != nil && string(version) != "1" && string(version) != storeSchemaVersion {
+		if version != nil && string(version) != "1" && string(version) != "2" && string(version) != storeSchemaVersion {
 			return fmt.Errorf("unsupported Agent Host store schema version %q", version)
 		}
-		if version == nil || string(version) == "1" {
+		if version == nil || string(version) == "1" || string(version) == "2" {
 			if err := metadata.Put(storeSchemaVersionKey, []byte(storeSchemaVersion)); err != nil {
 				return err
 			}
@@ -160,32 +163,144 @@ type CleanupReceipt struct {
 
 func (s *Store) CleanupReceipt(operationID, sessionID string) (CleanupReceipt, error) {
 	var receipt CleanupReceipt
-	err := s.db.View(func(tx *bolt.Tx) error {
-		value := tx.Bucket(cleanupReceiptsBucket).Get([]byte(operationID))
+	expired := false
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(cleanupReceiptsBucket)
+		value := bucket.Get([]byte(operationID))
 		if value == nil {
 			return ErrNotFound
 		}
 		if err := json.Unmarshal(value, &receipt); err != nil {
 			return fmt.Errorf("decode cleanup receipt: %w", err)
 		}
-		if receipt.ExpiresAt.Before(time.Now().UTC()) {
-			return ErrNotFound
+		if !receipt.ExpiresAt.After(time.Now().UTC()) {
+			if err := bucket.Delete([]byte(operationID)); err != nil {
+				return err
+			}
+			expired = true
+			return nil
 		}
 		if !hmac.Equal([]byte(receipt.SessionHash), []byte(s.keyedSessionHash(sessionID))) {
 			return ErrCleanupConflict
 		}
 		return nil
 	})
+	if err == nil && expired {
+		return CleanupReceipt{}, ErrNotFound
+	}
 	return receipt, err
 }
 
-func (s *Store) DeleteSessionWithReceipt(operationID, sessionID string) error {
-	return s.db.Update(func(tx *bolt.Tx) error {
+const (
+	CleanupStateRuntimeDeletePending   = "runtime_delete_pending"
+	CleanupStateRuntimeDeleteConfirmed = "runtime_delete_confirmed"
+)
+
+type CleanupOperation struct {
+	SchemaVersion int       `json:"schema_version"`
+	OperationID   string    `json:"operation_id"`
+	SessionHash   string    `json:"keyed_session_hash"`
+	ThreadID      string    `json:"thread_id"`
+	State         string    `json:"state"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+func (s *Store) BeginCleanup(operationID, sessionID string) (CleanupOperation, error) {
+	var operation CleanupOperation
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		if err := purgeExpiredCleanupReceipts(tx, time.Now().UTC()); err != nil {
+			return err
+		}
+		operations := tx.Bucket(cleanupOperationsBucket)
+		if encoded := operations.Get([]byte(operationID)); encoded != nil {
+			if err := json.Unmarshal(encoded, &operation); err != nil {
+				return fmt.Errorf("decode cleanup operation: %w", err)
+			}
+			if !hmac.Equal([]byte(operation.SessionHash), []byte(s.keyedSessionHash(sessionID))) {
+				return ErrCleanupConflict
+			}
+			return nil
+		}
+		if encoded := tx.Bucket(cleanupReceiptsBucket).Get([]byte(operationID)); encoded != nil {
+			var receipt CleanupReceipt
+			if json.Unmarshal(encoded, &receipt) != nil || !hmac.Equal([]byte(receipt.SessionHash), []byte(s.keyedSessionHash(sessionID))) {
+				return ErrCleanupConflict
+			}
+			return ErrNotFound
+		}
 		record, err := loadRecord(tx, sessionID)
 		if err != nil {
 			return err
 		}
-		if record.ActiveTurnID != "" {
+		if record.ActiveTurnID != "" || record.State == StateActive || record.State == StateStarting || record.CleanupOperationID != "" {
+			return ErrTurnActive
+		}
+		now := time.Now().UTC()
+		operation = CleanupOperation{
+			SchemaVersion: 1, OperationID: operationID, SessionHash: s.keyedSessionHash(sessionID),
+			ThreadID: record.CodexThreadID, State: CleanupStateRuntimeDeletePending,
+			CreatedAt: now, UpdatedAt: now,
+		}
+		encoded, err := json.Marshal(operation)
+		if err != nil {
+			return err
+		}
+		if err := operations.Put([]byte(operationID), encoded); err != nil {
+			return err
+		}
+		record.CleanupOperationID = operationID
+		record.State = StateCleaning
+		record.UpdatedAt = now
+		return saveRecord(tx, record)
+	})
+	return operation, err
+}
+
+func (s *Store) MarkCleanupRuntimeDeleted(operationID, sessionID string) (CleanupOperation, error) {
+	var operation CleanupOperation
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		operations := tx.Bucket(cleanupOperationsBucket)
+		encoded := operations.Get([]byte(operationID))
+		if encoded == nil {
+			return ErrNotFound
+		}
+		if err := json.Unmarshal(encoded, &operation); err != nil {
+			return fmt.Errorf("decode cleanup operation: %w", err)
+		}
+		if !hmac.Equal([]byte(operation.SessionHash), []byte(s.keyedSessionHash(sessionID))) {
+			return ErrCleanupConflict
+		}
+		operation.State = CleanupStateRuntimeDeleteConfirmed
+		operation.UpdatedAt = time.Now().UTC()
+		encoded, err := json.Marshal(operation)
+		if err != nil {
+			return err
+		}
+		return operations.Put([]byte(operationID), encoded)
+	})
+	return operation, err
+}
+
+func (s *Store) DeleteSessionWithReceipt(operationID, sessionID string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		operations := tx.Bucket(cleanupOperationsBucket)
+		encodedOperation := operations.Get([]byte(operationID))
+		if encodedOperation == nil {
+			return ErrSessionNotUsable
+		}
+		var operation CleanupOperation
+		if json.Unmarshal(encodedOperation, &operation) != nil || !hmac.Equal([]byte(operation.SessionHash), []byte(s.keyedSessionHash(sessionID))) {
+			return ErrCleanupConflict
+		}
+		if operation.State != CleanupStateRuntimeDeleteConfirmed {
+			return ErrSessionNotUsable
+		}
+		record, err := loadRecord(tx, sessionID)
+		if err != nil {
+			return err
+		}
+		if record.ActiveTurnID != "" || record.CleanupOperationID != operationID || record.State != StateCleaning {
 			return ErrTurnActive
 		}
 		if existing := tx.Bucket(cleanupReceiptsBucket).Get([]byte(operationID)); existing != nil {
@@ -214,7 +329,10 @@ func (s *Store) DeleteSessionWithReceipt(operationID, sessionID string) error {
 		if err != nil {
 			return err
 		}
-		return tx.Bucket(cleanupReceiptsBucket).Put([]byte(operationID), encoded)
+		if err := tx.Bucket(cleanupReceiptsBucket).Put([]byte(operationID), encoded); err != nil {
+			return err
+		}
+		return operations.Delete([]byte(operationID))
 	})
 }
 
@@ -396,7 +514,7 @@ func (s *Store) BindThread(sessionID, threadID, runtimeSessionID, model, provide
 
 func (s *Store) PrepareTurn(sessionID string, trace TraceContext) (Record, error) {
 	return s.update(sessionID, func(record *Record) error {
-		if record.CodexThreadID == "" || record.State == StateFailed {
+		if record.CodexThreadID == "" || record.State == StateFailed || record.State == StateCleaning || record.CleanupOperationID != "" {
 			return ErrSessionNotUsable
 		}
 		if record.ActiveTurnID != "" || record.State == StateActive || record.State == StateStarting {
@@ -410,6 +528,9 @@ func (s *Store) PrepareTurn(sessionID string, trace TraceContext) (Record, error
 
 func (s *Store) BindTurn(sessionID, turnID string) (Record, error) {
 	return s.update(sessionID, func(record *Record) error {
+		if record.State == StateCleaning || record.CleanupOperationID != "" {
+			return ErrSessionNotUsable
+		}
 		// A very short turn can emit turn/completed while the turn/start
 		// response is still being delivered to the caller. Do not reactivate a
 		// turn whose terminal notification already won that race.
@@ -427,6 +548,9 @@ func (s *Store) BindTurn(sessionID, turnID string) (Record, error) {
 
 func (s *Store) TurnStartFailed(sessionID, failureCode string) (Record, error) {
 	return s.update(sessionID, func(record *Record) error {
+		if record.State == StateCleaning || record.CleanupOperationID != "" {
+			return ErrSessionNotUsable
+		}
 		record.ActiveTurnID = ""
 		record.State = StateIdle
 		record.FailureCode = failureCode
@@ -436,6 +560,9 @@ func (s *Store) TurnStartFailed(sessionID, failureCode string) (Record, error) {
 
 func (s *Store) CompleteTurn(sessionID, turnID, status string) (Record, error) {
 	return s.update(sessionID, func(record *Record) error {
+		if record.State == StateCleaning || record.CleanupOperationID != "" {
+			return ErrSessionNotUsable
+		}
 		if record.ActiveTurnID != "" && record.ActiveTurnID != turnID {
 			return ErrTurnNotActive
 		}
@@ -457,6 +584,9 @@ func (s *Store) UpdateTrace(sessionID string, trace TraceContext) (Record, error
 
 func (s *Store) MarkFailed(sessionID, failureCode string) (Record, error) {
 	return s.update(sessionID, func(record *Record) error {
+		if record.State == StateCleaning || record.CleanupOperationID != "" {
+			return ErrSessionNotUsable
+		}
 		record.State = StateFailed
 		record.FailureCode = failureCode
 		return nil
@@ -469,6 +599,9 @@ func (s *Store) Resume(
 	runtimeSessionID, activeTurnID, lastTurnID, lastStatus string,
 ) (Record, error) {
 	return s.update(sessionID, func(record *Record) error {
+		if record.State == StateCleaning || record.CleanupOperationID != "" {
+			return ErrSessionNotUsable
+		}
 		record.Trace = trace
 		if runtimeSessionID != "" {
 			record.RuntimeSessionID = runtimeSessionID

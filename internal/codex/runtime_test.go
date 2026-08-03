@@ -132,7 +132,9 @@ func TestRuntimeHelperProcess(t *testing.T) {
 				if message.Params["ephemeral"] != true {
 					os.Exit(31)
 				}
-				if _, hasCwd := message.Params["cwd"]; hasCwd {
+				cwd, hasCwd := message.Params["cwd"].(string)
+				info, statErr := os.Stat(cwd)
+				if !hasCwd || statErr != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
 					os.Exit(32)
 				}
 			}

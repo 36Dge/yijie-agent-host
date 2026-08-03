@@ -92,15 +92,25 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 	} else if errors.Is(err, ErrCleanupConflict) {
 		return CleanupResult{}, ErrCleanupConflict
 	}
-	record, err := s.store.Get(sessionID)
+	operation, err := s.store.BeginCleanup(operationID, sessionID)
+	if errors.Is(err, ErrTurnActive) {
+		return incompleteCleanup(operationID, "active_turn", "not_attempted", "not_attempted", "not_attempted"), nil
+	}
 	if err != nil {
 		return CleanupResult{}, err
 	}
-	if record.ActiveTurnID != "" || record.State == StateActive || record.State == StateStarting {
-		return incompleteCleanup(operationID, "active_turn", "not_attempted", "not_attempted", "not_attempted"), nil
+	if operation.State == CleanupStateRuntimeDeletePending {
+		deleteErr := s.runtime.DeleteThread(ctx, operation.ThreadID)
+		if deleteErr != nil && !codex.IsThreadNotFound(deleteErr, operation.ThreadID) {
+			return incompleteCleanup(operationID, "runtime_delete_unconfirmed", "incomplete", "not_attempted", "not_attempted"), nil
+		}
+		operation, err = s.store.MarkCleanupRuntimeDeleted(operationID, sessionID)
+		if err != nil {
+			return incompleteCleanup(operationID, "operation_state_unavailable", "incomplete", "not_attempted", "not_attempted"), nil
+		}
 	}
-	if err := s.runtime.DeleteThread(ctx, record.CodexThreadID); err != nil {
-		return incompleteCleanup(operationID, "runtime_delete_unconfirmed", "incomplete", "not_attempted", "not_attempted"), nil
+	if operation.State != CleanupStateRuntimeDeleteConfirmed {
+		return incompleteCleanup(operationID, "operation_state_unavailable", "incomplete", "not_attempted", "not_attempted"), nil
 	}
 	if err := s.store.DeleteSessionWithReceipt(operationID, sessionID); err != nil {
 		return incompleteCleanup(operationID, "host_mapping_cleanup_failed", "complete", "incomplete", "not_attempted"), nil
@@ -157,7 +167,7 @@ type Service struct {
 	reasoning       map[reasoningTurnKey]*reasoningTurnState
 	titleMu         sync.Mutex
 	titleGenerator  TitleGenerator
-	titleOperations map[string]*titleOperation
+	titleOperations map[titleOperationKey]*titleOperation
 }
 
 type ServiceOption func(*Service)
@@ -177,7 +187,7 @@ func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Lo
 		logger:          logger,
 		pending:         make(map[string][]pendingNotification),
 		reasoning:       make(map[reasoningTurnKey]*reasoningTurnState),
-		titleOperations: make(map[string]*titleOperation),
+		titleOperations: make(map[titleOperationKey]*titleOperation),
 	}
 	for _, option := range options {
 		if option != nil {
@@ -242,6 +252,9 @@ func (s *Service) ResumeSession(ctx context.Context, sessionID string, trace Tra
 	record, err := s.store.Get(sessionID)
 	if err != nil {
 		return Record{}, err
+	}
+	if record.State == StateCleaning || record.CleanupOperationID != "" {
+		return Record{}, ErrSessionNotUsable
 	}
 	if record.CodexThreadID == "" {
 		return Record{}, ErrSessionNotUsable

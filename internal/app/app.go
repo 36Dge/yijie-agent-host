@@ -34,6 +34,7 @@ type Config struct {
 	RawReasoningV2Enabled bool
 	TitleV2Enabled        bool
 	CleanupV2Enabled      bool
+	InstanceNonce         string
 }
 
 type RuntimeStatusProvider interface {
@@ -95,6 +96,13 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	instanceNonce := strings.TrimSpace(os.Getenv("YIJIE_AGENT_HOST_INSTANCE_NONCE"))
+	if instanceNonce != "" {
+		parsed, parseErr := uuid.Parse(instanceNonce)
+		if parseErr != nil || parsed == uuid.Nil || parsed.String() != instanceNonce {
+			return Config{}, errors.New("YIJIE_AGENT_HOST_INSTANCE_NONCE must be a canonical non-zero UUID")
+		}
+	}
 
 	hostHome := os.Getenv("YIJIE_AGENT_HOST_HOME")
 	environment := env("YIJIE_ENV", "local")
@@ -103,6 +111,9 @@ func LoadConfig() (Config, error) {
 	}
 	if titleV2 && !runtimeConfig.MiniMax.Enabled {
 		return Config{}, errors.New("Agent Host v2 title generation requires the configured pinned model provider")
+	}
+	if titleV2 {
+		return Config{}, errors.New("Agent Host v2 title generation remains disabled because the pinned Runtime cannot capability-disable tools")
 	}
 	if runtimeConfig.MiniMax.Enabled {
 		if hostHome == "" || !filepath.IsAbs(hostHome) {
@@ -121,6 +132,7 @@ func LoadConfig() (Config, error) {
 		RawReasoningV2Enabled: rawV2,
 		TitleV2Enabled:        titleV2,
 		CleanupV2Enabled:      cleanupV2,
+		InstanceNonce:         instanceNonce,
 	}, nil
 }
 
@@ -139,12 +151,14 @@ type SessionService interface {
 func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionService, apiToken string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		setInstanceNonceHeader(w, config.InstanceNonce)
 		writeJSON(w, http.StatusOK, agenthostcontract.HealthResponse{
 			Service: agenthostcontract.HealthResponseServiceYijieAgentHost,
 			Status:  agenthostcontract.HealthResponseStatusOk,
 		})
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+		setInstanceNonceHeader(w, config.InstanceNonce)
 		status := runtime.Snapshot()
 		if !status.Ready {
 			writeJSON(w, http.StatusServiceUnavailable, agenthostcontract.NotReadyResponse{
@@ -193,6 +207,12 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 		}
 	}
 	return mux
+}
+
+func setInstanceNonceHeader(w http.ResponseWriter, nonce string) {
+	if nonce != "" {
+		w.Header().Set("X-Yijie-Host-Instance-Nonce", nonce)
+	}
 }
 
 type sessionHandler struct {
@@ -308,6 +328,7 @@ func (h *sessionHandler) eventsV2(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event_schema_version=2 is required")
 		return
 	}
+	w.Header().Set("X-Yijie-Event-Schema-Version", "2")
 	h.streamEvents(w, r, h.service.SubscribeEventsV2)
 }
 

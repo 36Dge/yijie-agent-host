@@ -31,7 +31,8 @@ func (generator *fakeTitleGenerator) GenerateTitle(context.Context, string) (str
 }
 
 func TestServiceProjectsBoundedRawReasoningOnlyToNegotiatedV2WithoutLoggingBody(t *testing.T) {
-	store, err := OpenStore(filepath.Join(t.TempDir(), "host-home"))
+	home := filepath.Join(t.TempDir(), "host-home")
+	store, err := OpenStore(home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,6 +90,16 @@ func TestServiceProjectsBoundedRawReasoningOnlyToNegotiatedV2WithoutLoggingBody(
 	}
 	if strings.Contains(logs.String(), rawCanary) {
 		t.Fatalf("raw reasoning body entered logs: %s", logs.String())
+	}
+	if err := store.db.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	databaseBytes, err := os.ReadFile(filepath.Join(home, "sessions.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(databaseBytes), rawCanary) {
+		t.Fatal("raw reasoning body entered Host bbolt")
 	}
 }
 
@@ -214,6 +225,40 @@ func TestServiceRejectsUnsafeTitleOutput(t *testing.T) {
 	}
 }
 
+func TestTitleIdempotencyIsSessionScopedAndFailuresDoNotRetry(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "host-home"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	secondTaskID, secondSessionID := uuid.NewString(), uuid.NewString()
+	for _, record := range []Record{
+		{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()},
+		{TaskID: secondTaskID, AgentSessionID: secondSessionID, Cwd: t.TempDir()},
+	} {
+		if err := store.Reserve(record); err != nil {
+			t.Fatal(err)
+		}
+	}
+	operationID := uuid.NewString()
+	failing := &fakeTitleGenerator{err: errors.New("synthetic unknown outcome")}
+	service := NewService(&fakeRuntime{}, store, NewEventHub(8, 2), nil, WithTitleGenerator(failing))
+	for attempt := 0; attempt < 2; attempt++ {
+		if _, err := service.GenerateTitle(context.Background(), testSessionID, operationID, "synthetic input"); !errors.Is(err, ErrTitleUnavailable) {
+			t.Fatalf("failed title attempt %d: %v", attempt, err)
+		}
+	}
+	if failing.calls != 1 {
+		t.Fatalf("failed/unknown title operation was reissued: calls=%d", failing.calls)
+	}
+	if _, err := service.GenerateTitle(context.Background(), secondSessionID, operationID, "synthetic input"); !errors.Is(err, ErrTitleUnavailable) {
+		t.Fatalf("same operation id in another session was not independently scoped: %v", err)
+	}
+	if failing.calls != 2 {
+		t.Fatalf("title key was not (session_id, operation_id): calls=%d", failing.calls)
+	}
+}
+
 func TestServiceCleanupRequiresRuntimeConfirmationThenClearsHostSurfaces(t *testing.T) {
 	store, err := OpenStore(filepath.Join(t.TempDir(), "host-home"))
 	if err != nil {
@@ -280,6 +325,51 @@ func TestServiceCleanupReportsIncompleteWithoutDeletingMapping(t *testing.T) {
 	}
 	if _, err := store.Get(testSessionID); err != nil {
 		t.Fatalf("mapping was deleted after unconfirmed Runtime outcome: %v", err)
+	}
+}
+
+func TestServiceCleanupRecoversLostDeleteNotificationAcrossRestart(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "host-home")
+	store, err := OpenStore(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Reserve(Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindThread(testSessionID, testThreadID, "runtime-session", codex.MiniMaxModel, codex.MiniMaxProviderID); err != nil {
+		t.Fatal(err)
+	}
+	operationID := "019c0123-4567-7abc-8123-456789abcdee"
+	deleteCalls := 0
+	runtime := &fakeRuntime{deleteThread: func(threadID string) error {
+		deleteCalls++
+		if deleteCalls == 1 {
+			return errors.New("thread/delete notification was not confirmed")
+		}
+		return &codex.RPCError{Code: -32600, Message: "thread not found: " + threadID}
+	}}
+	service := NewService(runtime, store, NewEventHub(8, 2), nil)
+	first, err := service.CleanupSession(context.Background(), testSessionID, operationID)
+	if err != nil || first.Outcome != "incomplete" || first.ReasonCode != "runtime_delete_unconfirmed" {
+		t.Fatalf("unexpected unknown delete result: result=%+v err=%v", first, err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenStore(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	service = NewService(runtime, reopened, NewEventHub(8, 2), nil)
+	second, err := service.CleanupSession(context.Background(), testSessionID, operationID)
+	if err != nil || second.Outcome != "complete" || deleteCalls != 2 {
+		t.Fatalf("lost notification recovery failed: result=%+v calls=%d err=%v", second, deleteCalls, err)
+	}
+	replayed, err := service.CleanupSession(context.Background(), testSessionID, operationID)
+	if err != nil || replayed.Outcome != "complete" || deleteCalls != 2 {
+		t.Fatalf("completed cleanup retry was not idempotent: result=%+v calls=%d err=%v", replayed, deleteCalls, err)
 	}
 }
 

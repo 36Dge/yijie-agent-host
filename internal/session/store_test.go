@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -54,6 +55,114 @@ func TestStoreMigratesSchemaV1AndPurgesExpiredContentFreeReceipts(t *testing.T) 
 		}
 		if tx.Bucket(cleanupReceiptsBucket).Get([]byte("expired")) != nil {
 			t.Fatal("expired cleanup receipt was not purged")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCleanupLeaseIsAtomicWithTurnStart(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "host-home"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Reserve(Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindThread(testSessionID, testThreadID, "runtime-session", "MiniMax-M3", "minimax"); err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	go func() {
+		<-start
+		_, err := store.BeginCleanup(uuid.NewString(), testSessionID)
+		results <- err
+	}()
+	go func() {
+		<-start
+		_, err := store.PrepareTurn(testSessionID, TraceContext{})
+		results <- err
+	}()
+	close(start)
+	first, second := <-results, <-results
+	if (first == nil) == (second == nil) {
+		t.Fatalf("cleanup and turn lease were not exclusive: first=%v second=%v", first, second)
+	}
+	loser := first
+	if loser == nil {
+		loser = second
+	}
+	if !errors.Is(loser, ErrTurnActive) && !errors.Is(loser, ErrSessionNotUsable) {
+		t.Fatalf("unexpected lease loser: %v", loser)
+	}
+}
+
+func TestCleanupConfirmedStateSurvivesRestartAndSkipsRuntimeReplay(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "host-home")
+	store, err := OpenStore(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Reserve(Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindThread(testSessionID, testThreadID, "runtime-session", "MiniMax-M3", "minimax"); err != nil {
+		t.Fatal(err)
+	}
+	operationID := uuid.NewString()
+	if _, err := store.BeginCleanup(operationID, testSessionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.MarkCleanupRuntimeDeleted(operationID, testSessionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenStore(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	runtimeCalls := 0
+	service := NewService(&fakeRuntime{deleteThread: func(string) error {
+		runtimeCalls++
+		return errors.New("must not be called")
+	}}, reopened, NewEventHub(8, 2), nil)
+	result, err := service.CleanupSession(context.Background(), testSessionID, operationID)
+	if err != nil || result.Outcome != "complete" || runtimeCalls != 0 {
+		t.Fatalf("restart cleanup did not resume confirmed phase: result=%+v calls=%d err=%v", result, runtimeCalls, err)
+	}
+}
+
+func TestCleanupReceiptLookupPurgesExpiredRecord(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "host-home"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	operationID := uuid.NewString()
+	expired, err := json.Marshal(CleanupReceipt{
+		SchemaVersion: 1, OperationID: operationID, SessionHash: store.keyedSessionHash(testSessionID),
+		ExpiresAt: time.Now().Add(-time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.db.Update(func(tx *bolt.Tx) error {
+		return tx.Bucket(cleanupReceiptsBucket).Put([]byte(operationID), expired)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CleanupReceipt(operationID, testSessionID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expired receipt lookup: %v", err)
+	}
+	if err := store.db.View(func(tx *bolt.Tx) error {
+		if tx.Bucket(cleanupReceiptsBucket).Get([]byte(operationID)) != nil {
+			t.Fatal("expired receipt remained in long-lived store")
 		}
 		return nil
 	}); err != nil {
@@ -153,6 +262,13 @@ func TestStorePhysicallyDeletesMappingsAndKeepsOnlyContentFreeReceipt(t *testing
 		t.Fatal(err)
 	}
 	operationID := "019c0123-4567-7abc-8123-456789abcdee"
+	operation, err := store.BeginCleanup(operationID, testSessionID)
+	if err != nil || operation.State != CleanupStateRuntimeDeletePending {
+		t.Fatalf("begin cleanup: operation=%+v err=%v", operation, err)
+	}
+	if _, err := store.MarkCleanupRuntimeDeleted(operationID, testSessionID); err != nil {
+		t.Fatalf("confirm runtime deletion: %v", err)
+	}
 	if err := store.DeleteSessionWithReceipt(operationID, testSessionID); err != nil {
 		t.Fatal(err)
 	}

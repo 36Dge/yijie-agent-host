@@ -31,7 +31,10 @@ type titleOperation struct {
 	inputSHA256 string
 	result      TitleResult
 	pending     bool
+	failed      bool
 }
+
+type titleOperationKey struct{ sessionID, operationID string }
 
 func WithTitleGenerator(generator TitleGenerator) ServiceOption {
 	return func(service *Service) { service.titleGenerator = generator }
@@ -54,12 +57,13 @@ func (s *Service) GenerateTitle(ctx context.Context, sessionID, operationID, inp
 	digestBytes := sha256.Sum256([]byte(input))
 	digest := hex.EncodeToString(digestBytes[:])
 	s.titleMu.Lock()
-	if existing := s.titleOperations[operationID]; existing != nil {
+	key := titleOperationKey{sessionID: sessionID, operationID: operationID}
+	if existing := s.titleOperations[key]; existing != nil {
 		if existing.inputSHA256 != digest {
 			s.titleMu.Unlock()
 			return TitleResult{}, ErrTitleOperationConflict
 		}
-		if existing.pending {
+		if existing.pending || existing.failed {
 			s.titleMu.Unlock()
 			return TitleResult{}, ErrTitleUnavailable
 		}
@@ -67,39 +71,38 @@ func (s *Service) GenerateTitle(ctx context.Context, sessionID, operationID, inp
 		s.titleMu.Unlock()
 		return result, nil
 	}
-	s.titleOperations[operationID] = &titleOperation{inputSHA256: digest, pending: true}
+	s.titleOperations[key] = &titleOperation{inputSHA256: digest, pending: true}
 	s.titleMu.Unlock()
 
 	if s.titleGenerator == nil {
-		s.finishTitleOperation(operationID, TitleResult{}, false)
+		s.finishTitleOperation(key, TitleResult{}, false)
 		return TitleResult{}, ErrTitleUnavailable
 	}
 	rawTitle, err := s.titleGenerator.GenerateTitle(ctx, input)
 	if err != nil {
-		s.finishTitleOperation(operationID, TitleResult{}, false)
+		s.finishTitleOperation(key, TitleResult{}, false)
 		return TitleResult{}, ErrTitleUnavailable
 	}
 	title, err := sanitizeGeneratedTitle(rawTitle)
 	if err != nil {
-		s.finishTitleOperation(operationID, TitleResult{}, false)
+		s.finishTitleOperation(key, TitleResult{}, false)
 		return TitleResult{}, err
 	}
 	result := TitleResult{OperationID: operationID, Title: title}
-	s.finishTitleOperation(operationID, result, true)
+	s.finishTitleOperation(key, result, true)
 	return result, nil
 }
 
-func (s *Service) finishTitleOperation(operationID string, result TitleResult, keep bool) {
+func (s *Service) finishTitleOperation(key titleOperationKey, result TitleResult, success bool) {
 	s.titleMu.Lock()
 	defer s.titleMu.Unlock()
-	if !keep {
-		delete(s.titleOperations, operationID)
-		return
-	}
-	operation := s.titleOperations[operationID]
+	operation := s.titleOperations[key]
 	if operation != nil {
 		operation.pending = false
-		operation.result = result
+		operation.failed = !success
+		if success {
+			operation.result = result
+		}
 	}
 }
 
