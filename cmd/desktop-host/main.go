@@ -89,10 +89,18 @@ func run(logger *slog.Logger) error {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(stop)
+	watchdogContext, cancelWatchdog := context.WithCancel(context.Background())
+	defer cancelWatchdog()
+	var parentExited <-chan struct{}
+	if config.FEAT126TestParentPID != 0 {
+		parentExited = watchParent(watchdogContext, config.FEAT126TestParentPID, 100*time.Millisecond, os.Getppid)
+	}
 
 	var serveErr error
 	select {
 	case <-stop:
+	case <-parentExited:
+		logger.Warn("FEAT-126 test parent exited", "failure_code", "test_parent_exited")
 	case err := <-serverErrors:
 		if !errors.Is(err, http.ErrServerClosed) {
 			serveErr = fmt.Errorf("serve HTTP: %w", err)
@@ -113,4 +121,24 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("shutdown HTTP server: %w", err)
 	}
 	return serveErr
+}
+
+func watchParent(ctx context.Context, expectedPID int, interval time.Duration, parentPID func() int) <-chan struct{} {
+	exited := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			if parentPID() != expectedPID {
+				close(exited)
+				return
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	return exited
 }

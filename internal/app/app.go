@@ -36,6 +36,7 @@ type Config struct {
 	TitleV2Enabled        bool
 	CleanupV2Enabled      bool
 	InstanceNonce         string
+	FEAT126TestParentPID  int
 }
 
 type RuntimeStatusProvider interface {
@@ -76,6 +77,10 @@ func LoadConfig() (Config, error) {
 		default:
 			return Config{}, fmt.Errorf("unsupported YIJIE_MODEL_PROVIDER %q", provider)
 		}
+	}
+	testParentPID := 0
+	if fakeProfile.Enabled {
+		testParentPID, _ = strconv.Atoi(os.Getenv("YIJIE_FEAT126_S10_PARENT_PID"))
 	}
 
 	if runtimeConfig.StartupTimeout, err = durationEnv("YIJIE_CODEX_STARTUP_TIMEOUT", runtimeConfig.StartupTimeout); err != nil {
@@ -153,6 +158,7 @@ func LoadConfig() (Config, error) {
 		TitleV2Enabled:        titleV2,
 		CleanupV2Enabled:      cleanupV2,
 		InstanceNonce:         instanceNonce,
+		FEAT126TestParentPID:  testParentPID,
 	}, nil
 }
 

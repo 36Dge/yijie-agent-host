@@ -470,7 +470,8 @@ func TestLoadConfigAcceptsOnlyExactFEAT126FakeProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !config.Runtime.FakeResponses.Enabled || config.Runtime.FakeResponses.RunID != runID ||
-		config.Runtime.MiniMax.Enabled || !config.RawReasoningV2Enabled || !config.CleanupV2Enabled || config.TitleV2Enabled {
+		config.Runtime.MiniMax.Enabled || !config.RawReasoningV2Enabled || !config.CleanupV2Enabled || config.TitleV2Enabled ||
+		config.FEAT126TestParentPID != os.Getppid() {
 		t.Fatalf("unexpected FEAT-126 fake profile: %#v", config)
 	}
 
