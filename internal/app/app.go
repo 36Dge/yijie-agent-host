@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
@@ -48,22 +49,33 @@ func LoadConfig() (Config, error) {
 	runtimeConfig.CodexHome = os.Getenv("YIJIE_CODEX_HOME")
 
 	provider := os.Getenv("YIJIE_MODEL_PROVIDER")
-	miniMaxKey, err := loadMiniMaxAPIKey()
+	fakeProfile, err := loadFEAT126FakeResponsesProfile()
 	if err != nil {
 		return Config{}, err
 	}
-	switch provider {
-	case "":
-		if miniMaxKey != "" {
-			return Config{}, errors.New("YIJIE_MODEL_PROVIDER=minimax is required when a MiniMax key is configured")
+	if fakeProfile.Enabled {
+		if provider != "" || os.Getenv("YIJIE_MINIMAX_API_KEY") != "" || os.Getenv("YIJIE_MINIMAX_API_KEY_FILE") != "" {
+			return Config{}, errors.New("FEAT-126 fake Responses profile cannot be combined with MiniMax provider or key configuration")
 		}
-	case codex.MiniMaxProviderID:
-		if miniMaxKey == "" {
-			return Config{}, errors.New("MiniMax provider requires YIJIE_MINIMAX_API_KEY or YIJIE_MINIMAX_API_KEY_FILE")
+		runtimeConfig.FakeResponses = fakeProfile
+	} else {
+		miniMaxKey, keyErr := loadMiniMaxAPIKey()
+		if keyErr != nil {
+			return Config{}, keyErr
 		}
-		runtimeConfig.MiniMax = codex.MiniMaxConfig{Enabled: true, APIKey: miniMaxKey}
-	default:
-		return Config{}, fmt.Errorf("unsupported YIJIE_MODEL_PROVIDER %q", provider)
+		switch provider {
+		case "":
+			if miniMaxKey != "" {
+				return Config{}, errors.New("YIJIE_MODEL_PROVIDER=minimax is required when a MiniMax key is configured")
+			}
+		case codex.MiniMaxProviderID:
+			if miniMaxKey == "" {
+				return Config{}, errors.New("MiniMax provider requires YIJIE_MINIMAX_API_KEY or YIJIE_MINIMAX_API_KEY_FILE")
+			}
+			runtimeConfig.MiniMax = codex.MiniMaxConfig{Enabled: true, APIKey: miniMaxKey}
+		default:
+			return Config{}, fmt.Errorf("unsupported YIJIE_MODEL_PROVIDER %q", provider)
+		}
 	}
 
 	if runtimeConfig.StartupTimeout, err = durationEnv("YIJIE_CODEX_STARTUP_TIMEOUT", runtimeConfig.StartupTimeout); err != nil {
@@ -106,6 +118,14 @@ func LoadConfig() (Config, error) {
 
 	hostHome := os.Getenv("YIJIE_AGENT_HOST_HOME")
 	environment := env("YIJIE_ENV", "local")
+	if fakeProfile.Enabled {
+		if environment != "local" {
+			return Config{}, errors.New("FEAT-126 fake Responses profile is local-only")
+		}
+		if !rawV2 || !cleanupV2 || titleV2 {
+			return Config{}, errors.New("FEAT-126 fake Responses profile requires raw reasoning and cleanup enabled with title disabled")
+		}
+	}
 	if (rawV2 || titleV2 || cleanupV2) && (environment != "local" || hostHome == "" || !filepath.IsAbs(hostHome)) {
 		return Config{}, errors.New("Agent Host v2 draft capabilities require an absolute Host home in the local environment")
 	}
@@ -115,7 +135,7 @@ func LoadConfig() (Config, error) {
 	if titleV2 {
 		return Config{}, errors.New("Agent Host v2 title generation remains disabled because the pinned Runtime cannot capability-disable tools")
 	}
-	if runtimeConfig.MiniMax.Enabled {
+	if runtimeConfig.MiniMax.Enabled || runtimeConfig.FakeResponses.Enabled {
 		if hostHome == "" || !filepath.IsAbs(hostHome) {
 			return Config{}, errors.New("YIJIE_AGENT_HOST_HOME must be absolute when MiniMax is enabled")
 		}
@@ -134,6 +154,80 @@ func LoadConfig() (Config, error) {
 		CleanupV2Enabled:      cleanupV2,
 		InstanceNonce:         instanceNonce,
 	}, nil
+}
+
+func loadFEAT126FakeResponsesProfile() (codex.FakeResponsesConfig, error) {
+	const (
+		masterKey          = "YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED"
+		runIDKey           = "YIJIE_FEAT126_S10_RUN_ID"
+		baseURLKey         = "YIJIE_FEAT126_FAKE_RESPONSES_BASE_URL"
+		parentPIDKey       = "YIJIE_FEAT126_S10_PARENT_PID"
+		hostLogDirKey      = "YIJIE_FEAT126_S10_HOST_LOG_DIR"
+		processManifestKey = "YIJIE_FEAT126_S10_PROCESS_MANIFEST"
+	)
+	master := os.Getenv(masterKey)
+	runID := os.Getenv(runIDKey)
+	baseURL := os.Getenv(baseURLKey)
+	parentPID := os.Getenv(parentPIDKey)
+	hostLogDir := os.Getenv(hostLogDirKey)
+	processManifest := os.Getenv(processManifestKey)
+	if master != "true" {
+		if master != "" && master != "false" {
+			return codex.FakeResponsesConfig{}, fmt.Errorf("%s must be exact true or false", masterKey)
+		}
+		if runID != "" || baseURL != "" || parentPID != "" || hostLogDir != "" || processManifest != "" {
+			return codex.FakeResponsesConfig{}, errors.New("FEAT-126 fake Responses settings require the exact-true test profile")
+		}
+		return codex.FakeResponsesConfig{}, nil
+	}
+	parsed, err := uuid.Parse(runID)
+	if err != nil || parsed == uuid.Nil || parsed.String() != runID {
+		return codex.FakeResponsesConfig{}, errors.New("YIJIE_FEAT126_S10_RUN_ID must be a canonical non-zero UUID")
+	}
+	if baseURL != codex.FEAT126FakeBaseURL {
+		return codex.FakeResponsesConfig{}, errors.New("YIJIE_FEAT126_FAKE_RESPONSES_BASE_URL must use the fixed loopback endpoint")
+	}
+	parsedParentPID, err := strconv.Atoi(parentPID)
+	if err != nil || parsedParentPID <= 0 || parsedParentPID != os.Getppid() {
+		return codex.FakeResponsesConfig{}, errors.New("YIJIE_FEAT126_S10_PARENT_PID must match the Host parent process")
+	}
+	cleanLogDir, err := validateOwnerOnlyDirectory(hostLogDir)
+	if err != nil {
+		return codex.FakeResponsesConfig{}, err
+	}
+	manifestParent, parentErr := filepath.EvalSymlinks(filepath.Dir(processManifest))
+	if !filepath.IsAbs(processManifest) || parentErr != nil || filepath.Clean(manifestParent) != cleanLogDir || filepath.Base(processManifest) != "process.json" {
+		return codex.FakeResponsesConfig{}, errors.New("YIJIE_FEAT126_S10_PROCESS_MANIFEST must be the run-scoped process.json")
+	}
+	if info, statErr := os.Lstat(processManifest); statErr == nil {
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 {
+			return codex.FakeResponsesConfig{}, errors.New("FEAT-126 process manifest must be an owner-only regular file")
+		}
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return codex.FakeResponsesConfig{}, errors.New("FEAT-126 process manifest cannot be inspected")
+	}
+	return codex.FakeResponsesConfig{
+		Enabled: true, BaseURL: baseURL, RunID: runID, FixtureID: codex.FEAT126FakeFixtureID,
+	}, nil
+}
+
+func validateOwnerOnlyDirectory(value string) (string, error) {
+	if !filepath.IsAbs(value) {
+		return "", errors.New("YIJIE_FEAT126_S10_HOST_LOG_DIR must be absolute")
+	}
+	info, err := os.Lstat(value)
+	if err != nil {
+		return "", errors.New("YIJIE_FEAT126_S10_HOST_LOG_DIR cannot be inspected")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != uint32(os.Geteuid()) || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
+		return "", errors.New("YIJIE_FEAT126_S10_HOST_LOG_DIR must be an owner-only non-symlink directory")
+	}
+	resolved, err := filepath.EvalSymlinks(value)
+	if err != nil {
+		return "", errors.New("YIJIE_FEAT126_S10_HOST_LOG_DIR cannot be resolved")
+	}
+	return filepath.Clean(resolved), nil
 }
 
 type SessionService interface {

@@ -432,6 +432,68 @@ func TestLoadConfigRejectsSharedRuntimeAndHostHome(t *testing.T) {
 	}
 }
 
+func TestLoadConfigAcceptsOnlyExactFEAT126FakeProfile(t *testing.T) {
+	for _, key := range []string{
+		"YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED", "YIJIE_FEAT126_S10_RUN_ID",
+		"YIJIE_FEAT126_FAKE_RESPONSES_BASE_URL", "YIJIE_MODEL_PROVIDER",
+		"YIJIE_MINIMAX_API_KEY", "YIJIE_MINIMAX_API_KEY_FILE", "YIJIE_ENV",
+		"YIJIE_AGENT_HOST_HOME", "YIJIE_CODEX_HOME",
+		"YIJIE_FEAT126_S10_PARENT_PID", "YIJIE_FEAT126_S10_HOST_LOG_DIR",
+		"YIJIE_FEAT126_S10_PROCESS_MANIFEST",
+		"YIJIE_AGENT_HOST_V2_RAW_REASONING_ENABLED", "YIJIE_AGENT_HOST_V2_TITLE_ENABLED",
+		"YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED",
+	} {
+		t.Setenv(key, "")
+	}
+	runID := "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+	hostHome := filepath.Join(t.TempDir(), "host-home")
+	codexHome := filepath.Join(t.TempDir(), "codex-home")
+	t.Setenv("YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED", "true")
+	t.Setenv("YIJIE_FEAT126_S10_RUN_ID", runID)
+	t.Setenv("YIJIE_FEAT126_FAKE_RESPONSES_BASE_URL", codex.FEAT126FakeBaseURL)
+	logDirectory := t.TempDir()
+	if err := os.Chmod(logDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	processManifest := filepath.Join(logDirectory, "process.json")
+	t.Setenv("YIJIE_FEAT126_S10_PARENT_PID", fmt.Sprint(os.Getppid()))
+	t.Setenv("YIJIE_FEAT126_S10_HOST_LOG_DIR", logDirectory)
+	t.Setenv("YIJIE_FEAT126_S10_PROCESS_MANIFEST", processManifest)
+	t.Setenv("YIJIE_ENV", "local")
+	t.Setenv("YIJIE_AGENT_HOST_HOME", hostHome)
+	t.Setenv("YIJIE_CODEX_HOME", codexHome)
+	t.Setenv("YIJIE_AGENT_HOST_V2_RAW_REASONING_ENABLED", "true")
+	t.Setenv("YIJIE_AGENT_HOST_V2_TITLE_ENABLED", "false")
+	t.Setenv("YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED", "true")
+	config, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !config.Runtime.FakeResponses.Enabled || config.Runtime.FakeResponses.RunID != runID ||
+		config.Runtime.MiniMax.Enabled || !config.RawReasoningV2Enabled || !config.CleanupV2Enabled || config.TitleV2Enabled {
+		t.Fatalf("unexpected FEAT-126 fake profile: %#v", config)
+	}
+
+	t.Setenv("YIJIE_MINIMAX_API_KEY", "must-not-be-read")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("fake profile accepted a MiniMax key")
+	}
+	t.Setenv("YIJIE_MINIMAX_API_KEY", "")
+	for _, baseURL := range []string{
+		"http://localhost:18082/v1", "http://127.0.0.1:18083/v1", "http://127.0.0.1:18082/v1?x=1", "https://127.0.0.1:18082/v1",
+	} {
+		t.Setenv("YIJIE_FEAT126_FAKE_RESPONSES_BASE_URL", baseURL)
+		if _, err := LoadConfig(); err == nil {
+			t.Fatalf("fake profile accepted unsafe endpoint %q", baseURL)
+		}
+	}
+	t.Setenv("YIJIE_FEAT126_FAKE_RESPONSES_BASE_URL", codex.FEAT126FakeBaseURL)
+	t.Setenv("YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED", "false")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("disabled master accepted subordinate fake profile settings")
+	}
+}
+
 type appFakeRuntime struct{}
 
 func (appFakeRuntime) StartThread(context.Context, string) (codex.ThreadInfo, error) {

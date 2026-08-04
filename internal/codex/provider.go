@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -16,6 +18,10 @@ const (
 	MiniMaxModel            = "MiniMax-M3"
 	MiniMaxChinaBaseURL     = "https://api.minimaxi.com/v1"
 	MiniMaxRuntimeEnvKey    = "MINIMAX_API_KEY"
+	FEAT126FakeBaseURL      = "http://127.0.0.1:18082/v1"
+	FEAT126FakeFixtureID    = "normal-000"
+	feat126RunIDHeader      = "X-Yijie-Feat126-Run-Id"
+	feat126FixtureIDHeader  = "X-Yijie-Feat126-Fixture-Id"
 	managedConfigMarker     = "# Managed by yijie-agent-host Runtime Baseline 2.\n"
 	managedModelCatalogName = "minimax-m3-model-catalog.json"
 )
@@ -23,6 +29,36 @@ const (
 type MiniMaxConfig struct {
 	Enabled bool
 	APIKey  string
+}
+
+type FakeResponsesConfig struct {
+	Enabled   bool
+	BaseURL   string
+	RunID     string
+	FixtureID string
+}
+
+func (c FakeResponsesConfig) validate() error {
+	if !c.Enabled {
+		if c.BaseURL != "" || c.RunID != "" || c.FixtureID != "" {
+			return errors.New("fake Responses configuration is set while the provider is disabled")
+		}
+		return nil
+	}
+	if c.BaseURL != FEAT126FakeBaseURL {
+		return errors.New("fake Responses base URL must use the fixed FEAT-126 loopback endpoint")
+	}
+	if c.RunID == "" {
+		return errors.New("fake Responses run id is required")
+	}
+	parsed, err := uuid.Parse(c.RunID)
+	if err != nil || parsed == uuid.Nil || parsed.String() != c.RunID {
+		return errors.New("fake Responses run id must be a canonical non-zero UUID")
+	}
+	if c.FixtureID != FEAT126FakeFixtureID {
+		return errors.New("fake Responses fixture id must use the frozen FEAT-126 fixture")
+	}
+	return nil
 }
 
 func (c MiniMaxConfig) validate() error {
@@ -76,6 +112,46 @@ func prepareMiniMaxCodexHome(codexHome string) error {
 	}, "\n")
 	if err := writeManagedFile(filepath.Join(codexHome, "config.toml"), []byte(config), true); err != nil {
 		return fmt.Errorf("write managed CODEX_HOME config: %w", err)
+	}
+	return nil
+}
+
+func prepareFakeResponsesCodexHome(codexHome string, fake FakeResponsesConfig) error {
+	if err := fake.validate(); err != nil {
+		return err
+	}
+	if err := os.Chmod(codexHome, 0o700); err != nil {
+		return fmt.Errorf("protect managed CODEX_HOME: %w", err)
+	}
+	catalogPath := filepath.Join(codexHome, managedModelCatalogName)
+	catalog, err := miniMaxModelCatalog()
+	if err != nil {
+		return err
+	}
+	if err := writeManagedFile(catalogPath, catalog, false); err != nil {
+		return fmt.Errorf("write FEAT-126 model catalog: %w", err)
+	}
+
+	config := managedConfigMarker + strings.Join([]string{
+		"model = " + strconv.Quote(MiniMaxModel),
+		"model_provider = " + strconv.Quote(MiniMaxProviderID),
+		"model_context_window = 1000000",
+		"model_reasoning_effort = \"high\"",
+		"model_reasoning_summary = \"none\"",
+		"show_raw_agent_reasoning = true",
+		"model_catalog_json = " + strconv.Quote(catalogPath),
+		"",
+		"[model_providers.minimax]",
+		"name = \"MiniMax FEAT-126 deterministic fake\"",
+		"base_url = " + strconv.Quote(fake.BaseURL),
+		"wire_api = \"responses\"",
+		"requires_openai_auth = false",
+		"supports_websockets = false",
+		"http_headers = { " + strconv.Quote(feat126RunIDHeader) + " = " + strconv.Quote(fake.RunID) + ", " + strconv.Quote(feat126FixtureIDHeader) + " = " + strconv.Quote(fake.FixtureID) + " }",
+		"",
+	}, "\n")
+	if err := writeManagedFile(filepath.Join(codexHome, "config.toml"), []byte(config), true); err != nil {
+		return fmt.Errorf("write managed FEAT-126 CODEX_HOME config: %w", err)
 	}
 	return nil
 }

@@ -86,8 +86,8 @@ func (m *Manager) SetNotificationHandler(handler NotificationHandler) error {
 }
 
 func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, error) {
-	if !m.config.MiniMax.Enabled {
-		return ThreadInfo{}, errors.New("MiniMax provider is not configured")
+	if !m.config.MiniMax.Enabled && !m.config.FakeResponses.Enabled {
+		return ThreadInfo{}, errors.New("model provider is not configured")
 	}
 	if err := validateWorkspace(cwd); err != nil {
 		return ThreadInfo{}, err

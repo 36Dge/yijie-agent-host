@@ -121,7 +121,7 @@ func TestRuntimeHelperProcess(t *testing.T) {
 				})
 			}
 		case "thread/start":
-			if mode != "baseline2" && mode != "title" {
+			if mode != "baseline2" && mode != "title" && mode != "feat126_fake" {
 				os.Exit(29)
 			}
 			if message.Params["model"] != MiniMaxModel || message.Params["modelProvider"] != MiniMaxProviderID ||
@@ -529,6 +529,34 @@ func TestManagerBaseline2ThreadTurnMethods(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for delete notification forwarding")
+	}
+}
+
+func TestManagerFEAT126FakeProviderKeepsWireIdentityWithoutCredential(t *testing.T) {
+	t.Setenv("YIJIE_FAKE_MODE", "feat126_fake")
+	config := newRuntimeFixture(t)
+	config.FakeResponses = FakeResponsesConfig{
+		Enabled: true, BaseURL: FEAT126FakeBaseURL,
+		RunID: "019fbd88-cbc3-7bf1-934d-7b05cd693f80", FixtureID: FEAT126FakeFixtureID,
+	}
+	manager := NewManager(config, nil)
+	if err := manager.Start(context.Background()); err != nil {
+		t.Fatalf("start Runtime with FEAT-126 fake provider: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = manager.Shutdown(ctx)
+	})
+	thread, err := manager.StartThread(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if thread.Model != MiniMaxModel || thread.ModelProvider != MiniMaxProviderID {
+		t.Fatalf("fake transport changed on-wire identity: %#v", thread)
+	}
+	if _, err := manager.StartTurn(context.Background(), thread.ID, "synthetic input", "high"); err != nil {
+		t.Fatal(err)
 	}
 }
 

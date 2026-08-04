@@ -75,6 +75,38 @@ func TestPrepareMiniMaxCodexHomeRefusesUnmanagedConfig(t *testing.T) {
 	}
 }
 
+func TestPrepareFakeResponsesCodexHomeUsesFrozenKeylessLoopbackConfig(t *testing.T) {
+	home := t.TempDir()
+	config := FakeResponsesConfig{
+		Enabled: true, BaseURL: FEAT126FakeBaseURL,
+		RunID: "019fbd88-cbc3-7bf1-934d-7b05cd693f80", FixtureID: FEAT126FakeFixtureID,
+	}
+	if err := prepareFakeResponsesCodexHome(home, config); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(home, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, required := range []string{
+		`model = "MiniMax-M3"`, `model_provider = "minimax"`,
+		`base_url = "http://127.0.0.1:18082/v1"`, `wire_api = "responses"`,
+		`requires_openai_auth = false`, `show_raw_agent_reasoning = true`,
+		`"X-Yijie-Feat126-Run-Id" = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"`,
+		`"X-Yijie-Feat126-Fixture-Id" = "normal-000"`,
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("managed fake config omitted %q", required)
+		}
+	}
+	for _, forbidden := range []string{"env_key", "API_KEY", "Authorization", "https://api.minimaxi.com"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("managed fake config contains forbidden value %q", forbidden)
+		}
+	}
+}
+
 func TestMiniMaxConfigValidation(t *testing.T) {
 	if err := (MiniMaxConfig{Enabled: true}).validate(); err == nil {
 		t.Fatal("expected missing key to fail")
@@ -87,6 +119,26 @@ func TestMiniMaxConfigValidation(t *testing.T) {
 	}
 	if err := (MiniMaxConfig{Enabled: true, APIKey: "test-secret"}).validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestFakeResponsesConfigValidation(t *testing.T) {
+	valid := FakeResponsesConfig{
+		Enabled: true, BaseURL: FEAT126FakeBaseURL,
+		RunID: "019fbd88-cbc3-7bf1-934d-7b05cd693f80", FixtureID: FEAT126FakeFixtureID,
+	}
+	if err := valid.validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []FakeResponsesConfig{
+		{Enabled: true, BaseURL: "http://localhost:18082/v1", RunID: valid.RunID, FixtureID: valid.FixtureID},
+		{Enabled: true, BaseURL: valid.BaseURL, FixtureID: valid.FixtureID},
+		{Enabled: true, BaseURL: valid.BaseURL, RunID: valid.RunID, FixtureID: "other"},
+		{RunID: valid.RunID},
+	} {
+		if err := invalid.validate(); err == nil {
+			t.Fatalf("expected invalid fake config to fail: %#v", invalid)
+		}
 	}
 }
 

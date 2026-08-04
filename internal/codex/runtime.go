@@ -46,6 +46,7 @@ type Config struct {
 	WriteQueueDepth int
 	StderrTailBytes int
 	MiniMax         MiniMaxConfig
+	FakeResponses   FakeResponsesConfig
 
 	// testArtifactPolicy is intentionally package-private. Production always
 	// uses the exact Runtime Baseline 0 artifact policy.
@@ -95,6 +96,12 @@ func (c Config) validate() error {
 	}
 	if err := c.MiniMax.validate(); err != nil {
 		return err
+	}
+	if err := c.FakeResponses.validate(); err != nil {
+		return err
+	}
+	if c.MiniMax.Enabled && c.FakeResponses.Enabled {
+		return errors.New("MiniMax and fake Responses providers are mutually exclusive")
 	}
 	return nil
 }
@@ -172,6 +179,16 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 	if m.config.MiniMax.Enabled {
 		if err := prepareMiniMaxCodexHome(m.config.CodexHome); err != nil {
+			m.fail("provider_config_failed")
+			return err
+		}
+		m.mu.Lock()
+		m.status.ModelProvider = MiniMaxProviderID
+		m.status.Model = MiniMaxModel
+		m.mu.Unlock()
+	}
+	if m.config.FakeResponses.Enabled {
+		if err := prepareFakeResponsesCodexHome(m.config.CodexHome, m.config.FakeResponses); err != nil {
 			m.fail("provider_config_failed")
 			return err
 		}
