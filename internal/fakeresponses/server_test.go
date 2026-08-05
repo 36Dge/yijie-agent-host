@@ -1,6 +1,7 @@
 package fakeresponses
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -34,6 +35,25 @@ func TestCompleteResponseUsesFrozenFixtureWithoutPersistingBody(t *testing.T) {
 	if snapshot.AcceptedCalls != 1 || snapshot.RejectedCalls != 0 || snapshot.FixtureID != codex.FEAT126FakeFixtureID ||
 		snapshot.DatasetSHA256 != "523609b44fd244fff18b930c992375999276c2e0d5786efadfd8858ec623b308" {
 		t.Fatalf("unexpected content-free snapshot: %#v", snapshot)
+	}
+}
+
+func TestHealthUsesExplicitDatasetAndFixtureCaseNames(t *testing.T) {
+	server := newTestServer(t, ModeComplete)
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	request.Header.Set(RunIDHeader, testRunID)
+	request.Header.Set(FixtureIDHeader, codex.FEAT126FakeFixtureID)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	var payload map[string]any
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &payload) != nil {
+		t.Fatalf("unexpected health response: %d %s", response.Code, response.Body.String())
+	}
+	if payload["dataset_id"] != "feat126-title-raw-v1" || payload["fixture_case_id"] != "normal-000" {
+		t.Fatalf("health identity is ambiguous: %#v", payload)
+	}
+	if _, exists := payload["fixture_id"]; exists {
+		t.Fatalf("legacy ambiguous fixture_id must not be emitted: %#v", payload)
 	}
 }
 

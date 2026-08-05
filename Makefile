@@ -1,4 +1,4 @@
-.PHONY: dev test runtime-test runtime-turn-test feat126-eval lint generate sync-contracts contract-check
+.PHONY: dev test runtime-test runtime-turn-test feat126-eval feat126-fake-readiness lint generate sync-contracts contract-check
 
 dev:
 	go run ./cmd/desktop-host
@@ -15,6 +15,9 @@ runtime-turn-test:
 
 feat126-eval:
 	go test ./internal/session -run '^TestFEAT126FakeProviderEval$$' -count=1 -v
+
+feat126-fake-readiness:
+	YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED=true go run ./cmd/feat126-fake-readiness
 
 lint:
 	@test -z "$$(gofmt -l $$(find cmd internal -type f -name '*.go'))" || (gofmt -l $$(find cmd internal -type f -name '*.go') && exit 1)

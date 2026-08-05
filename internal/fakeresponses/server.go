@@ -107,7 +107,8 @@ func (s *Server) health(w http.ResponseWriter, request *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "ready", "fixture_id": s.fixture.ID, "dataset_sha256": s.fixture.DatasetSHA256,
+		"status": "ready", "dataset_id": session.FEAT126FixtureDatasetID,
+		"fixture_case_id": s.fixture.ID, "dataset_sha256": s.fixture.DatasetSHA256,
 	})
 }
 

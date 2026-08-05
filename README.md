@@ -40,6 +40,11 @@ curl http://127.0.0.1:18080/readyz
 curl http://127.0.0.1:18080/v1/status
 ```
 
+FEAT-126 S10BF1 的测试专用 fake readiness 由 Host 独占权威：
+`cmd/feat126-fake-readiness`只在S10 exact-true profile下接受canonical run ID，自行选择冻结的
+fixture case并校验loopback fake server。输出分别命名`dataset_id`与`fixture_case_id`；调用方不能
+传入或覆盖二者。该探针不属于Host公共API，不改变默认provider、业务wire或Runtime pin。
+
 受保护 API 的 bearer token 位于 `$YIJIE_AGENT_HOST_HOME/api-token`，仅供同一用户的 Desktop/本地开发客户端读取。路由包括：
 
 ```text
