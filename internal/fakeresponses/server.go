@@ -34,6 +34,7 @@ type Config struct {
 	RunID           string
 	FixtureID       string
 	Mode            Mode
+	Generation      uint64
 	MaxRequestBytes int64
 	MaxCalls        uint64
 }
@@ -41,6 +42,9 @@ type Config struct {
 type Snapshot struct {
 	FixtureID     string `json:"fixture_id"`
 	DatasetSHA256 string `json:"dataset_sha256"`
+	Mode          Mode   `json:"mode"`
+	Generation    uint64 `json:"generation"`
+	CallCap       uint64 `json:"call_cap"`
 	AcceptedCalls uint64 `json:"accepted_calls"`
 	RejectedCalls uint64 `json:"rejected_calls"`
 }
@@ -62,6 +66,12 @@ func New(config Config) (*Server, error) {
 	}
 	if config.Mode == "" {
 		config.Mode = ModeComplete
+	}
+	if config.Generation == 0 {
+		config.Generation = 1
+	}
+	if config.Generation > 64 {
+		return nil, errors.New("fake Responses generation is invalid")
 	}
 	switch config.Mode {
 	case ModeComplete, ModeIncomplete, ModeHTTPError, ModeDisconnect, ModeOversize:
@@ -90,6 +100,7 @@ func New(config Config) (*Server, error) {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
+	mux.HandleFunc("GET /healthz/v2", s.closedHealth)
 	mux.HandleFunc("POST /v1/responses", s.responses)
 	return mux
 }
@@ -97,6 +108,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) Snapshot() Snapshot {
 	return Snapshot{
 		FixtureID: s.fixture.ID, DatasetSHA256: s.fixture.DatasetSHA256,
+		Mode: s.config.Mode, Generation: s.config.Generation, CallCap: s.config.MaxCalls,
 		AcceptedCalls: s.accepted.Load(), RejectedCalls: s.rejected.Load(),
 	}
 }
@@ -109,6 +121,28 @@ func (s *Server) health(w http.ResponseWriter, request *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status": "ready", "dataset_id": session.FEAT126FixtureDatasetID,
 		"fixture_case_id": s.fixture.ID, "dataset_sha256": s.fixture.DatasetSHA256,
+	})
+}
+
+// closedHealth is the Host-owned private projection used by S10BO1. The
+// legacy health endpoint intentionally keeps its original wire shape.
+func (s *Server) closedHealth(w http.ResponseWriter, request *http.Request) {
+	if !s.authorized(request) {
+		s.reject(w, http.StatusForbidden, "run_mismatch")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"schema_version":  1,
+		"status":          "ready",
+		"run_id":          s.config.RunID,
+		"mode":            s.config.Mode,
+		"generation":      s.config.Generation,
+		"call_cap":        s.config.MaxCalls,
+		"accepted_calls":  s.accepted.Load(),
+		"rejected_calls":  s.rejected.Load(),
+		"dataset_id":      session.FEAT126FixtureDatasetID,
+		"fixture_case_id": s.fixture.ID,
+		"dataset_sha256":  s.fixture.DatasetSHA256,
 	})
 }
 

@@ -35,9 +35,18 @@ func run() error {
 		}
 		maxCalls = parsed
 	}
+	generation := uint64(1)
+	if value := os.Getenv("YIJIE_FEAT126_S10_FAKE_GENERATION"); value != "" {
+		parsed, err := strconv.ParseUint(value, 10, 64)
+		if err != nil || parsed == 0 || parsed > 64 {
+			return errors.New("fake Responses generation is invalid")
+		}
+		generation = parsed
+	}
 	server, err := fakeresponses.New(fakeresponses.Config{
 		RunID: os.Getenv("YIJIE_FEAT126_S10_RUN_ID"), FixtureID: codex.FEAT126FakeFixtureID,
-		Mode: fakeresponses.Mode(os.Getenv("YIJIE_FEAT126_FAKE_RESPONSES_MODE")), MaxCalls: maxCalls,
+		Generation: generation,
+		Mode:       fakeresponses.Mode(os.Getenv("YIJIE_FEAT126_FAKE_RESPONSES_MODE")), MaxCalls: maxCalls,
 	})
 	if err != nil {
 		return err

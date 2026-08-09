@@ -37,6 +37,8 @@ type Config struct {
 	CleanupV2Enabled      bool
 	InstanceNonce         string
 	FEAT126TestParentPID  int
+	FEAT126TestRunID      string
+	FEAT126TestProfile    string
 }
 
 type RuntimeStatusProvider interface {
@@ -159,7 +161,16 @@ func LoadConfig() (Config, error) {
 		CleanupV2Enabled:      cleanupV2,
 		InstanceNonce:         instanceNonce,
 		FEAT126TestParentPID:  testParentPID,
+		FEAT126TestRunID:      fakeProfile.RunID,
+		FEAT126TestProfile:    feat126TestProfileName(fakeProfile),
 	}, nil
+}
+
+func feat126TestProfileName(profile codex.FakeResponsesConfig) string {
+	if profile.Enabled {
+		return "feat-126-s10-local-lab"
+	}
+	return ""
 }
 
 func loadFEAT126FakeResponsesProfile() (codex.FakeResponsesConfig, error) {
@@ -285,6 +296,27 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 			RuntimeMode: agenthostcontract.ManagedStdio,
 			Runtime:     runtimeStatusView(runtimeStatus),
 		})
+	})
+	mux.HandleFunc("GET /v1/feat126/runtime-evidence", func(w http.ResponseWriter, request *http.Request) {
+		if config.FEAT126TestRunID == "" || config.FEAT126TestProfile == "" ||
+			request.Header.Get("X-Yijie-Feat126-Run-Id") != config.FEAT126TestRunID ||
+			request.Header.Get("X-Yijie-Feat126-Nonce") != config.InstanceNonce {
+			writeJSON(w, http.StatusNotFound, map[string]string{"code": "not_found"})
+			return
+		}
+		provider, ok := runtime.(interface {
+			RuntimeEvidence(string, string, string) (codex.RuntimeEvidence, error)
+		})
+		if !ok {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"code": "evidence_unavailable"})
+			return
+		}
+		evidence, err := provider.RuntimeEvidence(config.FEAT126TestRunID, config.InstanceNonce, config.FEAT126TestProfile)
+		if err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"code": "evidence_unavailable"})
+			return
+		}
+		writeJSON(w, http.StatusOK, evidence)
 	})
 	if sessions != nil {
 		handler := &sessionHandler{

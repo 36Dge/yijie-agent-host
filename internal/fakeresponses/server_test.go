@@ -57,6 +57,33 @@ func TestHealthUsesExplicitDatasetAndFixtureCaseNames(t *testing.T) {
 	}
 }
 
+func TestClosedHealthBindsModeGenerationAndCallCap(t *testing.T) {
+	server, err := New(Config{
+		RunID: testRunID, FixtureID: codex.FEAT126FakeFixtureID,
+		Mode: ModeDisconnect, Generation: 3, MaxCalls: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/healthz/v2", nil)
+	request.Header.Set(RunIDHeader, testRunID)
+	request.Header.Set(FixtureIDHeader, codex.FEAT126FakeFixtureID)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	var payload map[string]any
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &payload) != nil {
+		t.Fatalf("unexpected closed health response: %d %s", response.Code, response.Body.String())
+	}
+	if payload["mode"] != string(ModeDisconnect) || payload["generation"] != float64(3) || payload["call_cap"] != float64(5) {
+		t.Fatalf("closed health omitted fake authority: %#v", payload)
+	}
+	for _, forbidden := range []string{"path", "secret", "bearer", "dsn", "payload"} {
+		if strings.Contains(strings.ToLower(response.Body.String()), forbidden) {
+			t.Fatalf("closed health leaked forbidden material %q", forbidden)
+		}
+	}
+}
+
 func TestFakeResponsesFailsClosed(t *testing.T) {
 	tests := []struct {
 		name     string

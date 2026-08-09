@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -125,6 +127,7 @@ type Manager struct {
 
 	mu       sync.Mutex
 	status   Status
+	artifact ArtifactInfo
 	started  bool
 	cmd      *exec.Cmd
 	client   *Client
@@ -286,6 +289,44 @@ func (m *Manager) Start(ctx context.Context) error {
 	m.status.FailureCode = ""
 	m.mu.Unlock()
 	return nil
+}
+
+// RuntimeEvidence is a content-free Host-owned projection for the S10BO1
+// orchestrator. It never includes executable paths, argv, environment values,
+// Runtime messages, or task content.
+type RuntimeEvidence struct {
+	SchemaVersion  int    `json:"schema_version"`
+	RunID          string `json:"run_id"`
+	Role           string `json:"role"`
+	PID            int    `json:"pid"`
+	PPID           int    `json:"ppid"`
+	BinarySHA256   string `json:"binary_sha256"`
+	ManifestSHA256 string `json:"manifest_sha256"`
+	Nonce          string `json:"nonce"`
+	Profile        string `json:"profile"`
+	State          string `json:"state"`
+	Ready          bool   `json:"ready"`
+}
+
+func (m *Manager) RuntimeEvidence(runID, nonce, profile string) (RuntimeEvidence, error) {
+	parsed, err := uuid.Parse(runID)
+	parsedNonce, nonceErr := uuid.Parse(nonce)
+	if err != nil || parsed == uuid.Nil || parsed.String() != runID || parsed.Version() != uuid.Version(4) ||
+		nonceErr != nil || parsedNonce == uuid.Nil || parsedNonce.String() != nonce ||
+		profile != "feat-126-s10-local-lab" {
+		return RuntimeEvidence{}, errors.New("runtime evidence authority is invalid")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.cmd == nil || m.cmd.Process == nil || m.artifact.BinarySHA256 == "" || m.artifact.ManifestSHA256 == "" {
+		return RuntimeEvidence{}, errors.New("runtime process evidence is unavailable")
+	}
+	return RuntimeEvidence{
+		SchemaVersion: 1, RunID: runID, Role: "runtime",
+		PID: m.cmd.Process.Pid, PPID: os.Getpid(),
+		BinarySHA256: m.artifact.BinarySHA256, ManifestSHA256: m.artifact.ManifestSHA256,
+		Nonce: nonce, Profile: profile, State: m.status.State, Ready: m.status.Ready,
+	}, nil
 }
 
 func (m *Manager) Shutdown(ctx context.Context) error {
@@ -479,6 +520,7 @@ func (m *Manager) abortStartup(code string) {
 
 func (m *Manager) setArtifact(artifact ArtifactInfo) {
 	m.mu.Lock()
+	m.artifact = artifact
 	m.status.RuntimeVersion = artifact.RuntimeVersion
 	m.status.UpstreamTag = artifact.UpstreamTag
 	m.status.UpstreamCommit = artifact.UpstreamCommit

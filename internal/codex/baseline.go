@@ -92,6 +92,8 @@ type ArtifactInfo struct {
 	UpstreamCommit  string
 	Transport       string
 	ExperimentalAPI bool
+	BinarySHA256    string
+	ManifestSHA256  string
 }
 
 func VerifyArtifact(ctx context.Context, binaryPath, manifestPath string, timeout time.Duration) (ArtifactInfo, error) {
@@ -154,6 +156,10 @@ func verifyArtifactWithPolicy(
 	if strings.TrimSpace(string(output)) != ExpectedReportedVersion {
 		return ArtifactInfo{}, errors.New("runtime reported version does not match baseline")
 	}
+	manifestSHA256, err := fileSHA256(manifestPath)
+	if err != nil {
+		return ArtifactInfo{}, fmt.Errorf("hash runtime manifest: %w", err)
+	}
 
 	return ArtifactInfo{
 		RuntimeVersion:  manifest.Runtime.Version,
@@ -161,6 +167,8 @@ func verifyArtifactWithPolicy(
 		UpstreamCommit:  manifest.Upstream.Commit,
 		Transport:       manifest.AppServer.Transport,
 		ExperimentalAPI: manifest.AppServer.ExperimentalAPI,
+		BinarySHA256:    digest,
+		ManifestSHA256:  manifestSHA256,
 	}, nil
 }
 
