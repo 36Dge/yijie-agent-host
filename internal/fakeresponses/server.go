@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	"github.com/36Dge/yijie-agent-host/internal/session"
@@ -18,6 +19,10 @@ const (
 	FixtureIDHeader = "X-Yijie-Feat126-Fixture-Id"
 	defaultMaxBytes = int64(1 << 20)
 	defaultMaxCalls = uint64(8)
+	// S10B-004 must expose a finalized reasoning projection before the synthetic
+	// incomplete terminal, so the real Desktop path can exercise cancellation.
+	incompleteReasoningSettleDelay = 75 * time.Millisecond
+	incompleteInterruptWindow      = 1500 * time.Millisecond
 )
 
 type Mode string
@@ -209,6 +214,9 @@ func (s *Server) responses(w http.ResponseWriter, request *http.Request) {
 	writeSSE(w, "response.reasoning_text.delta", map[string]any{
 		"type": "response.reasoning_text.delta", "item_id": reasoningID, "content_index": 0, "delta": s.fixture.RawText,
 	})
+	if s.config.Mode == ModeIncomplete && !waitForRequest(request, incompleteReasoningSettleDelay) {
+		return
+	}
 	writeSSE(w, "response.output_item.done", map[string]any{
 		"type": "response.output_item.done", "item": map[string]any{
 			"type": "reasoning", "id": reasoningID, "summary": []any{},
@@ -216,6 +224,9 @@ func (s *Server) responses(w http.ResponseWriter, request *http.Request) {
 		},
 	})
 	if s.config.Mode == ModeIncomplete {
+		if !waitForRequest(request, incompleteInterruptWindow) {
+			return
+		}
 		writeSSE(w, "response.incomplete", map[string]any{
 			"type": "response.incomplete", "response": map[string]any{"id": responseID, "incomplete_details": map[string]any{"reason": "synthetic_limit"}},
 		})
@@ -237,6 +248,17 @@ func (s *Server) responses(w http.ResponseWriter, request *http.Request) {
 			"id": responseID, "usage": map[string]any{"input_tokens": 0, "input_tokens_details": nil, "output_tokens": 0, "output_tokens_details": nil, "total_tokens": 0},
 		},
 	})
+}
+
+func waitForRequest(request *http.Request, duration time.Duration) bool {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-request.Context().Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 func (s *Server) authorized(request *http.Request) bool {

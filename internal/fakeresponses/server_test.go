@@ -1,6 +1,8 @@
 package fakeresponses
 
 import (
+	"bufio"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -134,6 +136,51 @@ func TestFailureModesAreDeterministic(t *testing.T) {
 				t.Fatalf("unexpected deterministic failure response: %d", response.Code)
 			}
 		})
+	}
+}
+
+func TestIncompleteResponseExposesReasoningBeforeCancelableTerminal(t *testing.T) {
+	fake := httptest.NewServer(newTestServer(t, ModeIncomplete).Handler())
+	defer fake.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		fake.URL+"/v1/responses",
+		strings.NewReader(`{"model":"MiniMax-M3","stream":true,"input":"x"}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set(RunIDHeader, testRunID)
+	request.Header.Set(FixtureIDHeader, codex.FEAT126FakeFixtureID)
+	response, err := fake.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var events []string
+	scanner := bufio.NewScanner(response.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "event: ") {
+			continue
+		}
+		event := strings.TrimPrefix(line, "event: ")
+		events = append(events, event)
+		if event == "response.output_item.done" {
+			cancel()
+		}
+	}
+	joined := strings.Join(events, ",")
+	if !strings.Contains(joined, "response.reasoning_text.delta") ||
+		!strings.Contains(joined, "response.output_item.done") {
+		t.Fatalf("reasoning observation window was not reached: %v", events)
+	}
+	if strings.Contains(joined, "response.incomplete") {
+		t.Fatalf("canceled request emitted a late terminal: %v", events)
 	}
 }
 
