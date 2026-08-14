@@ -3,7 +3,7 @@
   "contracts_version": "0.3.0",
   "runtime": {
     "repository": "https://github.com/36Dge/yijie-codex.git",
-    "repository_commit": "3aa317cebbbc9c743f6b1a18522be11a7ebb5d6f",
+    "repository_commit": "a4267e77708a23d7af79aa209f48f36ba89fbb12",
     "upstream_tag": "rust-v0.144.6",
     "upstream_commit": "5d1fbf26c43abc65a203928b2e31561cb039e06d",
     "version": "0.144.6",

@@ -319,6 +319,58 @@ func TestPinnedPolicyRejectsSelfConsistentAlternativeArtifact(t *testing.T) {
 	}
 }
 
+func TestVerifyArtifactRejectsUnexpectedRuntimePatchAuthority(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Manifest)
+	}{
+		{
+			name: "path",
+			mutate: func(manifest *Manifest) {
+				manifest.Patches[0].Path = ".yijie/patches/unreviewed.patch"
+			},
+		},
+		{
+			name: "digest",
+			mutate: func(manifest *Manifest) {
+				manifest.Patches[0].SHA256 = strings.Repeat("0", 64)
+			},
+		},
+		{
+			name: "count",
+			mutate: func(manifest *Manifest) {
+				manifest.Patches = nil
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			config := newRuntimeFixture(t)
+			manifest, err := readManifest(config.ManifestPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			test.mutate(&manifest)
+			manifestBytes, err := json.Marshal(manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(config.ManifestPath, manifestBytes, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := verifyArtifactWithPolicy(
+				context.Background(),
+				config.BinaryPath,
+				config.ManifestPath,
+				5*time.Second,
+				*config.testArtifactPolicy,
+			); err == nil {
+				t.Fatal("expected unexpected runtime patch authority to fail")
+			}
+		})
+	}
+}
+
 func TestManagerHandshakeAndGracefulShutdown(t *testing.T) {
 	setCredentialFixtures(t)
 	config := newRuntimeFixture(t)
@@ -649,7 +701,10 @@ func newRuntimeFixture(t *testing.T) Config {
 			SchemaTreeSHA256: ExpectedSchemaTreeSHA256,
 			Transport:        ExpectedTransport,
 		},
-		Patches: []json.RawMessage{},
+		Patches: []ManifestPatch{{
+			Path:   ExpectedRuntimePatchPath,
+			SHA256: ExpectedRuntimePatchSHA256,
+		}},
 		BuildLock: ManifestBuildLock{
 			FromVersion:            "0.0.0",
 			NormalizedPackageCount: 132,

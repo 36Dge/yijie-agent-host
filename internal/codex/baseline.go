@@ -26,8 +26,10 @@ const (
 	ExpectedRustToolchain      = "1.95.0"
 	ExpectedTarget             = "aarch64-apple-darwin"
 	ExpectedTransport          = "stdio"
-	ExpectedRuntimeSHA256      = "1ef4f1daba0c5ac267e9bf661d129c3dfc59ffe5cd9ab7767b22a1e9508df1fe"
-	ExpectedRuntimeSize        = int64(355764632)
+	ExpectedRuntimeSHA256      = "1c491e2b4baa48bed652a6dd31f98cee664ca2d93e63935bda7c97e57167ceda"
+	ExpectedRuntimeSize        = int64(355763832)
+	ExpectedRuntimePatchPath   = ".yijie/patches/0001-feat-126-filter-persistent-diagnostics.patch"
+	ExpectedRuntimePatchSHA256 = "3816cfc558df9e9d63a061bf1870446fcb6fe1020b94b5d3be360439f2d5e7e6"
 	ExpectedSchemaTreeSHA256   = "82ee9de771cf1d41bac16d87380f1121e7794107aa3aa526ad702d5d1bf7afe1"
 	ExpectedResolvedLockSHA256 = "5cc77d7dfcc2828d3d389daf5824998c445c01e1d30367b04885813242d53f11"
 	ExpectedUpstreamLockSHA256 = "175793a40a3147db1fee08fd9db0acc59312c344b3513dd7ee316f5446d8119e"
@@ -40,7 +42,7 @@ type Manifest struct {
 	Upstream      ManifestUpstream  `json:"upstream"`
 	Runtime       ManifestRuntime   `json:"runtime"`
 	AppServer     ManifestAppServer `json:"appServer"`
-	Patches       []json.RawMessage `json:"patches"`
+	Patches       []ManifestPatch   `json:"patches"`
 	BuildLock     ManifestBuildLock `json:"buildLock"`
 }
 
@@ -48,6 +50,11 @@ type ManifestUpstream struct {
 	URL    string `json:"url"`
 	Tag    string `json:"tag"`
 	Commit string `json:"commit"`
+}
+
+type ManifestPatch struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
 }
 
 type ManifestRuntime struct {
@@ -243,8 +250,12 @@ func validateManifest(manifest Manifest, policy artifactPolicy) error {
 		return errors.New("app-server schema file count does not match baseline")
 	case manifest.AppServer.SchemaTreeSHA256 != ExpectedSchemaTreeSHA256:
 		return errors.New("app-server schema tree SHA-256 does not match baseline")
-	case len(manifest.Patches) != 0:
-		return errors.New("Runtime Baseline 0 requires zero patches")
+	case len(manifest.Patches) != 1:
+		return errors.New("runtime patch count does not match reviewed overlay")
+	case manifest.Patches[0].Path != ExpectedRuntimePatchPath:
+		return errors.New("runtime patch path does not match reviewed overlay")
+	case manifest.Patches[0].SHA256 != ExpectedRuntimePatchSHA256:
+		return errors.New("runtime patch SHA-256 does not match reviewed overlay")
 	case manifest.BuildLock.SchemaVersion != 1:
 		return errors.New("runtime build lock schema version does not match baseline")
 	case manifest.BuildLock.FromVersion != "0.0.0" || manifest.BuildLock.ToVersion != ExpectedRuntimeVersion:
