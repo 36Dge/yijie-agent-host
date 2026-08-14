@@ -93,11 +93,17 @@ func TestPrepareFakeResponsesCodexHomeUsesFrozenKeylessLoopbackConfig(t *testing
 		`model = "MiniMax-M3"`, `model_provider = "minimax"`,
 		`base_url = "http://127.0.0.1:18082/v1"`, `wire_api = "responses"`,
 		`requires_openai_auth = false`, `show_raw_agent_reasoning = true`,
+		`request_max_retries = 0`, `stream_max_retries = 0`,
 		`"X-Yijie-Feat126-Run-Id" = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"`,
 		`"X-Yijie-Feat126-Fixture-Id" = "normal-000"`,
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("managed fake config omitted %q", required)
+		}
+	}
+	for _, retry := range []string{`request_max_retries = 0`, `stream_max_retries = 0`} {
+		if strings.Count(text, retry) != 1 {
+			t.Fatalf("managed fake config must contain exactly one %q", retry)
 		}
 	}
 	for _, forbidden := range []string{"env_key", "API_KEY", "Authorization", "https://api.minimaxi.com"} {

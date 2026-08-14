@@ -147,6 +147,8 @@ func prepareFakeResponsesCodexHome(codexHome string, fake FakeResponsesConfig) e
 		"wire_api = \"responses\"",
 		"requires_openai_auth = false",
 		"supports_websockets = false",
+		"request_max_retries = 0",
+		"stream_max_retries = 0",
 		"http_headers = { " + strconv.Quote(feat126RunIDHeader) + " = " + strconv.Quote(fake.RunID) + ", " + strconv.Quote(feat126FixtureIDHeader) + " = " + strconv.Quote(fake.FixtureID) + " }",
 		"",
 	}, "\n")
