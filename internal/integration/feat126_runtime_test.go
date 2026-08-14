@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -65,10 +66,11 @@ func runPinnedRuntimeFEAT126FakeResponses(
 		}
 	})
 
+	codexHome := t.TempDir()
 	config := codex.DefaultConfig()
 	config.BinaryPath = binaryPath
 	config.ManifestPath = manifestPath
-	config.CodexHome = t.TempDir()
+	config.CodexHome = codexHome
 	config.StartupTimeout = 30 * time.Second
 	config.RequestTimeout = 30 * time.Second
 	config.ShutdownTimeout = 10 * time.Second
@@ -134,6 +136,16 @@ func runPinnedRuntimeFEAT126FakeResponses(
 	snapshot := fake.Snapshot()
 	if snapshot.AcceptedCalls != 1 || snapshot.RejectedCalls != 0 {
 		t.Fatalf("unexpected content-free fake counters: %#v", snapshot)
+	}
+	pluginClones, err := filepath.Glob(filepath.Join(codexHome, ".tmp", "plugins-clone-*"))
+	if err != nil {
+		t.Fatalf("inspect FEAT-126 plugin sync boundary: %v", err)
+	}
+	if len(pluginClones) != 0 {
+		t.Fatalf("FEAT-126 fake Runtime started an out-of-scope plugin sync: count=%d", len(pluginClones))
+	}
+	if _, err := os.Lstat(filepath.Join(codexHome, ".tmp", "plugins.sync.lock")); !os.IsNotExist(err) {
+		t.Fatalf("FEAT-126 fake Runtime created a plugin sync lock: %v", err)
 	}
 }
 
