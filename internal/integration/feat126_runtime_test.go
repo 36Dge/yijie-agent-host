@@ -15,6 +15,20 @@ import (
 )
 
 func TestPinnedRuntimeFEAT126FakeResponses(t *testing.T) {
+	runPinnedRuntimeFEAT126FakeResponses(t, fakeresponses.ModeComplete, "completed", false)
+}
+
+func TestPinnedRuntimeFEAT126Disconnect(t *testing.T) {
+	runPinnedRuntimeFEAT126FakeResponses(t, fakeresponses.ModeDisconnect, "failed", true)
+}
+
+func runPinnedRuntimeFEAT126FakeResponses(
+	t *testing.T,
+	mode fakeresponses.Mode,
+	wantStatus string,
+	wantNonRetryableError bool,
+) {
+	t.Helper()
 	if os.Getenv("YIJIE_RUN_FEAT126_FAKE_INTEGRATION") != "1" {
 		t.Skip("set YIJIE_RUN_FEAT126_FAKE_INTEGRATION=1")
 	}
@@ -25,7 +39,7 @@ func TestPinnedRuntimeFEAT126FakeResponses(t *testing.T) {
 	}
 	const runID = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
 	fake, err := fakeresponses.New(fakeresponses.Config{
-		RunID: runID, FixtureID: codex.FEAT126FakeFixtureID, Mode: fakeresponses.ModeComplete, MaxCalls: 2,
+		RunID: runID, FixtureID: codex.FEAT126FakeFixtureID, Mode: mode, MaxCalls: 2,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -88,19 +102,31 @@ func TestPinnedRuntimeFEAT126FakeResponses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("turn/start: %v", err)
 	}
-	status, methods, err := notifications.waitForTurn(turn.ID, 30*time.Second)
+	status, methods, nonRetryableError, err := notifications.waitForTurn(turn.ID, 30*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status != "completed" {
+	if status != wantStatus {
 		t.Fatalf("turn completed with status %q", status)
 	}
-	for _, method := range []string{
-		"item/reasoning/textDelta", "item/agentMessage/delta", "item/completed", "turn/completed",
-	} {
+	methodsRequired := []string{"turn/completed"}
+	if mode == fakeresponses.ModeComplete {
+		methodsRequired = append(methodsRequired,
+			"item/reasoning/textDelta", "item/agentMessage/delta", "item/completed")
+	} else {
+		methodsRequired = append(methodsRequired, "error")
+	}
+	for _, method := range methodsRequired {
 		if !contains(methods, method) {
 			t.Fatalf("turn omitted %q; methods=%v", method, methods)
 		}
+	}
+	if mode == fakeresponses.ModeDisconnect &&
+		indexOf(methods, "error") >= indexOf(methods, "turn/completed") {
+		t.Fatalf("disconnect terminal ordering is invalid; methods=%v", methods)
+	}
+	if nonRetryableError != wantNonRetryableError {
+		t.Fatalf("non-retryable error observation=%t, want %t", nonRetryableError, wantNonRetryableError)
 	}
 	if err := manager.DeleteThread(context.Background(), thread.ID); err != nil {
 		t.Fatalf("thread/delete: %v", err)
@@ -112,15 +138,17 @@ func TestPinnedRuntimeFEAT126FakeResponses(t *testing.T) {
 }
 
 type notificationRecorder struct {
-	mu        sync.Mutex
-	methods   map[string][]string
-	completed map[string]string
-	wake      chan struct{}
+	mu                sync.Mutex
+	methods           map[string][]string
+	completed         map[string]string
+	nonRetryableError map[string]bool
+	wake              chan struct{}
 }
 
 func newNotificationRecorder() *notificationRecorder {
 	return &notificationRecorder{
-		methods: make(map[string][]string), completed: make(map[string]string), wake: make(chan struct{}, 1),
+		methods: make(map[string][]string), completed: make(map[string]string),
+		nonRetryableError: make(map[string]bool), wake: make(chan struct{}, 1),
 	}
 }
 
@@ -131,6 +159,7 @@ func (recorder *notificationRecorder) handle(method string, params json.RawMessa
 			ID     string `json:"id"`
 			Status string `json:"status"`
 		} `json:"turn"`
+		WillRetry *bool `json:"willRetry"`
 	}
 	_ = json.Unmarshal(params, &notification)
 	turnID := notification.TurnID
@@ -143,6 +172,9 @@ func (recorder *notificationRecorder) handle(method string, params json.RawMessa
 		if method == "turn/completed" {
 			recorder.completed[turnID] = notification.Turn.Status
 		}
+		if method == "error" && notification.WillRetry != nil && !*notification.WillRetry {
+			recorder.nonRetryableError[turnID] = true
+		}
 	}
 	recorder.mu.Unlock()
 	select {
@@ -151,30 +183,38 @@ func (recorder *notificationRecorder) handle(method string, params json.RawMessa
 	}
 }
 
-func (recorder *notificationRecorder) waitForTurn(turnID string, timeout time.Duration) (string, []string, error) {
+func (recorder *notificationRecorder) waitForTurn(
+	turnID string,
+	timeout time.Duration,
+) (string, []string, bool, error) {
 	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
 	for {
 		recorder.mu.Lock()
 		status, done := recorder.completed[turnID]
 		methods := append([]string(nil), recorder.methods[turnID]...)
+		nonRetryableError := recorder.nonRetryableError[turnID]
 		recorder.mu.Unlock()
 		if done {
-			return status, methods, nil
+			return status, methods, nonRetryableError, nil
 		}
 		select {
 		case <-recorder.wake:
 		case <-deadline.C:
-			return "", methods, context.DeadlineExceeded
+			return "", methods, nonRetryableError, context.DeadlineExceeded
 		}
 	}
 }
 
 func contains(values []string, expected string) bool {
-	for _, value := range values {
+	return indexOf(values, expected) >= 0
+}
+
+func indexOf(values []string, expected string) int {
+	for index, value := range values {
 		if value == expected {
-			return true
+			return index
 		}
 	}
-	return false
+	return -1
 }
