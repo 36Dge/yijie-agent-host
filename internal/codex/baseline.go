@@ -26,10 +26,10 @@ const (
 	ExpectedRustToolchain      = "1.95.0"
 	ExpectedTarget             = "aarch64-apple-darwin"
 	ExpectedTransport          = "stdio"
-	ExpectedRuntimeSHA256      = "1c491e2b4baa48bed652a6dd31f98cee664ca2d93e63935bda7c97e57167ceda"
-	ExpectedRuntimeSize        = int64(355763832)
+	ExpectedRuntimeSHA256      = "ef4ea3fda5480ac9d0b94af9e068e53169ea8264e3ae4a9d857bd41b21432b81"
+	ExpectedRuntimeSize        = int64(355764568)
 	ExpectedRuntimePatchPath   = ".yijie/patches/0001-feat-126-filter-persistent-diagnostics.patch"
-	ExpectedRuntimePatchSHA256 = "3816cfc558df9e9d63a061bf1870446fcb6fe1020b94b5d3be360439f2d5e7e6"
+	ExpectedRuntimePatchSHA256 = "e8f5a9946b9c7baba6b3671d5721ac0e97973ed371fc9162db5922c0696a822f"
 	ExpectedSchemaTreeSHA256   = "82ee9de771cf1d41bac16d87380f1121e7794107aa3aa526ad702d5d1bf7afe1"
 	ExpectedResolvedLockSHA256 = "5cc77d7dfcc2828d3d389daf5824998c445c01e1d30367b04885813242d53f11"
 	ExpectedUpstreamLockSHA256 = "175793a40a3147db1fee08fd9db0acc59312c344b3513dd7ee316f5446d8119e"

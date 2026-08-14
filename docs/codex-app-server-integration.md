@@ -10,11 +10,11 @@ Agent Host Runtime Baseline 2 继承 Baseline 1 的固定兼容边界，只兼�
 | 上游 commit | `5d1fbf26c43abc65a203928b2e31561cb039e06d` |
 | Runtime 版本 | `codex-cli 0.144.6` |
 | 发布目标 | `aarch64-apple-darwin` |
-| binary SHA-256 | `1c491e2b4baa48bed652a6dd31f98cee664ca2d93e63935bda7c97e57167ceda` |
+| binary SHA-256 | `ef4ea3fda5480ac9d0b94af9e068e53169ea8264e3ae4a9d857bd41b21432b81` |
 | Schema tree SHA-256 | `82ee9de771cf1d41bac16d87380f1121e7794107aa3aa526ad702d5d1bf7afe1` |
 | transport | JSONL over stdio |
 | API surface | stable，`experimentalApi=false` |
-| Yijie Runtime patch | `0001-feat-126-filter-persistent-diagnostics.patch` / `3816cfc558df9e9d63a061bf1870446fcb6fe1020b94b5d3be360439f2d5e7e6` |
+| Yijie Runtime patch | `0001-feat-126-filter-persistent-diagnostics.patch` / `e8f5a9946b9c7baba6b3671d5721ac0e97973ed371fc9162db5922c0696a822f` |
 
 Host 不接受“同版本号但不同哈希”的二进制，也不把随附 manifest 当作可自行声明的新信任根。启动前依次把 manifest 中的 binary、Schema tree 和 build-lock 摘要与编译时固定值比较，再校验实际二进制文件名、大小、SHA-256，以及 `codex --version` 的精确输出。
 
