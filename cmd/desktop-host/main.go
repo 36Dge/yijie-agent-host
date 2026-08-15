@@ -35,7 +35,11 @@ func run(logger *slog.Logger) error {
 	var sessionStore *session.Store
 	var apiToken string
 	if config.HostHome != "" {
-		sessionStore, err = session.OpenStore(config.HostHome)
+		storeOptions := make([]session.StoreOption, 0, 1)
+		if config.FEAT126ProjectDir != "" {
+			storeOptions = append(storeOptions, session.WithFEAT126Authority(config.FEAT126ProjectDir, config.FEAT126TestRunID))
+		}
+		sessionStore, err = session.OpenStore(config.HostHome, storeOptions...)
 		if err != nil {
 			return err
 		}

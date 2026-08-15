@@ -587,6 +587,14 @@ func TestManagerBaseline2ThreadTurnMethods(t *testing.T) {
 func TestManagerFEAT126FakeProviderKeepsWireIdentityWithoutCredential(t *testing.T) {
 	t.Setenv("YIJIE_FAKE_MODE", "feat126_fake")
 	config := newRuntimeFixture(t)
+	canonicalHome, err := filepath.EvalSymlinks(config.CodexHome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(canonicalHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	config.CodexHome = canonicalHome
 	config.FakeResponses = FakeResponsesConfig{
 		Enabled: true, BaseURL: FEAT126FakeBaseURL,
 		RunID: "019fbd88-cbc3-7bf1-934d-7b05cd693f80", FixtureID: FEAT126FakeFixtureID,

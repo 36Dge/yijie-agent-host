@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -77,12 +78,18 @@ func (c Config) validate() error {
 	if !filepath.IsAbs(c.CodexHome) {
 		return errors.New("CODEX_HOME must be an absolute path")
 	}
-	home, err := os.Stat(c.CodexHome)
-	if err != nil {
-		return fmt.Errorf("stat CODEX_HOME: %w", err)
-	}
-	if !home.IsDir() {
-		return errors.New("CODEX_HOME is not a directory")
+	if c.FakeResponses.Enabled {
+		if err := validateFEAT126CodexHome(c.CodexHome); err != nil {
+			return err
+		}
+	} else {
+		home, err := os.Stat(c.CodexHome)
+		if err != nil {
+			return fmt.Errorf("stat CODEX_HOME: %w", err)
+		}
+		if !home.IsDir() {
+			return errors.New("CODEX_HOME is not a directory")
+		}
 	}
 	if c.StartupTimeout <= 0 || c.RequestTimeout <= 0 || c.ShutdownTimeout <= 0 {
 		return errors.New("runtime timeouts must be positive")
@@ -104,6 +111,25 @@ func (c Config) validate() error {
 	}
 	if c.MiniMax.Enabled && c.FakeResponses.Enabled {
 		return errors.New("MiniMax and fake Responses providers are mutually exclusive")
+	}
+	return nil
+}
+
+func validateFEAT126CodexHome(path string) error {
+	if filepath.Clean(path) != path {
+		return errors.New("FEAT-126 CODEX_HOME must be canonical")
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect FEAT-126 CODEX_HOME: %w", err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != uint32(os.Geteuid()) || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
+		return errors.New("FEAT-126 CODEX_HOME must be an owner-only non-symlink directory")
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil || resolved != path {
+		return errors.New("FEAT-126 CODEX_HOME must be canonical")
 	}
 	return nil
 }

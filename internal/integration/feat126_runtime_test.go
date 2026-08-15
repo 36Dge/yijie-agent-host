@@ -70,7 +70,7 @@ func TestPinnedRuntimeFEAT126RestartThenDisconnect(t *testing.T) {
 		}
 	})
 
-	codexHome := t.TempDir()
+	codexHome := exactPrivateTempDir(t)
 	workspace := t.TempDir()
 	newConfig := func() codex.Config {
 		config := codex.DefaultConfig()
@@ -189,9 +189,20 @@ func TestPinnedRuntimeFEAT126ServiceRestartThenDisconnect(t *testing.T) {
 		}
 	})
 
-	codexHome := t.TempDir()
-	hostHome := t.TempDir()
-	workspace := t.TempDir()
+	tempRoot := exactPrivateTempDir(t)
+	runRoot := filepath.Join(tempRoot, runID)
+	hostHome := filepath.Join(runRoot, "host-home")
+	workspace := filepath.Join(runRoot, "project")
+	for _, directory := range []string{runRoot, hostHome, workspace} {
+		if err := os.Mkdir(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	codexHome := filepath.Join(runRoot, "codex-home")
+	if err := os.Mkdir(codexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	storeOption := session.WithFEAT126Authority(workspace, runID)
 	newConfig := func() codex.Config {
 		config := codex.DefaultConfig()
 		config.BinaryPath = binaryPath
@@ -222,7 +233,7 @@ func TestPinnedRuntimeFEAT126ServiceRestartThenDisconnect(t *testing.T) {
 		t.Fatal("Host store did not persist the failed terminal")
 	}
 
-	firstStore, err := session.OpenStore(hostHome)
+	firstStore, err := session.OpenStore(hostHome, storeOption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +264,7 @@ func TestPinnedRuntimeFEAT126ServiceRestartThenDisconnect(t *testing.T) {
 	}
 
 	switcher.set(secondDisconnect.Handler())
-	secondStore, err := session.OpenStore(hostHome)
+	secondStore, err := session.OpenStore(hostHome, storeOption)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +363,7 @@ func runPinnedRuntimeFEAT126FakeResponses(
 		}
 	})
 
-	codexHome := t.TempDir()
+	codexHome := exactPrivateTempDir(t)
 	config := codex.DefaultConfig()
 	config.BinaryPath = binaryPath
 	config.ManifestPath = manifestPath
@@ -433,6 +444,18 @@ func runPinnedRuntimeFEAT126FakeResponses(
 	if _, err := os.Lstat(filepath.Join(codexHome, ".tmp", "plugins.sync.lock")); !os.IsNotExist(err) {
 		t.Fatalf("FEAT-126 fake Runtime created a plugin sync lock: %v", err)
 	}
+}
+
+func exactPrivateTempDir(t *testing.T) string {
+	t.Helper()
+	directory, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return directory
 }
 
 type notificationRecorder struct {

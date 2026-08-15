@@ -381,6 +381,59 @@ type fakeRuntime struct {
 	deleteThread func(string) error
 }
 
+func TestFEAT126ServiceUsesRehydratedCwdForStartAndIDOnlyResume(t *testing.T) {
+	const runID = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+	_, hostHome, projectDirectory := newFEAT126StoreAuthority(t, runID)
+	option := WithFEAT126Authority(projectDirectory, runID)
+	store, err := OpenStore(hostHome, option)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var startedWith string
+	firstRuntime := &fakeRuntime{startThread: func(cwd string) (codex.ThreadInfo, error) {
+		startedWith = cwd
+		return codex.ThreadInfo{
+			ID: testThreadID, RuntimeSession: "runtime-session",
+			Model: codex.MiniMaxModel, ModelProvider: codex.MiniMaxProviderID,
+		}, nil
+	}}
+	firstService := NewService(firstRuntime, store, NewEventHub(8, 2), nil)
+	record, err := firstService.StartSession(context.Background(), StartSessionInput{
+		TaskID: testTaskID, Cwd: projectDirectory,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if startedWith != projectDirectory || record.Cwd != projectDirectory {
+		t.Fatalf("thread/start cwd was not canonical: input=%q response=%q", startedWith, record.Cwd)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := OpenStore(hostHome, option)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	var resumedThreadID string
+	secondRuntime := &fakeRuntime{resume: func(threadID string) (codex.ThreadInfo, error) {
+		resumedThreadID = threadID
+		return codex.ThreadInfo{
+			ID: threadID, RuntimeSession: "runtime-session-restarted",
+			Model: codex.MiniMaxModel, ModelProvider: codex.MiniMaxProviderID,
+		}, nil
+	}}
+	secondService := NewService(secondRuntime, reopened, NewEventHub(8, 2), nil)
+	resumed, err := secondService.ResumeSession(context.Background(), record.AgentSessionID, TraceContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resumedThreadID != testThreadID || resumed.Cwd != projectDirectory {
+		t.Fatalf("thread/resume authority drift: thread=%q cwd=%q", resumedThreadID, resumed.Cwd)
+	}
+}
+
 func (f *fakeRuntime) StartThread(_ context.Context, cwd string) (codex.ThreadInfo, error) {
 	return f.startThread(cwd)
 }

@@ -760,8 +760,10 @@ type AgentSession struct {
 	AgentSessionId openapi_types.UUID `json:"agent_session_id"`
 
 	// CodexThreadId A UUID when bound, otherwise the empty string.
-	CodexThreadId UuidOrEmpty               `json:"codex_thread_id"`
-	CreatedAt     time.Time                 `json:"created_at"`
+	CodexThreadId UuidOrEmpty `json:"codex_thread_id"`
+	CreatedAt     time.Time   `json:"created_at"`
+
+	// Cwd Rehydrated canonical absolute session working directory.
 	Cwd           string                    `json:"cwd"`
 	FailureCode   AgentSessionFailureCode   `json:"failure_code"`
 	Model         AgentSessionModel         `json:"model"`
@@ -981,7 +983,10 @@ type SessionResponse struct {
 
 // StartSessionRequest defines model for StartSessionRequest.
 type StartSessionRequest struct {
-	// Cwd Existing absolute local directory. Host resolves symlinks and stores the canonical path.
+	// Cwd Existing absolute local directory. Host resolves symlinks and uses the
+	// resulting canonical path as the session working directory. Any private
+	// persistence representation is an implementation detail and is not part
+	// of this wire contract.
 	Cwd string `json:"cwd"`
 
 	// RequestId Optional request correlation identifier copied to session events.

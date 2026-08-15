@@ -1044,7 +1044,11 @@ components:
           type: string
           minLength: 1
           pattern: ^/
-          description: Existing absolute local directory. Host resolves symlinks and stores the canonical path.
+          description: |
+            Existing absolute local directory. Host resolves symlinks and uses the
+            resulting canonical path as the session working directory. Any private
+            persistence representation is an implementation detail and is not part
+            of this wire contract.
     StartTurnRequest:
       type: object
       additionalProperties: false
@@ -1314,6 +1318,7 @@ components:
           type: string
           minLength: 1
           pattern: ^/
+          description: Rehydrated canonical absolute session working directory.
         model:
           type: string
           enum: ["", MiniMax-M3]

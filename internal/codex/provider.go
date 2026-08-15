@@ -120,8 +120,8 @@ func prepareFakeResponsesCodexHome(codexHome string, fake FakeResponsesConfig) e
 	if err := fake.validate(); err != nil {
 		return err
 	}
-	if err := os.Chmod(codexHome, 0o700); err != nil {
-		return fmt.Errorf("protect managed CODEX_HOME: %w", err)
+	if err := validateFEAT126CodexHome(codexHome); err != nil {
+		return err
 	}
 	catalogPath := filepath.Join(codexHome, managedModelCatalogName)
 	catalog, err := miniMaxModelCatalog()

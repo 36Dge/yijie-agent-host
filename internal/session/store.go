@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -44,9 +45,15 @@ var (
 	cleanupReceiptsBucket   = []byte("cleanup_receipts_v2")
 	cleanupOperationsBucket = []byte("cleanup_operations_v3")
 	storeSchemaVersionKey   = []byte("schema_version")
+	feat126CwdEncodingKey   = []byte("feat126_cwd_encoding")
+	feat126RunIDKey         = []byte("feat126_run_id")
 )
 
-const storeSchemaVersion = "3"
+const (
+	storeSchemaVersion        = "3"
+	feat126CwdEncodingVersion = "opaque-project-v1"
+	feat126OpaqueProjectCwd   = "feat126-s10-project"
+)
 
 type TraceContext struct {
 	TraceID   string `json:"trace_id,omitempty"`
@@ -75,40 +82,95 @@ type Record struct {
 }
 
 type Store struct {
-	db         *bolt.DB
-	receiptKey [32]byte
+	db                      *bolt.DB
+	receiptKey              [32]byte
+	feat126ProjectDirectory string
+	feat126RunID            string
+	feat126RunRoot          string
 }
 
-func OpenStore(hostHome string) (*Store, error) {
+type StoreOption func(*Store) error
+
+func WithFEAT126Authority(projectDirectory, runID string) StoreOption {
+	return func(store *Store) error {
+		canonical, err := canonicalFEAT126ProjectDirectory(projectDirectory)
+		if err != nil {
+			return err
+		}
+		runRoot, err := validateExactOwnerDirectory(filepath.Dir(canonical), "FEAT-126 run root")
+		if err != nil {
+			return err
+		}
+		parsed, err := uuid.Parse(runID)
+		if err != nil || parsed == uuid.Nil || parsed.String() != runID || filepath.Base(runRoot) != runID {
+			return errors.New("FEAT-126 run authority is invalid")
+		}
+		store.feat126ProjectDirectory = canonical
+		store.feat126RunID = runID
+		store.feat126RunRoot = runRoot
+		return nil
+	}
+}
+
+func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 	if hostHome == "" || !filepath.IsAbs(hostHome) {
 		return nil, errors.New("Agent Host home must be an absolute path")
 	}
-	if err := preparePrivateDirectory(hostHome); err != nil {
+	store := &Store{}
+	for _, option := range options {
+		if option != nil {
+			if err := option(store); err != nil {
+				return nil, err
+			}
+		}
+	}
+	featureProfile := store.feat126ProjectDirectory != ""
+	if featureProfile {
+		canonicalHostHome, err := validateExactOwnerDirectory(hostHome, "FEAT-126 Host home")
+		if err != nil {
+			return nil, err
+		}
+		if filepath.Base(canonicalHostHome) != "host-home" ||
+			store.feat126RunRoot != filepath.Dir(canonicalHostHome) {
+			return nil, errors.New("FEAT-126 project directory is outside the Host run authority")
+		}
+		hostHome = canonicalHostHome
+	} else if err := preparePrivateDirectory(hostHome); err != nil {
 		return nil, err
 	}
 	dbPath := filepath.Join(hostHome, "sessions.db")
-	if err := preparePrivateFileIfExists(dbPath); err != nil {
+	createdByOpen := false
+	if featureProfile {
+		var err error
+		createdByOpen, err = prepareFEAT126StoreFile(dbPath)
+		if err != nil {
+			return nil, err
+		}
+	} else if err := preparePrivateFileIfExists(dbPath); err != nil {
 		return nil, err
 	}
 	db, err := bolt.Open(dbPath, 0o600, &bolt.Options{Timeout: time.Second})
 	if err != nil {
 		return nil, fmt.Errorf("open Agent Host session store: %w", err)
 	}
-	if err := os.Chmod(dbPath, 0o600); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("protect Agent Host session store: %w", err)
+	if !featureProfile {
+		if err := os.Chmod(dbPath, 0o600); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("protect Agent Host session store: %w", err)
+		}
 	}
-	if err := validatePrivateFile(dbPath); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	receiptKey, err := loadOrCreateReceiptKey(hostHome)
-	if err != nil {
+	if err := validatePrivateFileExact(dbPath); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
-	store := &Store{db: db, receiptKey: receiptKey}
+	store.db = db
 	if err := db.Update(func(tx *bolt.Tx) error {
+		if featureProfile && !createdByOpen {
+			if err := store.validateExistingFEAT126Store(tx); err != nil {
+				return err
+			}
+			return purgeExpiredCleanupReceipts(tx, time.Now().UTC())
+		}
 		for _, bucket := range [][]byte{sessionsBucket, tasksBucket, threadsBucket, metadataBucket, cleanupReceiptsBucket, cleanupOperationsBucket} {
 			if _, err := tx.CreateBucketIfNotExists(bucket); err != nil {
 				return err
@@ -124,12 +186,129 @@ func OpenStore(hostHome string) (*Store, error) {
 				return err
 			}
 		}
+		if featureProfile {
+			if err := store.initializeNewFEAT126Store(tx); err != nil {
+				return err
+			}
+		} else if err := validateDefaultStoreEncoding(tx); err != nil {
+			return err
+		}
 		return purgeExpiredCleanupReceipts(tx, time.Now().UTC())
 	}); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("initialize Agent Host session store: %w", err)
 	}
+	receiptKey, err := loadOrCreateReceiptKey(hostHome)
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	store.receiptKey = receiptKey
 	return store, nil
+}
+
+func prepareFEAT126StoreFile(path string) (bool, error) {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		file, createErr := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		if createErr != nil {
+			return false, fmt.Errorf("exclusively create FEAT-126 session store: %w", createErr)
+		}
+		if closeErr := file.Close(); closeErr != nil {
+			return false, fmt.Errorf("close new FEAT-126 session store: %w", closeErr)
+		}
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("inspect FEAT-126 session store: %w", err)
+	}
+	if info.Size() == 0 {
+		return false, errors.New("pre-existing FEAT-126 session store is uninitialized")
+	}
+	if err := validatePrivateFileExact(path); err != nil {
+		return false, err
+	}
+	return false, nil
+}
+
+func canonicalFEAT126ProjectDirectory(projectDirectory string) (string, error) {
+	if projectDirectory == "" || !filepath.IsAbs(projectDirectory) || filepath.Base(projectDirectory) != "project" {
+		return "", errors.New("FEAT-126 project directory authority is invalid")
+	}
+	return validateExactOwnerDirectory(projectDirectory, "FEAT-126 project directory authority")
+}
+
+func validateExactOwnerDirectory(path, authority string) (string, error) {
+	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return "", fmt.Errorf("%s is not canonical", authority)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("%s cannot be inspected", authority)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != uint32(os.Geteuid()) || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
+		return "", fmt.Errorf("%s must be an owner-only non-symlink directory", authority)
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil || resolved != path {
+		return "", fmt.Errorf("%s is not canonical", authority)
+	}
+	return resolved, nil
+}
+
+func (s *Store) initializeNewFEAT126Store(tx *bolt.Tx) error {
+	metadata := tx.Bucket(metadataBucket)
+	if metadata.Get(feat126CwdEncodingKey) != nil || metadata.Get(feat126RunIDKey) != nil || tx.Bucket(sessionsBucket).Stats().KeyN != 0 {
+		return errors.New("new FEAT-126 session store is not empty")
+	}
+	if err := metadata.Put(feat126CwdEncodingKey, []byte(feat126CwdEncodingVersion)); err != nil {
+		return err
+	}
+	return metadata.Put(feat126RunIDKey, []byte(s.feat126RunID))
+}
+
+func (s *Store) validateExistingFEAT126Store(tx *bolt.Tx) error {
+	for _, name := range [][]byte{sessionsBucket, tasksBucket, threadsBucket, metadataBucket, cleanupReceiptsBucket, cleanupOperationsBucket} {
+		if tx.Bucket(name) == nil {
+			return errors.New("pre-existing FEAT-126 session store is unmarked")
+		}
+	}
+	metadata := tx.Bucket(metadataBucket)
+	if string(metadata.Get(storeSchemaVersionKey)) != storeSchemaVersion {
+		return errors.New("pre-existing FEAT-126 session store has an unsupported schema")
+	}
+	if string(metadata.Get(feat126CwdEncodingKey)) != feat126CwdEncodingVersion ||
+		string(metadata.Get(feat126RunIDKey)) != s.feat126RunID {
+		return errors.New("pre-existing FEAT-126 session store authority mismatch")
+	}
+	return tx.Bucket(sessionsBucket).ForEach(func(_, encoded []byte) error {
+		var record Record
+		if err := json.Unmarshal(encoded, &record); err != nil {
+			return fmt.Errorf("decode persisted agent session: %w", err)
+		}
+		if record.Cwd != feat126OpaqueProjectCwd {
+			return errors.New("FEAT-126 session store contains a non-opaque project reference")
+		}
+		return nil
+	})
+}
+
+func validateDefaultStoreEncoding(tx *bolt.Tx) error {
+	metadata := tx.Bucket(metadataBucket)
+	if metadata.Get(feat126CwdEncodingKey) != nil || metadata.Get(feat126RunIDKey) != nil {
+		return errors.New("FEAT-126 session store requires exact feature authority")
+	}
+	return tx.Bucket(sessionsBucket).ForEach(func(_, encoded []byte) error {
+		var record Record
+		if err := json.Unmarshal(encoded, &record); err != nil {
+			return fmt.Errorf("decode persisted agent session: %w", err)
+		}
+		if record.Cwd == feat126OpaqueProjectCwd {
+			return errors.New("opaque FEAT-126 project reference requires exact feature authority")
+		}
+		return nil
+	})
 }
 
 func purgeExpiredCleanupReceipts(tx *bolt.Tx, now time.Time) error {
@@ -229,7 +408,7 @@ func (s *Store) BeginCleanup(operationID, sessionID string) (CleanupOperation, e
 			}
 			return ErrNotFound
 		}
-		record, err := loadRecord(tx, sessionID)
+		record, err := s.loadRecord(tx, sessionID)
 		if err != nil {
 			return err
 		}
@@ -252,7 +431,7 @@ func (s *Store) BeginCleanup(operationID, sessionID string) (CleanupOperation, e
 		record.CleanupOperationID = operationID
 		record.State = StateCleaning
 		record.UpdatedAt = now
-		return saveRecord(tx, record)
+		return s.saveRecord(tx, record)
 	})
 	return operation, err
 }
@@ -296,7 +475,7 @@ func (s *Store) DeleteSessionWithReceipt(operationID, sessionID string) error {
 		if operation.State != CleanupStateRuntimeDeleteConfirmed {
 			return ErrSessionNotUsable
 		}
-		record, err := loadRecord(tx, sessionID)
+		record, err := s.loadRecord(tx, sessionID)
 		if err != nil {
 			return err
 		}
@@ -435,6 +614,20 @@ func validatePrivateFile(path string) error {
 	return nil
 }
 
+func validatePrivateFileExact(path string) error {
+	if err := validatePrivateFileIdentity(path); err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect private Host file: %w", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		return errors.New("private Host file must have exact 0600 permissions")
+	}
+	return nil
+}
+
 func validatePrivateFileIdentity(path string) error {
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -468,11 +661,7 @@ func (s *Store) Reserve(record Record) error {
 		record.State = StateStarting
 		record.CreatedAt = now
 		record.UpdatedAt = now
-		encoded, err := json.Marshal(record)
-		if err != nil {
-			return err
-		}
-		if err := sessions.Put([]byte(record.AgentSessionID), encoded); err != nil {
+		if err := s.saveRecord(tx, record); err != nil {
 			return err
 		}
 		return tasks.Put([]byte(record.TaskID), []byte(record.AgentSessionID))
@@ -486,7 +675,7 @@ func (s *Store) BindThread(sessionID, threadID, runtimeSessionID, model, provide
 		if existing := threads.Get([]byte(threadID)); existing != nil && string(existing) != sessionID {
 			return ErrThreadExists
 		}
-		record, err := loadRecord(tx, sessionID)
+		record, err := s.loadRecord(tx, sessionID)
 		if err != nil {
 			return err
 		}
@@ -500,7 +689,7 @@ func (s *Store) BindThread(sessionID, threadID, runtimeSessionID, model, provide
 		record.State = StateIdle
 		record.FailureCode = ""
 		record.UpdatedAt = time.Now().UTC()
-		if err := saveRecord(tx, record); err != nil {
+		if err := s.saveRecord(tx, record); err != nil {
 			return err
 		}
 		if err := threads.Put([]byte(threadID), []byte(sessionID)); err != nil {
@@ -622,7 +811,7 @@ func (s *Store) Resume(
 func (s *Store) Get(sessionID string) (Record, error) {
 	var record Record
 	err := s.db.View(func(tx *bolt.Tx) error {
-		loaded, err := loadRecord(tx, sessionID)
+		loaded, err := s.loadRecord(tx, sessionID)
 		if err != nil {
 			return err
 		}
@@ -639,7 +828,7 @@ func (s *Store) GetByThread(threadID string) (Record, error) {
 		if sessionID == nil {
 			return ErrNotFound
 		}
-		loaded, err := loadRecord(tx, string(sessionID))
+		loaded, err := s.loadRecord(tx, string(sessionID))
 		if err != nil {
 			return err
 		}
@@ -652,7 +841,7 @@ func (s *Store) GetByThread(threadID string) (Record, error) {
 func (s *Store) update(sessionID string, mutate func(*Record) error) (Record, error) {
 	var updated Record
 	err := s.db.Update(func(tx *bolt.Tx) error {
-		record, err := loadRecord(tx, sessionID)
+		record, err := s.loadRecord(tx, sessionID)
 		if err != nil {
 			return err
 		}
@@ -660,7 +849,7 @@ func (s *Store) update(sessionID string, mutate func(*Record) error) (Record, er
 			return err
 		}
 		record.UpdatedAt = time.Now().UTC()
-		if err := saveRecord(tx, record); err != nil {
+		if err := s.saveRecord(tx, record); err != nil {
 			return err
 		}
 		updated = record
@@ -669,7 +858,7 @@ func (s *Store) update(sessionID string, mutate func(*Record) error) (Record, er
 	return updated, err
 }
 
-func loadRecord(tx *bolt.Tx, sessionID string) (Record, error) {
+func (s *Store) loadRecord(tx *bolt.Tx, sessionID string) (Record, error) {
 	encoded := tx.Bucket(sessionsBucket).Get([]byte(sessionID))
 	if encoded == nil {
 		return Record{}, ErrNotFound
@@ -678,10 +867,26 @@ func loadRecord(tx *bolt.Tx, sessionID string) (Record, error) {
 	if err := json.Unmarshal(encoded, &record); err != nil {
 		return Record{}, fmt.Errorf("decode persisted agent session: %w", err)
 	}
+	if s.feat126ProjectDirectory != "" {
+		if record.Cwd != feat126OpaqueProjectCwd {
+			return Record{}, errors.New("FEAT-126 session project reference is not opaque")
+		}
+		record.Cwd = s.feat126ProjectDirectory
+	} else if record.Cwd == feat126OpaqueProjectCwd {
+		return Record{}, errors.New("opaque FEAT-126 project reference requires exact feature authority")
+	}
 	return record, nil
 }
 
-func saveRecord(tx *bolt.Tx, record Record) error {
+func (s *Store) saveRecord(tx *bolt.Tx, record Record) error {
+	if s.feat126ProjectDirectory != "" {
+		if record.Cwd != s.feat126ProjectDirectory {
+			return errors.New("FEAT-126 session cwd is outside the authorized project")
+		}
+		record.Cwd = feat126OpaqueProjectCwd
+	} else if record.Cwd == feat126OpaqueProjectCwd {
+		return errors.New("opaque FEAT-126 project reference requires exact feature authority")
+	}
 	encoded, err := json.Marshal(record)
 	if err != nil {
 		return err

@@ -39,6 +39,7 @@ type Config struct {
 	FEAT126TestParentPID  int
 	FEAT126TestRunID      string
 	FEAT126TestProfile    string
+	FEAT126ProjectDir     string
 }
 
 type RuntimeStatusProvider interface {
@@ -150,6 +151,18 @@ func LoadConfig() (Config, error) {
 			return Config{}, errors.New("YIJIE_AGENT_HOST_HOME and YIJIE_CODEX_HOME must be separate directories")
 		}
 	}
+	feat126ProjectDirectory := ""
+	if fakeProfile.Enabled {
+		feat126ProjectDirectory, err = validateFEAT126ProjectAuthority(
+			fakeProfile,
+			hostHome,
+			runtimeConfig.CodexHome,
+			instanceNonce,
+		)
+		if err != nil {
+			return Config{}, err
+		}
+	}
 
 	return Config{
 		Environment:           environment,
@@ -163,6 +176,7 @@ func LoadConfig() (Config, error) {
 		FEAT126TestParentPID:  testParentPID,
 		FEAT126TestRunID:      fakeProfile.RunID,
 		FEAT126TestProfile:    feat126TestProfileName(fakeProfile),
+		FEAT126ProjectDir:     feat126ProjectDirectory,
 	}, nil
 }
 
@@ -229,22 +243,68 @@ func loadFEAT126FakeResponsesProfile() (codex.FakeResponsesConfig, error) {
 }
 
 func validateOwnerOnlyDirectory(value string) (string, error) {
-	if !filepath.IsAbs(value) {
-		return "", errors.New("YIJIE_FEAT126_S10_HOST_LOG_DIR must be absolute")
+	return validateOwnerOnlyDirectoryAuthority(value, "YIJIE_FEAT126_S10_HOST_LOG_DIR")
+}
+
+func validateOwnerOnlyDirectoryAuthority(value, authority string) (string, error) {
+	if !filepath.IsAbs(value) || filepath.Clean(value) != value {
+		return "", fmt.Errorf("%s must be a canonical absolute path", authority)
 	}
 	info, err := os.Lstat(value)
 	if err != nil {
-		return "", errors.New("YIJIE_FEAT126_S10_HOST_LOG_DIR cannot be inspected")
+		return "", fmt.Errorf("%s cannot be inspected", authority)
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Uid != uint32(os.Geteuid()) || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
-		return "", errors.New("YIJIE_FEAT126_S10_HOST_LOG_DIR must be an owner-only non-symlink directory")
+	if !ok || !hasExactOwnerDirectoryIdentity(info.Mode(), stat.Uid, uint32(os.Geteuid())) {
+		return "", fmt.Errorf("%s must be an owner-only non-symlink directory", authority)
 	}
 	resolved, err := filepath.EvalSymlinks(value)
-	if err != nil {
-		return "", errors.New("YIJIE_FEAT126_S10_HOST_LOG_DIR cannot be resolved")
+	if err != nil || resolved != value {
+		return "", fmt.Errorf("%s cannot be resolved", authority)
 	}
-	return filepath.Clean(resolved), nil
+	return resolved, nil
+}
+
+func hasExactOwnerDirectoryIdentity(mode os.FileMode, actualUID, expectedUID uint32) bool {
+	return actualUID == expectedUID && mode.IsDir() && mode&os.ModeSymlink == 0 && mode.Perm() == 0o700
+}
+
+func validateFEAT126ProjectAuthority(
+	profile codex.FakeResponsesConfig,
+	hostHome, codexHome, instanceNonce string,
+) (string, error) {
+	if !profile.Enabled || instanceNonce == "" {
+		return "", errors.New("FEAT-126 project authority requires the exact test profile and instance nonce")
+	}
+	logDirectory, err := validateOwnerOnlyDirectory(os.Getenv("YIJIE_FEAT126_S10_HOST_LOG_DIR"))
+	if err != nil {
+		return "", err
+	}
+	hostEvidenceRoot := filepath.Dir(logDirectory)
+	runRoot := filepath.Dir(hostEvidenceRoot)
+	if filepath.Base(logDirectory) != instanceNonce || filepath.Base(hostEvidenceRoot) != "host" || filepath.Base(runRoot) != profile.RunID {
+		return "", errors.New("FEAT-126 Host evidence directory is outside the exact run authority")
+	}
+	hostEvidenceRoot, err = validateOwnerOnlyDirectoryAuthority(hostEvidenceRoot, "FEAT-126 Host evidence root")
+	if err != nil {
+		return "", err
+	}
+	runRoot, err = validateOwnerOnlyDirectoryAuthority(runRoot, "FEAT-126 run root")
+	if err != nil {
+		return "", err
+	}
+	hostHome, err = validateOwnerOnlyDirectoryAuthority(hostHome, "FEAT-126 Host home")
+	if err != nil {
+		return "", err
+	}
+	codexHome, err = validateOwnerOnlyDirectoryAuthority(codexHome, "FEAT-126 Runtime home")
+	if err != nil {
+		return "", err
+	}
+	if hostEvidenceRoot != filepath.Join(runRoot, "host") || hostHome != filepath.Join(runRoot, "host-home") || codexHome != filepath.Join(runRoot, "codex-home") {
+		return "", errors.New("FEAT-126 Host and Runtime homes are outside the exact run authority")
+	}
+	return validateOwnerOnlyDirectoryAuthority(filepath.Join(runRoot, "project"), "FEAT-126 project directory")
 }
 
 type SessionService interface {

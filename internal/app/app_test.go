@@ -441,24 +441,41 @@ func TestLoadConfigAcceptsOnlyExactFEAT126FakeProfile(t *testing.T) {
 		"YIJIE_FEAT126_S10_PARENT_PID", "YIJIE_FEAT126_S10_HOST_LOG_DIR",
 		"YIJIE_FEAT126_S10_PROCESS_MANIFEST",
 		"YIJIE_AGENT_HOST_V2_RAW_REASONING_ENABLED", "YIJIE_AGENT_HOST_V2_TITLE_ENABLED",
-		"YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED",
+		"YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED", "YIJIE_AGENT_HOST_INSTANCE_NONCE",
 	} {
 		t.Setenv(key, "")
 	}
 	runID := "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
-	hostHome := filepath.Join(t.TempDir(), "host-home")
-	codexHome := filepath.Join(t.TempDir(), "codex-home")
+	instanceNonce := "019fbd88-cbc3-7bf1-934d-7b05cd693f81"
+	tempRoot, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runRoot := filepath.Join(tempRoot, runID)
+	if err := os.Mkdir(runRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	hostHome := filepath.Join(runRoot, "host-home")
+	codexHome := filepath.Join(runRoot, "codex-home")
+	projectDirectory := filepath.Join(runRoot, "project")
+	hostEvidenceRoot := filepath.Join(runRoot, "host")
+	logDirectory := filepath.Join(runRoot, "host", instanceNonce)
+	for _, directory := range []string{hostHome, codexHome, projectDirectory, hostEvidenceRoot, logDirectory} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
 	t.Setenv("YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED", "true")
 	t.Setenv("YIJIE_FEAT126_S10_RUN_ID", runID)
 	t.Setenv("YIJIE_FEAT126_FAKE_RESPONSES_BASE_URL", codex.FEAT126FakeBaseURL)
-	logDirectory := t.TempDir()
-	if err := os.Chmod(logDirectory, 0o700); err != nil {
-		t.Fatal(err)
-	}
 	processManifest := filepath.Join(logDirectory, "process.json")
 	t.Setenv("YIJIE_FEAT126_S10_PARENT_PID", fmt.Sprint(os.Getppid()))
 	t.Setenv("YIJIE_FEAT126_S10_HOST_LOG_DIR", logDirectory)
 	t.Setenv("YIJIE_FEAT126_S10_PROCESS_MANIFEST", processManifest)
+	t.Setenv("YIJIE_AGENT_HOST_INSTANCE_NONCE", instanceNonce)
 	t.Setenv("YIJIE_ENV", "local")
 	t.Setenv("YIJIE_AGENT_HOST_HOME", hostHome)
 	t.Setenv("YIJIE_CODEX_HOME", codexHome)
@@ -471,7 +488,7 @@ func TestLoadConfigAcceptsOnlyExactFEAT126FakeProfile(t *testing.T) {
 	}
 	if !config.Runtime.FakeResponses.Enabled || config.Runtime.FakeResponses.RunID != runID ||
 		config.Runtime.MiniMax.Enabled || !config.RawReasoningV2Enabled || !config.CleanupV2Enabled || config.TitleV2Enabled ||
-		config.FEAT126TestParentPID != os.Getppid() {
+		config.FEAT126TestParentPID != os.Getppid() || config.FEAT126ProjectDir != projectDirectory {
 		t.Fatalf("unexpected FEAT-126 fake profile: %#v", config)
 	}
 
@@ -492,6 +509,240 @@ func TestLoadConfigAcceptsOnlyExactFEAT126FakeProfile(t *testing.T) {
 	t.Setenv("YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED", "false")
 	if _, err := LoadConfig(); err == nil {
 		t.Fatal("disabled master accepted subordinate fake profile settings")
+	}
+}
+
+func TestLoadConfigRejectsFEAT126ProjectAuthorityMismatch(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*testing.T, feat126AuthorityFixture)
+	}{
+		{
+			name: "host home outside run",
+			mutate: func(t *testing.T, _ feat126AuthorityFixture) {
+				t.Setenv("YIJIE_AGENT_HOST_HOME", filepath.Join(t.TempDir(), "host-home"))
+			},
+		},
+		{
+			name: "Runtime home outside run",
+			mutate: func(t *testing.T, _ feat126AuthorityFixture) {
+				t.Setenv("YIJIE_CODEX_HOME", filepath.Join(t.TempDir(), "codex-home"))
+			},
+		},
+		{
+			name: "evidence nonce mismatch",
+			mutate: func(t *testing.T, fixture feat126AuthorityFixture) {
+				other := filepath.Join(fixture.runRoot, "host", "019fbd88-cbc3-7bf1-934d-7b05cd693f82")
+				if err := os.Mkdir(other, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv("YIJIE_FEAT126_S10_HOST_LOG_DIR", other)
+				t.Setenv("YIJIE_FEAT126_S10_PROCESS_MANIFEST", filepath.Join(other, "process.json"))
+			},
+		},
+		{
+			name: "project is not owner-only",
+			mutate: func(t *testing.T, fixture feat126AuthorityFixture) {
+				if err := os.Chmod(fixture.projectDirectory, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "run root is not owner-only",
+			mutate: func(t *testing.T, fixture feat126AuthorityFixture) {
+				if err := os.Chmod(fixture.runRoot, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "Host evidence root is not owner-only",
+			mutate: func(t *testing.T, fixture feat126AuthorityFixture) {
+				if err := os.Chmod(fixture.hostEvidenceRoot, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "Host home is missing",
+			mutate: func(t *testing.T, fixture feat126AuthorityFixture) {
+				if err := os.Remove(fixture.hostHome); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "Host home is not owner-only",
+			mutate: func(t *testing.T, fixture feat126AuthorityFixture) {
+				if err := os.Chmod(fixture.hostHome, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "Runtime home is not owner-only",
+			mutate: func(t *testing.T, fixture feat126AuthorityFixture) {
+				if err := os.Chmod(fixture.codexHome, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "current nonce directory is not owner-only",
+			mutate: func(t *testing.T, fixture feat126AuthorityFixture) {
+				if err := os.Chmod(fixture.logDirectory, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "Runtime home is a symlink",
+			mutate: func(t *testing.T, fixture feat126AuthorityFixture) {
+				if err := os.Remove(fixture.codexHome); err != nil {
+					t.Fatal(err)
+				}
+				target := t.TempDir()
+				if err := os.Chmod(target, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(target, fixture.codexHome); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "Host home path is not canonical",
+			mutate: func(t *testing.T, fixture feat126AuthorityFixture) {
+				t.Setenv("YIJIE_AGENT_HOST_HOME", fixture.runRoot+"/project/../host-home")
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := configureExactFEAT126Authority(t)
+			test.mutate(t, fixture)
+			if _, err := LoadConfig(); err == nil {
+				t.Fatal("mismatched FEAT-126 project authority was accepted")
+			}
+		})
+	}
+}
+
+type feat126AuthorityFixture struct {
+	runRoot          string
+	projectDirectory string
+	hostEvidenceRoot string
+	hostHome         string
+	codexHome        string
+	logDirectory     string
+	runID            string
+	instanceNonce    string
+}
+
+func configureExactFEAT126Authority(t *testing.T) feat126AuthorityFixture {
+	t.Helper()
+	const (
+		runID         = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+		instanceNonce = "019fbd88-cbc3-7bf1-934d-7b05cd693f81"
+	)
+	for _, key := range []string{
+		"YIJIE_MODEL_PROVIDER", "YIJIE_MINIMAX_API_KEY", "YIJIE_MINIMAX_API_KEY_FILE",
+		"YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED", "YIJIE_FEAT126_S10_RUN_ID",
+		"YIJIE_FEAT126_FAKE_RESPONSES_BASE_URL", "YIJIE_FEAT126_S10_PARENT_PID",
+		"YIJIE_FEAT126_S10_HOST_LOG_DIR", "YIJIE_FEAT126_S10_PROCESS_MANIFEST",
+		"YIJIE_AGENT_HOST_HOME", "YIJIE_CODEX_HOME", "YIJIE_AGENT_HOST_INSTANCE_NONCE",
+		"YIJIE_AGENT_HOST_V2_RAW_REASONING_ENABLED", "YIJIE_AGENT_HOST_V2_TITLE_ENABLED",
+		"YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED",
+	} {
+		t.Setenv(key, "")
+	}
+	tempRoot, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runRoot := filepath.Join(tempRoot, runID)
+	projectDirectory := filepath.Join(runRoot, "project")
+	hostHome := filepath.Join(runRoot, "host-home")
+	codexHome := filepath.Join(runRoot, "codex-home")
+	hostEvidenceRoot := filepath.Join(runRoot, "host")
+	logDirectory := filepath.Join(runRoot, "host", instanceNonce)
+	for _, directory := range []string{runRoot, projectDirectory, hostHome, codexHome, hostEvidenceRoot, logDirectory} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("YIJIE_ENV", "local")
+	t.Setenv("YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED", "true")
+	t.Setenv("YIJIE_FEAT126_S10_RUN_ID", runID)
+	t.Setenv("YIJIE_FEAT126_FAKE_RESPONSES_BASE_URL", codex.FEAT126FakeBaseURL)
+	t.Setenv("YIJIE_FEAT126_S10_PARENT_PID", fmt.Sprint(os.Getppid()))
+	t.Setenv("YIJIE_FEAT126_S10_HOST_LOG_DIR", logDirectory)
+	t.Setenv("YIJIE_FEAT126_S10_PROCESS_MANIFEST", filepath.Join(logDirectory, "process.json"))
+	t.Setenv("YIJIE_AGENT_HOST_HOME", hostHome)
+	t.Setenv("YIJIE_CODEX_HOME", codexHome)
+	t.Setenv("YIJIE_AGENT_HOST_INSTANCE_NONCE", instanceNonce)
+	t.Setenv("YIJIE_AGENT_HOST_V2_RAW_REASONING_ENABLED", "true")
+	t.Setenv("YIJIE_AGENT_HOST_V2_TITLE_ENABLED", "false")
+	t.Setenv("YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED", "true")
+	return feat126AuthorityFixture{
+		runRoot: runRoot, projectDirectory: projectDirectory, hostEvidenceRoot: hostEvidenceRoot,
+		hostHome: hostHome, codexHome: codexHome, logDirectory: logDirectory,
+		runID: runID, instanceNonce: instanceNonce,
+	}
+}
+
+func TestLoadConfigAllowsFreshNonceRestartWithinTheSameFEAT126Run(t *testing.T) {
+	fixture := configureExactFEAT126Authority(t)
+	first, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := session.OpenStore(
+		first.HostHome,
+		session.WithFEAT126Authority(first.FEAT126ProjectDir, first.FEAT126TestRunID),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	const secondNonce = "019fbd88-cbc3-7bf1-934d-7b05cd693f82"
+	secondLogDirectory := filepath.Join(fixture.hostEvidenceRoot, secondNonce)
+	if err := os.Mkdir(secondLogDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("YIJIE_AGENT_HOST_INSTANCE_NONCE", secondNonce)
+	t.Setenv("YIJIE_FEAT126_S10_HOST_LOG_DIR", secondLogDirectory)
+	t.Setenv("YIJIE_FEAT126_S10_PROCESS_MANIFEST", filepath.Join(secondLogDirectory, "process.json"))
+	second, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.FEAT126TestRunID != second.FEAT126TestRunID || first.HostHome != second.HostHome ||
+		first.FEAT126ProjectDir != second.FEAT126ProjectDir || first.InstanceNonce == second.InstanceNonce {
+		t.Fatalf("fresh-nonce restart authority drift: first=%#v second=%#v", first, second)
+	}
+	reopened, err := session.OpenStore(
+		second.HostHome,
+		session.WithFEAT126Authority(second.FEAT126ProjectDir, second.FEAT126TestRunID),
+	)
+	if err != nil {
+		t.Fatalf("fresh-nonce restart could not reopen same run-bound store: %v", err)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFEAT126DirectoryAuthorityRejectsWrongOwnerIdentity(t *testing.T) {
+	if hasExactOwnerDirectoryIdentity(os.ModeDir|0o700, 501, 502) {
+		t.Fatal("exact directory authority accepted a different owner UID")
 	}
 }
 

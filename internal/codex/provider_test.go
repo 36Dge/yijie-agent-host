@@ -76,7 +76,13 @@ func TestPrepareMiniMaxCodexHomeRefusesUnmanagedConfig(t *testing.T) {
 }
 
 func TestPrepareFakeResponsesCodexHomeUsesFrozenKeylessLoopbackConfig(t *testing.T) {
-	home := t.TempDir()
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	config := FakeResponsesConfig{
 		Enabled: true, BaseURL: FEAT126FakeBaseURL,
 		RunID: "019fbd88-cbc3-7bf1-934d-7b05cd693f80", FixtureID: FEAT126FakeFixtureID,
@@ -114,6 +120,30 @@ func TestPrepareFakeResponsesCodexHomeUsesFrozenKeylessLoopbackConfig(t *testing
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("managed fake config contains forbidden value %q", forbidden)
 		}
+	}
+}
+
+func TestPrepareFakeResponsesCodexHomeDoesNotRepairDirectoryAuthority(t *testing.T) {
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := FakeResponsesConfig{
+		Enabled: true, BaseURL: FEAT126FakeBaseURL,
+		RunID: "019fbd88-cbc3-7bf1-934d-7b05cd693f80", FixtureID: FEAT126FakeFixtureID,
+	}
+	if err := prepareFakeResponsesCodexHome(home, config); err == nil {
+		t.Fatal("FEAT-126 provider repaired and accepted an unsafe CODEX_HOME")
+	}
+	info, err := os.Lstat(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o755 {
+		t.Fatalf("FEAT-126 CODEX_HOME permissions changed to %o", info.Mode().Perm())
 	}
 }
 
