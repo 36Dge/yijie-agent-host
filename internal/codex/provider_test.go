@@ -85,7 +85,7 @@ func TestPrepareFakeResponsesCodexHomeUsesFrozenKeylessLoopbackConfig(t *testing
 	}
 	config := FakeResponsesConfig{
 		Enabled: true, BaseURL: FEAT126FakeBaseURL,
-		RunID: "019fbd88-cbc3-7bf1-934d-7b05cd693f80", FixtureID: FEAT126FakeFixtureID,
+		RunID: "123e4567-e89b-42d3-a456-426614174000", FixtureID: FEAT126FakeFixtureID,
 	}
 	if err := prepareFakeResponsesCodexHome(home, config); err != nil {
 		t.Fatal(err)
@@ -101,7 +101,7 @@ func TestPrepareFakeResponsesCodexHomeUsesFrozenKeylessLoopbackConfig(t *testing
 		`requires_openai_auth = false`, `show_raw_agent_reasoning = true`,
 		`[features]`, `plugins = false`,
 		`request_max_retries = 0`, `stream_max_retries = 0`,
-		`"X-Yijie-Feat126-Run-Id" = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"`,
+		`"X-Yijie-Feat126-Run-Id" = "123e4567-e89b-42d3-a456-426614174000"`,
 		`"X-Yijie-Feat126-Fixture-Id" = "normal-000"`,
 	} {
 		if !strings.Contains(text, required) {
@@ -133,7 +133,7 @@ func TestPrepareFakeResponsesCodexHomeDoesNotRepairDirectoryAuthority(t *testing
 	}
 	config := FakeResponsesConfig{
 		Enabled: true, BaseURL: FEAT126FakeBaseURL,
-		RunID: "019fbd88-cbc3-7bf1-934d-7b05cd693f80", FixtureID: FEAT126FakeFixtureID,
+		RunID: "123e4567-e89b-42d3-a456-426614174000", FixtureID: FEAT126FakeFixtureID,
 	}
 	if err := prepareFakeResponsesCodexHome(home, config); err == nil {
 		t.Fatal("FEAT-126 provider repaired and accepted an unsafe CODEX_HOME")
@@ -165,7 +165,7 @@ func TestMiniMaxConfigValidation(t *testing.T) {
 func TestFakeResponsesConfigValidation(t *testing.T) {
 	valid := FakeResponsesConfig{
 		Enabled: true, BaseURL: FEAT126FakeBaseURL,
-		RunID: "019fbd88-cbc3-7bf1-934d-7b05cd693f80", FixtureID: FEAT126FakeFixtureID,
+		RunID: "123e4567-e89b-42d3-a456-426614174000", FixtureID: FEAT126FakeFixtureID,
 	}
 	if err := valid.validate(); err != nil {
 		t.Fatal(err)
@@ -173,6 +173,11 @@ func TestFakeResponsesConfigValidation(t *testing.T) {
 	for _, invalid := range []FakeResponsesConfig{
 		{Enabled: true, BaseURL: "http://localhost:18082/v1", RunID: valid.RunID, FixtureID: valid.FixtureID},
 		{Enabled: true, BaseURL: valid.BaseURL, FixtureID: valid.FixtureID},
+		{Enabled: true, BaseURL: valid.BaseURL, RunID: "019fbd88-cbc3-7bf1-934d-7b05cd693f80", FixtureID: valid.FixtureID},
+		{Enabled: true, BaseURL: valid.BaseURL, RunID: "6ba7b810-9dad-11d1-80b4-00c04fd430c8", FixtureID: valid.FixtureID},
+		{Enabled: true, BaseURL: valid.BaseURL, RunID: "123e4567-e89b-42d3-4456-426614174003", FixtureID: valid.FixtureID},
+		{Enabled: true, BaseURL: valid.BaseURL, RunID: "123E4567-E89B-42D3-A456-426614174003", FixtureID: valid.FixtureID},
+		{Enabled: true, BaseURL: valid.BaseURL, RunID: " 123e4567-e89b-42d3-a456-426614174003 ", FixtureID: valid.FixtureID},
 		{Enabled: true, BaseURL: valid.BaseURL, RunID: valid.RunID, FixtureID: "other"},
 		{RunID: valid.RunID},
 	} {

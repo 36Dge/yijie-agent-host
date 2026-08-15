@@ -51,14 +51,19 @@ func (c FakeResponsesConfig) validate() error {
 	if c.RunID == "" {
 		return errors.New("fake Responses run id is required")
 	}
-	parsed, err := uuid.Parse(c.RunID)
-	if err != nil || parsed == uuid.Nil || parsed.String() != c.RunID {
-		return errors.New("fake Responses run id must be a canonical non-zero UUID")
+	if !isCanonicalRFC4122UUIDv4(c.RunID) {
+		return errors.New("fake Responses run id must be a canonical RFC4122 UUIDv4")
 	}
 	if c.FixtureID != FEAT126FakeFixtureID {
 		return errors.New("fake Responses fixture id must use the frozen FEAT-126 fixture")
 	}
 	return nil
+}
+
+func isCanonicalRFC4122UUIDv4(value string) bool {
+	parsed, err := uuid.Parse(value)
+	return err == nil && parsed != uuid.Nil && parsed.String() == value &&
+		parsed.Version() == uuid.Version(4) && parsed.Variant() == uuid.RFC4122
 }
 
 func (c MiniMaxConfig) validate() error {

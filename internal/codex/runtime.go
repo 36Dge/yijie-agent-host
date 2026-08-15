@@ -14,8 +14,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 const (
@@ -335,10 +333,7 @@ type RuntimeEvidence struct {
 }
 
 func (m *Manager) RuntimeEvidence(runID, nonce, profile string) (RuntimeEvidence, error) {
-	parsed, err := uuid.Parse(runID)
-	parsedNonce, nonceErr := uuid.Parse(nonce)
-	if err != nil || parsed == uuid.Nil || parsed.String() != runID || parsed.Version() != uuid.Version(4) ||
-		nonceErr != nil || parsedNonce == uuid.Nil || parsedNonce.String() != nonce ||
+	if !isCanonicalRFC4122UUIDv4(runID) || !isCanonicalRFC4122UUIDv4(nonce) ||
 		profile != "feat-126-s10-local-lab" {
 		return RuntimeEvidence{}, errors.New("runtime evidence authority is invalid")
 	}

@@ -1,11 +1,40 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestFEAT126ProcessFailureLoggingIsContentFree(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	pathCanary := "/private/feat126-run/project/operator-secret"
+	tokenCanary := "feat126-token-canary"
+	logProcessFailure(logger, errors.New(pathCanary+" "+tokenCanary), true)
+	encoded := output.String()
+	if strings.Contains(encoded, pathCanary) || strings.Contains(encoded, tokenCanary) {
+		t.Fatalf("exact-profile process failure leaked sensitive error content")
+	}
+	if !strings.Contains(encoded, `"failure_code":"feat126_host_process_failed"`) ||
+		strings.Contains(encoded, `"error"`) {
+		t.Fatalf("exact-profile process failure did not use the closed projection: %s", encoded)
+	}
+}
+
+func TestDefaultProcessFailureLoggingKeepsDiagnosticCompatibility(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	logProcessFailure(logger, errors.New("default diagnostic"), false)
+	if !strings.Contains(output.String(), `"error":"default diagnostic"`) {
+		t.Fatalf("default process failure logging changed: %s", output.String())
+	}
+}
 
 func TestWatchParentSignalsOnlyAfterTheExpectedParentChanges(t *testing.T) {
 	var current atomic.Int64

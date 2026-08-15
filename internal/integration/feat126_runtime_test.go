@@ -33,7 +33,7 @@ func TestPinnedRuntimeFEAT126RestartThenDisconnect(t *testing.T) {
 	if binaryPath == "" || manifestPath == "" {
 		t.Skip("set pinned Runtime artifact paths")
 	}
-	const runID = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+	const runID = "123e4567-e89b-42d3-a456-426614174000"
 	firstDisconnect, err := fakeresponses.New(fakeresponses.Config{
 		RunID: runID, FixtureID: codex.FEAT126FakeFixtureID,
 		Mode: fakeresponses.ModeDisconnect, MaxCalls: 1,
@@ -155,7 +155,7 @@ func TestPinnedRuntimeFEAT126ServiceRestartThenDisconnect(t *testing.T) {
 	if binaryPath == "" || manifestPath == "" {
 		t.Skip("set pinned Runtime artifact paths")
 	}
-	const runID = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+	const runID = "123e4567-e89b-42d3-a456-426614174000"
 	firstDisconnect, err := fakeresponses.New(fakeresponses.Config{
 		RunID: runID, FixtureID: codex.FEAT126FakeFixtureID,
 		Mode: fakeresponses.ModeDisconnect, MaxCalls: 1,
@@ -335,7 +335,7 @@ func runPinnedRuntimeFEAT126FakeResponses(
 	if binaryPath == "" || manifestPath == "" {
 		t.Skip("set pinned Runtime artifact paths")
 	}
-	const runID = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+	const runID = "123e4567-e89b-42d3-a456-426614174000"
 	fake, err := fakeresponses.New(fakeresponses.Config{
 		RunID: runID, FixtureID: codex.FEAT126FakeFixtureID, Mode: mode, MaxCalls: 2,
 	})

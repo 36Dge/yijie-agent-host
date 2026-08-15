@@ -62,9 +62,8 @@ type Server struct {
 }
 
 func New(config Config) (*Server, error) {
-	parsed, err := uuid.Parse(config.RunID)
-	if err != nil || parsed == uuid.Nil || parsed.String() != config.RunID {
-		return nil, errors.New("run id must be a canonical non-zero UUID")
+	if !isCanonicalRFC4122UUIDv4(config.RunID) {
+		return nil, errors.New("run id must be a canonical RFC4122 UUIDv4")
 	}
 	if config.FixtureID != codex.FEAT126FakeFixtureID {
 		return nil, errors.New("fixture id must use the frozen FEAT-126 fixture")
@@ -100,6 +99,12 @@ func New(config Config) (*Server, error) {
 		return nil, fmt.Errorf("load frozen FEAT-126 fixture: %w", err)
 	}
 	return &Server{config: config, fixture: fixture}, nil
+}
+
+func isCanonicalRFC4122UUIDv4(value string) bool {
+	parsed, err := uuid.Parse(value)
+	return err == nil && parsed != uuid.Nil && parsed.String() == value &&
+		parsed.Version() == uuid.Version(4) && parsed.Variant() == uuid.RFC4122
 }
 
 func (s *Server) Handler() http.Handler {

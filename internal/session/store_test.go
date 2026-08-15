@@ -63,6 +63,105 @@ func TestStoreMigratesSchemaV1AndPurgesExpiredContentFreeReceipts(t *testing.T) 
 	}
 }
 
+func TestDefaultStoreCompatibilityMatrixKeepsAbsoluteCWDAndNoFEAT126Marker(t *testing.T) {
+	const (
+		secondTaskID    = "019c0123-4567-7abc-8123-456789abcdfa"
+		secondSessionID = "019c0123-4567-7abc-8123-456789abcdfb"
+	)
+	for _, schema := range []string{"1", "2", "3", "new-write"} {
+		t.Run("schema-"+schema, func(t *testing.T) {
+			home := filepath.Join(t.TempDir(), "host-home")
+			if err := os.Mkdir(home, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			canonicalCWD, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if schema != "new-write" {
+				seedDefaultStoreSchema(t, filepath.Join(home, "sessions.db"), schema, Record{
+					TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: canonicalCWD,
+				})
+			}
+
+			store, err := OpenStore(home)
+			if err != nil {
+				t.Fatalf("open default schema %s: %v", schema, err)
+			}
+			if schema == "new-write" {
+				if err := store.Reserve(Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: canonicalCWD}); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := store.Reserve(Record{TaskID: secondTaskID, AgentSessionID: secondSessionID, Cwd: canonicalCWD}); err != nil {
+				t.Fatal(err)
+			}
+			persisted, err := store.Get(testSessionID)
+			if err != nil || persisted.Cwd != canonicalCWD || !filepath.IsAbs(persisted.Cwd) || filepath.Clean(persisted.Cwd) != persisted.Cwd {
+				t.Fatalf("default schema %s changed canonical cwd: record=%+v err=%v", schema, persisted, err)
+			}
+			if err := store.db.View(func(tx *bolt.Tx) error {
+				metadata := tx.Bucket(metadataBucket)
+				if got := string(metadata.Get(storeSchemaVersionKey)); got != storeSchemaVersion {
+					t.Fatalf("default schema %s did not converge to %s: %q", schema, storeSchemaVersion, got)
+				}
+				if metadata.Get(feat126CwdEncodingKey) != nil || metadata.Get(feat126RunIDKey) != nil {
+					t.Fatalf("default schema %s gained FEAT-126 authority metadata", schema)
+				}
+				for _, sessionID := range []string{testSessionID, secondSessionID} {
+					encoded := tx.Bucket(sessionsBucket).Get([]byte(sessionID))
+					if encoded == nil {
+						if schema == "new-write" && sessionID == secondSessionID {
+							continue
+						}
+						t.Fatalf("default schema %s omitted session %s", schema, sessionID)
+					}
+					if !bytes.Contains(encoded, []byte(canonicalCWD)) || bytes.Contains(encoded, []byte(feat126OpaqueProjectCwd)) {
+						t.Fatalf("default schema %s did not persist canonical absolute cwd: %q", schema, encoded)
+					}
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func seedDefaultStoreSchema(t *testing.T, path, schema string, record Record) {
+	t.Helper()
+	database, err := bolt.Open(path, 0o600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Update(func(tx *bolt.Tx) error {
+		metadata, err := tx.CreateBucketIfNotExists(metadataBucket)
+		if err != nil {
+			return err
+		}
+		if err := metadata.Put(storeSchemaVersionKey, []byte(schema)); err != nil {
+			return err
+		}
+		sessions, err := tx.CreateBucketIfNotExists(sessionsBucket)
+		if err != nil {
+			return err
+		}
+		encoded, err := json.Marshal(record)
+		if err != nil {
+			return err
+		}
+		return sessions.Put([]byte(record.AgentSessionID), encoded)
+	}); err != nil {
+		_ = database.Close()
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCleanupLeaseIsAtomicWithTurnStart(t *testing.T) {
 	store, err := OpenStore(filepath.Join(t.TempDir(), "host-home"))
 	if err != nil {
@@ -250,7 +349,7 @@ func TestStorePersistsMappingAndTurnLifecycle(t *testing.T) {
 }
 
 func TestFEAT126StorePersistsOpaqueProjectAndReconstructsAfterRestart(t *testing.T) {
-	const runID = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+	const runID = "123e4567-e89b-42d3-a456-426614174000"
 	_, hostHome, projectDirectory := newFEAT126StoreAuthority(t, runID)
 	option := WithFEAT126Authority(projectDirectory, runID)
 	store, err := OpenStore(hostHome, option)
@@ -319,8 +418,123 @@ func TestFEAT126StorePersistsOpaqueProjectAndReconstructsAfterRestart(t *testing
 	}
 }
 
+func TestFEAT126StoreAuthorityRequiresCanonicalRFC4122UUIDv4BeforeDatabaseCreation(t *testing.T) {
+	invalidRunIDs := []struct {
+		name  string
+		value string
+	}{
+		{name: "malformed", value: "not-a-uuid"},
+		{name: "uppercase", value: "123E4567-E89B-42D3-A456-426614174003"},
+		{name: "uuid-v1", value: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+		{name: "uuid-v7", value: "019fbd88-cbc3-7bf1-934d-7b05cd693f80"},
+		{name: "non-rfc4122-variant", value: "123e4567-e89b-42d3-4456-426614174003"},
+		{name: "surrounding-whitespace", value: " 123e4567-e89b-42d3-a456-426614174003 "},
+	}
+	for _, test := range invalidRunIDs {
+		t.Run(test.name, func(t *testing.T) {
+			_, hostHome, projectDirectory := newFEAT126StoreAuthority(t, test.value)
+			databasePath := filepath.Join(hostHome, "sessions.db")
+			store, err := OpenStore(hostHome, WithFEAT126Authority(projectDirectory, test.value))
+			if store != nil {
+				_ = store.Close()
+			}
+			if err == nil {
+				t.Fatalf("accepted non-UUIDv4 FEAT-126 run id %q", test.value)
+			}
+			if _, statErr := os.Lstat(databasePath); !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("invalid run authority reached database creation: %v", statErr)
+			}
+		})
+	}
+}
+
+func TestFEAT126StoreDirectoryAuthorityMatrixRejectsBeforeWrite(t *testing.T) {
+	const runID = "123e4567-e89b-42d3-a456-426614174000"
+	roles := []string{"run-root", "host-home", "project"}
+	conditions := []string{"missing", "symlink", "wrong-owner", "0755", "noncanonical"}
+
+	for _, role := range roles {
+		for _, condition := range conditions {
+			t.Run(role+"/"+condition, func(t *testing.T) {
+				runRoot, hostHome, projectDirectory := newFEAT126StoreAuthority(t, runID)
+				tempRoot := filepath.Dir(runRoot)
+				path := map[string]string{
+					"run-root":  runRoot,
+					"host-home": hostHome,
+					"project":   projectDirectory,
+				}[role]
+
+				directValidation := false
+				switch condition {
+				case "missing":
+					if err := os.Rename(path, path+".missing"); err != nil {
+						t.Fatal(err)
+					}
+				case "symlink":
+					target := path + ".target"
+					if err := os.Rename(path, target); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Symlink(target, path); err != nil {
+						t.Fatal(err)
+					}
+				case "wrong-owner":
+					directValidation = true
+					if _, err := validateExactOwnerDirectoryForUID(
+						path,
+						"FEAT-126 "+role,
+						uint32(os.Geteuid()+1),
+					); err == nil {
+						t.Fatal("accepted a directory owned by a different authority")
+					}
+				case "0755":
+					if err := os.Chmod(path, 0o755); err != nil {
+						t.Fatal(err)
+					}
+				case "noncanonical":
+					switch role {
+					case "host-home":
+						hostHome += string(os.PathSeparator) + "."
+					default:
+						projectDirectory = path + string(os.PathSeparator) + "." +
+							string(os.PathSeparator) + map[string]string{
+							"run-root": "project",
+							"project":  "",
+						}[role]
+					}
+				}
+
+				if !directValidation {
+					store, err := OpenStore(
+						hostHome,
+						WithFEAT126Authority(projectDirectory, runID),
+					)
+					if store != nil {
+						_ = store.Close()
+					}
+					if err == nil {
+						t.Fatalf("accepted invalid %s %s authority", role, condition)
+					}
+				}
+
+				if err := filepath.Walk(tempRoot, func(path string, info os.FileInfo, err error) error {
+					if err != nil {
+						return err
+					}
+					if info.Mode().IsRegular() && (info.Name() == "sessions.db" || info.Name() == "cleanup-receipt.key") {
+						t.Fatalf("invalid %s %s authority reached persistent write", role, condition)
+					}
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
+
 func TestFEAT126StoreRejectsCwdOutsideExactRunAuthority(t *testing.T) {
-	const runID = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+	const runID = "123e4567-e89b-42d3-a456-426614174000"
 	runRoot, hostHome, projectDirectory := newFEAT126StoreAuthority(t, runID)
 	otherDirectory := filepath.Join(runRoot, "other")
 	if err := os.Mkdir(otherDirectory, 0o700); err != nil {
@@ -339,7 +553,7 @@ func TestFEAT126StoreRejectsCwdOutsideExactRunAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	const foreignRunID = "019fbd88-cbc3-7bf1-934d-7b05cd693f82"
+	const foreignRunID = "123e4567-e89b-42d3-a456-426614174002"
 	_, _, foreignProject := newFEAT126StoreAuthority(t, foreignRunID)
 	if _, err := OpenStore(hostHome, WithFEAT126Authority(foreignProject, foreignRunID)); err == nil {
 		t.Fatal("FEAT-126 store accepted a project outside the Host run root")
@@ -347,7 +561,7 @@ func TestFEAT126StoreRejectsCwdOutsideExactRunAuthority(t *testing.T) {
 }
 
 func TestFEAT126StoreDoesNotAdoptDefaultPersistedCwd(t *testing.T) {
-	const runID = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+	const runID = "123e4567-e89b-42d3-a456-426614174000"
 	_, hostHome, projectDirectory := newFEAT126StoreAuthority(t, runID)
 	store, err := OpenStore(hostHome)
 	if err != nil {
@@ -368,8 +582,8 @@ func TestFEAT126StoreDoesNotAdoptDefaultPersistedCwd(t *testing.T) {
 
 func TestFEAT126StoreRejectsCopiedDatabaseBoundToAnotherRun(t *testing.T) {
 	const (
-		firstRunID  = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
-		secondRunID = "019fbd88-cbc3-7bf1-934d-7b05cd693f82"
+		firstRunID  = "123e4567-e89b-42d3-a456-426614174000"
+		secondRunID = "123e4567-e89b-42d3-a456-426614174002"
 	)
 	_, firstHostHome, firstProject := newFEAT126StoreAuthority(t, firstRunID)
 	first, err := OpenStore(firstHostHome, WithFEAT126Authority(firstProject, firstRunID))
@@ -402,7 +616,7 @@ func TestFEAT126StoreRejectsCopiedDatabaseBoundToAnotherRun(t *testing.T) {
 }
 
 func TestFEAT126StoreRejectsEveryPreExistingUnmarkedDatabaseWithoutMutation(t *testing.T) {
-	const runID = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+	const runID = "123e4567-e89b-42d3-a456-426614174000"
 	tests := []struct {
 		name    string
 		prepare func(*testing.T, string, string)
@@ -468,7 +682,7 @@ func TestFEAT126StoreRejectsEveryPreExistingUnmarkedDatabaseWithoutMutation(t *t
 }
 
 func TestFEAT126StoreRejectsAuthorityMetadataAndSentinelDriftWithoutMutation(t *testing.T) {
-	const runID = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+	const runID = "123e4567-e89b-42d3-a456-426614174000"
 	tests := []struct {
 		name   string
 		mutate func(*bolt.Tx) error
@@ -483,7 +697,7 @@ func TestFEAT126StoreRejectsAuthorityMetadataAndSentinelDriftWithoutMutation(t *
 			return tx.Bucket(metadataBucket).Delete(feat126RunIDKey)
 		}},
 		{name: "wrong run id", mutate: func(tx *bolt.Tx) error {
-			return tx.Bucket(metadataBucket).Put(feat126RunIDKey, []byte("019fbd88-cbc3-7bf1-934d-7b05cd693f82"))
+			return tx.Bucket(metadataBucket).Put(feat126RunIDKey, []byte("123e4567-e89b-42d3-a456-426614174002"))
 		}},
 		{name: "absolute row cwd", mutate: func(tx *bolt.Tx) error {
 			bucket := tx.Bucket(sessionsBucket)
@@ -529,7 +743,7 @@ func TestFEAT126StoreRejectsAuthorityMetadataAndSentinelDriftWithoutMutation(t *
 }
 
 func TestFEAT126StoreDoesNotRepairDatabasePermissions(t *testing.T) {
-	const runID = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+	const runID = "123e4567-e89b-42d3-a456-426614174000"
 	_, hostHome, projectDirectory := newFEAT126StoreAuthority(t, runID)
 	store, err := OpenStore(hostHome, WithFEAT126Authority(projectDirectory, runID))
 	if err != nil {

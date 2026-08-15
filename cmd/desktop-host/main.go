@@ -20,9 +20,17 @@ import (
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	if err := run(logger); err != nil {
-		logger.Error("yijie-agent-host stopped", "error", err)
+		logProcessFailure(logger, err, os.Getenv("YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED") == "true")
 		os.Exit(1)
 	}
+}
+
+func logProcessFailure(logger *slog.Logger, err error, feat126ExactProfile bool) {
+	if feat126ExactProfile {
+		logger.Error("yijie-agent-host stopped", "failure_code", "feat126_host_process_failed")
+		return
+	}
+	logger.Error("yijie-agent-host stopped", "error", err)
 }
 
 func run(logger *slog.Logger) error {

@@ -450,6 +450,51 @@ func TestManagerInitializationFailures(t *testing.T) {
 	}
 }
 
+func TestRuntimeEvidenceRequiresCanonicalRFC4122UUIDv4RunAndNonce(t *testing.T) {
+	const (
+		validRunID = "123e4567-e89b-42d3-a456-426614174000"
+		validNonce = "123e4567-e89b-42d3-a456-426614174001"
+		profile    = "feat-126-s10-local-lab"
+	)
+	manager := &Manager{}
+	if _, err := manager.RuntimeEvidence(validRunID, validNonce, profile); err == nil || !strings.Contains(err.Error(), "process evidence is unavailable") {
+		t.Fatalf("valid authority did not reach process evidence boundary: %v", err)
+	}
+	invalid := []struct {
+		name  string
+		value string
+	}{
+		{name: "malformed", value: "not-a-uuid"},
+		{name: "uppercase", value: "123E4567-E89B-42D3-A456-426614174003"},
+		{name: "uuid-v1", value: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+		{name: "uuid-v7", value: "019fbd88-cbc3-7bf1-934d-7b05cd693f80"},
+		{name: "non-rfc4122-variant", value: "123e4567-e89b-42d3-4456-426614174003"},
+		{name: "surrounding-whitespace", value: " 123e4567-e89b-42d3-a456-426614174003 "},
+	}
+	for _, identity := range []struct {
+		name string
+		call func(string) error
+	}{
+		{name: "run-id", call: func(value string) error {
+			_, err := manager.RuntimeEvidence(value, validNonce, profile)
+			return err
+		}},
+		{name: "nonce", call: func(value string) error {
+			_, err := manager.RuntimeEvidence(validRunID, value, profile)
+			return err
+		}},
+	} {
+		for _, test := range invalid {
+			t.Run(identity.name+"/"+test.name, func(t *testing.T) {
+				err := identity.call(test.value)
+				if err == nil || !strings.Contains(err.Error(), "authority is invalid") {
+					t.Fatalf("accepted invalid %s %q: %v", identity.name, test.value, err)
+				}
+			})
+		}
+	}
+}
+
 func TestManagerPropagatesStartupCancellation(t *testing.T) {
 	resultFile := filepath.Join(t.TempDir(), "initialize-marker")
 	t.Setenv("YIJIE_FAKE_MODE", "timeout")
@@ -597,7 +642,7 @@ func TestManagerFEAT126FakeProviderKeepsWireIdentityWithoutCredential(t *testing
 	config.CodexHome = canonicalHome
 	config.FakeResponses = FakeResponsesConfig{
 		Enabled: true, BaseURL: FEAT126FakeBaseURL,
-		RunID: "019fbd88-cbc3-7bf1-934d-7b05cd693f80", FixtureID: FEAT126FakeFixtureID,
+		RunID: "123e4567-e89b-42d3-a456-426614174000", FixtureID: FEAT126FakeFixtureID,
 	}
 	manager := NewManager(config, nil)
 	if err := manager.Start(context.Background()); err != nil {

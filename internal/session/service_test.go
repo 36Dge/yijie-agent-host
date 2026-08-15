@@ -382,7 +382,7 @@ type fakeRuntime struct {
 }
 
 func TestFEAT126ServiceUsesRehydratedCwdForStartAndIDOnlyResume(t *testing.T) {
-	const runID = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+	const runID = "123e4567-e89b-42d3-a456-426614174000"
 	_, hostHome, projectDirectory := newFEAT126StoreAuthority(t, runID)
 	option := WithFEAT126Authority(projectDirectory, runID)
 	store, err := OpenStore(hostHome, option)

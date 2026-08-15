@@ -14,7 +14,6 @@ import (
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	"github.com/36Dge/yijie-agent-host/internal/session"
-	"github.com/google/uuid"
 )
 
 const (
@@ -86,8 +85,7 @@ func ProbeReadiness(ctx context.Context, runID string) (ReadinessResult, error) 
 }
 
 func probeReadiness(ctx context.Context, client *http.Client, endpoint, runID string) (ReadinessResult, error) {
-	parsedRunID, err := uuid.Parse(runID)
-	if err != nil || parsedRunID == uuid.Nil || parsedRunID.String() != runID {
+	if !isCanonicalRFC4122UUIDv4(runID) {
 		return ReadinessResult{}, &ReadinessProbeError{Code: "fake_run_id_invalid"}
 	}
 	parsedEndpoint, err := url.Parse(endpoint)

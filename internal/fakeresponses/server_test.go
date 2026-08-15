@@ -12,7 +12,29 @@ import (
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 )
 
-const testRunID = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+const testRunID = "123e4567-e89b-42d3-a456-426614174000"
+
+func TestNewRequiresCanonicalRFC4122UUIDv4RunAuthority(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value string
+	}{
+		{name: "missing", value: ""},
+		{name: "malformed", value: "not-a-uuid"},
+		{name: "uppercase", value: "123E4567-E89B-42D3-A456-426614174003"},
+		{name: "uuid-v1", value: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+		{name: "uuid-v7", value: "019fbd88-cbc3-7bf1-934d-7b05cd693f80"},
+		{name: "non-rfc4122-variant", value: "123e4567-e89b-42d3-4456-426614174003"},
+		{name: "surrounding-whitespace", value: " 123e4567-e89b-42d3-a456-426614174003 "},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, err := New(Config{RunID: test.value, FixtureID: codex.FEAT126FakeFixtureID})
+			if server != nil || err == nil {
+				t.Fatalf("accepted invalid FEAT-126 run authority %q", test.value)
+			}
+		})
+	}
+}
 
 func TestCompleteResponseUsesFrozenFixtureWithoutPersistingBody(t *testing.T) {
 	server := newTestServer(t, ModeComplete)

@@ -91,6 +91,11 @@ func TestProbeReadinessRejectsOperatorControlledEndpointAndRun(t *testing.T) {
 		{endpoint: "http://localhost:18082/healthz", runID: testRunID, want: "fake_endpoint_invalid"},
 		{endpoint: "http://127.0.0.1:18082/healthz?fixture=normal-000", runID: testRunID, want: "fake_endpoint_invalid"},
 		{endpoint: fakeReadinessURL, runID: "not-a-run", want: "fake_run_id_invalid"},
+		{endpoint: fakeReadinessURL, runID: "6ba7b810-9dad-11d1-80b4-00c04fd430c8", want: "fake_run_id_invalid"},
+		{endpoint: fakeReadinessURL, runID: "019fbd88-cbc3-7bf1-934d-7b05cd693f80", want: "fake_run_id_invalid"},
+		{endpoint: fakeReadinessURL, runID: "123e4567-e89b-42d3-4456-426614174003", want: "fake_run_id_invalid"},
+		{endpoint: fakeReadinessURL, runID: "123E4567-E89B-42D3-A456-426614174003", want: "fake_run_id_invalid"},
+		{endpoint: fakeReadinessURL, runID: " 123e4567-e89b-42d3-a456-426614174003 ", want: "fake_run_id_invalid"},
 	} {
 		_, err := probeReadiness(context.Background(), client, test.endpoint, test.runID)
 		var probeError *ReadinessProbeError

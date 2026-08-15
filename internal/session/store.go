@@ -101,8 +101,7 @@ func WithFEAT126Authority(projectDirectory, runID string) StoreOption {
 		if err != nil {
 			return err
 		}
-		parsed, err := uuid.Parse(runID)
-		if err != nil || parsed == uuid.Nil || parsed.String() != runID || filepath.Base(runRoot) != runID {
+		if !isCanonicalRFC4122UUIDv4(runID) || filepath.Base(runRoot) != runID {
 			return errors.New("FEAT-126 run authority is invalid")
 		}
 		store.feat126ProjectDirectory = canonical
@@ -239,6 +238,10 @@ func canonicalFEAT126ProjectDirectory(projectDirectory string) (string, error) {
 }
 
 func validateExactOwnerDirectory(path, authority string) (string, error) {
+	return validateExactOwnerDirectoryForUID(path, authority, uint32(os.Geteuid()))
+}
+
+func validateExactOwnerDirectoryForUID(path, authority string, expectedUID uint32) (string, error) {
 	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return "", fmt.Errorf("%s is not canonical", authority)
 	}
@@ -247,7 +250,7 @@ func validateExactOwnerDirectory(path, authority string) (string, error) {
 		return "", fmt.Errorf("%s cannot be inspected", authority)
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Uid != uint32(os.Geteuid()) || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
+	if !ok || stat.Uid != expectedUID || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
 		return "", fmt.Errorf("%s must be an owner-only non-symlink directory", authority)
 	}
 	resolved, err := filepath.EvalSymlinks(path)
@@ -255,6 +258,12 @@ func validateExactOwnerDirectory(path, authority string) (string, error) {
 		return "", fmt.Errorf("%s is not canonical", authority)
 	}
 	return resolved, nil
+}
+
+func isCanonicalRFC4122UUIDv4(value string) bool {
+	parsed, err := uuid.Parse(value)
+	return err == nil && parsed != uuid.Nil && parsed.String() == value &&
+		parsed.Version() == uuid.Version(4) && parsed.Variant() == uuid.RFC4122
 }
 
 func (s *Store) initializeNewFEAT126Store(tx *bolt.Tx) error {

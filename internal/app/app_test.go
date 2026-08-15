@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -445,8 +446,8 @@ func TestLoadConfigAcceptsOnlyExactFEAT126FakeProfile(t *testing.T) {
 	} {
 		t.Setenv(key, "")
 	}
-	runID := "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
-	instanceNonce := "019fbd88-cbc3-7bf1-934d-7b05cd693f81"
+	runID := "123e4567-e89b-42d3-a456-426614174000"
+	instanceNonce := "123e4567-e89b-42d3-a456-426614174001"
 	tempRoot, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -532,7 +533,7 @@ func TestLoadConfigRejectsFEAT126ProjectAuthorityMismatch(t *testing.T) {
 		{
 			name: "evidence nonce mismatch",
 			mutate: func(t *testing.T, fixture feat126AuthorityFixture) {
-				other := filepath.Join(fixture.runRoot, "host", "019fbd88-cbc3-7bf1-934d-7b05cd693f82")
+				other := filepath.Join(fixture.runRoot, "host", "123e4567-e89b-42d3-a456-426614174002")
 				if err := os.Mkdir(other, 0o700); err != nil {
 					t.Fatal(err)
 				}
@@ -629,6 +630,216 @@ func TestLoadConfigRejectsFEAT126ProjectAuthorityMismatch(t *testing.T) {
 	}
 }
 
+func TestLoadConfigRequiresCanonicalRFC4122UUIDv4ForExactFEAT126Identity(t *testing.T) {
+	invalid := []struct {
+		name  string
+		value string
+	}{
+		{name: "missing", value: ""},
+		{name: "malformed", value: "not-a-uuid"},
+		{name: "uppercase", value: "123E4567-E89B-42D3-A456-426614174003"},
+		{name: "uuid v1", value: "6ba7b810-9dad-11d1-80b4-00c04fd430c8"},
+		{name: "uuid v7", value: "019fbd88-cbc3-7bf1-934d-7b05cd693f80"},
+		{name: "non RFC4122 variant", value: "123e4567-e89b-42d3-4456-426614174003"},
+		{name: "surrounding whitespace", value: " 123e4567-e89b-42d3-a456-426614174003 "},
+	}
+	for _, identity := range []struct {
+		name string
+		key  string
+	}{
+		{name: "run id", key: "YIJIE_FEAT126_S10_RUN_ID"},
+		{name: "instance nonce", key: "YIJIE_AGENT_HOST_INSTANCE_NONCE"},
+	} {
+		for _, test := range invalid {
+			t.Run(identity.name+"/"+test.name, func(t *testing.T) {
+				configureExactFEAT126Authority(t)
+				t.Setenv(identity.key, test.value)
+				if _, err := LoadConfig(); err == nil {
+					t.Fatalf("exact FEAT-126 profile accepted %s %q", identity.name, test.value)
+				}
+			})
+		}
+	}
+
+	const canonicalV7 = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+	if !isCanonicalUUID(canonicalV7) || isCanonicalRFC4122UUIDv4(canonicalV7) {
+		t.Fatal("default UUID compatibility and exact FEAT-126 UUIDv4 authority were not separated")
+	}
+}
+
+func TestFEAT126DirectoryAuthorityMatrixRejectsThroughStartupBeforeMutation(t *testing.T) {
+	roles := []struct {
+		name      string
+		authority string
+		path      func(feat126AuthorityFixture) string
+	}{
+		{
+			name: "run-root", authority: "FEAT-126 run root",
+			path: func(f feat126AuthorityFixture) string { return f.runRoot },
+		},
+		{
+			name: "project", authority: "FEAT-126 project directory",
+			path: func(f feat126AuthorityFixture) string { return f.projectDirectory },
+		},
+		{
+			name: "host-root", authority: "FEAT-126 Host evidence root",
+			path: func(f feat126AuthorityFixture) string { return f.hostEvidenceRoot },
+		},
+		{
+			name: "current-nonce", authority: "YIJIE_FEAT126_S10_HOST_LOG_DIR",
+			path: func(f feat126AuthorityFixture) string { return f.logDirectory },
+		},
+		{
+			name: "host-home", authority: "FEAT-126 Host home",
+			path: func(f feat126AuthorityFixture) string { return f.hostHome },
+		},
+		{
+			name: "codex-home", authority: "FEAT-126 Runtime home",
+			path: func(f feat126AuthorityFixture) string { return f.codexHome },
+		},
+	}
+	conditions := []struct {
+		name      string
+		candidate func(*testing.T, string) (string, uint32)
+	}{
+		{
+			name: "missing",
+			candidate: func(t *testing.T, _ string) (string, uint32) {
+				root, err := filepath.EvalSymlinks(t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				return filepath.Join(root, "missing"), uint32(os.Geteuid())
+			},
+		},
+		{
+			name: "symlink",
+			candidate: func(t *testing.T, _ string) (string, uint32) {
+				root, err := filepath.EvalSymlinks(t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				target := filepath.Join(root, "target")
+				candidate := filepath.Join(root, "candidate")
+				if err := os.Mkdir(target, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(target, candidate); err != nil {
+					t.Fatal(err)
+				}
+				return candidate, uint32(os.Geteuid())
+			},
+		},
+		{
+			name: "wrong-owner",
+			candidate: func(_ *testing.T, path string) (string, uint32) {
+				return path, uint32(os.Geteuid() + 1)
+			},
+		},
+		{
+			name: "0755",
+			candidate: func(t *testing.T, _ string) (string, uint32) {
+				root, err := filepath.EvalSymlinks(t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				candidate := filepath.Join(root, "candidate")
+				if err := os.Mkdir(candidate, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(candidate, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				return candidate, uint32(os.Geteuid())
+			},
+		},
+		{
+			name: "noncanonical",
+			candidate: func(_ *testing.T, path string) (string, uint32) {
+				return path + string(os.PathSeparator) + ".", uint32(os.Geteuid())
+			},
+		},
+	}
+
+	for _, role := range roles {
+		for _, condition := range conditions {
+			t.Run(role.name+"/"+condition.name, func(t *testing.T) {
+				fixture := configureExactFEAT126Authority(t)
+				expectedPath := role.path(fixture)
+				if err := os.WriteFile(
+					filepath.Join(fixture.projectDirectory, ".authority-canary"),
+					[]byte("unchanged"),
+					0o600,
+				); err != nil {
+					t.Fatal(err)
+				}
+				candidate, expectedUID := condition.candidate(t, expectedPath)
+				snapshotRoot := filepath.Dir(fixture.runRoot)
+				before := snapshotAuthorityTree(t, snapshotRoot)
+				calls := 0
+				validateDirectory := func(value, authority string) (string, error) {
+					if authority != role.authority {
+						return validateOwnerOnlyDirectoryAuthority(value, authority)
+					}
+					calls++
+					if value != expectedPath {
+						t.Fatalf("startup wired %s to %q instead of %q", role.name, value, expectedPath)
+					}
+					return validateOwnerOnlyDirectoryAuthorityForUID(candidate, authority, expectedUID)
+				}
+				_, err := loadConfigWithDirectoryAuthority(validateDirectory)
+				if err == nil {
+					t.Fatalf("accepted invalid %s authority", role.name)
+				}
+				if calls != 1 || !strings.Contains(err.Error(), role.authority) {
+					t.Fatalf("startup did not reject the targeted %s authority: calls=%d err=%v", role.name, calls, err)
+				}
+				after := snapshotAuthorityTree(t, snapshotRoot)
+				if !reflect.DeepEqual(before, after) {
+					t.Fatalf("rejected %s/%s authority mutated files or metadata: before=%v after=%v", role.name, condition.name, before, after)
+				}
+			})
+		}
+	}
+}
+
+func snapshotAuthorityTree(t *testing.T, root string) map[string]string {
+	t.Helper()
+	snapshot := make(map[string]string)
+	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		value := fmt.Sprintf("%s|%04o|%d", info.Mode().Type(), info.Mode().Perm(), info.Size())
+		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+			value += fmt.Sprintf("|%d|%d|%d", stat.Uid, stat.Gid, stat.Nlink)
+		}
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
+			target, readErr := os.Readlink(path)
+			if readErr != nil {
+				return readErr
+			}
+			value += "|" + target
+		case info.Mode().IsRegular():
+			content, readErr := os.ReadFile(path)
+			if readErr != nil {
+				return readErr
+			}
+			value += fmt.Sprintf("|%x", content)
+		}
+		snapshot[relative] = value
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
+}
+
 type feat126AuthorityFixture struct {
 	runRoot          string
 	projectDirectory string
@@ -643,8 +854,8 @@ type feat126AuthorityFixture struct {
 func configureExactFEAT126Authority(t *testing.T) feat126AuthorityFixture {
 	t.Helper()
 	const (
-		runID         = "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
-		instanceNonce = "019fbd88-cbc3-7bf1-934d-7b05cd693f81"
+		runID         = "123e4567-e89b-42d3-a456-426614174000"
+		instanceNonce = "123e4567-e89b-42d3-a456-426614174001"
 	)
 	for _, key := range []string{
 		"YIJIE_MODEL_PROVIDER", "YIJIE_MINIMAX_API_KEY", "YIJIE_MINIMAX_API_KEY_FILE",
@@ -712,7 +923,7 @@ func TestLoadConfigAllowsFreshNonceRestartWithinTheSameFEAT126Run(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	const secondNonce = "019fbd88-cbc3-7bf1-934d-7b05cd693f82"
+	const secondNonce = "123e4567-e89b-42d3-a456-426614174002"
 	secondLogDirectory := filepath.Join(fixture.hostEvidenceRoot, secondNonce)
 	if err := os.Mkdir(secondLogDirectory, 0o700); err != nil {
 		t.Fatal(err)

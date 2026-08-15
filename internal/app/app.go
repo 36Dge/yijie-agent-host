@@ -47,13 +47,22 @@ type RuntimeStatusProvider interface {
 }
 
 func LoadConfig() (Config, error) {
+	return loadConfigWithDirectoryAuthority(validateOwnerOnlyDirectoryAuthority)
+}
+
+type directoryAuthorityValidator func(value, authority string) (string, error)
+
+func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValidator) (Config, error) {
+	if validateDirectory == nil {
+		return Config{}, errors.New("directory authority validator is required")
+	}
 	runtimeConfig := codex.DefaultConfig()
 	runtimeConfig.BinaryPath = os.Getenv("YIJIE_CODEX_BINARY")
 	runtimeConfig.ManifestPath = os.Getenv("YIJIE_CODEX_MANIFEST")
 	runtimeConfig.CodexHome = os.Getenv("YIJIE_CODEX_HOME")
 
 	provider := os.Getenv("YIJIE_MODEL_PROVIDER")
-	fakeProfile, err := loadFEAT126FakeResponsesProfile()
+	fakeProfile, err := loadFEAT126FakeResponsesProfile(validateDirectory)
 	if err != nil {
 		return Config{}, err
 	}
@@ -116,11 +125,14 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	instanceNonce := strings.TrimSpace(os.Getenv("YIJIE_AGENT_HOST_INSTANCE_NONCE"))
+	rawInstanceNonce := os.Getenv("YIJIE_AGENT_HOST_INSTANCE_NONCE")
+	instanceNonce := strings.TrimSpace(rawInstanceNonce)
 	if instanceNonce != "" {
-		parsed, parseErr := uuid.Parse(instanceNonce)
-		if parseErr != nil || parsed == uuid.Nil || parsed.String() != instanceNonce {
+		if !isCanonicalUUID(instanceNonce) {
 			return Config{}, errors.New("YIJIE_AGENT_HOST_INSTANCE_NONCE must be a canonical non-zero UUID")
+		}
+		if fakeProfile.Enabled && (rawInstanceNonce != instanceNonce || !isCanonicalRFC4122UUIDv4(instanceNonce)) {
+			return Config{}, errors.New("YIJIE_AGENT_HOST_INSTANCE_NONCE must be a canonical RFC4122 UUIDv4 for the FEAT-126 profile")
 		}
 	}
 
@@ -158,6 +170,7 @@ func LoadConfig() (Config, error) {
 			hostHome,
 			runtimeConfig.CodexHome,
 			instanceNonce,
+			validateDirectory,
 		)
 		if err != nil {
 			return Config{}, err
@@ -187,7 +200,7 @@ func feat126TestProfileName(profile codex.FakeResponsesConfig) string {
 	return ""
 }
 
-func loadFEAT126FakeResponsesProfile() (codex.FakeResponsesConfig, error) {
+func loadFEAT126FakeResponsesProfile(validateDirectory directoryAuthorityValidator) (codex.FakeResponsesConfig, error) {
 	const (
 		masterKey          = "YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED"
 		runIDKey           = "YIJIE_FEAT126_S10_RUN_ID"
@@ -211,9 +224,8 @@ func loadFEAT126FakeResponsesProfile() (codex.FakeResponsesConfig, error) {
 		}
 		return codex.FakeResponsesConfig{}, nil
 	}
-	parsed, err := uuid.Parse(runID)
-	if err != nil || parsed == uuid.Nil || parsed.String() != runID {
-		return codex.FakeResponsesConfig{}, errors.New("YIJIE_FEAT126_S10_RUN_ID must be a canonical non-zero UUID")
+	if !isCanonicalRFC4122UUIDv4(runID) {
+		return codex.FakeResponsesConfig{}, errors.New("YIJIE_FEAT126_S10_RUN_ID must be a canonical RFC4122 UUIDv4")
 	}
 	if baseURL != codex.FEAT126FakeBaseURL {
 		return codex.FakeResponsesConfig{}, errors.New("YIJIE_FEAT126_FAKE_RESPONSES_BASE_URL must use the fixed loopback endpoint")
@@ -222,7 +234,7 @@ func loadFEAT126FakeResponsesProfile() (codex.FakeResponsesConfig, error) {
 	if err != nil || parsedParentPID <= 0 || parsedParentPID != os.Getppid() {
 		return codex.FakeResponsesConfig{}, errors.New("YIJIE_FEAT126_S10_PARENT_PID must match the Host parent process")
 	}
-	cleanLogDir, err := validateOwnerOnlyDirectory(hostLogDir)
+	cleanLogDir, err := validateDirectory(hostLogDir, "YIJIE_FEAT126_S10_HOST_LOG_DIR")
 	if err != nil {
 		return codex.FakeResponsesConfig{}, err
 	}
@@ -242,11 +254,11 @@ func loadFEAT126FakeResponsesProfile() (codex.FakeResponsesConfig, error) {
 	}, nil
 }
 
-func validateOwnerOnlyDirectory(value string) (string, error) {
-	return validateOwnerOnlyDirectoryAuthority(value, "YIJIE_FEAT126_S10_HOST_LOG_DIR")
+func validateOwnerOnlyDirectoryAuthority(value, authority string) (string, error) {
+	return validateOwnerOnlyDirectoryAuthorityForUID(value, authority, uint32(os.Geteuid()))
 }
 
-func validateOwnerOnlyDirectoryAuthority(value, authority string) (string, error) {
+func validateOwnerOnlyDirectoryAuthorityForUID(value, authority string, expectedUID uint32) (string, error) {
 	if !filepath.IsAbs(value) || filepath.Clean(value) != value {
 		return "", fmt.Errorf("%s must be a canonical absolute path", authority)
 	}
@@ -255,7 +267,7 @@ func validateOwnerOnlyDirectoryAuthority(value, authority string) (string, error
 		return "", fmt.Errorf("%s cannot be inspected", authority)
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || !hasExactOwnerDirectoryIdentity(info.Mode(), stat.Uid, uint32(os.Geteuid())) {
+	if !ok || !hasExactOwnerDirectoryIdentity(info.Mode(), stat.Uid, expectedUID) {
 		return "", fmt.Errorf("%s must be an owner-only non-symlink directory", authority)
 	}
 	resolved, err := filepath.EvalSymlinks(value)
@@ -272,11 +284,15 @@ func hasExactOwnerDirectoryIdentity(mode os.FileMode, actualUID, expectedUID uin
 func validateFEAT126ProjectAuthority(
 	profile codex.FakeResponsesConfig,
 	hostHome, codexHome, instanceNonce string,
+	validateDirectory directoryAuthorityValidator,
 ) (string, error) {
-	if !profile.Enabled || instanceNonce == "" {
+	if !profile.Enabled || !isCanonicalRFC4122UUIDv4(profile.RunID) || !isCanonicalRFC4122UUIDv4(instanceNonce) {
 		return "", errors.New("FEAT-126 project authority requires the exact test profile and instance nonce")
 	}
-	logDirectory, err := validateOwnerOnlyDirectory(os.Getenv("YIJIE_FEAT126_S10_HOST_LOG_DIR"))
+	logDirectory, err := validateDirectory(
+		os.Getenv("YIJIE_FEAT126_S10_HOST_LOG_DIR"),
+		"YIJIE_FEAT126_S10_HOST_LOG_DIR",
+	)
 	if err != nil {
 		return "", err
 	}
@@ -285,26 +301,37 @@ func validateFEAT126ProjectAuthority(
 	if filepath.Base(logDirectory) != instanceNonce || filepath.Base(hostEvidenceRoot) != "host" || filepath.Base(runRoot) != profile.RunID {
 		return "", errors.New("FEAT-126 Host evidence directory is outside the exact run authority")
 	}
-	hostEvidenceRoot, err = validateOwnerOnlyDirectoryAuthority(hostEvidenceRoot, "FEAT-126 Host evidence root")
+	hostEvidenceRoot, err = validateDirectory(hostEvidenceRoot, "FEAT-126 Host evidence root")
 	if err != nil {
 		return "", err
 	}
-	runRoot, err = validateOwnerOnlyDirectoryAuthority(runRoot, "FEAT-126 run root")
+	runRoot, err = validateDirectory(runRoot, "FEAT-126 run root")
 	if err != nil {
 		return "", err
 	}
-	hostHome, err = validateOwnerOnlyDirectoryAuthority(hostHome, "FEAT-126 Host home")
+	hostHome, err = validateDirectory(hostHome, "FEAT-126 Host home")
 	if err != nil {
 		return "", err
 	}
-	codexHome, err = validateOwnerOnlyDirectoryAuthority(codexHome, "FEAT-126 Runtime home")
+	codexHome, err = validateDirectory(codexHome, "FEAT-126 Runtime home")
 	if err != nil {
 		return "", err
 	}
 	if hostEvidenceRoot != filepath.Join(runRoot, "host") || hostHome != filepath.Join(runRoot, "host-home") || codexHome != filepath.Join(runRoot, "codex-home") {
 		return "", errors.New("FEAT-126 Host and Runtime homes are outside the exact run authority")
 	}
-	return validateOwnerOnlyDirectoryAuthority(filepath.Join(runRoot, "project"), "FEAT-126 project directory")
+	return validateDirectory(filepath.Join(runRoot, "project"), "FEAT-126 project directory")
+}
+
+func isCanonicalUUID(value string) bool {
+	parsed, err := uuid.Parse(value)
+	return err == nil && parsed != uuid.Nil && parsed.String() == value
+}
+
+func isCanonicalRFC4122UUIDv4(value string) bool {
+	parsed, err := uuid.Parse(value)
+	return err == nil && parsed != uuid.Nil && parsed.String() == value &&
+		parsed.Version() == uuid.Version(4) && parsed.Variant() == uuid.RFC4122
 }
 
 type SessionService interface {
