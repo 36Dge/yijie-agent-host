@@ -5,6 +5,7 @@ package agenthostcontract
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/oapi-codegen/runtime"
@@ -660,6 +661,144 @@ func (e StartTurnRequestReasoningEffort) Valid() bool {
 	}
 }
 
+// Defines values for StartTurnV2FileBlockType.
+const (
+	StartTurnV2ContentTypeFile StartTurnV2FileBlockType = "file"
+)
+
+// Valid indicates whether the value is a known member of the StartTurnV2FileBlockType enum.
+func (e StartTurnV2FileBlockType) Valid() bool {
+	switch e {
+	case StartTurnV2ContentTypeFile:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StartTurnV2FileMediaType.
+const (
+	StartTurnV2FileMediaTypeCSV       StartTurnV2FileMediaType = "text/csv"
+	StartTurnV2FileMediaTypeDOCX      StartTurnV2FileMediaType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	StartTurnV2FileMediaTypeHTML      StartTurnV2FileMediaType = "text/html"
+	StartTurnV2FileMediaTypeJSON      StartTurnV2FileMediaType = "application/json"
+	StartTurnV2FileMediaTypeMarkdown  StartTurnV2FileMediaType = "text/markdown"
+	StartTurnV2FileMediaTypePDF       StartTurnV2FileMediaType = "application/pdf"
+	StartTurnV2FileMediaTypePPTX      StartTurnV2FileMediaType = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	StartTurnV2FileMediaTypePlainText StartTurnV2FileMediaType = "text/plain"
+	StartTurnV2FileMediaTypeRTF       StartTurnV2FileMediaType = "application/rtf"
+	StartTurnV2FileMediaTypeXLSX      StartTurnV2FileMediaType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	StartTurnV2FileMediaTypeXML       StartTurnV2FileMediaType = "application/xml"
+	StartTurnV2FileMediaTypeYAML      StartTurnV2FileMediaType = "application/yaml"
+)
+
+// Valid indicates whether the value is a known member of the StartTurnV2FileMediaType enum.
+func (e StartTurnV2FileMediaType) Valid() bool {
+	switch e {
+	case StartTurnV2FileMediaTypeCSV:
+		return true
+	case StartTurnV2FileMediaTypeDOCX:
+		return true
+	case StartTurnV2FileMediaTypeHTML:
+		return true
+	case StartTurnV2FileMediaTypeJSON:
+		return true
+	case StartTurnV2FileMediaTypeMarkdown:
+		return true
+	case StartTurnV2FileMediaTypePDF:
+		return true
+	case StartTurnV2FileMediaTypePPTX:
+		return true
+	case StartTurnV2FileMediaTypePlainText:
+		return true
+	case StartTurnV2FileMediaTypeRTF:
+		return true
+	case StartTurnV2FileMediaTypeXLSX:
+		return true
+	case StartTurnV2FileMediaTypeXML:
+		return true
+	case StartTurnV2FileMediaTypeYAML:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StartTurnV2ImageBlockMediaType.
+const (
+	StartTurnV2ImageMediaTypeGIF  StartTurnV2ImageBlockMediaType = "image/gif"
+	StartTurnV2ImageMediaTypeJPEG StartTurnV2ImageBlockMediaType = "image/jpeg"
+	StartTurnV2ImageMediaTypePNG  StartTurnV2ImageBlockMediaType = "image/png"
+	StartTurnV2ImageMediaTypeWebP StartTurnV2ImageBlockMediaType = "image/webp"
+)
+
+// Valid indicates whether the value is a known member of the StartTurnV2ImageBlockMediaType enum.
+func (e StartTurnV2ImageBlockMediaType) Valid() bool {
+	switch e {
+	case StartTurnV2ImageMediaTypeGIF:
+		return true
+	case StartTurnV2ImageMediaTypeJPEG:
+		return true
+	case StartTurnV2ImageMediaTypePNG:
+		return true
+	case StartTurnV2ImageMediaTypeWebP:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StartTurnV2ImageBlockType.
+const (
+	StartTurnV2ContentTypeImage StartTurnV2ImageBlockType = "image"
+)
+
+// Valid indicates whether the value is a known member of the StartTurnV2ImageBlockType enum.
+func (e StartTurnV2ImageBlockType) Valid() bool {
+	switch e {
+	case StartTurnV2ContentTypeImage:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StartTurnV2RequestReasoningEffort.
+const (
+	StartTurnV2ReasoningEffortEmpty StartTurnV2RequestReasoningEffort = ""
+	StartTurnV2ReasoningEffortHigh  StartTurnV2RequestReasoningEffort = "high"
+	StartTurnV2ReasoningEffortNone  StartTurnV2RequestReasoningEffort = "none"
+)
+
+// Valid indicates whether the value is a known member of the StartTurnV2RequestReasoningEffort enum.
+func (e StartTurnV2RequestReasoningEffort) Valid() bool {
+	switch e {
+	case StartTurnV2ReasoningEffortEmpty:
+		return true
+	case StartTurnV2ReasoningEffortHigh:
+		return true
+	case StartTurnV2ReasoningEffortNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StartTurnV2TextBlockType.
+const (
+	StartTurnV2ContentTypeText StartTurnV2TextBlockType = "text"
+)
+
+// Valid indicates whether the value is a known member of the StartTurnV2TextBlockType enum.
+func (e StartTurnV2TextBlockType) Valid() bool {
+	switch e {
+	case StartTurnV2ContentTypeText:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TitleGenerationUnavailableErrorErrorCode.
 const (
 	TitleGenerationUnavailableErrorErrorCodeTitleGenerationUnavailable TitleGenerationUnavailableErrorErrorCode = "title_generation_unavailable"
@@ -699,6 +838,21 @@ const (
 func (e TitleOutputInvalidErrorErrorCode) Valid() bool {
 	switch e {
 	case TitleOutputInvalidErrorErrorCodeTitleOutputInvalid:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TurnOperationConflictErrorErrorCode.
+const (
+	TurnOperationConflict TurnOperationConflictErrorErrorCode = "turn_operation_conflict"
+)
+
+// Valid indicates whether the value is a known member of the TurnOperationConflictErrorErrorCode enum.
+func (e TurnOperationConflictErrorErrorCode) Valid() bool {
+	switch e {
+	case TurnOperationConflict:
 		return true
 	default:
 		return false
@@ -1033,6 +1187,113 @@ type StartTurnResponse struct {
 	TurnId openapi_types.UUID `json:"turn_id"`
 }
 
+// StartTurnV2ContentBlock A closed content-block union discriminated by `type`.
+type StartTurnV2ContentBlock struct {
+	union json.RawMessage
+}
+
+// StartTurnV2FileBlock defines model for StartTurnV2FileBlock.
+type StartTurnV2FileBlock struct {
+	// AttachmentId Desktop attachment identifier; correlation only, never a local path.
+	AttachmentId openapi_types.UUID `json:"attachment_id"`
+
+	// ContextChunks Ordered, untrusted plain-text excerpts selected locally from this file.
+	// Host maps them to bounded Runtime text input and never persists them.
+	// UTF-8 bytes across every file block in the turn must be at most 256 KiB.
+	ContextChunks []string `json:"context_chunks"`
+
+	// MediaType Canonical media type produced after Desktop format and container validation.
+	MediaType StartTurnV2FileMediaType `json:"media_type"`
+
+	// Name NFC display basename with no path separator, control character, or
+	// leading/trailing whitespace. It is untrusted text and must never be
+	// interpreted as a path, markup, authorization input, or log label.
+	Name string `json:"name"`
+
+	// Sha256 Lowercase hexadecimal SHA-256 of the original file bytes, verified by Desktop.
+	Sha256 string `json:"sha256"`
+
+	// SizeBytes Exact original file byte length verified by Desktop before parsing.
+	SizeBytes int64                    `json:"size_bytes"`
+	Type      StartTurnV2FileBlockType `json:"type"`
+}
+
+// StartTurnV2FileBlockType defines model for StartTurnV2FileBlock.Type.
+type StartTurnV2FileBlockType string
+
+// StartTurnV2FileMediaType Canonical media type produced after Desktop format and container validation.
+type StartTurnV2FileMediaType string
+
+// StartTurnV2ImageBlock defines model for StartTurnV2ImageBlock.
+type StartTurnV2ImageBlock struct {
+	// AttachmentId Desktop attachment identifier; correlation only, never a local path.
+	AttachmentId openapi_types.UUID `json:"attachment_id"`
+
+	// DataUrl Canonical base64 data URL. Its header must equal `media_type`; decoded
+	// length must equal `size_bytes`; and decoded SHA-256 must equal `sha256`.
+	// Host validates all three relationships before invoking Runtime and
+	// never persists this value.
+	DataUrl   string                         `json:"data_url"`
+	MediaType StartTurnV2ImageBlockMediaType `json:"media_type"`
+
+	// Sha256 Lowercase hexadecimal SHA-256 of the decoded image bytes.
+	Sha256 string `json:"sha256"`
+
+	// SizeBytes Exact decoded image byte length.
+	SizeBytes int64                     `json:"size_bytes"`
+	Type      StartTurnV2ImageBlockType `json:"type"`
+}
+
+// StartTurnV2ImageBlockMediaType defines model for StartTurnV2ImageBlock.MediaType.
+type StartTurnV2ImageBlockMediaType string
+
+// StartTurnV2ImageBlockType defines model for StartTurnV2ImageBlock.Type.
+type StartTurnV2ImageBlockType string
+
+// StartTurnV2Request defines model for StartTurnV2Request.
+type StartTurnV2Request struct {
+	// ContentBlocks Ordered Runtime input. Array order is message order and must be
+	// preserved when Host maps blocks to Runtime UserInput values. The
+	// request may contain at most 10 image/file blocks. Decoded image bytes
+	// across all image blocks must be at most 10 MiB; UTF-8 bytes across all
+	// file `context_chunks` must be at most 256 KiB. Those aggregate limits
+	// are validated semantically before Runtime invocation.
+	ContentBlocks []StartTurnV2ContentBlock `json:"content_blocks"`
+
+	// OperationId Desktop-selected idempotency identifier scoped to this Agent session.
+	// The same canonical ordered input returns the original accepted turn;
+	// reuse with different input returns `turn_operation_conflict`.
+	OperationId openapi_types.UUID `json:"operation_id"`
+
+	// ReasoningEffort Omit or send the empty string for `none`; clients should prefer omission, `none`, or `high`.
+	ReasoningEffort *StartTurnV2RequestReasoningEffort `json:"reasoning_effort,omitempty"`
+
+	// RequestId Optional request correlation identifier copied to events from this operation onward.
+	RequestId *string `json:"request_id,omitempty"`
+
+	// TenantId Optional correlation context only; it does not grant tenant access.
+	TenantId *string `json:"tenant_id,omitempty"`
+
+	// TraceId Optional correlation identifier copied to events from this operation onward.
+	TraceId *string `json:"trace_id,omitempty"`
+
+	// UserId Optional correlation context only; it does not authenticate a user.
+	UserId *string `json:"user_id,omitempty"`
+}
+
+// StartTurnV2RequestReasoningEffort Omit or send the empty string for `none`; clients should prefer omission, `none`, or `high`.
+type StartTurnV2RequestReasoningEffort string
+
+// StartTurnV2TextBlock defines model for StartTurnV2TextBlock.
+type StartTurnV2TextBlock struct {
+	// Text Non-blank user text, bounded to 1 MiB in UTF-8 bytes.
+	Text string                   `json:"text"`
+	Type StartTurnV2TextBlockType `json:"type"`
+}
+
+// StartTurnV2TextBlockType defines model for StartTurnV2TextBlock.Type.
+type StartTurnV2TextBlockType string
+
 // TitleGenerationUnavailableError defines model for TitleGenerationUnavailableError.
 type TitleGenerationUnavailableError struct {
 	Error struct {
@@ -1074,6 +1335,17 @@ type TraceRequest struct {
 	TraceId   *string `json:"trace_id,omitempty"`
 	UserId    *string `json:"user_id,omitempty"`
 }
+
+// TurnOperationConflictError defines model for TurnOperationConflictError.
+type TurnOperationConflictError struct {
+	Error struct {
+		Code    TurnOperationConflictErrorErrorCode `json:"code"`
+		Message string                              `json:"message"`
+	} `json:"error"`
+}
+
+// TurnOperationConflictErrorErrorCode defines model for TurnOperationConflictError.Error.Code.
+type TurnOperationConflictErrorErrorCode string
 
 // UuidOrEmpty A UUID when bound, otherwise the empty string.
 type UuidOrEmpty = string
@@ -1173,6 +1445,11 @@ type StreamAgentSessionEventsV2Params struct {
 // StreamAgentSessionEventsV2ParamsEventSchemaVersion defines parameters for StreamAgentSessionEventsV2.
 type StreamAgentSessionEventsV2ParamsEventSchemaVersion int32
 
+// StartAgentTurnV2409JSONResponseBody defines parameters for StartAgentTurnV2.
+type StartAgentTurnV2409JSONResponseBody struct {
+	union json.RawMessage
+}
+
 // ResumeAgentSessionJSONRequestBody defines body for ResumeAgentSession for application/json ContentType.
 type ResumeAgentSessionJSONRequestBody = TraceRequest
 
@@ -1190,6 +1467,128 @@ type CleanupAgentSessionV2JSONRequestBody = CleanupAgentSessionV2Request
 
 // GenerateAgentSessionTitleV2JSONRequestBody defines body for GenerateAgentSessionTitleV2 for application/json ContentType.
 type GenerateAgentSessionTitleV2JSONRequestBody = GenerateTitleV2Request
+
+// StartAgentTurnV2JSONRequestBody defines body for StartAgentTurnV2 for application/json ContentType.
+type StartAgentTurnV2JSONRequestBody = StartTurnV2Request
+
+// AsStartTurnV2TextBlock returns the union data inside the StartTurnV2ContentBlock as a StartTurnV2TextBlock
+func (t StartTurnV2ContentBlock) AsStartTurnV2TextBlock() (StartTurnV2TextBlock, error) {
+	var body StartTurnV2TextBlock
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromStartTurnV2TextBlock overwrites any union data inside the StartTurnV2ContentBlock as the provided StartTurnV2TextBlock
+func (t *StartTurnV2ContentBlock) FromStartTurnV2TextBlock(v StartTurnV2TextBlock) error {
+	v.Type = "text"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeStartTurnV2TextBlock performs a merge with any union data inside the StartTurnV2ContentBlock, using the provided StartTurnV2TextBlock
+func (t *StartTurnV2ContentBlock) MergeStartTurnV2TextBlock(v StartTurnV2TextBlock) error {
+	v.Type = "text"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsStartTurnV2ImageBlock returns the union data inside the StartTurnV2ContentBlock as a StartTurnV2ImageBlock
+func (t StartTurnV2ContentBlock) AsStartTurnV2ImageBlock() (StartTurnV2ImageBlock, error) {
+	var body StartTurnV2ImageBlock
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromStartTurnV2ImageBlock overwrites any union data inside the StartTurnV2ContentBlock as the provided StartTurnV2ImageBlock
+func (t *StartTurnV2ContentBlock) FromStartTurnV2ImageBlock(v StartTurnV2ImageBlock) error {
+	v.Type = "image"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeStartTurnV2ImageBlock performs a merge with any union data inside the StartTurnV2ContentBlock, using the provided StartTurnV2ImageBlock
+func (t *StartTurnV2ContentBlock) MergeStartTurnV2ImageBlock(v StartTurnV2ImageBlock) error {
+	v.Type = "image"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsStartTurnV2FileBlock returns the union data inside the StartTurnV2ContentBlock as a StartTurnV2FileBlock
+func (t StartTurnV2ContentBlock) AsStartTurnV2FileBlock() (StartTurnV2FileBlock, error) {
+	var body StartTurnV2FileBlock
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromStartTurnV2FileBlock overwrites any union data inside the StartTurnV2ContentBlock as the provided StartTurnV2FileBlock
+func (t *StartTurnV2ContentBlock) FromStartTurnV2FileBlock(v StartTurnV2FileBlock) error {
+	v.Type = "file"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeStartTurnV2FileBlock performs a merge with any union data inside the StartTurnV2ContentBlock, using the provided StartTurnV2FileBlock
+func (t *StartTurnV2ContentBlock) MergeStartTurnV2FileBlock(v StartTurnV2FileBlock) error {
+	v.Type = "file"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t StartTurnV2ContentBlock) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"type"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t StartTurnV2ContentBlock) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "file":
+		return t.AsStartTurnV2FileBlock()
+	case "image":
+		return t.AsStartTurnV2ImageBlock()
+	case "text":
+		return t.AsStartTurnV2TextBlock()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t StartTurnV2ContentBlock) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *StartTurnV2ContentBlock) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // AsCleanupAgentSessionV2IncompleteResponse returns the union data inside the CleanupAgentSessionV2409JSONResponseBody as a CleanupAgentSessionV2IncompleteResponse
 func (t CleanupAgentSessionV2409JSONResponseBody) AsCleanupAgentSessionV2IncompleteResponse() (CleanupAgentSessionV2IncompleteResponse, error) {
@@ -1249,6 +1648,68 @@ func (t CleanupAgentSessionV2409JSONResponseBody) MarshalJSON() ([]byte, error) 
 }
 
 func (t *CleanupAgentSessionV2409JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsErrorResponse returns the union data inside the StartAgentTurnV2409JSONResponseBody as a ErrorResponse
+func (t StartAgentTurnV2409JSONResponseBody) AsErrorResponse() (ErrorResponse, error) {
+	var body ErrorResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromErrorResponse overwrites any union data inside the StartAgentTurnV2409JSONResponseBody as the provided ErrorResponse
+func (t *StartAgentTurnV2409JSONResponseBody) FromErrorResponse(v ErrorResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeErrorResponse performs a merge with any union data inside the StartAgentTurnV2409JSONResponseBody, using the provided ErrorResponse
+func (t *StartAgentTurnV2409JSONResponseBody) MergeErrorResponse(v ErrorResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTurnOperationConflictError returns the union data inside the StartAgentTurnV2409JSONResponseBody as a TurnOperationConflictError
+func (t StartAgentTurnV2409JSONResponseBody) AsTurnOperationConflictError() (TurnOperationConflictError, error) {
+	var body TurnOperationConflictError
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTurnOperationConflictError overwrites any union data inside the StartAgentTurnV2409JSONResponseBody as the provided TurnOperationConflictError
+func (t *StartAgentTurnV2409JSONResponseBody) FromTurnOperationConflictError(v TurnOperationConflictError) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTurnOperationConflictError performs a merge with any union data inside the StartAgentTurnV2409JSONResponseBody, using the provided TurnOperationConflictError
+func (t *StartAgentTurnV2409JSONResponseBody) MergeTurnOperationConflictError(v TurnOperationConflictError) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t StartAgentTurnV2409JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *StartAgentTurnV2409JSONResponseBody) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }

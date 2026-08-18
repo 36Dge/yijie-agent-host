@@ -1,6 +1,9 @@
 package fakeresponses
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,11 +31,20 @@ const (
 type Mode string
 
 const (
-	ModeComplete   Mode = "complete"
-	ModeIncomplete Mode = "incomplete"
-	ModeHTTPError  Mode = "http_error"
-	ModeDisconnect Mode = "disconnect"
-	ModeOversize   Mode = "oversize"
+	ModeComplete       Mode = "complete"
+	ModeIncomplete     Mode = "incomplete"
+	ModeHTTPError      Mode = "http_error"
+	ModeDisconnect     Mode = "disconnect"
+	ModeOversize       Mode = "oversize"
+	ModeFEAT127Context Mode = "feat127_context"
+)
+
+const (
+	feat127ExpectedImageSHA256 = "ea933b4091578cb14de9e3d7659aba8d9d1bd1aa5453b60327bffb459e5d383c"
+	feat127ReasoningText       = "\u5df2\u5b8c\u6210\u672c\u5730\u9644\u4ef6\u4f20\u8f93\u6821\u9a8c\u3002"
+	feat127AlphaAnswer         = "\u6587\u4ef6\u9a8c\u8bc1\u7801\u662f ALPHA-7319\u3002"
+	feat127BravoAnswer         = "\u6587\u4ef6\u9a8c\u8bc1\u7801\u662f BRAVO-2846\u3002"
+	feat127ImageAnswer         = "\u56fe\u7247\u4e2d\u7684\u7b26\u53f7\u662f\u52a0\u53f7\u3002"
 )
 
 type Config struct {
@@ -55,10 +67,11 @@ type Snapshot struct {
 }
 
 type Server struct {
-	config   Config
-	fixture  session.FEAT126FakeFixture
-	accepted atomic.Uint64
-	rejected atomic.Uint64
+	config             Config
+	fixture            session.FEAT126FakeFixture
+	feat127ImageSHA256 string
+	accepted           atomic.Uint64
+	rejected           atomic.Uint64
 }
 
 func New(config Config) (*Server, error) {
@@ -78,7 +91,7 @@ func New(config Config) (*Server, error) {
 		return nil, errors.New("fake Responses generation is invalid")
 	}
 	switch config.Mode {
-	case ModeComplete, ModeIncomplete, ModeHTTPError, ModeDisconnect, ModeOversize:
+	case ModeComplete, ModeIncomplete, ModeHTTPError, ModeDisconnect, ModeOversize, ModeFEAT127Context:
 	default:
 		return nil, errors.New("fake Responses mode is unsupported")
 	}
@@ -98,7 +111,10 @@ func New(config Config) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load frozen FEAT-126 fixture: %w", err)
 	}
-	return &Server{config: config, fixture: fixture}, nil
+	return &Server{
+		config: config, fixture: fixture,
+		feat127ImageSHA256: feat127ExpectedImageSHA256,
+	}, nil
 }
 
 func isCanonicalRFC4122UUIDv4(value string) bool {
@@ -189,6 +205,21 @@ func (s *Server) responses(w http.ResponseWriter, request *http.Request) {
 		s.reject(w, http.StatusBadRequest, "request_shape_invalid")
 		return
 	}
+	assistantText := s.fixture.AssistantText
+	reasoningText := s.fixture.RawText
+	if s.config.Mode == ModeFEAT127Context {
+		var err error
+		assistantText, err = feat127VerificationAnswer(body.Input, s.feat127ImageSHA256)
+		if err != nil {
+			s.reject(w, http.StatusBadRequest, "verification_input_invalid")
+			return
+		}
+		if assistantText == "" {
+			s.reject(w, http.StatusUnprocessableEntity, "verification_input_unrecognized")
+			return
+		}
+		reasoningText = feat127ReasoningText
+	}
 	call := s.accepted.Add(1)
 	if call > s.config.MaxCalls {
 		s.accepted.Add(^uint64(0))
@@ -217,7 +248,7 @@ func (s *Server) responses(w http.ResponseWriter, request *http.Request) {
 		"type": "response.output_item.added", "item": map[string]any{"type": "reasoning", "id": reasoningID, "summary": []any{}},
 	})
 	writeSSE(w, "response.reasoning_text.delta", map[string]any{
-		"type": "response.reasoning_text.delta", "item_id": reasoningID, "content_index": 0, "delta": s.fixture.RawText,
+		"type": "response.reasoning_text.delta", "item_id": reasoningID, "content_index": 0, "delta": reasoningText,
 	})
 	if s.config.Mode == ModeIncomplete && !waitForRequest(request, incompleteReasoningSettleDelay) {
 		return
@@ -225,7 +256,7 @@ func (s *Server) responses(w http.ResponseWriter, request *http.Request) {
 	writeSSE(w, "response.output_item.done", map[string]any{
 		"type": "response.output_item.done", "item": map[string]any{
 			"type": "reasoning", "id": reasoningID, "summary": []any{},
-			"content": []any{map[string]any{"type": "reasoning_text", "text": s.fixture.RawText}},
+			"content": []any{map[string]any{"type": "reasoning_text", "text": reasoningText}},
 		},
 	})
 	if s.config.Mode == ModeIncomplete {
@@ -241,11 +272,11 @@ func (s *Server) responses(w http.ResponseWriter, request *http.Request) {
 	writeSSE(w, "response.output_item.added", map[string]any{
 		"type": "response.output_item.added", "item": map[string]any{"type": "message", "role": "assistant", "id": messageID, "content": []any{}},
 	})
-	writeSSE(w, "response.output_text.delta", map[string]any{"type": "response.output_text.delta", "item_id": messageID, "content_index": 0, "delta": s.fixture.AssistantText})
+	writeSSE(w, "response.output_text.delta", map[string]any{"type": "response.output_text.delta", "item_id": messageID, "content_index": 0, "delta": assistantText})
 	writeSSE(w, "response.output_item.done", map[string]any{
 		"type": "response.output_item.done", "item": map[string]any{
 			"type": "message", "role": "assistant", "id": messageID,
-			"content": []any{map[string]any{"type": "output_text", "text": s.fixture.AssistantText}},
+			"content": []any{map[string]any{"type": "output_text", "text": assistantText}},
 		},
 	})
 	writeSSE(w, "response.completed", map[string]any{
@@ -253,6 +284,94 @@ func (s *Server) responses(w http.ResponseWriter, request *http.Request) {
 			"id": responseID, "usage": map[string]any{"input_tokens": 0, "input_tokens_details": nil, "output_tokens": 0, "output_tokens_details": nil, "total_tokens": 0},
 		},
 	})
+}
+
+func feat127VerificationAnswer(input json.RawMessage, expectedImageSHA256 string) (string, error) {
+	var items []json.RawMessage
+	if err := json.Unmarshal(input, &items); err != nil || len(items) == 0 {
+		return "", errors.New("FEAT-127 verification input must be a non-empty array")
+	}
+
+	var latestUserContent json.RawMessage
+	for index := len(items) - 1; index >= 0; index-- {
+		var item struct {
+			Type    string          `json:"type"`
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		}
+		if err := json.Unmarshal(items[index], &item); err != nil {
+			return "", errors.New("FEAT-127 verification input item is invalid")
+		}
+		if item.Type == "message" && item.Role == "user" {
+			latestUserContent = item.Content
+			break
+		}
+	}
+	if len(latestUserContent) == 0 {
+		return "", errors.New("FEAT-127 verification input omitted a user message")
+	}
+
+	var content []json.RawMessage
+	if err := json.Unmarshal(latestUserContent, &content); err != nil || len(content) == 0 {
+		return "", errors.New("FEAT-127 verification user content is invalid")
+	}
+	var alpha, bravo, image bool
+	for _, rawBlock := range content {
+		var block struct {
+			Type     string  `json:"type"`
+			Text     *string `json:"text"`
+			ImageURL *string `json:"image_url"`
+		}
+		if err := json.Unmarshal(rawBlock, &block); err != nil {
+			return "", errors.New("FEAT-127 verification content block is invalid")
+		}
+		switch block.Type {
+		case "input_text":
+			if block.Text == nil {
+				return "", errors.New("FEAT-127 verification text block is invalid")
+			}
+			alpha = alpha || strings.Contains(*block.Text, "ALPHA-7319")
+			bravo = bravo || strings.Contains(*block.Text, "BRAVO-2846")
+		case "input_image":
+			if block.ImageURL == nil {
+				return "", errors.New("FEAT-127 verification image block is invalid")
+			}
+			digest, err := imageDataURLSHA256(*block.ImageURL)
+			if err != nil {
+				return "", err
+			}
+			image = image || digest == expectedImageSHA256
+		default:
+			return "", errors.New("FEAT-127 verification content block type is invalid")
+		}
+	}
+
+	answers := make([]string, 0, 3)
+	if alpha {
+		answers = append(answers, feat127AlphaAnswer)
+	}
+	if bravo {
+		answers = append(answers, feat127BravoAnswer)
+	}
+	if image {
+		answers = append(answers, feat127ImageAnswer)
+	}
+	return strings.Join(answers, " "), nil
+}
+
+func imageDataURLSHA256(dataURL string) (string, error) {
+	metadata, payload, ok := strings.Cut(dataURL, ",")
+	parts := strings.Split(metadata, ";")
+	if !ok || len(parts) != 2 || !strings.HasPrefix(strings.ToLower(parts[0]), "data:image/") ||
+		!strings.EqualFold(parts[1], "base64") || payload == "" {
+		return "", errors.New("FEAT-127 verification image data URL is invalid")
+	}
+	decoded, err := base64.StdEncoding.Strict().DecodeString(payload)
+	if err != nil || base64.StdEncoding.EncodeToString(decoded) != payload {
+		return "", errors.New("FEAT-127 verification image data URL is invalid")
+	}
+	digest := sha256.Sum256(decoded)
+	return hex.EncodeToString(digest[:]), nil
 }
 
 func waitForRequest(request *http.Request, duration time.Duration) bool {

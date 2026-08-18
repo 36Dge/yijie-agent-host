@@ -49,7 +49,7 @@ func TestRuntimeHelperProcess(t *testing.T) {
 	}
 
 	mode := os.Getenv("YIJIE_FAKE_MODE")
-	if mode == "baseline2" || mode == "title" {
+	if mode == "baseline2" || mode == "title" || mode == "multimodal" {
 		expectedKey := "test-minimax-key"
 		if mode == "title" {
 			expectedKey = "synthetic-test-key"
@@ -121,7 +121,7 @@ func TestRuntimeHelperProcess(t *testing.T) {
 				})
 			}
 		case "thread/start":
-			if mode != "baseline2" && mode != "title" && mode != "feat126_fake" {
+			if mode != "baseline2" && mode != "title" && mode != "feat126_fake" && mode != "multimodal" {
 				os.Exit(29)
 			}
 			if message.Params["model"] != MiniMaxModel || message.Params["modelProvider"] != MiniMaxProviderID ||
@@ -171,6 +171,26 @@ func TestRuntimeHelperProcess(t *testing.T) {
 				},
 			})
 		case "turn/start":
+			if mode == "multimodal" {
+				inputs, ok := message.Params["input"].([]any)
+				if !ok || len(inputs) != 3 || message.Params["effort"] != "high" {
+					os.Exit(34)
+				}
+				textBefore, beforeOK := inputs[0].(map[string]any)
+				image, imageOK := inputs[1].(map[string]any)
+				textAfter, afterOK := inputs[2].(map[string]any)
+				if !beforeOK || !imageOK || !afterOK ||
+					textBefore["type"] != "text" || textBefore["text"] != "before image" ||
+					image["type"] != "image" || image["url"] != "data:image/png;base64,iVBORw0KGgo=" ||
+					textAfter["type"] != "text" || textAfter["text"] != "FILE-CONTEXT-CANARY" {
+					os.Exit(35)
+				}
+				for _, input := range []map[string]any{textBefore, image, textAfter} {
+					if _, hasPath := input["path"]; hasPath {
+						os.Exit(36)
+					}
+				}
+			}
 			if mode == "title" {
 				if message.Params["effort"] != "none" || message.Params["outputSchema"] == nil {
 					os.Exit(33)
@@ -626,6 +646,55 @@ func TestManagerBaseline2ThreadTurnMethods(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for delete notification forwarding")
+	}
+}
+
+func TestManagerMapsOrderedMultimodalInputsToStableRuntimeUserInput(t *testing.T) {
+	t.Setenv("YIJIE_FAKE_MODE", "multimodal")
+	config := newRuntimeFixture(t)
+	config.MiniMax = MiniMaxConfig{Enabled: true, APIKey: "test-minimax-key"}
+	manager := NewManager(config, nil)
+	if err := manager.Start(context.Background()); err != nil {
+		t.Fatalf("start Runtime: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = manager.Shutdown(ctx)
+	})
+	thread, err := manager.StartThread(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := TextUserInput("before image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, err := ImageUserInput("data:image/png;base64,iVBORw0KGgo=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := TextUserInput("FILE-CONTEXT-CANARY")
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := manager.StartTurnV2(context.Background(), thread.ID, []UserInput{before, image, after}, "high")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if turn.ID != "019c0123-4567-7abc-8123-456789abcded" {
+		t.Fatalf("unexpected turn: %+v", turn)
+	}
+}
+
+func TestManagerStartThreadFailsClosedWithoutModelProvider(t *testing.T) {
+	manager := NewManager(DefaultConfig(), nil)
+	if _, err := manager.StartThread(context.Background(), t.TempDir()); err == nil ||
+		!strings.Contains(err.Error(), "model provider is not configured") {
+		t.Fatalf("thread start did not fail closed without a model provider: %v", err)
+	}
+	if status := manager.Snapshot(); status.State != StateNotConfigured || status.Ready {
+		t.Fatalf("provider-free manager reported usable: %#v", status)
 	}
 }
 

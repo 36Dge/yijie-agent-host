@@ -107,6 +107,9 @@ func TestDefaultStoreCompatibilityMatrixKeepsAbsoluteCWDAndNoFEAT126Marker(t *te
 				if metadata.Get(feat126CwdEncodingKey) != nil || metadata.Get(feat126RunIDKey) != nil {
 					t.Fatalf("default schema %s gained FEAT-126 authority metadata", schema)
 				}
+				if tx.Bucket(turnOperationsBucket) == nil {
+					t.Fatalf("default schema %s omitted the v4 turn operation bucket", schema)
+				}
 				for _, sessionID := range []string{testSessionID, secondSessionID} {
 					encoded := tx.Bucket(sessionsBucket).Get([]byte(sessionID))
 					if encoded == nil {
@@ -271,11 +274,168 @@ func TestCleanupReceiptLookupPurgesExpiredRecord(t *testing.T) {
 }
 
 const (
-	testTaskID    = "019c0123-4567-7abc-8123-456789abcdea"
-	testSessionID = "019c0123-4567-7abc-8123-456789abcdeb"
-	testThreadID  = "019c0123-4567-7abc-8123-456789abcdec"
-	testTurnID    = "019c0123-4567-7abc-8123-456789abcded"
+	testTaskID           = "019c0123-4567-7abc-8123-456789abcdea"
+	testSessionID        = "019c0123-4567-7abc-8123-456789abcdeb"
+	testThreadID         = "019c0123-4567-7abc-8123-456789abcdec"
+	testTurnID           = "019c0123-4567-7abc-8123-456789abcded"
+	testTurnOperationID  = "019c0123-4567-7abc-8123-456789abcdee"
+	testTurnOperationID2 = "019c0123-4567-7abc-8123-456789abcdef"
 )
+
+func TestTurnOperationAcceptedReplayAndConflictSurviveRestart(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "host-home")
+	store, err := OpenStore(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Reserve(Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindThread(testSessionID, testThreadID, "runtime-session", "MiniMax-M3", "minimax"); err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.Repeat("a", 64)
+	operation, _, err := store.PrepareTurnOperation(testSessionID, testTurnOperationID, digest, TraceContext{TraceID: "initial"})
+	if err != nil || operation.State != TurnOperationStatePending {
+		t.Fatalf("prepare turn operation: operation=%+v err=%v", operation, err)
+	}
+	if _, err := store.AcceptTurnOperation(testSessionID, testTurnOperationID, digest, testTurnID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := OpenStore(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	replayed, _, err := reopened.PrepareTurnOperation(
+		testSessionID, testTurnOperationID, digest, TraceContext{TraceID: "replay"},
+	)
+	if err != nil || replayed.State != TurnOperationStateAccepted || replayed.TurnID != testTurnID {
+		t.Fatalf("accepted operation did not survive restart: operation=%+v err=%v", replayed, err)
+	}
+	if _, _, err := reopened.PrepareTurnOperation(
+		testSessionID, testTurnOperationID, strings.Repeat("b", 64), TraceContext{},
+	); !errors.Is(err, ErrTurnOperationConflict) {
+		t.Fatalf("changed operation input did not conflict after restart: %v", err)
+	}
+}
+
+func TestTurnOperationPendingAndUncertainRemainFailClosedAfterRestart(t *testing.T) {
+	for _, state := range []string{TurnOperationStatePending, TurnOperationStateUncertain} {
+		t.Run(state, func(t *testing.T) {
+			home := filepath.Join(t.TempDir(), "host-home")
+			store, err := OpenStore(home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Reserve(Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.BindThread(testSessionID, testThreadID, "runtime-session", "MiniMax-M3", "minimax"); err != nil {
+				t.Fatal(err)
+			}
+			digest := strings.Repeat("c", 64)
+			if _, _, err := store.PrepareTurnOperation(testSessionID, testTurnOperationID, digest, TraceContext{}); err != nil {
+				t.Fatal(err)
+			}
+			if state == TurnOperationStateUncertain {
+				if _, err := store.MarkTurnOperationUncertain(
+					testSessionID, testTurnOperationID, digest, "turn_start_failed",
+				); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
+			reopened, err := OpenStore(home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reopened.Close()
+			persisted, err := reopened.TurnOperation(testSessionID, testTurnOperationID)
+			if err != nil || persisted.State != state {
+				t.Fatalf("turn operation state did not survive restart: operation=%+v err=%v", persisted, err)
+			}
+			if state == TurnOperationStateUncertain {
+				if _, err := reopened.Resume(testSessionID, TraceContext{}, "runtime-session-resumed", "", "", ""); err != nil {
+					t.Fatalf("resume session after unknown result: %v", err)
+				}
+			}
+			if _, _, err := reopened.PrepareTurnOperation(
+				testSessionID, testTurnOperationID, digest, TraceContext{},
+			); !errors.Is(err, ErrTurnOperationPending) {
+				t.Fatalf("pending or uncertain operation re-entered Runtime path: %v", err)
+			}
+			if _, _, err := reopened.PrepareTurnOperation(
+				testSessionID, testTurnOperationID, strings.Repeat("d", 64), TraceContext{},
+			); !errors.Is(err, ErrTurnOperationConflict) {
+				t.Fatalf("changed pending or uncertain operation did not conflict: %v", err)
+			}
+		})
+	}
+}
+
+func TestTurnOperationScopeIsPerSessionAndCleanupRemovesOperations(t *testing.T) {
+	const (
+		secondTaskID    = "019c0123-4567-7abc-8123-456789abcdf1"
+		secondSessionID = "019c0123-4567-7abc-8123-456789abcdf2"
+		secondThreadID  = "019c0123-4567-7abc-8123-456789abcdf3"
+	)
+	store, err := OpenStore(filepath.Join(t.TempDir(), "host-home"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, record := range []Record{
+		{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()},
+		{TaskID: secondTaskID, AgentSessionID: secondSessionID, Cwd: t.TempDir()},
+	} {
+		if err := store.Reserve(record); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.BindThread(testSessionID, testThreadID, "runtime-session-one", "MiniMax-M3", "minimax"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindThread(secondSessionID, secondThreadID, "runtime-session-two", "MiniMax-M3", "minimax"); err != nil {
+		t.Fatal(err)
+	}
+	firstDigest := strings.Repeat("e", 64)
+	secondDigest := strings.Repeat("f", 64)
+	if _, _, err := store.PrepareTurnOperation(testSessionID, testTurnOperationID, firstDigest, TraceContext{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.PrepareTurnOperation(secondSessionID, testTurnOperationID, secondDigest, TraceContext{}); err != nil {
+		t.Fatalf("same operation id was not independent in another session: %v", err)
+	}
+	if _, err := store.MarkTurnOperationUncertain(
+		testSessionID, testTurnOperationID, firstDigest, "turn_start_failed",
+	); err != nil {
+		t.Fatal(err)
+	}
+	cleanupID := uuid.NewString()
+	if _, err := store.BeginCleanup(cleanupID, testSessionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.MarkCleanupRuntimeDeleted(cleanupID, testSessionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteSessionWithReceipt(cleanupID, testSessionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.TurnOperation(testSessionID, testTurnOperationID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cleanup retained a deleted session's turn operation: %v", err)
+	}
+	second, err := store.TurnOperation(secondSessionID, testTurnOperationID)
+	if err != nil || second.InputDigest != secondDigest {
+		t.Fatalf("cleanup crossed session scope: operation=%+v err=%v", second, err)
+	}
+}
 
 func TestStorePersistsMappingAndTurnLifecycle(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "host-home")
@@ -415,6 +575,53 @@ func TestFEAT126StorePersistsOpaqueProjectAndReconstructsAfterRestart(t *testing
 	}
 	if !bytes.Equal(beforeDefaultOpen, afterDefaultOpen) {
 		t.Fatal("default reader modified a FEAT-126 encoded database before rejecting it")
+	}
+}
+
+func TestFEAT126StoreMigratesSchemaV3ToV4(t *testing.T) {
+	const runID = "123e4567-e89b-42d3-a456-426614174000"
+	_, hostHome, projectDirectory := newFEAT126StoreAuthority(t, runID)
+	option := WithFEAT126Authority(projectDirectory, runID)
+	store, err := OpenStore(hostHome, option)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err := bolt.Open(filepath.Join(hostHome, "sessions.db"), 0o600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Update(func(tx *bolt.Tx) error {
+		if err := tx.DeleteBucket(turnOperationsBucket); err != nil {
+			return err
+		}
+		return tx.Bucket(metadataBucket).Put(storeSchemaVersionKey, []byte("3"))
+	}); err != nil {
+		_ = database.Close()
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := OpenStore(hostHome, option)
+	if err != nil {
+		t.Fatalf("migrate FEAT-126 schema v3: %v", err)
+	}
+	defer reopened.Close()
+	if err := reopened.db.View(func(tx *bolt.Tx) error {
+		if got := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey)); got != storeSchemaVersion {
+			t.Fatalf("migrated FEAT-126 schema version = %q", got)
+		}
+		if tx.Bucket(turnOperationsBucket) == nil {
+			t.Fatal("migrated FEAT-126 store omitted turn operation bucket")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -912,6 +1119,38 @@ func TestStoreDoesNotReactivateTurnCompletedBeforeStartResponse(t *testing.T) {
 	}
 	if record.State != StateIdle || record.ActiveTurnID != "" || record.LastTurnID != testTurnID {
 		t.Fatalf("late turn/start response reactivated a terminal turn: %+v", record)
+	}
+}
+
+func TestAcceptTurnOperationDoesNotReactivateCompletedShortTurn(t *testing.T) {
+	store, err := OpenStore(filepath.Join(t.TempDir(), "host-home"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Reserve(Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindThread(testSessionID, testThreadID, "runtime-session", "MiniMax-M3", "minimax"); err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.Repeat("a", 64)
+	if _, _, err := store.PrepareTurnOperation(testSessionID, testTurnOperationID, digest, TraceContext{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CompleteTurn(testSessionID, testTurnID, "completed"); err != nil {
+		t.Fatal(err)
+	}
+	record, err := store.AcceptTurnOperation(testSessionID, testTurnOperationID, digest, testTurnID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.State != StateIdle || record.ActiveTurnID != "" || record.LastTurnID != testTurnID {
+		t.Fatalf("late accepted response reactivated a terminal turn: %+v", record)
+	}
+	operation, err := store.TurnOperation(testSessionID, testTurnOperationID)
+	if err != nil || operation.State != TurnOperationStateAccepted || operation.TurnID != testTurnID {
+		t.Fatalf("short turn acceptance was not persisted: operation=%+v err=%v", operation, err)
 	}
 }
 

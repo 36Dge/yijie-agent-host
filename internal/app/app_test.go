@@ -2,10 +2,15 @@ package app
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -442,7 +447,8 @@ func TestLoadConfigAcceptsOnlyExactFEAT126FakeProfile(t *testing.T) {
 		"YIJIE_FEAT126_S10_PARENT_PID", "YIJIE_FEAT126_S10_HOST_LOG_DIR",
 		"YIJIE_FEAT126_S10_PROCESS_MANIFEST",
 		"YIJIE_AGENT_HOST_V2_RAW_REASONING_ENABLED", "YIJIE_AGENT_HOST_V2_TITLE_ENABLED",
-		"YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED", "YIJIE_AGENT_HOST_INSTANCE_NONCE",
+		"YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED", "YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED",
+		"YIJIE_AGENT_HOST_INSTANCE_NONCE",
 	} {
 		t.Setenv(key, "")
 	}
@@ -488,7 +494,8 @@ func TestLoadConfigAcceptsOnlyExactFEAT126FakeProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !config.Runtime.FakeResponses.Enabled || config.Runtime.FakeResponses.RunID != runID ||
-		config.Runtime.MiniMax.Enabled || !config.RawReasoningV2Enabled || !config.CleanupV2Enabled || config.TitleV2Enabled ||
+		config.Runtime.MiniMax.Enabled || !config.RawReasoningV2Enabled || !config.CleanupV2Enabled ||
+		config.TitleV2Enabled || config.MultimodalV2Enabled ||
 		config.FEAT126TestParentPID != os.Getppid() || config.FEAT126ProjectDir != projectDirectory {
 		t.Fatalf("unexpected FEAT-126 fake profile: %#v", config)
 	}
@@ -864,7 +871,7 @@ func configureExactFEAT126Authority(t *testing.T) feat126AuthorityFixture {
 		"YIJIE_FEAT126_S10_HOST_LOG_DIR", "YIJIE_FEAT126_S10_PROCESS_MANIFEST",
 		"YIJIE_AGENT_HOST_HOME", "YIJIE_CODEX_HOME", "YIJIE_AGENT_HOST_INSTANCE_NONCE",
 		"YIJIE_AGENT_HOST_V2_RAW_REASONING_ENABLED", "YIJIE_AGENT_HOST_V2_TITLE_ENABLED",
-		"YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED",
+		"YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED", "YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED",
 	} {
 		t.Setenv(key, "")
 	}
@@ -977,10 +984,35 @@ func (appFakeRuntime) StartTurn(context.Context, string, string, string) (codex.
 	return codex.TurnInfo{ID: "019c0123-4567-7abc-8123-456789abcded", Status: "inProgress"}, nil
 }
 
+func (appFakeRuntime) StartTurnV2(context.Context, string, []codex.UserInput, string) (codex.TurnInfo, error) {
+	return codex.TurnInfo{ID: "019c0123-4567-7abc-8123-456789abcded", Status: "inProgress"}, nil
+}
+
 func (appFakeRuntime) InterruptTurn(context.Context, string, string) error { return nil }
 func (appFakeRuntime) DeleteThread(context.Context, string) error          { return nil }
 func (appFakeRuntime) GenerateTitle(context.Context, string) (string, error) {
 	return "设计本地聊天安全删除流程", nil
+}
+
+type appCountingMultimodalRuntime struct {
+	appFakeRuntime
+	calls   int
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (runtime *appCountingMultimodalRuntime) StartTurnV2(
+	context.Context,
+	string,
+	[]codex.UserInput,
+	string,
+) (codex.TurnInfo, error) {
+	runtime.calls++
+	if runtime.entered != nil {
+		close(runtime.entered)
+		<-runtime.release
+	}
+	return codex.TurnInfo{ID: "019c0123-4567-7abc-8123-456789abcded", Status: "inProgress"}, nil
 }
 
 func TestV2DraftRoutesAreFlaggedAndMatchTitleCleanupContracts(t *testing.T) {
@@ -1048,9 +1080,237 @@ func TestV2DraftRoutesAreFlaggedAndMatchTitleCleanupContracts(t *testing.T) {
 	assertOpenAPIJSON(t, "CleanupAgentSessionV2CompletedResponse", cleanupResponse.Body.Bytes())
 }
 
+func TestMultimodalTurnV2RouteIsFlaggedStrictAndAttachmentOnlyCapable(t *testing.T) {
+	validBody := validTurnV2RequestBody(t, true, true)
+	t.Run("disabled by default", func(t *testing.T) {
+		handler := newMultimodalTurnHandler(t, false)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, authorizedRequest(
+			http.MethodPost, "/v2/agent-sessions/019c0123-4567-7abc-8123-456789abcdeb/turns", validBody,
+		))
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("multimodal v2 route enabled by default: %d", response.Code)
+		}
+	})
+
+	tests := []struct {
+		name       string
+		body       string
+		wantStatus int
+		forbidden  string
+	}{
+		{name: "ordered mixed content", body: validBody, wantStatus: http.StatusAccepted},
+		{name: "attachment only", body: validTurnV2RequestBody(t, false, true), wantStatus: http.StatusAccepted},
+		{
+			name:       "missing operation id",
+			body:       strings.Replace(validBody, `"operation_id":"019c0123-4567-7abc-8123-456789abcdee",`, "", 1),
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name: "zero operation id",
+			body: strings.Replace(
+				validBody,
+				"019c0123-4567-7abc-8123-456789abcdee",
+				"00000000-0000-0000-0000-000000000000",
+				1,
+			),
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "unknown nested field",
+			body:       strings.Replace(validBody, "\"data_url\":", "\"path\":\"/private/SENSITIVE-PATH-CANARY\",\"data_url\":", 1),
+			wantStatus: http.StatusBadRequest,
+			forbidden:  "/private/SENSITIVE-PATH-CANARY",
+		},
+		{
+			name:       "unknown discriminator",
+			body:       "{\"content_blocks\":[{\"type\":\"audio\",\"text\":\"not supported\"}]}",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name: "image digest mismatch",
+			body: strings.Replace(
+				validBody,
+				fmt.Sprintf("\"sha256\":\"%x\"", sha256.Sum256(validAppTestPNG())),
+				"\"sha256\":\""+strings.Repeat("0", 64)+"\"",
+				1,
+			),
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "unknown top level field",
+			body:       strings.TrimSuffix(validBody, "}") + ",\"local_path\":\"/private/SENSITIVE-PATH-CANARY\"}",
+			wantStatus: http.StatusBadRequest,
+			forbidden:  "/private/SENSITIVE-PATH-CANARY",
+		},
+		{
+			name:       "body limit",
+			body:       "{\"content_blocks\":[{\"type\":\"text\",\"text\":\"" + strings.Repeat("x", (16<<20)+1) + "\"}]}",
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler := newMultimodalTurnHandler(t, true)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, authorizedRequest(
+				http.MethodPost, "/v2/agent-sessions/019c0123-4567-7abc-8123-456789abcdeb/turns", test.body,
+			))
+			if response.Code != test.wantStatus {
+				t.Fatalf("status=%d want=%d body=%s", response.Code, test.wantStatus, response.Body.String())
+			}
+			if test.forbidden != "" && strings.Contains(response.Body.String(), test.forbidden) {
+				t.Fatalf("sensitive request value entered response: %s", response.Body.String())
+			}
+			if response.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("multimodal response is cacheable: %v", response.Header())
+			}
+			if test.wantStatus == http.StatusAccepted {
+				assertOpenAPIJSON(t, "StartTurnResponse", response.Body.Bytes())
+			} else {
+				assertOpenAPIJSON(t, "ErrorResponse", response.Body.Bytes())
+			}
+		})
+	}
+}
+
+func TestMultimodalTurnV2HTTPIdempotencyAndPendingRetry(t *testing.T) {
+	t.Run("accepted replay and changed input conflict", func(t *testing.T) {
+		runtime := &appCountingMultimodalRuntime{}
+		handler := newMultimodalTurnHandlerForRuntime(t, true, runtime)
+		body := validTurnV2RequestBody(t, true, true)
+		first := httptest.NewRecorder()
+		handler.ServeHTTP(first, authorizedRequest(
+			http.MethodPost, "/v2/agent-sessions/019c0123-4567-7abc-8123-456789abcdeb/turns", body,
+		))
+		second := httptest.NewRecorder()
+		handler.ServeHTTP(second, authorizedRequest(
+			http.MethodPost, "/v2/agent-sessions/019c0123-4567-7abc-8123-456789abcdeb/turns", body,
+		))
+		if first.Code != http.StatusAccepted || second.Code != http.StatusAccepted ||
+			first.Body.String() != second.Body.String() || runtime.calls != 1 {
+			t.Fatalf("exact replay mismatch: first=%d %s second=%d %s calls=%d",
+				first.Code, first.Body.String(), second.Code, second.Body.String(), runtime.calls)
+		}
+		changed := strings.Replace(body, "inspect attachments", "changed canonical input", 1)
+		conflict := httptest.NewRecorder()
+		handler.ServeHTTP(conflict, authorizedRequest(
+			http.MethodPost, "/v2/agent-sessions/019c0123-4567-7abc-8123-456789abcdeb/turns", changed,
+		))
+		if conflict.Code != http.StatusConflict ||
+			!strings.Contains(conflict.Body.String(), `"code":"turn_operation_conflict"`) || runtime.calls != 1 {
+			t.Fatalf("changed input conflict mismatch: status=%d body=%s calls=%d", conflict.Code, conflict.Body.String(), runtime.calls)
+		}
+	})
+
+	t.Run("pending retry does not invoke Runtime again", func(t *testing.T) {
+		runtime := &appCountingMultimodalRuntime{entered: make(chan struct{}), release: make(chan struct{})}
+		handler := newMultimodalTurnHandlerForRuntime(t, true, runtime)
+		body := validTurnV2RequestBody(t, true, true)
+		firstDone := make(chan *httptest.ResponseRecorder, 1)
+		go func() {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, authorizedRequest(
+				http.MethodPost, "/v2/agent-sessions/019c0123-4567-7abc-8123-456789abcdeb/turns", body,
+			))
+			firstDone <- response
+		}()
+		<-runtime.entered
+		pending := httptest.NewRecorder()
+		handler.ServeHTTP(pending, authorizedRequest(
+			http.MethodPost, "/v2/agent-sessions/019c0123-4567-7abc-8123-456789abcdeb/turns", body,
+		))
+		if pending.Code != http.StatusConflict ||
+			!strings.Contains(pending.Body.String(), `"code":"session_not_usable"`) || runtime.calls != 1 {
+			t.Fatalf("pending retry mismatch: status=%d body=%s calls=%d", pending.Code, pending.Body.String(), runtime.calls)
+		}
+		close(runtime.release)
+		if first := <-firstDone; first.Code != http.StatusAccepted {
+			t.Fatalf("first request did not complete after release: %d %s", first.Code, first.Body.String())
+		}
+	})
+}
+
+func newMultimodalTurnHandler(t *testing.T, enabled bool) http.Handler {
+	t.Helper()
+	return newMultimodalTurnHandlerForRuntime(t, enabled, appFakeRuntime{})
+}
+
+func newMultimodalTurnHandlerForRuntime(t *testing.T, enabled bool, runtime session.Runtime) http.Handler {
+	t.Helper()
+	store, err := session.OpenStore(filepath.Join(t.TempDir(), "host-home"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.Reserve(session.Record{
+		TaskID:         "019c0123-4567-7abc-8123-456789abcdea",
+		AgentSessionID: "019c0123-4567-7abc-8123-456789abcdeb",
+		Cwd:            t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindThread(
+		"019c0123-4567-7abc-8123-456789abcdeb",
+		"019c0123-4567-7abc-8123-456789abcdec",
+		"runtime-session",
+		codex.MiniMaxModel,
+		codex.MiniMaxProviderID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	service := session.NewService(runtime, store, session.NewEventHub(16, 8), nil)
+	return NewHandler(
+		Config{Environment: "local", MultimodalV2Enabled: enabled},
+		staticRuntimeStatus{status: codex.Status{State: codex.StateReady, Ready: true}},
+		service,
+		"api-token",
+	)
+}
+
+func validTurnV2RequestBody(t *testing.T, includeText, includeFile bool) string {
+	t.Helper()
+	content := validAppTestPNG()
+	digest := sha256.Sum256(content)
+	blocks := make([]map[string]any, 0, 3)
+	if includeText {
+		blocks = append(blocks, map[string]any{"type": "text", "text": "inspect attachments"})
+	}
+	blocks = append(blocks, map[string]any{
+		"type": "image", "attachment_id": "019c0123-4567-7abc-8123-456789abcdf0",
+		"media_type": "image/png", "size_bytes": len(content), "sha256": fmt.Sprintf("%x", digest),
+		"data_url": "data:image/png;base64," + base64.StdEncoding.EncodeToString(content),
+	})
+	if includeFile {
+		blocks = append(blocks, map[string]any{
+			"type": "file", "attachment_id": "019c0123-4567-7abc-8123-456789abcdf1",
+			"name": "report.txt", "media_type": "text/plain", "size_bytes": 42,
+			"sha256": strings.Repeat("a", 64), "context_chunks": []string{"bounded context"},
+		})
+	}
+	encoded, err := json.Marshal(map[string]any{
+		"operation_id":     "019c0123-4567-7abc-8123-456789abcdee",
+		"content_blocks":   blocks,
+		"reasoning_effort": "none",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
+}
+
+func validAppTestPNG() []byte {
+	var output bytes.Buffer
+	if err := png.Encode(&output, image.NewNRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		panic(err)
+	}
+	return output.Bytes()
+}
+
 func TestLoadConfigKeepsV2DraftCapabilitiesOffAndLocalOnly(t *testing.T) {
 	for _, key := range []string{
 		"YIJIE_AGENT_HOST_V2_RAW_REASONING_ENABLED", "YIJIE_AGENT_HOST_V2_TITLE_ENABLED", "YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED",
+		"YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED",
 		"YIJIE_MODEL_PROVIDER", "YIJIE_MINIMAX_API_KEY", "YIJIE_MINIMAX_API_KEY_FILE", "YIJIE_AGENT_HOST_HOME", "YIJIE_ENV",
 		"YIJIE_AGENT_HOST_INSTANCE_NONCE",
 	} {
@@ -1060,7 +1320,7 @@ func TestLoadConfigKeepsV2DraftCapabilitiesOffAndLocalOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.RawReasoningV2Enabled || config.TitleV2Enabled || config.CleanupV2Enabled {
+	if config.RawReasoningV2Enabled || config.TitleV2Enabled || config.CleanupV2Enabled || config.MultimodalV2Enabled {
 		t.Fatalf("v2 draft capability enabled by default: %#v", config)
 	}
 
@@ -1077,6 +1337,24 @@ func TestLoadConfigKeepsV2DraftCapabilitiesOffAndLocalOnly(t *testing.T) {
 	if _, err := LoadConfig(); err == nil {
 		t.Fatal("v2 draft capabilities must reject production")
 	}
+	t.Setenv("YIJIE_ENV", "local")
+	t.Setenv("YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED", "true")
+	config, err = LoadConfig()
+	if err != nil || !config.MultimodalV2Enabled || config.Runtime.MiniMax.Enabled || config.Runtime.FakeResponses.Enabled {
+		t.Fatalf("load local multimodal route without a model provider: %#v err=%v", config, err)
+	}
+	t.Setenv("YIJIE_MODEL_PROVIDER", "minimax")
+	t.Setenv("YIJIE_MINIMAX_API_KEY", "synthetic-test-key")
+	t.Setenv("YIJIE_CODEX_HOME", filepath.Join(t.TempDir(), "codex-home"))
+	config, err = LoadConfig()
+	if err != nil || !config.MultimodalV2Enabled {
+		t.Fatalf("load local multimodal v2 flag: %#v err=%v", config, err)
+	}
+	t.Setenv("YIJIE_ENV", "production")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("multimodal v2 capability must reject production")
+	}
+	t.Setenv("YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED", "false")
 	t.Setenv("YIJIE_AGENT_HOST_V2_TITLE_ENABLED", "true")
 	t.Setenv("YIJIE_ENV", "local")
 	t.Setenv("YIJIE_MODEL_PROVIDER", "minimax")

@@ -35,6 +35,7 @@ type Config struct {
 	RawReasoningV2Enabled bool
 	TitleV2Enabled        bool
 	CleanupV2Enabled      bool
+	MultimodalV2Enabled   bool
 	InstanceNonce         string
 	FEAT126TestParentPID  int
 	FEAT126TestRunID      string
@@ -125,6 +126,10 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if err != nil {
 		return Config{}, err
 	}
+	multimodalV2, err := boolEnv("YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
 	rawInstanceNonce := os.Getenv("YIJIE_AGENT_HOST_INSTANCE_NONCE")
 	instanceNonce := strings.TrimSpace(rawInstanceNonce)
 	if instanceNonce != "" {
@@ -146,7 +151,7 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 			return Config{}, errors.New("FEAT-126 fake Responses profile requires raw reasoning and cleanup enabled with title disabled")
 		}
 	}
-	if (rawV2 || titleV2 || cleanupV2) && (environment != "local" || hostHome == "" || !filepath.IsAbs(hostHome)) {
+	if (rawV2 || titleV2 || cleanupV2 || multimodalV2) && (environment != "local" || hostHome == "" || !filepath.IsAbs(hostHome)) {
 		return Config{}, errors.New("Agent Host v2 draft capabilities require an absolute Host home in the local environment")
 	}
 	if titleV2 && !runtimeConfig.MiniMax.Enabled {
@@ -185,6 +190,7 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		RawReasoningV2Enabled: rawV2,
 		TitleV2Enabled:        titleV2,
 		CleanupV2Enabled:      cleanupV2,
+		MultimodalV2Enabled:   multimodalV2,
 		InstanceNonce:         instanceNonce,
 		FEAT126TestParentPID:  testParentPID,
 		FEAT126TestRunID:      fakeProfile.RunID,
@@ -346,6 +352,10 @@ type SessionService interface {
 	CleanupSession(context.Context, string, string) (session.CleanupResult, error)
 }
 
+type multimodalSessionService interface {
+	StartTurnV2(context.Context, session.StartTurnV2Input) (codex.TurnInfo, error)
+}
+
 func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionService, apiToken string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -423,6 +433,9 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 		}
 		if config.CleanupV2Enabled {
 			mux.Handle("POST /v2/agent-sessions/{agent_session_id}/cleanup-operations", handler.authorize(http.HandlerFunc(handler.cleanupV2)))
+		}
+		if config.MultimodalV2Enabled {
+			mux.Handle("POST /v2/agent-sessions/{agent_session_id}/turns", handler.authorize(http.HandlerFunc(handler.startTurnV2)))
 		}
 	}
 	return mux
@@ -505,6 +518,41 @@ func (h *sessionHandler) startTurn(w http.ResponseWriter, r *http.Request) {
 		AgentSessionID:  r.PathValue("agent_session_id"),
 		Input:           request.Input,
 		ReasoningEffort: reasoningEffort(request.ReasoningEffort),
+		Trace:           traceContext(request.TraceId, request.RequestId, request.TenantId, request.UserId),
+	})
+	if err != nil {
+		writeSessionError(w, err)
+		return
+	}
+	turnID, err := uuid.Parse(turn.ID)
+	if err != nil {
+		writeAPIError(w, http.StatusInternalServerError, agenthostcontract.ErrorResponseErrorCodeInternalError, "Agent Host operation failed")
+		return
+	}
+	writeJSON(w, http.StatusAccepted, agenthostcontract.StartTurnResponse{TurnId: turnID})
+}
+
+func (h *sessionHandler) startTurnV2(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(multimodalSessionService)
+	if !ok {
+		writeSessionError(w, session.ErrSessionNotUsable)
+		return
+	}
+	var request agenthostcontract.StartTurnV2Request
+	if err := decodeRequestWithLimit(w, r, &request, 16<<20); err != nil {
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidRequest, "request body is invalid")
+		return
+	}
+	blocks, err := mapTurnV2ContentBlocks(request.ContentBlocks)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidRequest, "request parameters are invalid")
+		return
+	}
+	turn, err := service.StartTurnV2(r.Context(), session.StartTurnV2Input{
+		AgentSessionID:  r.PathValue("agent_session_id"),
+		OperationID:     request.OperationId.String(),
+		ContentBlocks:   blocks,
+		ReasoningEffort: reasoningEffortV2(request.ReasoningEffort),
 		Trace:           traceContext(request.TraceId, request.RequestId, request.TenantId, request.UserId),
 	})
 	if err != nil {
@@ -719,11 +767,87 @@ func reasoningEffort(value *agenthostcontract.StartTurnRequestReasoningEffort) s
 	return string(*value)
 }
 
+func reasoningEffortV2(value *agenthostcontract.StartTurnV2RequestReasoningEffort) string {
+	if value == nil {
+		return ""
+	}
+	return string(*value)
+}
+
+func mapTurnV2ContentBlocks(blocks []agenthostcontract.StartTurnV2ContentBlock) ([]session.TurnContentBlock, error) {
+	mapped := make([]session.TurnContentBlock, 0, len(blocks))
+	for _, block := range blocks {
+		raw, err := block.MarshalJSON()
+		if err != nil {
+			return nil, err
+		}
+		discriminator, err := block.Discriminator()
+		if err != nil {
+			return nil, err
+		}
+		switch discriminator {
+		case session.ContentBlockText:
+			var value agenthostcontract.StartTurnV2TextBlock
+			if err := strictDecodeJSON(raw, &value); err != nil || string(value.Type) != discriminator {
+				return nil, errors.New("invalid text content block")
+			}
+			mapped = append(mapped, session.TurnContentBlock{Type: discriminator, Text: value.Text})
+		case session.ContentBlockImage:
+			var value agenthostcontract.StartTurnV2ImageBlock
+			if err := strictDecodeJSON(raw, &value); err != nil || string(value.Type) != discriminator {
+				return nil, errors.New("invalid image content block")
+			}
+			mapped = append(mapped, session.TurnContentBlock{Type: discriminator, Image: &session.TurnImageBlock{
+				AttachmentID: value.AttachmentId.String(),
+				MediaType:    string(value.MediaType),
+				SizeBytes:    value.SizeBytes,
+				SHA256:       value.Sha256,
+				DataURL:      value.DataUrl,
+			}})
+		case session.ContentBlockFile:
+			var value agenthostcontract.StartTurnV2FileBlock
+			if err := strictDecodeJSON(raw, &value); err != nil || string(value.Type) != discriminator {
+				return nil, errors.New("invalid file content block")
+			}
+			mapped = append(mapped, session.TurnContentBlock{Type: discriminator, File: &session.TurnFileBlock{
+				AttachmentID:  value.AttachmentId.String(),
+				Name:          value.Name,
+				MediaType:     string(value.MediaType),
+				SizeBytes:     value.SizeBytes,
+				SHA256:        value.Sha256,
+				ContextChunks: append([]string(nil), value.ContextChunks...),
+			}})
+		default:
+			return nil, errors.New("unsupported content block discriminator")
+		}
+	}
+	return mapped, nil
+}
+
+func strictDecodeJSON(raw []byte, destination any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(destination); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("JSON value has trailing content")
+	}
+	return nil
+}
+
 func decodeRequest(w http.ResponseWriter, r *http.Request, destination any) error {
+	return decodeRequestWithLimit(w, r, destination, 1<<20)
+}
+
+func decodeRequestWithLimit(w http.ResponseWriter, r *http.Request, destination any, maxBytes int64) error {
 	if contentType := r.Header.Get("Content-Type"); contentType != "" && !strings.HasPrefix(contentType, "application/json") {
 		return errors.New("Content-Type must be application/json")
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if maxBytes < 1 {
+		return errors.New("request body limit is invalid")
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(destination); err != nil {
@@ -850,7 +974,9 @@ func writeSessionError(w http.ResponseWriter, err error) {
 		writeAPIError(w, http.StatusConflict, agenthostcontract.ErrorResponseErrorCodeTurnActive, "agent session already has an active turn")
 	case errors.Is(err, session.ErrTurnNotActive):
 		writeAPIError(w, http.StatusConflict, agenthostcontract.ErrorResponseErrorCodeTurnNotActive, "turn is not active for this agent session")
-	case errors.Is(err, session.ErrSessionNotUsable):
+	case errors.Is(err, session.ErrTurnOperationConflict):
+		writeNestedError(w, http.StatusConflict, "turn_operation_conflict", "operation_id was already used with different turn input")
+	case errors.Is(err, session.ErrSessionNotUsable), errors.Is(err, session.ErrTurnOperationPending):
 		writeAPIError(w, http.StatusConflict, agenthostcontract.ErrorResponseErrorCodeSessionNotUsable, "agent session cannot perform this operation")
 	case errors.Is(err, session.ErrStreamChanged):
 		writeAPIError(w, http.StatusConflict, agenthostcontract.ErrorResponseErrorCodeEventStreamChanged, "event stream changed after Host restart")

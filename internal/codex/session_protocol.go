@@ -12,7 +12,9 @@ import (
 )
 
 const (
-	maxTurnInputBytes = 1 << 20
+	maxTurnInputBytes    = 1 << 20
+	maxTurnV2InputCount  = 16
+	maxImageDataURLBytes = 13981039
 
 	RuntimeMethodThreadResume        = "thread/resume"
 	RuntimeMethodThreadStart         = "thread/start"
@@ -52,6 +54,47 @@ type ThreadInfo struct {
 type TurnInfo struct {
 	ID     string
 	Status string
+}
+
+type UserInput struct {
+	kind     string
+	text     string
+	imageURL string
+}
+
+func TextUserInput(text string) (UserInput, error) {
+	if strings.TrimSpace(text) == "" {
+		return UserInput{}, errors.New("Runtime text input is required")
+	}
+	if len(text) > maxTurnInputBytes {
+		return UserInput{}, fmt.Errorf("Runtime text input exceeds %d bytes", maxTurnInputBytes)
+	}
+	return UserInput{kind: "text", text: text}, nil
+}
+
+func ImageUserInput(dataURL string) (UserInput, error) {
+	if len(dataURL) == 0 || len(dataURL) > maxImageDataURLBytes ||
+		!strings.HasPrefix(dataURL, "data:image/") {
+		return UserInput{}, errors.New("Runtime image input is invalid")
+	}
+	return UserInput{kind: "image", imageURL: dataURL}, nil
+}
+
+func (input UserInput) wireValue() (map[string]any, error) {
+	switch input.kind {
+	case "text":
+		if _, err := TextUserInput(input.text); err != nil {
+			return nil, err
+		}
+		return map[string]any{"type": "text", "text": input.text}, nil
+	case "image":
+		if _, err := ImageUserInput(input.imageURL); err != nil {
+			return nil, err
+		}
+		return map[string]any{"type": "image", "url": input.imageURL}, nil
+	default:
+		return nil, errors.New("Runtime user input kind is unsupported")
+	}
 }
 
 type threadWire struct {
@@ -168,6 +211,51 @@ func (m *Manager) StartTurn(
 			"text": input,
 		}},
 		Effort: reasoningEffort,
+	}
+	var response turnStartResponse
+	if err := m.request(ctx, RuntimeMethodTurnStart, params, &response); err != nil {
+		return TurnInfo{}, err
+	}
+	if response.Turn.ID == "" {
+		return TurnInfo{}, errors.New("turn/start response omitted turn id")
+	}
+	return TurnInfo{ID: response.Turn.ID, Status: response.Turn.Status}, nil
+}
+
+func (m *Manager) StartTurnV2(
+	ctx context.Context,
+	threadID string,
+	inputs []UserInput,
+	reasoningEffort string,
+) (TurnInfo, error) {
+	if threadID == "" {
+		return TurnInfo{}, errors.New("Codex thread id is required")
+	}
+	if len(inputs) == 0 || len(inputs) > maxTurnV2InputCount {
+		return TurnInfo{}, fmt.Errorf("Runtime turn input count must be between 1 and %d", maxTurnV2InputCount)
+	}
+	if reasoningEffort == "" {
+		reasoningEffort = "none"
+	}
+	if reasoningEffort != "none" && reasoningEffort != "high" {
+		return TurnInfo{}, errors.New("reasoning effort must be none or high")
+	}
+	wireInputs := make([]any, 0, len(inputs))
+	for _, input := range inputs {
+		wire, err := input.wireValue()
+		if err != nil {
+			return TurnInfo{}, err
+		}
+		wireInputs = append(wireInputs, wire)
+	}
+	params := struct {
+		ThreadID string `json:"threadId"`
+		Input    []any  `json:"input"`
+		Effort   string `json:"effort"`
+	}{
+		ThreadID: threadID,
+		Input:    wireInputs,
+		Effort:   reasoningEffort,
 	}
 	var response turnStartResponse
 	if err := m.request(ctx, RuntimeMethodTurnStart, params, &response); err != nil {

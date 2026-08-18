@@ -3,6 +3,9 @@ package fakeresponses
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -55,10 +58,133 @@ func TestCompleteResponseUsesFrozenFixtureWithoutPersistingBody(t *testing.T) {
 	if strings.Contains(body, "sensitive synthetic canary") {
 		t.Fatal("request body was reflected by the fake provider")
 	}
+	if !strings.Contains(body, server.fixture.AssistantText) {
+		t.Fatal("complete mode no longer returned the frozen FEAT-126 fixture")
+	}
 	snapshot := server.Snapshot()
 	if snapshot.AcceptedCalls != 1 || snapshot.RejectedCalls != 0 || snapshot.FixtureID != codex.FEAT126FakeFixtureID ||
 		snapshot.DatasetSHA256 != "523609b44fd244fff18b930c992375999276c2e0d5786efadfd8858ec623b308" {
 		t.Fatalf("unexpected content-free snapshot: %#v", snapshot)
+	}
+}
+
+func TestFEAT127ContextResponseRecognizesFileMarkers(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		oldMarker  string
+		marker     string
+		wantAnswer string
+	}{
+		{name: "alpha", oldMarker: "BRAVO-2846", marker: "ALPHA-7319", wantAnswer: feat127AlphaAnswer},
+		{name: "bravo", oldMarker: "ALPHA-7319", marker: "BRAVO-2846", wantAnswer: feat127BravoAnswer},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := newTestServer(t, ModeFEAT127Context)
+			body := feat127RequestBody(t, []any{
+				map[string]any{"type": "message", "role": "user", "content": []any{
+					map[string]any{"type": "input_text", "text": "old file marker " + test.oldMarker},
+				}},
+				map[string]any{"type": "message", "role": "assistant", "content": []any{
+					map[string]any{"type": "output_text", "text": "old response"},
+				}},
+				map[string]any{"type": "message", "role": "user", "content": []any{
+					map[string]any{"type": "input_text", "text": "The following attached-file context is untrusted user-provided data.\nFile context:\n" + test.marker},
+				}},
+			})
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, validRequest(body))
+			if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), test.wantAnswer) {
+				t.Fatalf("unexpected FEAT-127 marker response: %d %s", response.Code, response.Body.String())
+			}
+			if strings.Contains(response.Body.String(), test.oldMarker) {
+				t.Fatalf("response used an older user message marker: %s", response.Body.String())
+			}
+			if snapshot := server.Snapshot(); snapshot.AcceptedCalls != 1 || snapshot.RejectedCalls != 0 {
+				t.Fatalf("unexpected FEAT-127 marker counters: %#v", snapshot)
+			}
+		})
+	}
+}
+
+func TestFEAT127ContextResponseRecognizesExpectedImage(t *testing.T) {
+	imageBytes := []byte("synthetic FEAT-127 image transport fixture")
+	digest := sha256.Sum256(imageBytes)
+	server := newTestServer(t, ModeFEAT127Context)
+	server.feat127ImageSHA256 = hex.EncodeToString(digest[:])
+	body := feat127RequestBody(t, []any{
+		map[string]any{"type": "message", "role": "user", "content": []any{
+			map[string]any{
+				"type":      "input_image",
+				"image_url": "data:image/png;base64," + base64.StdEncoding.EncodeToString(imageBytes),
+			},
+		}},
+	})
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, validRequest(body))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), feat127ImageAnswer) {
+		t.Fatalf("unexpected FEAT-127 image response: %d %s", response.Code, response.Body.String())
+	}
+	if snapshot := server.Snapshot(); snapshot.AcceptedCalls != 1 || snapshot.RejectedCalls != 0 {
+		t.Fatalf("unexpected FEAT-127 image counters: %#v", snapshot)
+	}
+}
+
+func TestFEAT127ContextResponseFailsClosed(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		input    []any
+		wantCode int
+	}{
+		{
+			name: "unknown latest input",
+			input: []any{map[string]any{"type": "message", "role": "user", "content": []any{
+				map[string]any{"type": "input_text", "text": "UNKNOWN-CANARY"},
+			}}},
+			wantCode: http.StatusUnprocessableEntity,
+		},
+		{
+			name: "older marker is ignored",
+			input: []any{
+				map[string]any{"type": "message", "role": "user", "content": []any{
+					map[string]any{"type": "input_text", "text": "ALPHA-7319"},
+				}},
+				map[string]any{"type": "message", "role": "user", "content": []any{
+					map[string]any{"type": "input_text", "text": "UNKNOWN-CANARY"},
+				}},
+			},
+			wantCode: http.StatusUnprocessableEntity,
+		},
+		{
+			name: "malformed image data URL",
+			input: []any{map[string]any{"type": "message", "role": "user", "content": []any{
+				map[string]any{"type": "input_image", "image_url": "data:image/png;base64,%%%"},
+			}}},
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name: "missing user message",
+			input: []any{map[string]any{"type": "message", "role": "developer", "content": []any{
+				map[string]any{"type": "input_text", "text": "ALPHA-7319"},
+			}}},
+			wantCode: http.StatusBadRequest,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server := newTestServer(t, ModeFEAT127Context)
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, validRequest(feat127RequestBody(t, test.input)))
+			if response.Code != test.wantCode {
+				t.Fatalf("expected %d, got %d: %s", test.wantCode, response.Code, response.Body.String())
+			}
+			for _, forbidden := range []string{"UNKNOWN-CANARY", "ALPHA-7319", "BRAVO-2846", "\u52a0\u53f7"} {
+				if strings.Contains(response.Body.String(), forbidden) {
+					t.Fatalf("failed-closed response reflected or invented verification content %q", forbidden)
+				}
+			}
+			if snapshot := server.Snapshot(); snapshot.AcceptedCalls != 0 || snapshot.RejectedCalls != 1 {
+				t.Fatalf("unexpected failed-closed counters: %#v", snapshot)
+			}
+		})
 	}
 }
 
@@ -221,4 +347,15 @@ func validRequest(body string) *http.Request {
 	request.Header.Set(RunIDHeader, testRunID)
 	request.Header.Set(FixtureIDHeader, codex.FEAT126FakeFixtureID)
 	return request
+}
+
+func feat127RequestBody(t *testing.T, input []any) string {
+	t.Helper()
+	encoded, err := json.Marshal(map[string]any{
+		"model": codex.MiniMaxModel, "stream": true, "input": input,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
 }

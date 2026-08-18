@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,15 +28,17 @@ const (
 )
 
 var (
-	ErrNotFound         = errors.New("agent session not found")
-	ErrTaskExists       = errors.New("task already has an agent session")
-	ErrThreadExists     = errors.New("Codex thread is already mapped")
-	ErrTurnActive       = errors.New("agent session already has an active turn")
-	ErrTurnNotActive    = errors.New("turn is not active for this agent session")
-	ErrSessionNotUsable = errors.New("agent session is not ready for this operation")
-	ErrInvalidArgument  = errors.New("invalid argument")
-	ErrRuntimeRequest   = errors.New("Codex Runtime request failed")
-	ErrCleanupConflict  = errors.New("cleanup operation conflicts with another session")
+	ErrNotFound              = errors.New("agent session not found")
+	ErrTaskExists            = errors.New("task already has an agent session")
+	ErrThreadExists          = errors.New("Codex thread is already mapped")
+	ErrTurnActive            = errors.New("agent session already has an active turn")
+	ErrTurnNotActive         = errors.New("turn is not active for this agent session")
+	ErrSessionNotUsable      = errors.New("agent session is not ready for this operation")
+	ErrInvalidArgument       = errors.New("invalid argument")
+	ErrRuntimeRequest        = errors.New("Codex Runtime request failed")
+	ErrCleanupConflict       = errors.New("cleanup operation conflicts with another session")
+	ErrTurnOperationConflict = errors.New("turn operation conflicts with its canonical input")
+	ErrTurnOperationPending  = errors.New("turn operation result is unavailable")
 )
 
 var (
@@ -44,13 +48,14 @@ var (
 	metadataBucket          = []byte("metadata")
 	cleanupReceiptsBucket   = []byte("cleanup_receipts_v2")
 	cleanupOperationsBucket = []byte("cleanup_operations_v3")
+	turnOperationsBucket    = []byte("turn_operations_v4")
 	storeSchemaVersionKey   = []byte("schema_version")
 	feat126CwdEncodingKey   = []byte("feat126_cwd_encoding")
 	feat126RunIDKey         = []byte("feat126_run_id")
 )
 
 const (
-	storeSchemaVersion        = "3"
+	storeSchemaVersion        = "4"
 	feat126CwdEncodingVersion = "opaque-project-v1"
 	feat126OpaqueProjectCwd   = "feat126-s10-project"
 )
@@ -79,6 +84,23 @@ type Record struct {
 	Trace              TraceContext `json:"trace"`
 	CreatedAt          time.Time    `json:"created_at"`
 	UpdatedAt          time.Time    `json:"updated_at"`
+}
+
+const (
+	TurnOperationStatePending   = "pending"
+	TurnOperationStateAccepted  = "accepted"
+	TurnOperationStateUncertain = "uncertain"
+)
+
+type TurnOperation struct {
+	SchemaVersion int       `json:"schema_version"`
+	SessionID     string    `json:"session_id"`
+	OperationID   string    `json:"operation_id"`
+	InputDigest   string    `json:"input_digest"`
+	State         string    `json:"state"`
+	TurnID        string    `json:"turn_id,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type Store struct {
@@ -168,19 +190,27 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 			if err := store.validateExistingFEAT126Store(tx); err != nil {
 				return err
 			}
+			if tx.Bucket(turnOperationsBucket) == nil {
+				if _, err := tx.CreateBucket(turnOperationsBucket); err != nil {
+					return err
+				}
+			}
+			if err := tx.Bucket(metadataBucket).Put(storeSchemaVersionKey, []byte(storeSchemaVersion)); err != nil {
+				return err
+			}
 			return purgeExpiredCleanupReceipts(tx, time.Now().UTC())
 		}
-		for _, bucket := range [][]byte{sessionsBucket, tasksBucket, threadsBucket, metadataBucket, cleanupReceiptsBucket, cleanupOperationsBucket} {
+		for _, bucket := range [][]byte{sessionsBucket, tasksBucket, threadsBucket, metadataBucket, cleanupReceiptsBucket, cleanupOperationsBucket, turnOperationsBucket} {
 			if _, err := tx.CreateBucketIfNotExists(bucket); err != nil {
 				return err
 			}
 		}
 		metadata := tx.Bucket(metadataBucket)
 		version := metadata.Get(storeSchemaVersionKey)
-		if version != nil && string(version) != "1" && string(version) != "2" && string(version) != storeSchemaVersion {
+		if version != nil && string(version) != "1" && string(version) != "2" && string(version) != "3" && string(version) != storeSchemaVersion {
 			return fmt.Errorf("unsupported Agent Host store schema version %q", version)
 		}
-		if version == nil || string(version) == "1" || string(version) == "2" {
+		if version == nil || string(version) != storeSchemaVersion {
 			if err := metadata.Put(storeSchemaVersionKey, []byte(storeSchemaVersion)); err != nil {
 				return err
 			}
@@ -284,8 +314,12 @@ func (s *Store) validateExistingFEAT126Store(tx *bolt.Tx) error {
 		}
 	}
 	metadata := tx.Bucket(metadataBucket)
-	if string(metadata.Get(storeSchemaVersionKey)) != storeSchemaVersion {
+	version := string(metadata.Get(storeSchemaVersionKey))
+	if version != "3" && version != storeSchemaVersion {
 		return errors.New("pre-existing FEAT-126 session store has an unsupported schema")
+	}
+	if version == storeSchemaVersion && tx.Bucket(turnOperationsBucket) == nil {
+		return errors.New("pre-existing FEAT-126 session store is incomplete")
 	}
 	if string(metadata.Get(feat126CwdEncodingKey)) != feat126CwdEncodingVersion ||
 		string(metadata.Get(feat126RunIDKey)) != s.feat126RunID {
@@ -504,6 +538,9 @@ func (s *Store) DeleteSessionWithReceipt(operationID, sessionID string) error {
 		if err := tx.Bucket(threadsBucket).Delete([]byte(record.CodexThreadID)); err != nil {
 			return err
 		}
+		if err := deleteTurnOperationsForSession(tx, sessionID); err != nil {
+			return err
+		}
 		if err := tx.Bucket(sessionsBucket).Delete([]byte(sessionID)); err != nil {
 			return err
 		}
@@ -710,6 +747,207 @@ func (s *Store) BindThread(sessionID, threadID, runtimeSessionID, model, provide
 	return updated, err
 }
 
+func (s *Store) PrepareTurnOperation(
+	sessionID, operationID, inputDigest string,
+	trace TraceContext,
+) (TurnOperation, Record, error) {
+	if !isCanonicalNonZeroUUID(operationID) || !validTurnOperationDigest(inputDigest) {
+		return TurnOperation{}, Record{}, fmt.Errorf("%w: turn operation identity is invalid", ErrInvalidArgument)
+	}
+	var operation TurnOperation
+	var record Record
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		operations := tx.Bucket(turnOperationsBucket)
+		key := turnOperationKey(sessionID, operationID)
+		if encoded := operations.Get(key); encoded != nil {
+			loaded, err := decodeTurnOperation(encoded, sessionID, operationID)
+			if err != nil {
+				return err
+			}
+			if !hmac.Equal([]byte(loaded.InputDigest), []byte(inputDigest)) {
+				return ErrTurnOperationConflict
+			}
+			switch loaded.State {
+			case TurnOperationStateAccepted:
+				record, err = s.loadRecord(tx, sessionID)
+				if err != nil {
+					return err
+				}
+				operation = loaded
+				return nil
+			case TurnOperationStatePending, TurnOperationStateUncertain:
+				return ErrTurnOperationPending
+			default:
+				return errors.New("persisted turn operation has an unsupported state")
+			}
+		}
+
+		loaded, err := s.loadRecord(tx, sessionID)
+		if err != nil {
+			return err
+		}
+		if loaded.CodexThreadID == "" || loaded.State == StateFailed || loaded.State == StateCleaning || loaded.CleanupOperationID != "" {
+			return ErrSessionNotUsable
+		}
+		if loaded.ActiveTurnID != "" || loaded.State == StateActive || loaded.State == StateStarting {
+			return ErrTurnActive
+		}
+		now := time.Now().UTC()
+		operation = TurnOperation{
+			SchemaVersion: 1,
+			SessionID:     sessionID,
+			OperationID:   operationID,
+			InputDigest:   inputDigest,
+			State:         TurnOperationStatePending,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+		}
+		if err := saveTurnOperation(operations, key, operation); err != nil {
+			return err
+		}
+		loaded.State = StateStarting
+		loaded.Trace = trace
+		loaded.UpdatedAt = now
+		if err := s.saveRecord(tx, loaded); err != nil {
+			return err
+		}
+		record = loaded
+		return nil
+	})
+	return operation, record, err
+}
+
+func (s *Store) AcceptTurnOperation(
+	sessionID, operationID, inputDigest, turnID string,
+) (Record, error) {
+	if !isCanonicalNonZeroUUID(operationID) || !validTurnOperationDigest(inputDigest) || !validUUID(turnID) {
+		return Record{}, fmt.Errorf("%w: accepted turn operation is invalid", ErrInvalidArgument)
+	}
+	var record Record
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		operations := tx.Bucket(turnOperationsBucket)
+		key := turnOperationKey(sessionID, operationID)
+		encoded := operations.Get(key)
+		if encoded == nil {
+			return ErrNotFound
+		}
+		operation, err := decodeTurnOperation(encoded, sessionID, operationID)
+		if err != nil {
+			return err
+		}
+		if !hmac.Equal([]byte(operation.InputDigest), []byte(inputDigest)) {
+			return ErrTurnOperationConflict
+		}
+		if operation.State == TurnOperationStateAccepted {
+			if operation.TurnID != turnID {
+				return errors.New("turn operation was already accepted with another turn id")
+			}
+			record, err = s.loadRecord(tx, sessionID)
+			return err
+		}
+		if operation.State != TurnOperationStatePending {
+			return ErrTurnOperationPending
+		}
+
+		record, err = s.loadRecord(tx, sessionID)
+		if err != nil {
+			return err
+		}
+		if record.State == StateCleaning || record.CleanupOperationID != "" {
+			return ErrSessionNotUsable
+		}
+		// A terminal notification can win the race with the turn/start response.
+		// Persist acceptance without reactivating the already-finished turn.
+		if record.ActiveTurnID == "" && record.LastTurnID == turnID && record.LastTurnStatus != "" {
+			// Keep the terminal session state.
+		} else {
+			if record.ActiveTurnID != "" && record.ActiveTurnID != turnID {
+				return ErrTurnActive
+			}
+			record.ActiveTurnID = turnID
+			record.State = StateActive
+		}
+		now := time.Now().UTC()
+		record.UpdatedAt = now
+		operation.State = TurnOperationStateAccepted
+		operation.TurnID = turnID
+		operation.UpdatedAt = now
+		if err := s.saveRecord(tx, record); err != nil {
+			return err
+		}
+		return saveTurnOperation(operations, key, operation)
+	})
+	return record, err
+}
+
+func (s *Store) MarkTurnOperationUncertain(
+	sessionID, operationID, inputDigest, failureCode string,
+) (Record, error) {
+	if !isCanonicalNonZeroUUID(operationID) || !validTurnOperationDigest(inputDigest) || failureCode == "" {
+		return Record{}, fmt.Errorf("%w: uncertain turn operation is invalid", ErrInvalidArgument)
+	}
+	var record Record
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		operations := tx.Bucket(turnOperationsBucket)
+		key := turnOperationKey(sessionID, operationID)
+		encoded := operations.Get(key)
+		if encoded == nil {
+			return ErrNotFound
+		}
+		operation, err := decodeTurnOperation(encoded, sessionID, operationID)
+		if err != nil {
+			return err
+		}
+		if !hmac.Equal([]byte(operation.InputDigest), []byte(inputDigest)) {
+			return ErrTurnOperationConflict
+		}
+		if operation.State == TurnOperationStateAccepted {
+			return errors.New("accepted turn operation cannot become uncertain")
+		}
+		if operation.State != TurnOperationStatePending && operation.State != TurnOperationStateUncertain {
+			return errors.New("persisted turn operation has an unsupported state")
+		}
+		record, err = s.loadRecord(tx, sessionID)
+		if err != nil {
+			return err
+		}
+		if record.State == StateCleaning || record.CleanupOperationID != "" {
+			return ErrSessionNotUsable
+		}
+		now := time.Now().UTC()
+		record.State = StateFailed
+		record.FailureCode = failureCode
+		record.UpdatedAt = now
+		operation.State = TurnOperationStateUncertain
+		operation.UpdatedAt = now
+		if err := s.saveRecord(tx, record); err != nil {
+			return err
+		}
+		return saveTurnOperation(operations, key, operation)
+	})
+	return record, err
+}
+
+func (s *Store) TurnOperation(sessionID, operationID string) (TurnOperation, error) {
+	if !isCanonicalNonZeroUUID(operationID) {
+		return TurnOperation{}, fmt.Errorf("%w: operation_id must be a canonical non-zero UUID", ErrInvalidArgument)
+	}
+	var operation TurnOperation
+	err := s.db.View(func(tx *bolt.Tx) error {
+		encoded := tx.Bucket(turnOperationsBucket).Get(turnOperationKey(sessionID, operationID))
+		if encoded == nil {
+			return ErrNotFound
+		}
+		loaded, err := decodeTurnOperation(encoded, sessionID, operationID)
+		if err != nil {
+			return err
+		}
+		operation = loaded
+		return nil
+	})
+	return operation, err
+}
+
 func (s *Store) PrepareTurn(sessionID string, trace TraceContext) (Record, error) {
 	return s.update(sessionID, func(record *Record) error {
 		if record.CodexThreadID == "" || record.State == StateFailed || record.State == StateCleaning || record.CleanupOperationID != "" {
@@ -865,6 +1103,71 @@ func (s *Store) update(sessionID string, mutate func(*Record) error) (Record, er
 		return nil
 	})
 	return updated, err
+}
+
+func turnOperationKey(sessionID, operationID string) []byte {
+	key := make([]byte, 0, len(sessionID)+1+len(operationID))
+	key = append(key, sessionID...)
+	key = append(key, 0)
+	key = append(key, operationID...)
+	return key
+}
+
+func saveTurnOperation(bucket *bolt.Bucket, key []byte, operation TurnOperation) error {
+	encoded, err := json.Marshal(operation)
+	if err != nil {
+		return err
+	}
+	return bucket.Put(key, encoded)
+}
+
+func decodeTurnOperation(encoded []byte, sessionID, operationID string) (TurnOperation, error) {
+	var operation TurnOperation
+	if err := json.Unmarshal(encoded, &operation); err != nil {
+		return TurnOperation{}, fmt.Errorf("decode persisted turn operation: %w", err)
+	}
+	if operation.SchemaVersion != 1 || operation.SessionID != sessionID || operation.OperationID != operationID ||
+		!isCanonicalNonZeroUUID(operation.OperationID) || !validTurnOperationDigest(operation.InputDigest) ||
+		operation.CreatedAt.IsZero() || operation.UpdatedAt.IsZero() {
+		return TurnOperation{}, errors.New("persisted turn operation is invalid")
+	}
+	switch operation.State {
+	case TurnOperationStatePending, TurnOperationStateUncertain:
+		if operation.TurnID != "" {
+			return TurnOperation{}, errors.New("unaccepted turn operation contains a turn id")
+		}
+	case TurnOperationStateAccepted:
+		if !validUUID(operation.TurnID) {
+			return TurnOperation{}, errors.New("accepted turn operation contains an invalid turn id")
+		}
+	default:
+		return TurnOperation{}, errors.New("persisted turn operation has an unsupported state")
+	}
+	return operation, nil
+}
+
+func deleteTurnOperationsForSession(tx *bolt.Tx, sessionID string) error {
+	prefix := append([]byte(sessionID), 0)
+	cursor := tx.Bucket(turnOperationsBucket).Cursor()
+	for key, _ := cursor.Seek(prefix); key != nil && bytes.HasPrefix(key, prefix); key, _ = cursor.Next() {
+		if err := cursor.Delete(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func isCanonicalNonZeroUUID(value string) bool {
+	parsed, err := uuid.Parse(value)
+	return err == nil && parsed != uuid.Nil && parsed.String() == value
+}
+
+func validTurnOperationDigest(value string) bool {
+	if len(value) != sha256.Size*2 || strings.ToLower(value) != value {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == sha256.Size
 }
 
 func (s *Store) loadRecord(tx *bolt.Tx, sessionID string) (Record, error) {
