@@ -7,9 +7,12 @@ snapshot_openapi="$repo_root/api/openapi/agent-host.yaml"
 snapshot_compatibility="$repo_root/api/compatibility/agent-host-runtime-v1.json"
 snapshot_event_schema="$repo_root/api/jsonschema/agent-session-event.schema.json"
 snapshot_event_v2_schema="$repo_root/api/jsonschema/agent-session-event-v2.schema.json"
+snapshot_event_v3_schema="$repo_root/api/jsonschema/agent-session-event-v3.schema.json"
+snapshot_report_v1_schema="$repo_root/api/jsonschema/report-document-v1.schema.json"
 
 if [ ! -f "$lock_file" ] || [ ! -f "$snapshot_openapi" ] || [ ! -f "$snapshot_compatibility" ] ||
-  [ ! -f "$snapshot_event_schema" ] || [ ! -f "$snapshot_event_v2_schema" ]; then
+  [ ! -f "$snapshot_event_schema" ] || [ ! -f "$snapshot_event_v2_schema" ] ||
+  [ ! -f "$snapshot_event_v3_schema" ] || [ ! -f "$snapshot_report_v1_schema" ]; then
   echo "Agent Host contract snapshot is incomplete; run make sync-contracts." >&2
   exit 1
 fi
@@ -34,6 +37,8 @@ OPENAPI_SHA256="$(lock_value OPENAPI_SHA256)"
 RUNTIME_COMPATIBILITY_SHA256="$(lock_value RUNTIME_COMPATIBILITY_SHA256)"
 AGENT_SESSION_EVENT_SCHEMA_SHA256="$(lock_value AGENT_SESSION_EVENT_SCHEMA_SHA256)"
 AGENT_SESSION_EVENT_V2_SCHEMA_SHA256="$(lock_value AGENT_SESSION_EVENT_V2_SCHEMA_SHA256)"
+AGENT_SESSION_EVENT_V3_SCHEMA_SHA256="$(lock_value AGENT_SESSION_EVENT_V3_SCHEMA_SHA256)"
+REPORT_DOCUMENT_V1_SCHEMA_SHA256="$(lock_value REPORT_DOCUMENT_V1_SCHEMA_SHA256)"
 semver_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
 sha256_pattern='^[0-9a-f]{64}$'
 full_commit_pattern='^[0-9a-f]{40}$'
@@ -53,6 +58,11 @@ if [[ ! "$CONTRACTS_VERSION" =~ $semver_pattern ]] ||
 fi
 if [[ ! "$AGENT_SESSION_EVENT_V2_SCHEMA_SHA256" =~ $sha256_pattern ]]; then
   echo "Agent Host v2 event contract digest is invalid." >&2
+  exit 1
+fi
+if [[ ! "$AGENT_SESSION_EVENT_V3_SCHEMA_SHA256" =~ $sha256_pattern ]] ||
+  [[ ! "$REPORT_DOCUMENT_V1_SCHEMA_SHA256" =~ $sha256_pattern ]]; then
+  echo "Agent Host v3 Artifact contract digests are invalid." >&2
   exit 1
 fi
 
@@ -86,6 +96,14 @@ if [ "$(sha256_file "$snapshot_event_v2_schema")" != "$AGENT_SESSION_EVENT_V2_SC
   echo "Agent session event v2 JSON Schema snapshot hash does not match api/contracts.lock." >&2
   exit 1
 fi
+if [ "$(sha256_file "$snapshot_event_v3_schema")" != "$AGENT_SESSION_EVENT_V3_SCHEMA_SHA256" ]; then
+  echo "Agent session event v3 JSON Schema snapshot hash does not match api/contracts.lock." >&2
+  exit 1
+fi
+if [ "$(sha256_file "$snapshot_report_v1_schema")" != "$REPORT_DOCUMENT_V1_SCHEMA_SHA256" ]; then
+  echo "Report document v1 JSON Schema snapshot hash does not match api/contracts.lock." >&2
+  exit 1
+fi
 
 temporary_dir="$(mktemp -d)"
 trap 'rm -rf "$temporary_dir"' EXIT
@@ -101,17 +119,23 @@ if git -C "$contracts_repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
   source_compatibility="$temporary_dir/agent-host-runtime-v1.json"
   source_event_schema="$temporary_dir/agent-session-event.schema.json"
   source_event_v2_schema="$temporary_dir/agent-session-event-v2.schema.json"
+  source_event_v3_schema="$temporary_dir/agent-session-event-v3.schema.json"
+  source_report_v1_schema="$temporary_dir/report-document-v1.schema.json"
   source_package="$temporary_dir/package.json"
   git -C "$contracts_repo" show "$CONTRACTS_COMMIT:openapi/agent-host/agent-host.yaml" >"$source_openapi"
   git -C "$contracts_repo" show "$CONTRACTS_COMMIT:compatibility/agent-host-runtime-v1.json" >"$source_compatibility"
   git -C "$contracts_repo" show "$CONTRACTS_COMMIT:jsonschema/agent/session-event.schema.json" >"$source_event_schema"
   git -C "$contracts_repo" show "$CONTRACTS_COMMIT:jsonschema/agent/session-event-v2.schema.json" >"$source_event_v2_schema"
+  git -C "$contracts_repo" show "$CONTRACTS_COMMIT:jsonschema/agent/session-event-v3.schema.json" >"$source_event_v3_schema"
+  git -C "$contracts_repo" show "$CONTRACTS_COMMIT:jsonschema/report/report-document-v1.schema.json" >"$source_report_v1_schema"
   git -C "$contracts_repo" show "$CONTRACTS_COMMIT:package.json" >"$source_package"
 
   cmp "$source_openapi" "$snapshot_openapi"
   cmp "$source_compatibility" "$snapshot_compatibility"
   cmp "$source_event_schema" "$snapshot_event_schema"
   cmp "$source_event_v2_schema" "$snapshot_event_v2_schema"
+  cmp "$source_event_v3_schema" "$snapshot_event_v3_schema"
+  cmp "$source_report_v1_schema" "$snapshot_report_v1_schema"
   source_version="$(awk -F '"' '/^[[:space:]]*"version"[[:space:]]*:/ { print $4; exit }' "$source_package")"
   if [ "$source_version" != "$CONTRACTS_VERSION" ]; then
     echo "Agent Host contract snapshot version is stale." >&2

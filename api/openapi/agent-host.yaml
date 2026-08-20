@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Yijie Agent Host Local API
-  version: 0.1.0
+  version: 0.4.0
   description: |
     Local loopback HTTP and Server-Sent Events contract for the Yijie Desktop
     Agent Host sidecar. The Host is a thin adapter over the pinned Codex Runtime;
@@ -14,7 +14,7 @@ info:
     This document is authoritative for HTTP paths, authentication, request and
     response envelopes, status codes, headers, and SSE framing. The JSON value
     carried by each SSE `data` line is governed by the explicitly negotiated
-    AgentSessionEvent v1 or v2 JSON Schema, not by a duplicate OpenAPI schema.
+    AgentSessionEvent v1, v2, or v3 JSON Schema, not by a duplicate OpenAPI schema.
   contact:
     name: Yijie Agent Host owners
 servers:
@@ -35,6 +35,8 @@ tags:
     description: Text turn lifecycle operations for one Agent session.
   - name: Events
     description: Process-local, bounded SSE replay and live delivery.
+  - name: Artifacts
+    description: Owner-only v3 structured-artifact content, poster, and commit acknowledgement.
 paths:
   /healthz:
     get:
@@ -815,6 +817,238 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /v3/agent-sessions/{agent_session_id}/events:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+    get:
+      operationId: streamAgentSessionEventsV3
+      summary: Replay and stream explicitly negotiated Agent session events v3
+      description: |
+        Opens the v3 Server-Sent Events stream. The required
+        `event_schema_version=3` query parameter prevents accidental v3 output to
+        an older consumer. V3 preserves every v2 lifecycle and reasoning variant
+        and adds only the four closed structured-artifact lifecycle variants.
+
+        The authoritative resume query is `after`; `after_sequence` is not an
+        alias and must be rejected as an unknown parameter. `Last-Event-ID`
+        overrides `stream_id` and `after`. Delivery is at least once and consumers
+        deduplicate by `event_id` inside the current `stream_id` ordering domain.
+      tags: [Events]
+      externalDocs:
+        description: Authoritative AgentSessionEventV3 JSON Schema
+        url: https://contracts.yijie.ai/agent/session-event-v3.schema.json
+      parameters:
+        - $ref: "#/components/parameters/EventSchemaVersionV3"
+        - $ref: "#/components/parameters/EventStreamId"
+        - $ref: "#/components/parameters/EventAfter"
+        - $ref: "#/components/parameters/LastEventId"
+      responses:
+        "200":
+          description: Retained v3 events were replayed and the connection is subscribed for live v3 events.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+            X-Accel-Buffering:
+              description: Disables reverse-proxy response buffering.
+              required: true
+              schema:
+                type: string
+                enum: ["no"]
+            X-Yijie-Event-Stream-ID:
+              description: Actual process-local stream identifier used by every returned SSE event ID.
+              required: true
+              schema:
+                type: string
+                format: uuid
+            X-Yijie-Event-Schema-Version:
+              description: Confirms that every returned data event uses AgentSessionEventV3.
+              required: true
+              schema:
+                type: integer
+                enum: [3]
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: UTF-8 SSE frames whose data values validate as AgentSessionEventV3.
+                x-yijie-event-data-schema: ../../jsonschema/agent/session-event-v3.schema.json
+        "400":
+          description: "`invalid_request` or `invalid_event_cursor`: schema negotiation, identifier, or cursor is invalid."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          description: "`event_stream_changed` or `event_replay_unavailable`: the requested v3 cursor cannot be resumed safely."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "`streaming_unsupported` or `internal_error`: the v3 stream cannot be served safely."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/content:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+      - $ref: "#/components/parameters/ArtifactId"
+    get:
+      operationId: getAgentArtifactContentV3
+      summary: Read verified structured-artifact bytes
+      description: |
+        Reads owner-only bytes from the Host's bounded encrypted staging spool.
+        The operation never redirects and never exposes a filesystem path or
+        bearer in the body. Range requests use one RFC 7233 byte range only.
+      tags: [Artifacts]
+      parameters:
+        - $ref: "#/components/parameters/ByteRange"
+      responses:
+        "200":
+          $ref: "#/components/responses/ArtifactBytes"
+        "206":
+          $ref: "#/components/responses/ArtifactPartialBytes"
+        "400":
+          $ref: "#/components/responses/ArtifactBadRequest"
+        "401":
+          $ref: "#/components/responses/ArtifactUnauthorized"
+        "404":
+          $ref: "#/components/responses/ArtifactNotFound"
+        "410":
+          $ref: "#/components/responses/ArtifactExpired"
+        "416":
+          $ref: "#/components/responses/ArtifactRangeNotSatisfiable"
+        "500":
+          $ref: "#/components/responses/ArtifactInternalError"
+    head:
+      operationId: headAgentArtifactContentV3
+      summary: Read verified structured-artifact metadata
+      tags: [Artifacts]
+      responses:
+        "200":
+          $ref: "#/components/responses/ArtifactBytes"
+        "400":
+          $ref: "#/components/responses/ArtifactBadRequest"
+        "401":
+          $ref: "#/components/responses/ArtifactUnauthorized"
+        "404":
+          $ref: "#/components/responses/ArtifactNotFound"
+        "410":
+          $ref: "#/components/responses/ArtifactExpired"
+        "500":
+          $ref: "#/components/responses/ArtifactInternalError"
+  /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/poster:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+      - $ref: "#/components/parameters/ArtifactId"
+    get:
+      operationId: getAgentArtifactPosterV3
+      summary: Read an optional verified video poster
+      description: |
+        Reads the optional image poster associated with a ready video artifact.
+        It has the same owner, expiry, no-redirect, no-store, and range rules as
+        the content resource. A non-video artifact has no poster resource.
+      tags: [Artifacts]
+      parameters:
+        - $ref: "#/components/parameters/ByteRange"
+      responses:
+        "200":
+          $ref: "#/components/responses/ArtifactBytes"
+        "206":
+          $ref: "#/components/responses/ArtifactPartialBytes"
+        "400":
+          $ref: "#/components/responses/ArtifactBadRequest"
+        "401":
+          $ref: "#/components/responses/ArtifactUnauthorized"
+        "404":
+          $ref: "#/components/responses/ArtifactNotFound"
+        "410":
+          $ref: "#/components/responses/ArtifactExpired"
+        "416":
+          $ref: "#/components/responses/ArtifactRangeNotSatisfiable"
+        "500":
+          $ref: "#/components/responses/ArtifactInternalError"
+    head:
+      operationId: headAgentArtifactPosterV3
+      summary: Read optional video-poster metadata
+      tags: [Artifacts]
+      responses:
+        "200":
+          $ref: "#/components/responses/ArtifactBytes"
+        "400":
+          $ref: "#/components/responses/ArtifactBadRequest"
+        "401":
+          $ref: "#/components/responses/ArtifactUnauthorized"
+        "404":
+          $ref: "#/components/responses/ArtifactNotFound"
+        "410":
+          $ref: "#/components/responses/ArtifactExpired"
+        "500":
+          $ref: "#/components/responses/ArtifactInternalError"
+  /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/ack:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+      - $ref: "#/components/parameters/ArtifactId"
+    post:
+      operationId: acknowledgeAgentArtifactV3
+      summary: Acknowledge a verified Desktop-local artifact commit
+      description: |
+        Desktop native calls this only after an atomic local commit has verified
+        the completed event's size and SHA-256. The canonical request is
+        idempotent by `ack_id`: replaying the same request returns the original
+        acknowledgement, while reuse with different canonical input returns
+        `409 artifact_ack_conflict`. Acknowledgement authorizes early staging
+        cleanup; cleanup is also allowed on Host restart or after the staging TTL.
+      tags: [Artifacts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArtifactAcknowledgementV3Request"
+      responses:
+        "200":
+          description: The canonical acknowledgement is recorded; staging cleanup is pending or completed.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtifactAcknowledgementV3Response"
+        "400":
+          $ref: "#/components/responses/ArtifactBadRequest"
+        "401":
+          $ref: "#/components/responses/ArtifactUnauthorized"
+        "404":
+          $ref: "#/components/responses/ArtifactNotFound"
+        "409":
+          description: "`artifact_ack_conflict`, `artifact_not_ready`, or `artifact_manifest_mismatch`: the acknowledgement cannot be applied safely."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtifactErrorResponseV3"
+        "410":
+          $ref: "#/components/responses/ArtifactExpired"
+        "500":
+          $ref: "#/components/responses/ArtifactInternalError"
 components:
   securitySchemes:
     localBearer:
@@ -841,6 +1075,14 @@ components:
       in: path
       required: true
       description: Agent Host-generated session identifier.
+      schema:
+        type: string
+        format: uuid
+    ArtifactId:
+      name: artifact_id
+      in: path
+      required: true
+      description: Host-generated structured-artifact identifier scoped to the Agent session.
       schema:
         type: string
         format: uuid
@@ -897,6 +1139,23 @@ components:
         type: integer
         format: int32
         enum: [2]
+    EventSchemaVersionV3:
+      name: event_schema_version
+      in: query
+      required: true
+      description: Explicit negotiation guard. Only integer value 3 is accepted on the v3 event stream.
+      schema:
+        type: integer
+        format: int32
+        enum: [3]
+    ByteRange:
+      name: Range
+      in: header
+      required: false
+      description: A single inclusive HTTP byte range. Multiple or malformed ranges are rejected.
+      schema:
+        type: string
+        pattern: "^bytes=(0|[1-9][0-9]*)-(0|[1-9][0-9]*)?$"
   headers:
     NoStore:
       description: Prevents credentials, status, and session data from being cached.
@@ -1003,6 +1262,141 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/TitleGenerationUnavailableError"
+    ArtifactBytes:
+      description: Verified complete artifact or poster bytes. HEAD returns these headers without a body.
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+        Content-Length:
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 67108864
+        ETag:
+          required: true
+          description: Quoted lowercase SHA-256 of the exact returned resource.
+          schema:
+            type: string
+            pattern: '^"[a-f0-9]{64}"$'
+        Accept-Ranges:
+          required: true
+          schema:
+            type: string
+            enum: [bytes]
+        Content-Disposition:
+          required: true
+          description: Safe attachment or inline disposition with a sanitized filename; no path components.
+          schema:
+            type: string
+            minLength: 1
+        X-Content-Type-Options:
+          required: true
+          schema:
+            type: string
+            enum: [nosniff]
+      content:
+        application/octet-stream:
+          schema:
+            type: string
+            format: binary
+    ArtifactPartialBytes:
+      description: A verified single byte range from an artifact or poster.
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+        Content-Length:
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 67108864
+        Content-Range:
+          required: true
+          schema:
+            type: string
+            pattern: "^bytes (0|[1-9][0-9]*)-(0|[1-9][0-9]*)/(0|[1-9][0-9]*)$"
+        ETag:
+          required: true
+          schema:
+            type: string
+            pattern: '^"[a-f0-9]{64}"$'
+        Accept-Ranges:
+          required: true
+          schema:
+            type: string
+            enum: [bytes]
+        Content-Disposition:
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        X-Content-Type-Options:
+          required: true
+          schema:
+            type: string
+            enum: [nosniff]
+      content:
+        application/octet-stream:
+          schema:
+            type: string
+            format: binary
+    ArtifactBadRequest:
+      description: "`invalid_request` or `invalid_range`: path, body, or range input is invalid."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ArtifactErrorResponseV3"
+    ArtifactUnauthorized:
+      description: "`unauthorized`: a valid owner-only local Agent Host bearer token is required."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ArtifactErrorResponseV3"
+    ArtifactNotFound:
+      description: "`artifact_not_found`: the artifact does not exist in this owner/session scope, or no poster exists."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ArtifactErrorResponseV3"
+    ArtifactExpired:
+      description: "`artifact_expired`: a content-free tombstone proves that the staging resource expired or was acknowledged and cleaned."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ArtifactErrorResponseV3"
+    ArtifactRangeNotSatisfiable:
+      description: "`artifact_range_not_satisfiable`: the single requested byte range is outside the verified resource."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ArtifactErrorResponseV3"
+    ArtifactInternalError:
+      description: "`artifact_resource_unavailable` or `internal_error`: the resource cannot be served without exposing internal details."
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ArtifactErrorResponseV3"
   schemas:
     HealthResponse:
       type: object
@@ -1590,6 +1984,78 @@ components:
             message:
               type: string
               minLength: 1
+    ArtifactAcknowledgementV3Request:
+      type: object
+      additionalProperties: false
+      required: [ack_id, size_bytes, sha256, local_committed_at]
+      properties:
+        ack_id:
+          type: string
+          format: uuid
+          description: Desktop-selected idempotency identifier scoped to this artifact.
+        size_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 67108864
+          description: Exact byte length verified at Desktop's atomic local commit boundary.
+        sha256:
+          type: string
+          pattern: "^[a-f0-9]{64}$"
+          description: Lowercase SHA-256 verified against the completed event before local commit.
+        local_committed_at:
+          type: string
+          format: date-time
+          description: UTC timestamp recorded only after Desktop's atomic durable commit succeeds.
+    ArtifactAcknowledgementV3Response:
+      type: object
+      additionalProperties: false
+      required: [artifact_id, ack_id, status, cleanup_status, acknowledged_at]
+      properties:
+        artifact_id:
+          type: string
+          format: uuid
+        ack_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [acknowledged]
+        cleanup_status:
+          type: string
+          enum: [pending, completed]
+        acknowledged_at:
+          type: string
+          format: date-time
+    ArtifactErrorResponseV3:
+      description: Content-free v3 artifact failure. It never contains a path, URL, token, digest, provider payload, or artifact bytes.
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - unauthorized
+                - invalid_request
+                - invalid_range
+                - artifact_not_found
+                - artifact_expired
+                - artifact_not_ready
+                - artifact_manifest_mismatch
+                - artifact_ack_conflict
+                - artifact_range_not_satisfiable
+                - artifact_resource_unavailable
+                - internal_error
+            message:
+              type: string
+              minLength: 1
+              maxLength: 256
     SessionResponse:
       type: object
       additionalProperties: false

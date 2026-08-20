@@ -33,15 +33,18 @@ source_openapi="$temporary_dir/agent-host.yaml"
 source_compatibility="$temporary_dir/agent-host-runtime-v1.json"
 source_event_schema="$temporary_dir/agent-session-event.schema.json"
 source_event_v2_schema="$temporary_dir/agent-session-event-v2.schema.json"
+source_event_v3_schema="$temporary_dir/agent-session-event-v3.schema.json"
+source_report_v1_schema="$temporary_dir/report-document-v1.schema.json"
+source_package="$temporary_dir/package.json"
 git -C "$contracts_repo" show "$contracts_commit:openapi/agent-host/agent-host.yaml" >"$source_openapi"
 git -C "$contracts_repo" show "$contracts_commit:compatibility/agent-host-runtime-v1.json" >"$source_compatibility"
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event.schema.json" >"$source_event_schema"
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event-v2.schema.json" >"$source_event_v2_schema"
+git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event-v3.schema.json" >"$source_event_v3_schema"
+git -C "$contracts_repo" show "$contracts_commit:jsonschema/report/report-document-v1.schema.json" >"$source_report_v1_schema"
+git -C "$contracts_repo" show "$contracts_commit:package.json" >"$source_package"
 
-contracts_version="$(
-  git -C "$contracts_repo" show "$contracts_commit:package.json" |
-    awk -F '"' '/^[[:space:]]*"version"[[:space:]]*:/ { print $4; exit }'
-)"
+contracts_version="$(awk -F '"' '/^[[:space:]]*"version"[[:space:]]*:/ { print $4; exit }' "$source_package")"
 compatibility_version="$(awk -F '"' '/^[[:space:]]*"contracts_version"[[:space:]]*:/ { print $4; exit }' "$source_compatibility")"
 semver_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
 if [[ ! "$contracts_version" =~ $semver_pattern ]] || [ "$contracts_version" != "$compatibility_version" ]; then
@@ -74,6 +77,8 @@ cp "$source_openapi" "$repo_root/api/openapi/agent-host.yaml"
 cp "$source_compatibility" "$repo_root/api/compatibility/agent-host-runtime-v1.json"
 cp "$source_event_schema" "$repo_root/api/jsonschema/agent-session-event.schema.json"
 cp "$source_event_v2_schema" "$repo_root/api/jsonschema/agent-session-event-v2.schema.json"
+cp "$source_event_v3_schema" "$repo_root/api/jsonschema/agent-session-event-v3.schema.json"
+cp "$source_report_v1_schema" "$repo_root/api/jsonschema/report-document-v1.schema.json"
 
 lock_file="$repo_root/api/contracts.lock"
 temporary_lock="$lock_file.tmp"
@@ -87,6 +92,8 @@ temporary_lock="$lock_file.tmp"
   printf 'RUNTIME_COMPATIBILITY_SHA256=%s\n' "$(sha256_file "$repo_root/api/compatibility/agent-host-runtime-v1.json")"
   printf 'AGENT_SESSION_EVENT_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event.schema.json")"
   printf 'AGENT_SESSION_EVENT_V2_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event-v2.schema.json")"
+  printf 'AGENT_SESSION_EVENT_V3_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event-v3.schema.json")"
+  printf 'REPORT_DOCUMENT_V1_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/report-document-v1.schema.json")"
 } >"$temporary_lock"
 mv "$temporary_lock" "$lock_file"
 

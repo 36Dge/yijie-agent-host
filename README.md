@@ -61,7 +61,7 @@ GET  /v1/agent-sessions/{agent_session_id}/events
 ## 验证
 
 ```bash
-YIJIE_CONTRACTS_REF=contracts-v0.2.0 make sync-contracts # 从不可移动 tag 同步并重新生成 DTO
+YIJIE_CONTRACTS_REF=ea48fe190e18afba728712d1e2cc79cda57f581b make sync-contracts # 从不可变 FEAT-128 candidate 同步并重新生成 DTO
 make contract-check # 校验契约版本、快照哈希、相邻源和生成物，无网络依赖
 make lint           # gofmt、go vet 和 shell 语法
 make test           # 契约同步检查、race 单测和故障测试；不依赖真实 Runtime
@@ -69,11 +69,11 @@ make runtime-test  # 固定产物握手 + MiniMax 配置/thread 启动；不请�
 make runtime-turn-test # 显式真实测试，最多 2 次短 MiniMax 请求，不在 CI
 ```
 
-`api/contracts.lock` 固定当前消费的 `contracts-v0.2.0` tag、完整 commit、
-`oapi-codegen` identity/version，以及 OpenAPI、Runtime 兼容清单和 Agent session
-事件 JSON Schema 的 SHA-256。同步脚本拒绝 dirty source，并从已锁定 commit 的 Git
+`api/contracts.lock` 固定当前消费的 `0.4.0` local candidate 完整 commit（尚无 tag、未发布）、
+`oapi-codegen` identity/version，以及 OpenAPI、Runtime 兼容清单、Agent session
+event v1/v2/v3 与 ReportDocumentV1 JSON Schema 的 SHA-256。同步脚本拒绝 dirty source，并从已锁定 commit 的 Git
 对象读取源文件；不得手改 `api/` 快照或 `internal/contracts/agenthost.gen.go`。测试会
-验证 tag provenance、generator、digest、生成漂移，并用快照 Schema 校验 Host 实际
-序列化的 8 类事件。
+验证 ref provenance、generator、digest 与生成漂移。V1/v2 producer conformance 保持原有测试；
+v3 snapshot 在 G2A 前只建立精确 pin，不代表 v3 route/producer 已实现或启用。
 
 `make runtime-turn-test` 默认从 `.local/secrets/minimax-api-key` 读取 Key，也可使用上述环境变量；脚本和测试不会输出 Key。它验证一次正常完成、Runtime 重启后的 `thread/resume`，以及一次 `turn/interrupt`。

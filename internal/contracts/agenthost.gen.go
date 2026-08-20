@@ -160,6 +160,84 @@ func (e AgentSessionState) Valid() bool {
 	}
 }
 
+// Defines values for ArtifactAcknowledgementV3ResponseCleanupStatus.
+const (
+	Completed ArtifactAcknowledgementV3ResponseCleanupStatus = "completed"
+	Pending   ArtifactAcknowledgementV3ResponseCleanupStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the ArtifactAcknowledgementV3ResponseCleanupStatus enum.
+func (e ArtifactAcknowledgementV3ResponseCleanupStatus) Valid() bool {
+	switch e {
+	case Completed:
+		return true
+	case Pending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ArtifactAcknowledgementV3ResponseStatus.
+const (
+	Acknowledged ArtifactAcknowledgementV3ResponseStatus = "acknowledged"
+)
+
+// Valid indicates whether the value is a known member of the ArtifactAcknowledgementV3ResponseStatus enum.
+func (e ArtifactAcknowledgementV3ResponseStatus) Valid() bool {
+	switch e {
+	case Acknowledged:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ArtifactErrorResponseV3ErrorCode.
+const (
+	ArtifactErrorResponseV3ErrorCodeArtifactAckConflict         ArtifactErrorResponseV3ErrorCode = "artifact_ack_conflict"
+	ArtifactErrorResponseV3ErrorCodeArtifactExpired             ArtifactErrorResponseV3ErrorCode = "artifact_expired"
+	ArtifactErrorResponseV3ErrorCodeArtifactManifestMismatch    ArtifactErrorResponseV3ErrorCode = "artifact_manifest_mismatch"
+	ArtifactErrorResponseV3ErrorCodeArtifactNotFound            ArtifactErrorResponseV3ErrorCode = "artifact_not_found"
+	ArtifactErrorResponseV3ErrorCodeArtifactNotReady            ArtifactErrorResponseV3ErrorCode = "artifact_not_ready"
+	ArtifactErrorResponseV3ErrorCodeArtifactRangeNotSatisfiable ArtifactErrorResponseV3ErrorCode = "artifact_range_not_satisfiable"
+	ArtifactErrorResponseV3ErrorCodeArtifactResourceUnavailable ArtifactErrorResponseV3ErrorCode = "artifact_resource_unavailable"
+	ArtifactErrorResponseV3ErrorCodeInternalError               ArtifactErrorResponseV3ErrorCode = "internal_error"
+	ArtifactErrorResponseV3ErrorCodeInvalidRange                ArtifactErrorResponseV3ErrorCode = "invalid_range"
+	ArtifactErrorResponseV3ErrorCodeInvalidRequest              ArtifactErrorResponseV3ErrorCode = "invalid_request"
+	ArtifactErrorResponseV3ErrorCodeUnauthorized                ArtifactErrorResponseV3ErrorCode = "unauthorized"
+)
+
+// Valid indicates whether the value is a known member of the ArtifactErrorResponseV3ErrorCode enum.
+func (e ArtifactErrorResponseV3ErrorCode) Valid() bool {
+	switch e {
+	case ArtifactErrorResponseV3ErrorCodeArtifactAckConflict:
+		return true
+	case ArtifactErrorResponseV3ErrorCodeArtifactExpired:
+		return true
+	case ArtifactErrorResponseV3ErrorCodeArtifactManifestMismatch:
+		return true
+	case ArtifactErrorResponseV3ErrorCodeArtifactNotFound:
+		return true
+	case ArtifactErrorResponseV3ErrorCodeArtifactNotReady:
+		return true
+	case ArtifactErrorResponseV3ErrorCodeArtifactRangeNotSatisfiable:
+		return true
+	case ArtifactErrorResponseV3ErrorCodeArtifactResourceUnavailable:
+		return true
+	case ArtifactErrorResponseV3ErrorCodeInternalError:
+		return true
+	case ArtifactErrorResponseV3ErrorCodeInvalidRange:
+		return true
+	case ArtifactErrorResponseV3ErrorCodeInvalidRequest:
+		return true
+	case ArtifactErrorResponseV3ErrorCodeUnauthorized:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CleanupAgentSessionV2CompletedResponseOutcome.
 const (
 	CleanupAgentSessionV2CompletedResponseOutcomeComplete CleanupAgentSessionV2CompletedResponseOutcome = "complete"
@@ -874,6 +952,21 @@ func (e EventSchemaVersionV2) Valid() bool {
 	}
 }
 
+// Defines values for EventSchemaVersionV3.
+const (
+	EventSchemaVersionV3N3 EventSchemaVersionV3 = 3
+)
+
+// Valid indicates whether the value is a known member of the EventSchemaVersionV3 enum.
+func (e EventSchemaVersionV3) Valid() bool {
+	switch e {
+	case EventSchemaVersionV3N3:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StreamAgentSessionEventsV2ParamsEventSchemaVersion.
 const (
 	StreamAgentSessionEventsV2ParamsEventSchemaVersionN2 StreamAgentSessionEventsV2ParamsEventSchemaVersion = 2
@@ -883,6 +976,21 @@ const (
 func (e StreamAgentSessionEventsV2ParamsEventSchemaVersion) Valid() bool {
 	switch e {
 	case StreamAgentSessionEventsV2ParamsEventSchemaVersionN2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StreamAgentSessionEventsV3ParamsEventSchemaVersion.
+const (
+	StreamAgentSessionEventsV3ParamsEventSchemaVersionN3 StreamAgentSessionEventsV3ParamsEventSchemaVersion = 3
+)
+
+// Valid indicates whether the value is a known member of the StreamAgentSessionEventsV3ParamsEventSchemaVersion enum.
+func (e StreamAgentSessionEventsV3ParamsEventSchemaVersion) Valid() bool {
+	switch e {
+	case StreamAgentSessionEventsV3ParamsEventSchemaVersionN3:
 		return true
 	default:
 		return false
@@ -938,6 +1046,47 @@ type AgentSessionModelProvider string
 
 // AgentSessionState defines model for AgentSession.State.
 type AgentSessionState string
+
+// ArtifactAcknowledgementV3Request defines model for ArtifactAcknowledgementV3Request.
+type ArtifactAcknowledgementV3Request struct {
+	// AckId Desktop-selected idempotency identifier scoped to this artifact.
+	AckId openapi_types.UUID `json:"ack_id"`
+
+	// LocalCommittedAt UTC timestamp recorded only after Desktop's atomic durable commit succeeds.
+	LocalCommittedAt time.Time `json:"local_committed_at"`
+
+	// Sha256 Lowercase SHA-256 verified against the completed event before local commit.
+	Sha256 string `json:"sha256"`
+
+	// SizeBytes Exact byte length verified at Desktop's atomic local commit boundary.
+	SizeBytes int64 `json:"size_bytes"`
+}
+
+// ArtifactAcknowledgementV3Response defines model for ArtifactAcknowledgementV3Response.
+type ArtifactAcknowledgementV3Response struct {
+	AckId          openapi_types.UUID                             `json:"ack_id"`
+	AcknowledgedAt time.Time                                      `json:"acknowledged_at"`
+	ArtifactId     openapi_types.UUID                             `json:"artifact_id"`
+	CleanupStatus  ArtifactAcknowledgementV3ResponseCleanupStatus `json:"cleanup_status"`
+	Status         ArtifactAcknowledgementV3ResponseStatus        `json:"status"`
+}
+
+// ArtifactAcknowledgementV3ResponseCleanupStatus defines model for ArtifactAcknowledgementV3Response.CleanupStatus.
+type ArtifactAcknowledgementV3ResponseCleanupStatus string
+
+// ArtifactAcknowledgementV3ResponseStatus defines model for ArtifactAcknowledgementV3Response.Status.
+type ArtifactAcknowledgementV3ResponseStatus string
+
+// ArtifactErrorResponseV3 Content-free v3 artifact failure. It never contains a path, URL, token, digest, provider payload, or artifact bytes.
+type ArtifactErrorResponseV3 struct {
+	Error struct {
+		Code    ArtifactErrorResponseV3ErrorCode `json:"code"`
+		Message string                           `json:"message"`
+	} `json:"error"`
+}
+
+// ArtifactErrorResponseV3ErrorCode defines model for ArtifactErrorResponseV3.Error.Code.
+type ArtifactErrorResponseV3ErrorCode string
 
 // CleanupAgentSessionV2CompletedResponse defines model for CleanupAgentSessionV2CompletedResponse.
 type CleanupAgentSessionV2CompletedResponse struct {
@@ -1353,11 +1502,20 @@ type UuidOrEmpty = string
 // AgentSessionId defines model for AgentSessionId.
 type AgentSessionId = openapi_types.UUID
 
+// ArtifactId defines model for ArtifactId.
+type ArtifactId = openapi_types.UUID
+
+// ByteRange defines model for ByteRange.
+type ByteRange = string
+
 // EventAfter defines model for EventAfter.
 type EventAfter = uint64
 
 // EventSchemaVersionV2 defines model for EventSchemaVersionV2.
 type EventSchemaVersionV2 int32
+
+// EventSchemaVersionV3 defines model for EventSchemaVersionV3.
+type EventSchemaVersionV3 int32
 
 // EventStreamId defines model for EventStreamId.
 type EventStreamId = openapi_types.UUID
@@ -1370,6 +1528,24 @@ type TaskId = openapi_types.UUID
 
 // TurnId defines model for TurnId.
 type TurnId = openapi_types.UUID
+
+// ArtifactBadRequest Content-free v3 artifact failure. It never contains a path, URL, token, digest, provider payload, or artifact bytes.
+type ArtifactBadRequest = ArtifactErrorResponseV3
+
+// ArtifactExpired Content-free v3 artifact failure. It never contains a path, URL, token, digest, provider payload, or artifact bytes.
+type ArtifactExpired = ArtifactErrorResponseV3
+
+// ArtifactInternalError Content-free v3 artifact failure. It never contains a path, URL, token, digest, provider payload, or artifact bytes.
+type ArtifactInternalError = ArtifactErrorResponseV3
+
+// ArtifactNotFound Content-free v3 artifact failure. It never contains a path, URL, token, digest, provider payload, or artifact bytes.
+type ArtifactNotFound = ArtifactErrorResponseV3
+
+// ArtifactRangeNotSatisfiable Content-free v3 artifact failure. It never contains a path, URL, token, digest, provider payload, or artifact bytes.
+type ArtifactRangeNotSatisfiable = ArtifactErrorResponseV3
+
+// ArtifactUnauthorized Content-free v3 artifact failure. It never contains a path, URL, token, digest, provider payload, or artifact bytes.
+type ArtifactUnauthorized = ArtifactErrorResponseV3
 
 // BadRequest defines model for BadRequest.
 type BadRequest = ErrorResponse
@@ -1450,6 +1626,42 @@ type StartAgentTurnV2409JSONResponseBody struct {
 	union json.RawMessage
 }
 
+// GetAgentArtifactContentV3Params defines parameters for GetAgentArtifactContentV3.
+type GetAgentArtifactContentV3Params struct {
+	// Range A single inclusive HTTP byte range. Multiple or malformed ranges are rejected.
+	Range *ByteRange `json:"Range,omitempty"`
+}
+
+// GetAgentArtifactPosterV3Params defines parameters for GetAgentArtifactPosterV3.
+type GetAgentArtifactPosterV3Params struct {
+	// Range A single inclusive HTTP byte range. Multiple or malformed ranges are rejected.
+	Range *ByteRange `json:"Range,omitempty"`
+}
+
+// StreamAgentSessionEventsV3Params defines parameters for StreamAgentSessionEventsV3.
+type StreamAgentSessionEventsV3Params struct {
+	// EventSchemaVersion Explicit negotiation guard. Only integer value 3 is accepted on the v3 event stream.
+	EventSchemaVersion StreamAgentSessionEventsV3ParamsEventSchemaVersion `form:"event_schema_version" json:"event_schema_version"`
+
+	// StreamId Expected process-local stream identifier. Required when `after > 0`
+	// unless `Last-Event-ID` supplies the complete cursor. A mismatch returns
+	// `409 event_stream_changed`.
+	StreamId *EventStreamId `form:"stream_id,omitempty" json:"stream_id,omitempty"`
+
+	// After Unsigned 64-bit sequence after which events are replayed. Defaults to
+	// zero. Values greater than zero require a matching stream ID. Ignored when
+	// `Last-Event-ID` is present.
+	After *EventAfter `form:"after,omitempty" json:"after,omitempty"`
+
+	// LastEventID Complete SSE cursor `<stream_id>:<sequence>`. Sequence is a decimal
+	// unsigned 64-bit integer from 1 through 18446744073709551615 with no
+	// leading zero. The header overrides `stream_id` and `after` query parameters.
+	LastEventID *LastEventId `json:"Last-Event-ID,omitempty"`
+}
+
+// StreamAgentSessionEventsV3ParamsEventSchemaVersion defines parameters for StreamAgentSessionEventsV3.
+type StreamAgentSessionEventsV3ParamsEventSchemaVersion int32
+
 // ResumeAgentSessionJSONRequestBody defines body for ResumeAgentSession for application/json ContentType.
 type ResumeAgentSessionJSONRequestBody = TraceRequest
 
@@ -1470,6 +1682,9 @@ type GenerateAgentSessionTitleV2JSONRequestBody = GenerateTitleV2Request
 
 // StartAgentTurnV2JSONRequestBody defines body for StartAgentTurnV2 for application/json ContentType.
 type StartAgentTurnV2JSONRequestBody = StartTurnV2Request
+
+// AcknowledgeAgentArtifactV3JSONRequestBody defines body for AcknowledgeAgentArtifactV3 for application/json ContentType.
+type AcknowledgeAgentArtifactV3JSONRequestBody = ArtifactAcknowledgementV3Request
 
 // AsStartTurnV2TextBlock returns the union data inside the StartTurnV2ContentBlock as a StartTurnV2TextBlock
 func (t StartTurnV2ContentBlock) AsStartTurnV2TextBlock() (StartTurnV2TextBlock, error) {

@@ -1,0 +1,247 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.yijie.ai/report/report-document-v1.schema.json",
+  "title": "ReportDocumentV1",
+  "description": "Closed local report document. Known sections are decoded strictly. An unknown section is retained as opaque JSON only when required=false, so a renderer can skip it without evaluating markup, URLs, or code.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "title", "generated_at", "sections"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "title": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[^<>]*$" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "source_time": { "type": "string", "format": "date-time" },
+    "sections": {
+      "type": "array",
+      "maxItems": 64,
+      "items": { "$ref": "#/definitions/section" }
+    }
+  },
+  "definitions": {
+    "safeText": {
+      "type": "string",
+      "maxLength": 16384,
+      "pattern": "^[^<>]*$"
+    },
+    "section": {
+      "oneOf": [
+        { "$ref": "#/definitions/summarySection" },
+        { "$ref": "#/definitions/metricsSection" },
+        { "$ref": "#/definitions/paragraphSection" },
+        { "$ref": "#/definitions/tableSection" },
+        { "$ref": "#/definitions/chartSection" },
+        { "$ref": "#/definitions/calloutSection" },
+        { "$ref": "#/definitions/unknownOptionalSection" }
+      ]
+    },
+    "summarySection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "required", "payload"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
+        "type": { "const": "summary" },
+        "required": { "type": "boolean" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "properties": {
+            "heading": { "$ref": "#/definitions/safeText" },
+            "text": { "$ref": "#/definitions/safeText" }
+          }
+        }
+      }
+    },
+    "metricsSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "required", "payload"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
+        "type": { "const": "metrics" },
+        "required": { "type": "boolean" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["items"],
+          "properties": {
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["label", "value"],
+                "properties": {
+                  "label": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[^<>]*$" },
+                  "value": {
+                    "oneOf": [
+                      { "type": "number" },
+                      { "type": "string", "maxLength": 128, "pattern": "^[^<>]*$" }
+                    ]
+                  },
+                  "unit": { "type": "string", "maxLength": 32, "pattern": "^[^<>]*$" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "tableScalar": {
+      "oneOf": [
+        { "type": "string", "maxLength": 4096, "pattern": "^[^<>]*$" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "null" }
+      ]
+    },
+    "paragraphSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "required", "payload"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
+        "type": { "const": "paragraph" },
+        "required": { "type": "boolean" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "properties": {
+            "heading": { "$ref": "#/definitions/safeText" },
+            "text": { "$ref": "#/definitions/safeText" }
+          }
+        }
+      }
+    },
+    "tableSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "required", "payload"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
+        "type": { "const": "table" },
+        "required": { "type": "boolean" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["columns", "rows"],
+          "properties": {
+            "caption": { "$ref": "#/definitions/safeText" },
+            "columns": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 32,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["key", "label"],
+                "properties": {
+                  "key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+                  "label": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[^<>]*$" }
+                }
+              }
+            },
+            "rows": {
+              "type": "array",
+              "maxItems": 1000,
+              "items": {
+                "type": "object",
+                "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,63}$" },
+                "additionalProperties": { "$ref": "#/definitions/tableScalar" },
+                "maxProperties": 32
+              }
+            }
+          }
+        }
+      }
+    },
+    "chartSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "required", "payload"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
+        "type": { "const": "chart" },
+        "required": { "type": "boolean" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["chart_type", "labels", "series"],
+          "properties": {
+            "title": { "$ref": "#/definitions/safeText" },
+            "chart_type": { "enum": ["bar", "line", "pie"] },
+            "labels": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 128,
+              "items": { "type": "string", "maxLength": 128, "pattern": "^[^<>]*$" }
+            },
+            "series": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "values"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[^<>]*$" },
+                  "values": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 128,
+                    "items": { "type": "number" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "calloutSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "required", "payload"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
+        "type": { "const": "callout" },
+        "required": { "type": "boolean" },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tone", "text"],
+          "properties": {
+            "tone": { "enum": ["info", "success", "warning", "error"] },
+            "title": { "$ref": "#/definitions/safeText" },
+            "text": { "$ref": "#/definitions/safeText" }
+          }
+        }
+      }
+    },
+    "unknownOptionalSection": {
+      "description": "An optional unknown section is opaque storage only. Consumers must not traverse or render payload content.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "required", "payload"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "not": { "enum": ["summary", "metrics", "paragraph", "table", "chart", "callout"] }
+        },
+        "required": { "const": false },
+        "payload": {
+          "x-yijie-max-utf8-bytes": 131072,
+          "x-yijie-max-json-depth": 8
+        }
+      }
+    }
+  }
+}
