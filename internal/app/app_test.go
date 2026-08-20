@@ -1469,6 +1469,7 @@ func TestArtifactV3HTTPResourcesRangeAckAndExplicitNegotiation(t *testing.T) {
 		t.Fatalf("v3 stream response mismatch: %d %v", streamResponse.Code, streamResponse.Header())
 	}
 	var completed session.Event
+	var completedVideo session.Event
 	for _, line := range strings.Split(streamResponse.Body.String(), "\n") {
 		if !strings.HasPrefix(line, "data: ") {
 			continue
@@ -1480,9 +1481,18 @@ func TestArtifactV3HTTPResourcesRangeAckAndExplicitNegotiation(t *testing.T) {
 		if event.EventType == session.EventItemArtifactCompleted && event.Payload.Kind == "image" {
 			completed = event
 		}
+		if event.EventType == session.EventItemArtifactCompleted && event.Payload.Kind == "video" {
+			completedVideo = event
+		}
 	}
 	if completed.Payload.ArtifactID == "" || completed.Payload.SizeBytes == nil {
 		t.Fatalf("v3 stream omitted completed image: %s", streamResponse.Body.String())
+	}
+	if completedVideo.Payload.ArtifactID == "" || completedVideo.Payload.SizeBytes == nil ||
+		*completedVideo.Payload.SizeBytes != 1642 ||
+		completedVideo.Payload.SHA256 != "96ea070cac612d17927939c22f3c0c593fb26b171f62c4e9cee43fb596177dd5" ||
+		completedVideo.Payload.PosterHref == "" {
+		t.Fatalf("v3 stream video manifest does not match the canonical fixture: %+v", completedVideo.Payload)
 	}
 	contentPath := "/v3/agent-sessions/" + testSessionID + "/artifacts/" + completed.Payload.ArtifactID + "/content"
 	content := httptest.NewRecorder()
@@ -1508,6 +1518,68 @@ func TestArtifactV3HTTPResourcesRangeAckAndExplicitNegotiation(t *testing.T) {
 	handler.ServeHTTP(multi, multiRange)
 	if multi.Code != http.StatusBadRequest || !strings.Contains(multi.Body.String(), `"code":"invalid_range"`) {
 		t.Fatalf("multi-range was not rejected: %d %s", multi.Code, multi.Body.String())
+	}
+
+	videoContentPath := "/v3/agent-sessions/" + testSessionID + "/artifacts/" + completedVideo.Payload.ArtifactID + "/content"
+	video := httptest.NewRecorder()
+	handler.ServeHTTP(video, authorizedRequest(http.MethodGet, videoContentPath, ""))
+	videoDigest := sha256.Sum256(video.Body.Bytes())
+	if video.Code != http.StatusOK || video.Body.Len() != 1642 || fmt.Sprintf("%x", videoDigest) != completedVideo.Payload.SHA256 ||
+		video.Header().Get("Content-Type") != "video/mp4" || video.Header().Get("Accept-Ranges") != "bytes" {
+		t.Fatalf("video response mismatch: %d %v size=%d", video.Code, video.Header(), video.Body.Len())
+	}
+	videoHead := httptest.NewRecorder()
+	handler.ServeHTTP(videoHead, authorizedRequest(http.MethodHead, videoContentPath, ""))
+	if videoHead.Code != http.StatusOK || videoHead.Body.Len() != 0 || videoHead.Header().Get("Content-Length") != "1642" {
+		t.Fatalf("video HEAD response mismatch: %d %v body=%d", videoHead.Code, videoHead.Header(), videoHead.Body.Len())
+	}
+	for _, test := range []struct {
+		name         string
+		rangeHeader  string
+		wantLength   int
+		contentRange string
+	}{
+		{name: "closed", rangeHeader: "bytes=0-31", wantLength: 32, contentRange: "bytes 0-31/1642"},
+		{name: "open", rangeHeader: "bytes=32-", wantLength: 1610, contentRange: "bytes 32-1641/1642"},
+		{name: "suffix", rangeHeader: "bytes=-16", wantLength: 16, contentRange: "bytes 1626-1641/1642"},
+	} {
+		t.Run("video range "+test.name, func(t *testing.T) {
+			request := authorizedRequest(http.MethodGet, videoContentPath, "")
+			request.Header.Set("Range", test.rangeHeader)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusPartialContent || response.Body.Len() != test.wantLength ||
+				response.Header().Get("Content-Range") != test.contentRange {
+				t.Fatalf("video range response mismatch: %d %v size=%d", response.Code, response.Header(), response.Body.Len())
+			}
+		})
+	}
+	videoUnsatisfiableRequest := authorizedRequest(http.MethodGet, videoContentPath, "")
+	videoUnsatisfiableRequest.Header.Set("Range", "bytes=1642-")
+	videoUnsatisfiable := httptest.NewRecorder()
+	handler.ServeHTTP(videoUnsatisfiable, videoUnsatisfiableRequest)
+	if videoUnsatisfiable.Code != http.StatusRequestedRangeNotSatisfiable ||
+		videoUnsatisfiable.Header().Get("Content-Range") != "bytes */1642" ||
+		!strings.Contains(videoUnsatisfiable.Body.String(), `"code":"artifact_range_not_satisfiable"`) {
+		t.Fatalf("unsatisfiable video range mismatch: %d %v %s", videoUnsatisfiable.Code, videoUnsatisfiable.Header(), videoUnsatisfiable.Body.String())
+	}
+	videoMultiRequest := authorizedRequest(http.MethodGet, videoContentPath, "")
+	videoMultiRequest.Header.Set("Range", "bytes=0-1,3-4")
+	videoMulti := httptest.NewRecorder()
+	handler.ServeHTTP(videoMulti, videoMultiRequest)
+	if videoMulti.Code != http.StatusBadRequest || !strings.Contains(videoMulti.Body.String(), `"code":"invalid_range"`) {
+		t.Fatalf("multi-range video request was not rejected: %d %s", videoMulti.Code, videoMulti.Body.String())
+	}
+	videoUnauthorized := httptest.NewRecorder()
+	handler.ServeHTTP(videoUnauthorized, httptest.NewRequest(http.MethodGet, videoContentPath, nil))
+	if videoUnauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("video resource accepted a request without the owner bearer: %d", videoUnauthorized.Code)
+	}
+	videoCrossSession := strings.Replace(videoContentPath, testSessionID, "019fbd88-cbc3-7bf1-934d-7b05cd693f54", 1)
+	videoCross := httptest.NewRecorder()
+	handler.ServeHTTP(videoCross, authorizedRequest(http.MethodGet, videoCrossSession, ""))
+	if videoCross.Code != http.StatusNotFound || strings.Contains(videoCross.Body.String(), completedVideo.Payload.ArtifactID) {
+		t.Fatalf("cross-session video response leaked artifact: %d %s", videoCross.Code, videoCross.Body.String())
 	}
 	crossSession := strings.Replace(contentPath, testSessionID, "019fbd88-cbc3-7bf1-934d-7b05cd693f54", 1)
 	cross := httptest.NewRecorder()

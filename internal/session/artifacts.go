@@ -3,17 +3,32 @@ package session
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/binary"
+	_ "embed"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
 	"image/png"
+	"strings"
 
 	"github.com/36Dge/yijie-agent-host/internal/artifact"
 )
 
 const SyntheticArtifactManifest = "feat128-artifact-v1"
+
+const (
+	syntheticVideoRawSize   = 1642
+	syntheticVideoRawSHA256 = "96ea070cac612d17927939c22f3c0c593fb26b171f62c4e9cee43fb596177dd5"
+)
+
+// syntheticVideoBase64 is a derived consumer snapshot of the immutable
+// yijie-contracts FEAT-128 canonical resource. scripts/check-contracts.sh
+// verifies it byte-for-byte against the pinned source before builds/tests.
+//
+//go:embed fixtures/synthetic-video-16x16.mp4.base64
+var syntheticVideoBase64 string
 
 type ArtifactResource = artifact.Resource
 type ArtifactResourceKind = artifact.ResourceKind
@@ -131,6 +146,10 @@ func deterministicArtifacts() ([]syntheticArtifact, error) {
 	if err != nil {
 		return nil, err
 	}
+	videoBytes, err := syntheticMP4()
+	if err != nil {
+		return nil, err
+	}
 	reportBytes, err := json.Marshal(map[string]any{
 		"schema_version": 1,
 		"title":          "Synthetic local report",
@@ -145,7 +164,7 @@ func deterministicArtifacts() ([]syntheticArtifact, error) {
 	}
 	return []syntheticArtifact{
 		{kind: "image", displayName: "synthetic-preview.png", mediaType: "image/png", content: imageBytes},
-		{kind: "video", displayName: "synthetic-clip.mp4", mediaType: "video/mp4", content: syntheticMP4(), posterName: "synthetic-poster.png", posterType: "image/png", poster: imageBytes},
+		{kind: "video", displayName: "synthetic-clip.mp4", mediaType: "video/mp4", content: videoBytes, posterName: "synthetic-poster.png", posterType: "image/png", poster: imageBytes},
 		{kind: "file", displayName: "synthetic-data.csv", mediaType: "text/csv", content: []byte("name,value\nlocal,4\n")},
 		{kind: "report", displayName: "synthetic-report.json", mediaType: "application/vnd.yijie.report+json;version=1", content: reportBytes},
 	}, nil
@@ -161,16 +180,14 @@ func syntheticPNG() ([]byte, error) {
 	return output.Bytes(), nil
 }
 
-func syntheticMP4() []byte {
-	var output bytes.Buffer
-	writeMP4Box(&output, "ftyp", []byte("isom\x00\x00\x02\x00isomiso2mp41"))
-	writeMP4Box(&output, "free", []byte("FEAT-128 deterministic local fixture"))
-	writeMP4Box(&output, "mdat", []byte{0})
-	return output.Bytes()
-}
-
-func writeMP4Box(output *bytes.Buffer, kind string, payload []byte) {
-	_ = binary.Write(output, binary.BigEndian, uint32(len(payload)+8))
-	_, _ = output.WriteString(kind)
-	_, _ = output.Write(payload)
+func syntheticMP4() ([]byte, error) {
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(syntheticVideoBase64))
+	if err != nil {
+		return nil, fmt.Errorf("decode canonical synthetic video: %w", err)
+	}
+	digest := sha256.Sum256(decoded)
+	if len(decoded) != syntheticVideoRawSize || fmt.Sprintf("%x", digest) != syntheticVideoRawSHA256 {
+		return nil, errors.New("canonical synthetic video snapshot failed integrity verification")
+	}
+	return decoded, nil
 }

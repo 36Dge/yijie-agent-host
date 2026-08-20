@@ -35,6 +35,8 @@ source_event_schema="$temporary_dir/agent-session-event.schema.json"
 source_event_v2_schema="$temporary_dir/agent-session-event-v2.schema.json"
 source_event_v3_schema="$temporary_dir/agent-session-event-v3.schema.json"
 source_report_v1_schema="$temporary_dir/report-document-v1.schema.json"
+source_synthetic_video="$temporary_dir/synthetic-video-16x16.mp4.base64"
+decoded_synthetic_video="$temporary_dir/synthetic-video-16x16.mp4"
 source_package="$temporary_dir/package.json"
 git -C "$contracts_repo" show "$contracts_commit:openapi/agent-host/agent-host.yaml" >"$source_openapi"
 git -C "$contracts_repo" show "$contracts_commit:compatibility/agent-host-runtime-v1.json" >"$source_compatibility"
@@ -42,6 +44,7 @@ git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event.
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event-v2.schema.json" >"$source_event_v2_schema"
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event-v3.schema.json" >"$source_event_v3_schema"
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/report/report-document-v1.schema.json" >"$source_report_v1_schema"
+git -C "$contracts_repo" show "$contracts_commit:tests/fixtures/agent/resources-v3/synthetic-video-16x16.mp4.base64" >"$source_synthetic_video"
 git -C "$contracts_repo" show "$contracts_commit:package.json" >"$source_package"
 
 contracts_version="$(awk -F '"' '/^[[:space:]]*"version"[[:space:]]*:/ { print $4; exit }' "$source_package")"
@@ -72,13 +75,31 @@ sha256_file() {
   fi
 }
 
-mkdir -p "$repo_root/api/openapi" "$repo_root/api/compatibility" "$repo_root/api/jsonschema"
+decode_base64_file() {
+  local source="$1"
+  local destination="$2"
+  if base64 --decode "$source" >"$destination" 2>/dev/null; then
+    return
+  fi
+  if base64 -D -i "$source" -o "$destination" 2>/dev/null; then
+    return
+  fi
+  echo "Unable to decode the Contracts synthetic video fixture." >&2
+  exit 1
+}
+
+decode_base64_file "$source_synthetic_video" "$decoded_synthetic_video"
+synthetic_video_tree="$(git -C "$contracts_repo" rev-parse "$contracts_commit:tests/fixtures/agent/resources-v3")"
+synthetic_video_raw_size="$(wc -c <"$decoded_synthetic_video" | tr -d '[:space:]')"
+
+mkdir -p "$repo_root/api/openapi" "$repo_root/api/compatibility" "$repo_root/api/jsonschema" "$repo_root/internal/session/fixtures"
 cp "$source_openapi" "$repo_root/api/openapi/agent-host.yaml"
 cp "$source_compatibility" "$repo_root/api/compatibility/agent-host-runtime-v1.json"
 cp "$source_event_schema" "$repo_root/api/jsonschema/agent-session-event.schema.json"
 cp "$source_event_v2_schema" "$repo_root/api/jsonschema/agent-session-event-v2.schema.json"
 cp "$source_event_v3_schema" "$repo_root/api/jsonschema/agent-session-event-v3.schema.json"
 cp "$source_report_v1_schema" "$repo_root/api/jsonschema/report-document-v1.schema.json"
+cp "$source_synthetic_video" "$repo_root/internal/session/fixtures/synthetic-video-16x16.mp4.base64"
 
 lock_file="$repo_root/api/contracts.lock"
 temporary_lock="$lock_file.tmp"
@@ -94,6 +115,13 @@ temporary_lock="$lock_file.tmp"
   printf 'AGENT_SESSION_EVENT_V2_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event-v2.schema.json")"
   printf 'AGENT_SESSION_EVENT_V3_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event-v3.schema.json")"
   printf 'REPORT_DOCUMENT_V1_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/report-document-v1.schema.json")"
+  printf 'SYNTHETIC_VIDEO_FIXTURE_SOURCE=%s\n' 'tests/fixtures/agent/resources-v3/synthetic-video-16x16.mp4.base64'
+  printf 'SYNTHETIC_VIDEO_FIXTURE_TREE=%s\n' "$synthetic_video_tree"
+  printf 'SYNTHETIC_VIDEO_FIXTURE_SOURCE_SHA256=%s\n' "$(sha256_file "$source_synthetic_video")"
+  printf 'SYNTHETIC_VIDEO_FIXTURE_RAW_SIZE=%s\n' "$synthetic_video_raw_size"
+  printf 'SYNTHETIC_VIDEO_FIXTURE_RAW_SHA256=%s\n' "$(sha256_file "$decoded_synthetic_video")"
+  printf 'SYNTHETIC_VIDEO_FIXTURE_SNAPSHOT=%s\n' 'internal/session/fixtures/synthetic-video-16x16.mp4.base64'
+  printf 'SYNTHETIC_VIDEO_FIXTURE_SNAPSHOT_SHA256=%s\n' "$(sha256_file "$repo_root/internal/session/fixtures/synthetic-video-16x16.mp4.base64")"
 } >"$temporary_lock"
 mv "$temporary_lock" "$lock_file"
 

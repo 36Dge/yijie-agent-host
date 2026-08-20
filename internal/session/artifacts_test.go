@@ -3,8 +3,10 @@ package session
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -15,6 +17,195 @@ import (
 	"github.com/google/uuid"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
+
+const (
+	canonicalSyntheticVideoSize   = 1642
+	canonicalSyntheticVideoSHA256 = "96ea070cac612d17927939c22f3c0c593fb26b171f62c4e9cee43fb596177dd5"
+)
+
+func TestSyntheticVideoFixtureCanonicalConformance(t *testing.T) {
+	video, err := syntheticMP4()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("canonical identity", func(t *testing.T) {
+		digest := sha256.Sum256(video)
+		if len(video) != canonicalSyntheticVideoSize {
+			t.Errorf("synthetic video size = %d, want %d", len(video), canonicalSyntheticVideoSize)
+		}
+		if got := fmt.Sprintf("%x", digest); got != canonicalSyntheticVideoSHA256 {
+			t.Errorf("synthetic video SHA-256 = %s, want %s", got, canonicalSyntheticVideoSHA256)
+		}
+	})
+
+	t.Run("playback and seek structure", func(t *testing.T) {
+		metadata, err := inspectSyntheticVideo(video)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !metadata.frontMoov {
+			t.Error("synthetic video does not place moov before media data")
+		}
+		if !metadata.avc1 || !metadata.avcC || metadata.profile != 100 {
+			t.Errorf("synthetic video codec = avc1:%t avcC:%t profile:%d, want H.264 High", metadata.avc1, metadata.avcC, metadata.profile)
+		}
+		if metadata.width != 16 || metadata.height != 16 {
+			t.Errorf("synthetic video dimensions = %dx%d, want 16x16", metadata.width, metadata.height)
+		}
+		if metadata.timescale != 1000 || metadata.duration != 120 {
+			t.Errorf("synthetic video duration = %d/%d seconds, want 120/1000", metadata.duration, metadata.timescale)
+		}
+		if metadata.samples != 3 {
+			t.Errorf("synthetic video samples = %d, want 3", metadata.samples)
+		}
+		if metadata.firstKeyframe != 1 {
+			t.Errorf("synthetic video first keyframe = %d, want sample 1", metadata.firstKeyframe)
+		}
+	})
+}
+
+type syntheticVideoMetadata struct {
+	frontMoov     bool
+	avc1          bool
+	avcC          bool
+	profile       byte
+	width         uint16
+	height        uint16
+	timescale     uint32
+	duration      uint32
+	samples       uint32
+	firstKeyframe uint32
+}
+
+type boundedMP4Box struct {
+	kind    string
+	payload []byte
+}
+
+func inspectSyntheticVideo(data []byte) (syntheticVideoMetadata, error) {
+	top, err := parseBoundedMP4Boxes(data)
+	if err != nil {
+		return syntheticVideoMetadata{}, err
+	}
+	if len(top) < 2 || top[0].kind != "ftyp" {
+		return syntheticVideoMetadata{}, errors.New("synthetic video is missing the leading ftyp box")
+	}
+	metadata := syntheticVideoMetadata{frontMoov: top[1].kind == "moov"}
+	moov, ok := findBoundedMP4Box(top, "moov")
+	if !ok {
+		return metadata, errors.New("synthetic video is missing the moov box")
+	}
+	moovChildren, err := parseBoundedMP4Boxes(moov.payload)
+	if err != nil {
+		return metadata, fmt.Errorf("parse moov: %w", err)
+	}
+	mvhd, ok := findBoundedMP4Box(moovChildren, "mvhd")
+	if !ok || len(mvhd.payload) < 20 || mvhd.payload[0] != 0 {
+		return metadata, errors.New("synthetic video is missing a bounded version-0 mvhd box")
+	}
+	metadata.timescale = binary.BigEndian.Uint32(mvhd.payload[12:16])
+	metadata.duration = binary.BigEndian.Uint32(mvhd.payload[16:20])
+
+	trak, ok := findBoundedMP4Box(moovChildren, "trak")
+	if !ok {
+		return metadata, errors.New("synthetic video is missing a video track")
+	}
+	trakChildren, err := parseBoundedMP4Boxes(trak.payload)
+	if err != nil {
+		return metadata, fmt.Errorf("parse trak: %w", err)
+	}
+	mdia, ok := findBoundedMP4Box(trakChildren, "mdia")
+	if !ok {
+		return metadata, errors.New("synthetic video track is missing mdia")
+	}
+	mdiaChildren, err := parseBoundedMP4Boxes(mdia.payload)
+	if err != nil {
+		return metadata, fmt.Errorf("parse mdia: %w", err)
+	}
+	minf, ok := findBoundedMP4Box(mdiaChildren, "minf")
+	if !ok {
+		return metadata, errors.New("synthetic video track is missing minf")
+	}
+	minfChildren, err := parseBoundedMP4Boxes(minf.payload)
+	if err != nil {
+		return metadata, fmt.Errorf("parse minf: %w", err)
+	}
+	stbl, ok := findBoundedMP4Box(minfChildren, "stbl")
+	if !ok {
+		return metadata, errors.New("synthetic video track is missing stbl")
+	}
+	stblChildren, err := parseBoundedMP4Boxes(stbl.payload)
+	if err != nil {
+		return metadata, fmt.Errorf("parse stbl: %w", err)
+	}
+	stsd, ok := findBoundedMP4Box(stblChildren, "stsd")
+	if !ok || len(stsd.payload) < 8 || binary.BigEndian.Uint32(stsd.payload[4:8]) != 1 {
+		return metadata, errors.New("synthetic video is missing its single sample description")
+	}
+	sampleEntries, err := parseBoundedMP4Boxes(stsd.payload[8:])
+	if err != nil {
+		return metadata, fmt.Errorf("parse stsd entries: %w", err)
+	}
+	avc1, ok := findBoundedMP4Box(sampleEntries, "avc1")
+	if !ok || len(avc1.payload) < 78 {
+		return metadata, errors.New("synthetic video is missing a bounded avc1 sample entry")
+	}
+	metadata.avc1 = true
+	metadata.width = binary.BigEndian.Uint16(avc1.payload[24:26])
+	metadata.height = binary.BigEndian.Uint16(avc1.payload[26:28])
+	avc1Children, err := parseBoundedMP4Boxes(avc1.payload[78:])
+	if err != nil {
+		return metadata, fmt.Errorf("parse avc1 extensions: %w", err)
+	}
+	avcC, ok := findBoundedMP4Box(avc1Children, "avcC")
+	if !ok || len(avcC.payload) < 2 {
+		return metadata, errors.New("synthetic video is missing avcC configuration")
+	}
+	metadata.avcC = true
+	metadata.profile = avcC.payload[1]
+
+	stsz, ok := findBoundedMP4Box(stblChildren, "stsz")
+	if !ok || len(stsz.payload) < 12 {
+		return metadata, errors.New("synthetic video is missing sample sizes")
+	}
+	metadata.samples = binary.BigEndian.Uint32(stsz.payload[8:12])
+	stss, ok := findBoundedMP4Box(stblChildren, "stss")
+	if !ok || len(stss.payload) < 12 || binary.BigEndian.Uint32(stss.payload[4:8]) < 1 {
+		return metadata, errors.New("synthetic video is missing sync samples")
+	}
+	metadata.firstKeyframe = binary.BigEndian.Uint32(stss.payload[8:12])
+	return metadata, nil
+}
+
+func parseBoundedMP4Boxes(data []byte) ([]boundedMP4Box, error) {
+	const maximumBoxes = 128
+	boxes := make([]boundedMP4Box, 0, 8)
+	for offset := 0; offset < len(data); {
+		if len(boxes) == maximumBoxes {
+			return nil, errors.New("synthetic video exceeds the bounded box count")
+		}
+		if len(data)-offset < 8 {
+			return nil, errors.New("synthetic video contains a truncated box header")
+		}
+		size := int(binary.BigEndian.Uint32(data[offset : offset+4]))
+		if size < 8 || size > len(data)-offset {
+			return nil, errors.New("synthetic video contains an invalid box size")
+		}
+		boxes = append(boxes, boundedMP4Box{kind: string(data[offset+4 : offset+8]), payload: data[offset+8 : offset+size]})
+		offset += size
+	}
+	return boxes, nil
+}
+
+func findBoundedMP4Box(boxes []boundedMP4Box, kind string) (boundedMP4Box, bool) {
+	for _, box := range boxes {
+		if box.kind == kind {
+			return box, true
+		}
+	}
+	return boundedMP4Box{}, false
+}
 
 func TestSyntheticArtifactsPublishCanonicalV3LifecycleAndResources(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "host-home")
