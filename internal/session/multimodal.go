@@ -156,6 +156,11 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 	if _, err := s.store.AcceptTurnOperation(input.AgentSessionID, input.OperationID, inputDigest, turn.ID); err != nil {
 		return codex.TurnInfo{}, err
 	}
+	if s.syntheticArtifacts {
+		if err := s.publishSyntheticArtifacts(input.AgentSessionID, turn.ID); err != nil {
+			s.logger.Warn("failed to publish synthetic artifacts", "failure_code", "synthetic_artifact_failed")
+		}
+	}
 	return turn, nil
 }
 

@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/36Dge/yijie-agent-host/internal/app"
+	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	"github.com/36Dge/yijie-agent-host/internal/security"
 	"github.com/36Dge/yijie-agent-host/internal/session"
@@ -41,6 +43,7 @@ func run(logger *slog.Logger) error {
 	runtime := codex.NewManager(config.Runtime, logger)
 	var sessionService *session.Service
 	var sessionStore *session.Store
+	var artifactStore *artifact.Store
 	var apiToken string
 	if config.HostHome != "" {
 		storeOptions := make([]session.StoreOption, 0, 1)
@@ -63,6 +66,19 @@ func run(logger *slog.Logger) error {
 		if config.TitleV2Enabled {
 			serviceOptions = append(serviceOptions, session.WithTitleGenerator(runtime))
 		}
+		if config.ArtifactV3Enabled {
+			artifactStore, err = artifact.OpenStore(
+				filepath.Join(config.HostHome, "artifact-spool"),
+				artifact.Options{SessionLimit: artifact.DefaultSessionLimit, GlobalLimit: artifact.DefaultGlobalLimit, TTL: artifact.DefaultTTL},
+			)
+			if err != nil {
+				return err
+			}
+			defer artifactStore.Close()
+			serviceOptions = append(serviceOptions, session.WithV3Artifacts(
+				session.NewEventHubVersion(session.EventSchemaVersionV3, 512, 64), artifactStore, config.ArtifactSynthetic,
+			))
+		}
 		sessionService = session.NewService(
 			runtime,
 			sessionStore,
@@ -84,6 +100,9 @@ func run(logger *slog.Logger) error {
 
 	runtimeCtx, cancelRuntime := context.WithCancel(context.Background())
 	defer cancelRuntime()
+	if artifactStore != nil {
+		go artifactStore.RunJanitor(runtimeCtx, time.Minute)
+	}
 	runtimeStarted := make(chan struct{})
 	go func() {
 		defer close(runtimeStarted)

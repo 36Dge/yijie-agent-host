@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	agenthostcontract "github.com/36Dge/yijie-agent-host/internal/contracts"
 	"github.com/36Dge/yijie-agent-host/internal/session"
@@ -1313,6 +1314,7 @@ func TestLoadConfigKeepsV2DraftCapabilitiesOffAndLocalOnly(t *testing.T) {
 		"YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED",
 		"YIJIE_MODEL_PROVIDER", "YIJIE_MINIMAX_API_KEY", "YIJIE_MINIMAX_API_KEY_FILE", "YIJIE_AGENT_HOST_HOME", "YIJIE_ENV",
 		"YIJIE_AGENT_HOST_INSTANCE_NONCE",
+		"YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED", "YIJIE_FEAT128_SYNTHETIC_ENABLED", "YIJIE_FEAT128_SYNTHETIC_MANIFEST",
 	} {
 		t.Setenv(key, "")
 	}
@@ -1362,6 +1364,175 @@ func TestLoadConfigKeepsV2DraftCapabilitiesOffAndLocalOnly(t *testing.T) {
 	t.Setenv("YIJIE_CODEX_HOME", filepath.Join(t.TempDir(), "codex-home"))
 	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "cannot capability-disable tools") {
 		t.Fatalf("title flag was not held closed for the pinned Runtime: %v", err)
+	}
+}
+
+func TestLoadConfigKeepsFEAT128SyntheticExactLocalAndProviderIsolated(t *testing.T) {
+	for _, key := range []string{
+		"YIJIE_MODEL_PROVIDER", "YIJIE_MINIMAX_API_KEY", "YIJIE_MINIMAX_API_KEY_FILE",
+		"YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED", "YIJIE_AGENT_HOST_HOME", "YIJIE_ENV",
+		"YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED", "YIJIE_FEAT128_SYNTHETIC_ENABLED", "YIJIE_FEAT128_SYNTHETIC_MANIFEST",
+	} {
+		t.Setenv(key, "")
+	}
+	config, err := LoadConfig()
+	if err != nil || config.ArtifactV3Enabled || config.ArtifactSynthetic {
+		t.Fatalf("v3 Artifact capability enabled by default: %#v err=%v", config, err)
+	}
+	home := filepath.Join(t.TempDir(), "host-home")
+	t.Setenv("YIJIE_ENV", "local")
+	t.Setenv("YIJIE_AGENT_HOST_HOME", home)
+	t.Setenv("YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED", "true")
+	t.Setenv("YIJIE_FEAT128_SYNTHETIC_ENABLED", "true")
+	t.Setenv("YIJIE_FEAT128_SYNTHETIC_MANIFEST", session.SyntheticArtifactManifest)
+	config, err = LoadConfig()
+	if err != nil || !config.ArtifactV3Enabled || !config.ArtifactSynthetic || config.ArtifactManifest != session.SyntheticArtifactManifest {
+		t.Fatalf("exact local synthetic profile rejected: %#v err=%v", config, err)
+	}
+	t.Setenv("YIJIE_ENV", "production")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("synthetic Artifact profile accepted production")
+	}
+	t.Setenv("YIJIE_ENV", "local")
+	t.Setenv("YIJIE_MODEL_PROVIDER", "minimax")
+	t.Setenv("YIJIE_MINIMAX_API_KEY", "synthetic-test-key")
+	t.Setenv("YIJIE_CODEX_HOME", filepath.Join(t.TempDir(), "codex-home"))
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("synthetic Artifact profile combined with a real provider")
+	}
+	t.Setenv("YIJIE_MODEL_PROVIDER", "")
+	t.Setenv("YIJIE_MINIMAX_API_KEY", "")
+	t.Setenv("YIJIE_CODEX_HOME", "")
+	t.Setenv("YIJIE_FEAT128_SYNTHETIC_MANIFEST", "floating")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("synthetic Artifact profile accepted a floating manifest")
+	}
+}
+
+func TestArtifactV3HTTPResourcesRangeAckAndExplicitNegotiation(t *testing.T) {
+	const (
+		testTaskID    = "019c0123-4567-7abc-8123-456789abcdea"
+		testSessionID = "019c0123-4567-7abc-8123-456789abcdeb"
+		testThreadID  = "019c0123-4567-7abc-8123-456789abcdec"
+	)
+	home := filepath.Join(t.TempDir(), "host-home")
+	store, err := session.OpenStore(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.Reserve(session.Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindThread(testSessionID, testThreadID, "runtime-session", codex.MiniMaxModel, codex.MiniMaxProviderID); err != nil {
+		t.Fatal(err)
+	}
+	spool, err := artifact.OpenStore(filepath.Join(home, "artifact-spool"), artifact.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = spool.Close() })
+	service := session.NewService(appFakeRuntime{}, store, session.NewEventHub(16, 8), nil,
+		session.WithV3Artifacts(session.NewEventHubVersion(session.EventSchemaVersionV3, 64, 16), spool, true))
+	handler := NewHandler(Config{Environment: "local", ArtifactV3Enabled: true, ArtifactSynthetic: true, ArtifactManifest: session.SyntheticArtifactManifest}, staticRuntimeStatus{}, service, "api-token")
+
+	disabled := NewHandler(Config{Environment: "local"}, staticRuntimeStatus{}, service, "api-token")
+	disabledResponse := httptest.NewRecorder()
+	disabled.ServeHTTP(disabledResponse, authorizedRequest(http.MethodGet, "/v3/agent-sessions/"+testSessionID+"/events?event_schema_version=3", ""))
+	if disabledResponse.Code != http.StatusNotFound {
+		t.Fatalf("v3 route enabled by default: %d", disabledResponse.Code)
+	}
+
+	turnResponse := httptest.NewRecorder()
+	handler.ServeHTTP(turnResponse, authorizedRequest(http.MethodPost, "/v1/agent-sessions/"+testSessionID+"/turns", `{"input":"emit local fixtures","reasoning_effort":"none"}`))
+	if turnResponse.Code != http.StatusAccepted {
+		t.Fatalf("start synthetic turn: %d %s", turnResponse.Code, turnResponse.Body.String())
+	}
+
+	missingNegotiation := httptest.NewRecorder()
+	handler.ServeHTTP(missingNegotiation, authorizedRequest(http.MethodGet, "/v3/agent-sessions/"+testSessionID+"/events", ""))
+	if missingNegotiation.Code != http.StatusBadRequest {
+		t.Fatalf("v3 stream accepted missing negotiation: %d", missingNegotiation.Code)
+	}
+	alias := httptest.NewRecorder()
+	handler.ServeHTTP(alias, authorizedRequest(http.MethodGet, "/v3/agent-sessions/"+testSessionID+"/events?event_schema_version=3&after_sequence=1", ""))
+	if alias.Code != http.StatusBadRequest {
+		t.Fatalf("v3 stream accepted after_sequence alias: %d", alias.Code)
+	}
+
+	streamRequest := authorizedRequest(http.MethodGet, "/v3/agent-sessions/"+testSessionID+"/events?event_schema_version=3", "")
+	streamContext, cancelStream := context.WithCancel(streamRequest.Context())
+	cancelStream()
+	streamResponse := httptest.NewRecorder()
+	handler.ServeHTTP(streamResponse, streamRequest.WithContext(streamContext))
+	if streamResponse.Code != http.StatusOK || streamResponse.Header().Get("X-Yijie-Event-Schema-Version") != "3" {
+		t.Fatalf("v3 stream response mismatch: %d %v", streamResponse.Code, streamResponse.Header())
+	}
+	var completed session.Event
+	for _, line := range strings.Split(streamResponse.Body.String(), "\n") {
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		var event session.Event
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.EventType == session.EventItemArtifactCompleted && event.Payload.Kind == "image" {
+			completed = event
+		}
+	}
+	if completed.Payload.ArtifactID == "" || completed.Payload.SizeBytes == nil {
+		t.Fatalf("v3 stream omitted completed image: %s", streamResponse.Body.String())
+	}
+	contentPath := "/v3/agent-sessions/" + testSessionID + "/artifacts/" + completed.Payload.ArtifactID + "/content"
+	content := httptest.NewRecorder()
+	handler.ServeHTTP(content, authorizedRequest(http.MethodGet, contentPath, ""))
+	if content.Code != http.StatusOK || int64(content.Body.Len()) != *completed.Payload.SizeBytes || content.Header().Get("ETag") != `"`+completed.Payload.SHA256+`"` || content.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("content response mismatch: %d %v size=%d", content.Code, content.Header(), content.Body.Len())
+	}
+	head := httptest.NewRecorder()
+	handler.ServeHTTP(head, authorizedRequest(http.MethodHead, contentPath, ""))
+	if head.Code != http.StatusOK || head.Body.Len() != 0 || head.Header().Get("Content-Length") == "" {
+		t.Fatalf("HEAD response mismatch: %d %v body=%d", head.Code, head.Header(), head.Body.Len())
+	}
+	rangeRequest := authorizedRequest(http.MethodGet, contentPath, "")
+	rangeRequest.Header.Set("Range", "bytes=0-3")
+	ranged := httptest.NewRecorder()
+	handler.ServeHTTP(ranged, rangeRequest)
+	if ranged.Code != http.StatusPartialContent || ranged.Body.Len() != 4 || !strings.HasPrefix(ranged.Header().Get("Content-Range"), "bytes 0-3/") {
+		t.Fatalf("range response mismatch: %d %v size=%d", ranged.Code, ranged.Header(), ranged.Body.Len())
+	}
+	multiRange := authorizedRequest(http.MethodGet, contentPath, "")
+	multiRange.Header.Set("Range", "bytes=0-1,3-4")
+	multi := httptest.NewRecorder()
+	handler.ServeHTTP(multi, multiRange)
+	if multi.Code != http.StatusBadRequest || !strings.Contains(multi.Body.String(), `"code":"invalid_range"`) {
+		t.Fatalf("multi-range was not rejected: %d %s", multi.Code, multi.Body.String())
+	}
+	crossSession := strings.Replace(contentPath, testSessionID, "019fbd88-cbc3-7bf1-934d-7b05cd693f54", 1)
+	cross := httptest.NewRecorder()
+	handler.ServeHTTP(cross, authorizedRequest(http.MethodGet, crossSession, ""))
+	if cross.Code != http.StatusNotFound || strings.Contains(cross.Body.String(), completed.Payload.ArtifactID) {
+		t.Fatalf("cross-session response leaked artifact: %d %s", cross.Code, cross.Body.String())
+	}
+
+	ackID := "019fbd88-cbc3-7bf1-934d-7b05cd693f80"
+	ackBody := fmt.Sprintf(`{"ack_id":"%s","size_bytes":%d,"sha256":"%s","local_committed_at":"2026-08-20T02:00:05Z"}`, ackID, *completed.Payload.SizeBytes, completed.Payload.SHA256)
+	ack := httptest.NewRecorder()
+	handler.ServeHTTP(ack, authorizedRequest(http.MethodPost, strings.TrimSuffix(contentPath, "/content")+"/ack", ackBody))
+	if ack.Code != http.StatusOK || !strings.Contains(ack.Body.String(), `"cleanup_status":"completed"`) {
+		t.Fatalf("ack response mismatch: %d %s", ack.Code, ack.Body.String())
+	}
+	assertOpenAPIJSON(t, "ArtifactAcknowledgementV3Response", ack.Body.Bytes())
+	replayAck := httptest.NewRecorder()
+	handler.ServeHTTP(replayAck, authorizedRequest(http.MethodPost, strings.TrimSuffix(contentPath, "/content")+"/ack", ackBody))
+	if replayAck.Code != http.StatusOK || replayAck.Body.String() != ack.Body.String() {
+		t.Fatalf("ack replay mismatch: first=%s replay=%s", ack.Body.String(), replayAck.Body.String())
+	}
+	afterAck := httptest.NewRecorder()
+	handler.ServeHTTP(afterAck, authorizedRequest(http.MethodGet, contentPath, ""))
+	if afterAck.Code != http.StatusGone || !strings.Contains(afterAck.Body.String(), `"code":"artifact_expired"`) {
+		t.Fatalf("acknowledged content remained available: %d %s", afterAck.Code, afterAck.Body.String())
 	}
 }
 

@@ -19,4 +19,9 @@ Runtime Baseline 2 已完成 Host → Runtime 的受管子进程链路、本机�
 - 定义 Host 或 Runtime 崩溃后的 UI 状态和用户操作；
 - 签名、公证、产物升级与回滚。
 
+FEAT-128 Host S3 已提供默认关闭的 v3 Artifact route、encrypted staging、content/poster/ACK/range
+和 strict-local synthetic producer。Desktop 仍需完成 SQLCipher authority、native transfer/ACK、private
+IPC/history 与 renderer；因此 Host 能力不能被描述为端到端 Desktop Artifact 已完成。真实
+MiniMax/video/file/report producer 也仍未启用。
+
 在这些策略确认前，Host 不自动重启 Runtime，也不声明 Desktop sidecar 已完成。

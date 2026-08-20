@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 )
 
@@ -25,6 +26,10 @@ const (
 	EventItemCompleted            = "item.completed"
 	EventItemReasoningTextDelta   = "item.reasoning_text.delta"
 	EventItemReasoningFinalized   = "item.reasoning_text.finalized"
+	EventItemArtifactStarted      = "item.artifact.started"
+	EventItemArtifactProgress     = "item.artifact.progress"
+	EventItemArtifactCompleted    = "item.artifact.completed"
+	EventItemArtifactFailed       = "item.artifact.failed"
 	EventTurnCompleted            = "turn.completed"
 	EventError                    = "error"
 	EventWarning                  = "warning"
@@ -121,6 +126,12 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 	if s.eventsV2 != nil {
 		s.eventsV2.DeleteSession(sessionID)
 	}
+	if s.eventsV3 != nil {
+		s.eventsV3.DeleteSession(sessionID)
+	}
+	if s.artifacts != nil {
+		s.artifacts.DeleteSession(sessionID)
+	}
 	s.reasoningMu.Lock()
 	for key := range s.reasoning {
 		if key.sessionID == sessionID {
@@ -154,11 +165,14 @@ type pendingNotification struct {
 }
 
 type Service struct {
-	runtime  Runtime
-	store    *Store
-	events   *EventHub
-	eventsV2 *EventHub
-	logger   *slog.Logger
+	runtime            Runtime
+	store              *Store
+	events             *EventHub
+	eventsV2           *EventHub
+	eventsV3           *EventHub
+	artifacts          *artifact.Store
+	syntheticArtifacts bool
+	logger             *slog.Logger
 
 	pendingMu       sync.Mutex
 	pending         map[string][]pendingNotification
@@ -174,6 +188,14 @@ type ServiceOption func(*Service)
 
 func WithV2Events(events *EventHub) ServiceOption {
 	return func(service *Service) { service.eventsV2 = events }
+}
+
+func WithV3Artifacts(events *EventHub, artifacts *artifact.Store, synthetic bool) ServiceOption {
+	return func(service *Service) {
+		service.eventsV3 = events
+		service.artifacts = artifacts
+		service.syntheticArtifacts = synthetic
+	}
 }
 
 func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Logger, options ...ServiceOption) *Service {
@@ -321,6 +343,11 @@ func (s *Service) StartTurn(ctx context.Context, input StartTurnInput) (codex.Tu
 	if _, err := s.store.BindTurn(input.AgentSessionID, turn.ID); err != nil {
 		return codex.TurnInfo{}, err
 	}
+	if s.syntheticArtifacts {
+		if err := s.publishSyntheticArtifacts(input.AgentSessionID, turn.ID); err != nil {
+			s.logger.Warn("failed to publish synthetic artifacts", "failure_code", "synthetic_artifact_failed")
+		}
+	}
 	return turn, nil
 }
 
@@ -374,6 +401,22 @@ func (s *Service) SubscribeEventsV2(
 		return "", nil, nil, nil, err
 	}
 	return s.eventsV2.Subscribe(sessionID, streamID, after)
+}
+
+func (s *Service) SubscribeEventsV3(
+	sessionID, streamID string,
+	after uint64,
+) (string, []Event, <-chan Event, func(), error) {
+	if s.eventsV3 == nil {
+		return "", nil, nil, nil, ErrSessionNotUsable
+	}
+	if err := requireUUID("agent_session_id", sessionID); err != nil {
+		return "", nil, nil, nil, err
+	}
+	if _, err := s.store.Get(sessionID); err != nil {
+		return "", nil, nil, nil, err
+	}
+	return s.eventsV3.Subscribe(sessionID, streamID, after)
 }
 
 func (s *Service) HandleNotification(method string, params json.RawMessage) {
@@ -650,19 +693,29 @@ func (s *Service) publish(record Record, event Event) error {
 		return err
 	}
 	if s.eventsV2 != nil {
-		_, err := s.eventsV2.Publish(event)
+		if _, err := s.eventsV2.Publish(event); err != nil {
+			return err
+		}
+	}
+	if s.eventsV3 != nil {
+		_, err := s.eventsV3.Publish(event)
 		return err
 	}
 	return nil
 }
 
 func (s *Service) publishV2(record Record, event Event) error {
-	if s.eventsV2 == nil {
-		return nil
-	}
 	decorateEvent(record, &event)
-	_, err := s.eventsV2.Publish(event)
-	return err
+	if s.eventsV2 != nil {
+		if _, err := s.eventsV2.Publish(event); err != nil {
+			return err
+		}
+	}
+	if s.eventsV3 != nil {
+		_, err := s.eventsV3.Publish(event)
+		return err
+	}
+	return nil
 }
 
 func decorateEvent(record Record, event *Event) {
@@ -686,7 +739,7 @@ type reasoningTurnState struct {
 }
 
 func (s *Service) appendReasoningDelta(record Record, turnID, itemID string, contentIndex int, delta string) error {
-	if s.eventsV2 == nil {
+	if s.eventsV2 == nil && s.eventsV3 == nil {
 		return nil
 	}
 	if contentIndex < 0 || contentIndex > 7 || delta == "" {
@@ -729,7 +782,7 @@ func (s *Service) appendReasoningDelta(record Record, turnID, itemID string, con
 }
 
 func (s *Service) finalizeReasoning(record Record, turnID, itemID string, contents []string) error {
-	if s.eventsV2 == nil {
+	if s.eventsV2 == nil && s.eventsV3 == nil {
 		return nil
 	}
 	parts, total, valid := validateReasoningContents(contents)

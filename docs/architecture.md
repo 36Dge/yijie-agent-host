@@ -10,6 +10,7 @@ Yijie Desktop / yijie-api
     yijie-agent-host
       ├─ internal/app       本机 HTTP、认证、SSE、health/readiness
       ├─ internal/session   ID 映射、bbolt、事件转换与有界重放
+      ├─ internal/artifact  每进程密钥 encrypted spool、limits、TTL 与 ACK tombstone
       ├─ internal/security  Host API token
       └─ internal/codex     产物校验、provider、stdio 与稳定 API
             |
@@ -28,6 +29,8 @@ Yijie Desktop / yijie-api
 - Host bbolt 只保存恢复所需映射和状态，不保存 prompt、delta 或完成消息；
 - Runtime 专用目录和 Host 状态目录彼此独立；
 - EventHub 只提供当前 Host 进程的有界重放，重启后通过新 `stream_id` 明确切断旧游标。
+- FEAT-128 v3 Artifact surface 使用独立 EventHub；bytes 不进入 event/bbolt/log，由 owner-only
+  encrypted spool 暂存，并在 ACK、24h TTL 或 Host restart 时清理。
 
 ## 仍未实现
 

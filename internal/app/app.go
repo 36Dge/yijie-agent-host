@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	agenthostcontract "github.com/36Dge/yijie-agent-host/internal/contracts"
 	"github.com/36Dge/yijie-agent-host/internal/security"
@@ -36,6 +38,9 @@ type Config struct {
 	TitleV2Enabled        bool
 	CleanupV2Enabled      bool
 	MultimodalV2Enabled   bool
+	ArtifactV3Enabled     bool
+	ArtifactSynthetic     bool
+	ArtifactManifest      string
 	InstanceNonce         string
 	FEAT126TestParentPID  int
 	FEAT126TestRunID      string
@@ -130,6 +135,14 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if err != nil {
 		return Config{}, err
 	}
+	artifactV3, err := boolEnv("YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	syntheticArtifact, artifactManifest, err := loadFEAT128SyntheticProfile()
+	if err != nil {
+		return Config{}, err
+	}
 	rawInstanceNonce := os.Getenv("YIJIE_AGENT_HOST_INSTANCE_NONCE")
 	instanceNonce := strings.TrimSpace(rawInstanceNonce)
 	if instanceNonce != "" {
@@ -153,6 +166,15 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	}
 	if (rawV2 || titleV2 || cleanupV2 || multimodalV2) && (environment != "local" || hostHome == "" || !filepath.IsAbs(hostHome)) {
 		return Config{}, errors.New("Agent Host v2 draft capabilities require an absolute Host home in the local environment")
+	}
+	if artifactV3 && (environment != "local" || hostHome == "" || !filepath.IsAbs(hostHome)) {
+		return Config{}, errors.New("Agent Host v3 Artifact capability requires an absolute Host home in the local environment")
+	}
+	if syntheticArtifact && !artifactV3 {
+		return Config{}, errors.New("FEAT-128 synthetic profile requires the v3 Artifact capability")
+	}
+	if syntheticArtifact && (runtimeConfig.MiniMax.Enabled || runtimeConfig.FakeResponses.Enabled) {
+		return Config{}, errors.New("FEAT-128 synthetic profile cannot be combined with a model provider or another fake profile")
 	}
 	if titleV2 && !runtimeConfig.MiniMax.Enabled {
 		return Config{}, errors.New("Agent Host v2 title generation requires the configured pinned model provider")
@@ -191,12 +213,37 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		TitleV2Enabled:        titleV2,
 		CleanupV2Enabled:      cleanupV2,
 		MultimodalV2Enabled:   multimodalV2,
+		ArtifactV3Enabled:     artifactV3,
+		ArtifactSynthetic:     syntheticArtifact,
+		ArtifactManifest:      artifactManifest,
 		InstanceNonce:         instanceNonce,
 		FEAT126TestParentPID:  testParentPID,
 		FEAT126TestRunID:      fakeProfile.RunID,
 		FEAT126TestProfile:    feat126TestProfileName(fakeProfile),
 		FEAT126ProjectDir:     feat126ProjectDirectory,
 	}, nil
+}
+
+func loadFEAT128SyntheticProfile() (bool, string, error) {
+	const (
+		enabledKey  = "YIJIE_FEAT128_SYNTHETIC_ENABLED"
+		manifestKey = "YIJIE_FEAT128_SYNTHETIC_MANIFEST"
+	)
+	enabled := os.Getenv(enabledKey)
+	manifest := os.Getenv(manifestKey)
+	if enabled == "" || enabled == "false" {
+		if manifest != "" {
+			return false, "", errors.New("FEAT-128 synthetic manifest requires the exact-true profile")
+		}
+		return false, "", nil
+	}
+	if enabled != "true" {
+		return false, "", errors.New("YIJIE_FEAT128_SYNTHETIC_ENABLED must be exact true or false")
+	}
+	if manifest != session.SyntheticArtifactManifest {
+		return false, "", errors.New("YIJIE_FEAT128_SYNTHETIC_MANIFEST must select feat128-artifact-v1")
+	}
+	return true, manifest, nil
 }
 
 func feat126TestProfileName(profile codex.FakeResponsesConfig) string {
@@ -356,6 +403,12 @@ type multimodalSessionService interface {
 	StartTurnV2(context.Context, session.StartTurnV2Input) (codex.TurnInfo, error)
 }
 
+type artifactSessionService interface {
+	SubscribeEventsV3(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)
+	ReadArtifact(string, string, session.ArtifactResourceKind) (session.ArtifactResource, error)
+	AcknowledgeArtifact(string, string, session.ArtifactAcknowledgement) (session.ArtifactReceipt, error)
+}
+
 func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionService, apiToken string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -436,6 +489,16 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 		}
 		if config.MultimodalV2Enabled {
 			mux.Handle("POST /v2/agent-sessions/{agent_session_id}/turns", handler.authorize(http.HandlerFunc(handler.startTurnV2)))
+		}
+		if config.ArtifactV3Enabled {
+			if _, ok := sessions.(artifactSessionService); ok {
+				mux.Handle("GET /v3/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.eventsV3)))
+				mux.Handle("GET /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/content", handler.authorize(http.HandlerFunc(handler.artifactContent)))
+				mux.Handle("HEAD /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/content", handler.authorize(http.HandlerFunc(handler.artifactContent)))
+				mux.Handle("GET /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/poster", handler.authorize(http.HandlerFunc(handler.artifactPoster)))
+				mux.Handle("HEAD /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/poster", handler.authorize(http.HandlerFunc(handler.artifactPoster)))
+				mux.Handle("POST /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/ack", handler.authorize(http.HandlerFunc(handler.artifactAck)))
+			}
 		}
 	}
 	return mux
@@ -597,6 +660,184 @@ func (h *sessionHandler) eventsV2(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("X-Yijie-Event-Schema-Version", "2")
 	h.streamEvents(w, r, h.service.SubscribeEventsV2)
+}
+
+func (h *sessionHandler) eventsV3(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(artifactSessionService)
+	if !ok {
+		writeArtifactError(w, http.StatusNotFound, "artifact_not_found", "artifact capability is unavailable")
+		return
+	}
+	query := r.URL.Query()
+	for key := range query {
+		if key != "event_schema_version" && key != "stream_id" && key != "after" {
+			writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event query is invalid")
+			return
+		}
+	}
+	if values := query["event_schema_version"]; len(values) != 1 || values[0] != "3" {
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event_schema_version=3 is required")
+		return
+	}
+	w.Header().Set("X-Yijie-Event-Schema-Version", "3")
+	h.streamEvents(w, r, service.SubscribeEventsV3)
+}
+
+func (h *sessionHandler) artifactContent(w http.ResponseWriter, r *http.Request) {
+	h.writeArtifactResource(w, r, session.ArtifactContent)
+}
+
+func (h *sessionHandler) artifactPoster(w http.ResponseWriter, r *http.Request) {
+	h.writeArtifactResource(w, r, session.ArtifactPoster)
+}
+
+func (h *sessionHandler) writeArtifactResource(w http.ResponseWriter, r *http.Request, kind session.ArtifactResourceKind) {
+	service, ok := h.service.(artifactSessionService)
+	if !ok {
+		writeArtifactError(w, http.StatusNotFound, "artifact_not_found", "artifact was not found")
+		return
+	}
+	resource, err := service.ReadArtifact(r.PathValue("agent_session_id"), r.PathValue("artifact_id"), kind)
+	if err != nil {
+		writeArtifactServiceError(w, err)
+		return
+	}
+	start, end, partial, rangeErr := artifactRange(r.Header.Get("Range"), int64(len(resource.Bytes)), r.Method == http.MethodHead)
+	if rangeErr != nil {
+		if errors.Is(rangeErr, errArtifactRangeUnsatisfiable) {
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", len(resource.Bytes)))
+			writeArtifactError(w, http.StatusRequestedRangeNotSatisfiable, "artifact_range_not_satisfiable", "artifact byte range is not satisfiable")
+			return
+		}
+		writeArtifactError(w, http.StatusBadRequest, "invalid_range", "artifact byte range is invalid")
+		return
+	}
+	body := resource.Bytes[start : end+1]
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", resource.MediaType)
+	w.Header().Set("Content-Length", strconv.FormatInt(int64(len(body)), 10))
+	w.Header().Set("ETag", `"`+resource.SHA256+`"`)
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": resource.DisplayName})
+	if disposition == "" {
+		writeArtifactError(w, http.StatusInternalServerError, "artifact_resource_unavailable", "artifact resource is unavailable")
+		return
+	}
+	w.Header().Set("Content-Disposition", disposition)
+	status := http.StatusOK
+	if partial {
+		status = http.StatusPartialContent
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(resource.Bytes)))
+	}
+	w.WriteHeader(status)
+	if r.Method != http.MethodHead {
+		_, _ = w.Write(body)
+	}
+}
+
+func (h *sessionHandler) artifactAck(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(artifactSessionService)
+	if !ok {
+		writeArtifactError(w, http.StatusNotFound, "artifact_not_found", "artifact was not found")
+		return
+	}
+	var request agenthostcontract.ArtifactAcknowledgementV3Request
+	if err := decodeRequest(w, r, &request); err != nil {
+		writeArtifactError(w, http.StatusBadRequest, "invalid_request", "acknowledgement request is invalid")
+		return
+	}
+	receipt, err := service.AcknowledgeArtifact(
+		r.PathValue("agent_session_id"), r.PathValue("artifact_id"), session.ArtifactAcknowledgement{
+			AckID: request.AckId.String(), SizeBytes: request.SizeBytes, SHA256: request.Sha256,
+			LocalCommittedAt: request.LocalCommittedAt,
+		},
+	)
+	if err != nil {
+		writeArtifactServiceError(w, err)
+		return
+	}
+	artifactID, artifactErr := uuid.Parse(receipt.ArtifactID)
+	ackID, ackErr := uuid.Parse(receipt.AckID)
+	if artifactErr != nil || ackErr != nil {
+		writeArtifactError(w, http.StatusInternalServerError, "internal_error", "artifact acknowledgement failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, agenthostcontract.ArtifactAcknowledgementV3Response{
+		ArtifactId: artifactID, AckId: ackID, Status: agenthostcontract.Acknowledged,
+		CleanupStatus:  agenthostcontract.ArtifactAcknowledgementV3ResponseCleanupStatus(receipt.CleanupStatus),
+		AcknowledgedAt: receipt.AcknowledgedAt,
+	})
+}
+
+var errArtifactRangeUnsatisfiable = errors.New("artifact range is not satisfiable")
+
+func artifactRange(value string, size int64, head bool) (int64, int64, bool, error) {
+	if size < 1 {
+		return 0, 0, false, errArtifactRangeUnsatisfiable
+	}
+	if value == "" {
+		return 0, size - 1, false, nil
+	}
+	if head || !strings.HasPrefix(value, "bytes=") || strings.Contains(value, ",") {
+		return 0, 0, false, errors.New("invalid artifact range")
+	}
+	raw := strings.TrimPrefix(value, "bytes=")
+	parts := strings.Split(raw, "-")
+	if len(parts) != 2 || (parts[0] == "" && parts[1] == "") {
+		return 0, 0, false, errors.New("invalid artifact range")
+	}
+	if parts[0] == "" {
+		suffix, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || suffix <= 0 {
+			return 0, 0, false, errors.New("invalid artifact range")
+		}
+		if suffix > size {
+			suffix = size
+		}
+		return size - suffix, size - 1, true, nil
+	}
+	start, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || start < 0 {
+		return 0, 0, false, errors.New("invalid artifact range")
+	}
+	end := size - 1
+	if parts[1] != "" {
+		end, err = strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || end < 0 || end < start {
+			return 0, 0, false, errors.New("invalid artifact range")
+		}
+	}
+	if start >= size {
+		return 0, 0, false, errArtifactRangeUnsatisfiable
+	}
+	if end >= size {
+		end = size - 1
+	}
+	return start, end, true, nil
+}
+
+func writeArtifactServiceError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, artifact.ErrInvalid):
+		writeArtifactError(w, http.StatusBadRequest, "invalid_request", "artifact request is invalid")
+	case errors.Is(err, artifact.ErrNotFound):
+		writeArtifactError(w, http.StatusNotFound, "artifact_not_found", "artifact was not found")
+	case errors.Is(err, artifact.ErrExpired):
+		writeArtifactError(w, http.StatusGone, "artifact_expired", "artifact staging has expired")
+	case errors.Is(err, artifact.ErrNotReady):
+		writeArtifactError(w, http.StatusConflict, "artifact_not_ready", "artifact is not ready")
+	case errors.Is(err, artifact.ErrManifestMismatch):
+		writeArtifactError(w, http.StatusConflict, "artifact_manifest_mismatch", "artifact acknowledgement does not match")
+	case errors.Is(err, artifact.ErrAckConflict):
+		writeArtifactError(w, http.StatusConflict, "artifact_ack_conflict", "artifact acknowledgement conflicts")
+	default:
+		writeArtifactError(w, http.StatusInternalServerError, "artifact_resource_unavailable", "artifact resource is unavailable")
+	}
+}
+
+func writeArtifactError(w http.ResponseWriter, status int, code, message string) {
+	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
 }
 
 type eventSubscriber func(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)

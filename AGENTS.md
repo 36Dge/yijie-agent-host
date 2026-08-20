@@ -22,6 +22,12 @@
 - 会话内容只做当前进程内有界事件重放，不持久化，Host 重启产生新 `stream_id`；
 - 本机会话 HTTP/SSE 使用 Host 自动生成的 bearer token，Runtime 权限固定为 read-only/never。
 
+FEAT-128 S3 另已实现默认关闭的显式 v3 Artifact event/resource surface、每进程密钥 encrypted
+spool、20/64 MiB item 与 256 MiB/session、1 GiB/global limits、24h TTL、content/poster
+GET/HEAD、单 range、幂等 ACK 和 strict-local 四类 synthetic producer。Artifact bytes/path 不进入
+SSE、bbolt 或日志。真实 MiniMax/video/file/report producer 仍关闭，Desktop S4 及端到端 UI 也不在
+本仓完成范围内；不得把 synthetic 能力描述为真实模型能力。
+
 审批、MCP、Skills/Plugins、Desktop 打包、平台身份、多租户服务认证、自动故障恢复和 cloud runner 尚未实现，不得把 Runtime Baseline 2 描述为完整 Agent 链路。
 
 ## 仓库边界

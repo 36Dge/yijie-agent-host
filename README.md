@@ -15,6 +15,7 @@ Agent Host Runtime Baseline 2 已完成真实 thread/turn 的只读最小垂直�
 - 使用 bbolt 持久化 `task_id → agent_session_id → codex_thread_id → turn_id`，不持久化消息正文；
 - 每进程事件流有独立 `stream_id` 和单调 `sequence`，支持有界进程内重放；
 - 会话 HTTP API 使用 Host 自动生成的本机 bearer token；Runtime 固定 `read-only`、`approvalPolicy=never`。
+- FEAT-128 S3 提供默认关闭的 v3 Artifact SSE、encrypted staging、content/poster/ACK/range 与 strict-local 四类 synthetic producer；真实 provider projection 保持关闭。
 
 完整范围和证据见 [`docs/runtime-baseline-2.md`](docs/runtime-baseline-2.md)。Baseline 1 的产物与生命周期基线仍见 [`docs/runtime-baseline-1.md`](docs/runtime-baseline-1.md)。
 
@@ -54,7 +55,16 @@ GET  /v1/agent-sessions/{agent_session_id}
 POST /v1/agent-sessions/{agent_session_id}/turns
 POST /v1/agent-sessions/{agent_session_id}/turns/{turn_id}/interrupt
 GET  /v1/agent-sessions/{agent_session_id}/events
+GET  /v3/agent-sessions/{agent_session_id}/events?event_schema_version=3
+GET|HEAD /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/content
+GET|HEAD /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/poster
+POST /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/ack
 ```
+
+v3 route 必须显式设置 `YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED=true`。零费用 synthetic profile 还要求
+`YIJIE_FEAT128_SYNTHETIC_ENABLED=true` 与固定
+`YIJIE_FEAT128_SYNTHETIC_MANIFEST=feat128-artifact-v1`；它只允许 `YIJIE_ENV=local`，且不能与
+MiniMax 或其它 fake profile 共启。默认配置不会注册 v3 route，也不会生成 Artifact。
 
 未配置 Runtime 时 Host 仍可启动用于诊断：`/healthz` 返回 `200`，`/readyz` 返回 `503`，会话路由不注册。
 
@@ -74,6 +84,7 @@ make runtime-turn-test # 显式真实测试，最多 2 次短 MiniMax 请求，�
 event v1/v2/v3 与 ReportDocumentV1 JSON Schema 的 SHA-256。同步脚本拒绝 dirty source，并从已锁定 commit 的 Git
 对象读取源文件；不得手改 `api/` 快照或 `internal/contracts/agenthost.gen.go`。测试会
 验证 ref provenance、generator、digest 与生成漂移。V1/v2 producer conformance 保持原有测试；
-v3 snapshot 在 G2A 前只建立精确 pin，不代表 v3 route/producer 已实现或启用。
+v3 S3 已实现但默认关闭，并由 schema、auth/range/integrity/ACK/TTL/restart/synthetic conformance tests 约束。
+这不代表 Desktop S4、真实 provider 或端到端 UI 已完成。
 
 `make runtime-turn-test` 默认从 `.local/secrets/minimax-api-key` 读取 Key，也可使用上述环境变量；脚本和测试不会输出 Key。它验证一次正常完成、Runtime 重启后的 `thread/resume`，以及一次 `turn/interrupt`。

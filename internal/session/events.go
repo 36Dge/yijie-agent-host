@@ -9,6 +9,7 @@ import (
 const (
 	EventSchemaVersion   = 1
 	EventSchemaVersionV2 = 2
+	EventSchemaVersionV3 = 3
 )
 
 var (
@@ -30,6 +31,20 @@ type EventPayload struct {
 	ContentIndex  *int                `json:"content_index,omitempty"`
 	Contents      *[]ReasoningContent `json:"contents,omitempty"`
 	ReasonCode    string              `json:"reason_code,omitempty"`
+	ArtifactID    string              `json:"artifact_id,omitempty"`
+	Kind          string              `json:"kind,omitempty"`
+	Provenance    string              `json:"provenance,omitempty"`
+	Ordinal       *int                `json:"ordinal,omitempty"`
+	DisplayName   string              `json:"display_name,omitempty"`
+	Stage         string              `json:"stage,omitempty"`
+	Progress      *int                `json:"progress_percent,omitempty"`
+	MediaType     string              `json:"media_type,omitempty"`
+	SizeBytes     *int64              `json:"size_bytes,omitempty"`
+	SHA256        string              `json:"sha256,omitempty"`
+	ContentHref   string              `json:"content_href,omitempty"`
+	PosterHref    string              `json:"poster_href,omitempty"`
+	ErrorCode     string              `json:"error_code,omitempty"`
+	Retryable     *bool               `json:"retryable,omitempty"`
 }
 
 type ReasoningContent struct {
@@ -78,7 +93,7 @@ func NewEventHub(capacity, subscriberCapacity int) *EventHub {
 }
 
 func NewEventHubVersion(schemaVersion, capacity, subscriberCapacity int) *EventHub {
-	if schemaVersion != EventSchemaVersionV2 {
+	if schemaVersion != EventSchemaVersionV2 && schemaVersion != EventSchemaVersionV3 {
 		schemaVersion = EventSchemaVersion
 	}
 	if capacity < 1 {
