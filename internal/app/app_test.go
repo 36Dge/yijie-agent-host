@@ -1409,6 +1409,54 @@ func TestLoadConfigKeepsFEAT128SyntheticExactLocalAndProviderIsolated(t *testing
 	}
 }
 
+func TestLoadConfigAcceptsOnlyExactFEAT128S10KeylessProfile(t *testing.T) {
+	configureExactFEAT126Authority(t)
+	t.Setenv("YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED", "true")
+	t.Setenv("YIJIE_FEAT128_SYNTHETIC_ENABLED", "true")
+	t.Setenv("YIJIE_FEAT128_SYNTHETIC_MANIFEST", session.SyntheticArtifactManifest)
+	t.Setenv("YIJIE_FEAT128_S10_TEST_PROFILE_ENABLED", "true")
+
+	config, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("exact FEAT-128 S10 keyless profile was rejected: %v", err)
+	}
+	if !config.Runtime.FakeResponses.Enabled || config.Runtime.MiniMax.Enabled ||
+		!config.ArtifactV3Enabled || !config.ArtifactSynthetic {
+		t.Fatalf("exact FEAT-128 S10 profile drifted: %#v", config)
+	}
+}
+
+func TestLoadConfigRejectsIncompleteFEAT128S10Profile(t *testing.T) {
+	configureExactFEAT126Authority(t)
+	t.Setenv("YIJIE_FEAT128_S10_TEST_PROFILE_ENABLED", "true")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("FEAT-128 S10 master without v3 synthetic conjunction was accepted")
+	}
+}
+
+func TestLoadFEAT128S10TestProfileIsExactClosed(t *testing.T) {
+	for _, test := range []struct {
+		value string
+		want  bool
+		err   bool
+	}{
+		{value: "", want: false},
+		{value: "false", want: false},
+		{value: "true", want: true},
+		{value: "TRUE", err: true},
+		{value: "1", err: true},
+		{value: " true", err: true},
+	} {
+		t.Run(fmt.Sprintf("value_%q", test.value), func(t *testing.T) {
+			t.Setenv("YIJIE_FEAT128_S10_TEST_PROFILE_ENABLED", test.value)
+			got, err := loadFEAT128S10TestProfile()
+			if (err != nil) != test.err || got != test.want {
+				t.Fatalf("profile exactness got=(%t,%v), want=(%t,err=%t)", got, err, test.want, test.err)
+			}
+		})
+	}
+}
+
 func TestArtifactV3HTTPResourcesRangeAckAndExplicitNegotiation(t *testing.T) {
 	const (
 		testTaskID    = "019c0123-4567-7abc-8123-456789abcdea"

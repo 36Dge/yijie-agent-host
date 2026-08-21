@@ -143,6 +143,10 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if err != nil {
 		return Config{}, err
 	}
+	feat128S10Profile, err := loadFEAT128S10TestProfile()
+	if err != nil {
+		return Config{}, err
+	}
 	rawInstanceNonce := os.Getenv("YIJIE_AGENT_HOST_INSTANCE_NONCE")
 	instanceNonce := strings.TrimSpace(rawInstanceNonce)
 	if instanceNonce != "" {
@@ -173,7 +177,12 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if syntheticArtifact && !artifactV3 {
 		return Config{}, errors.New("FEAT-128 synthetic profile requires the v3 Artifact capability")
 	}
-	if syntheticArtifact && (runtimeConfig.MiniMax.Enabled || runtimeConfig.FakeResponses.Enabled) {
+	if feat128S10Profile && (environment != "local" || !artifactV3 || !syntheticArtifact ||
+		artifactManifest != session.SyntheticArtifactManifest || !runtimeConfig.FakeResponses.Enabled ||
+		runtimeConfig.MiniMax.Enabled) {
+		return Config{}, errors.New("FEAT-128 S10 test profile requires the exact keyless local fake and synthetic conjunction")
+	}
+	if syntheticArtifact && (runtimeConfig.MiniMax.Enabled || runtimeConfig.FakeResponses.Enabled) && !feat128S10Profile {
 		return Config{}, errors.New("FEAT-128 synthetic profile cannot be combined with a model provider or another fake profile")
 	}
 	if titleV2 && !runtimeConfig.MiniMax.Enabled {
@@ -244,6 +253,18 @@ func loadFEAT128SyntheticProfile() (bool, string, error) {
 		return false, "", errors.New("YIJIE_FEAT128_SYNTHETIC_MANIFEST must select feat128-artifact-v1")
 	}
 	return true, manifest, nil
+}
+
+func loadFEAT128S10TestProfile() (bool, error) {
+	const key = "YIJIE_FEAT128_S10_TEST_PROFILE_ENABLED"
+	switch os.Getenv(key) {
+	case "", "false":
+		return false, nil
+	case "true":
+		return true, nil
+	default:
+		return false, errors.New("YIJIE_FEAT128_S10_TEST_PROFILE_ENABLED must be exact true or false")
+	}
 }
 
 func feat126TestProfileName(profile codex.FakeResponsesConfig) string {
