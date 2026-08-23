@@ -102,10 +102,13 @@ func (s *Service) publishSyntheticArtifacts(sessionID, turnID string) error {
 			PosterType: fixture.posterType, Poster: fixture.poster,
 		}); err != nil {
 			retryable := false
-			return s.publishV3(record, Event{
+			if publishErr := s.publishV3(record, Event{
 				TurnID: turnID, ItemID: itemID, EventType: EventItemArtifactFailed,
 				Payload: EventPayload{ArtifactID: artifactID, Kind: fixture.kind, Provenance: "synthetic", Status: "failed", Ordinal: &ordinalValue, ErrorCode: artifactFailureCode(err), Retryable: &retryable, Message: stringPointer("synthetic artifact staging failed")},
-			})
+			}); publishErr != nil {
+				return publishErr
+			}
+			return fmt.Errorf("stage synthetic artifact: %w", err)
 		}
 		digest := sha256.Sum256(fixture.content)
 		size := int64(len(fixture.content))

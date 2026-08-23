@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -289,6 +291,243 @@ func TestSyntheticArtifactsPublishCanonicalV3LifecycleAndResources(t *testing.T)
 	}
 	if _, err := service.ReadArtifact("019fbd88-cbc3-7bf1-934d-7b05cd693f54", replay[2].Payload.ArtifactID, ArtifactContent); !errors.Is(err, artifact.ErrNotFound) {
 		t.Fatalf("cross-session read leaked resource: %v", err)
+	}
+}
+
+func TestSyntheticTerminalWaitsForAllArtifactLifecyclesAfterStartBinding(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "host-home")
+	store, err := OpenStore(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.Reserve(Record{TaskID: testTaskID, AgentSessionID: testSessionID, Cwd: t.TempDir()}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.BindThread(testSessionID, testThreadID, "runtime-session", codex.MiniMaxModel, codex.MiniMaxProviderID); err != nil {
+		t.Fatal(err)
+	}
+	spool, err := artifact.OpenStore(filepath.Join(home, "artifact-spool"), artifact.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = spool.Close() })
+	v3 := NewEventHubVersion(EventSchemaVersionV3, 64, 16)
+
+	var service *Service
+	runtime := &fakeRuntime{startTurn: func(string, string, string) (codex.TurnInfo, error) {
+		// Model the Codex reader loop deterministically: the terminal notification
+		// is handled before the buffered turn/start response reaches StartTurn.
+		service.HandleNotification(RuntimeNotificationTurnCompleted, rawJSON(t, map[string]any{
+			"threadId": testThreadID,
+			"turn":     map[string]any{"id": testTurnID, "status": "completed", "error": nil},
+		}))
+		return codex.TurnInfo{ID: testTurnID, Status: "completed"}, nil
+	}}
+	service = NewService(runtime, store, NewEventHub(16, 8), nil, WithV3Artifacts(v3, spool, true))
+
+	if _, err := service.StartTurn(context.Background(), StartTurnInput{
+		AgentSessionID: testSessionID,
+		Input:          "strict-local synthetic artifact turn",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, replay, _, cancel, err := service.SubscribeEventsV3(testSessionID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if len(replay) != 13 {
+		t.Fatalf("expected twelve artifact lifecycle events followed by one terminal, got %d", len(replay))
+	}
+	counts := map[string]int{}
+	for index, event := range replay {
+		if index < 12 && event.Terminal {
+			t.Fatalf("terminal preceded synthetic artifact lifecycle at index %d: %+v", index, event)
+		}
+		counts[event.EventType]++
+	}
+	if replay[12].EventType != EventTurnCompleted || !replay[12].Terminal {
+		t.Fatalf("terminal was not flushed after all artifact lifecycles: %+v", replay)
+	}
+	if counts[EventItemArtifactStarted] != 4 || counts[EventItemArtifactProgress] != 4 || counts[EventItemArtifactCompleted] != 4 || counts[EventTurnCompleted] != 1 {
+		t.Fatalf("unexpected lifecycle counts: %+v", counts)
+	}
+	duplicateTerminal := rawJSON(t, map[string]any{
+		"threadId": testThreadID,
+		"turn":     map[string]any{"id": testTurnID, "status": "completed", "error": nil},
+	})
+	var duplicates sync.WaitGroup
+	for range 16 {
+		duplicates.Add(1)
+		go func() {
+			defer duplicates.Done()
+			service.HandleNotification(RuntimeNotificationTurnCompleted, duplicateTerminal)
+		}()
+	}
+	duplicates.Wait()
+	_, afterDuplicate, _, cancelDuplicate, err := service.SubscribeEventsV3(testSessionID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelDuplicate()
+	if len(afterDuplicate) != 13 {
+		t.Fatalf("duplicate terminal republished lifecycle evidence: %d events", len(afterDuplicate))
+	}
+}
+
+func TestSyntheticTerminalBarrierOrdersStartTurnV2AndAcceptedReplayExactlyOnce(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "host-home")
+	store, err := OpenStore(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	reserveBoundSession(t, store)
+	spool, err := artifact.OpenStore(filepath.Join(home, "artifact-spool"), artifact.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = spool.Close() })
+	v3 := NewEventHubVersion(EventSchemaVersionV3, 64, 16)
+
+	startCalls := 0
+	var service *Service
+	runtime := &multimodalTestRuntime{startV2: func(string, []codex.UserInput, string) (codex.TurnInfo, error) {
+		startCalls++
+		service.HandleNotification(RuntimeNotificationTurnCompleted, rawJSON(t, map[string]any{
+			"threadId": testThreadID,
+			"turn":     map[string]any{"id": testTurnID, "status": "completed", "error": nil},
+		}))
+		return codex.TurnInfo{ID: testTurnID, Status: "completed"}, nil
+	}}
+	service = NewService(runtime, store, NewEventHub(16, 8), nil, WithV3Artifacts(v3, spool, true))
+	input := StartTurnV2Input{
+		AgentSessionID: testSessionID,
+		OperationID:    testTurnOperationID,
+		ContentBlocks:  validMultimodalBlocks(),
+	}
+	if _, err := service.StartTurnV2(context.Background(), input); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.StartTurnV2(context.Background(), input); err != nil {
+		t.Fatal(err)
+	}
+	if startCalls != 1 {
+		t.Fatalf("accepted operation reran synthetic producer: calls=%d", startCalls)
+	}
+	_, replay, _, cancel, err := service.SubscribeEventsV3(testSessionID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if len(replay) != 13 || replay[12].EventType != EventTurnCompleted {
+		t.Fatalf("v2 replay was not one ordered lifecycle: %+v", replay)
+	}
+}
+
+func TestSyntheticTerminalBarrierClearsOnStartFailureCancellationAndIdentityConflict(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		returnedID string
+		runtimeErr error
+	}{
+		{name: "runtime failure", returnedID: testTurnID, runtimeErr: errors.New("synthetic runtime failure")},
+		{name: "context cancellation", returnedID: testTurnID, runtimeErr: context.Canceled},
+		{name: "turn identity conflict", returnedID: "019c0123-4567-7abc-8123-456789abcdf0"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			home := filepath.Join(t.TempDir(), "host-home")
+			store, err := OpenStore(home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = store.Close() })
+			reserveBoundSession(t, store)
+			spool, err := artifact.OpenStore(filepath.Join(home, "artifact-spool"), artifact.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = spool.Close() })
+			v3 := NewEventHubVersion(EventSchemaVersionV3, 64, 16)
+			var service *Service
+			runtime := &fakeRuntime{startTurn: func(string, string, string) (codex.TurnInfo, error) {
+				service.HandleNotification(RuntimeNotificationTurnCompleted, rawJSON(t, map[string]any{
+					"threadId": testThreadID,
+					"turn":     map[string]any{"id": testTurnID, "status": "completed", "error": nil},
+				}))
+				return codex.TurnInfo{ID: testCase.returnedID}, testCase.runtimeErr
+			}}
+			service = NewService(runtime, store, NewEventHub(16, 8), nil, WithV3Artifacts(v3, spool, true))
+			if _, err := service.StartTurn(context.Background(), StartTurnInput{AgentSessionID: testSessionID, Input: "synthetic"}); err == nil {
+				t.Fatal("unsafe synthetic start unexpectedly succeeded")
+			}
+			service.syntheticMu.Lock()
+			pending := len(service.syntheticTurns)
+			service.syntheticMu.Unlock()
+			if pending != 0 {
+				t.Fatalf("failed start retained %d terminal barriers", pending)
+			}
+			_, replay, _, cancel, err := service.SubscribeEventsV3(testSessionID, "", 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cancel()
+			if len(replay) != 0 {
+				t.Fatalf("failed start published buffered terminal: %+v", replay)
+			}
+		})
+	}
+}
+
+func TestSyntheticArtifactFailureDropsPendingTerminalAndFailsClosed(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "host-home")
+	store, err := OpenStore(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	reserveBoundSession(t, store)
+	spool, err := artifact.OpenStore(filepath.Join(home, "artifact-spool"), artifact.Options{SessionLimit: 1, GlobalLimit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = spool.Close() })
+	v3 := NewEventHubVersion(EventSchemaVersionV3, 64, 16)
+	var service *Service
+	runtime := &fakeRuntime{startTurn: func(string, string, string) (codex.TurnInfo, error) {
+		service.HandleNotification(RuntimeNotificationTurnCompleted, rawJSON(t, map[string]any{
+			"threadId": testThreadID,
+			"turn":     map[string]any{"id": testTurnID, "status": "completed", "error": nil},
+		}))
+		return codex.TurnInfo{ID: testTurnID}, nil
+	}}
+	service = NewService(runtime, store, NewEventHub(16, 8), nil, WithV3Artifacts(v3, spool, true))
+	if _, err := service.StartTurn(context.Background(), StartTurnInput{AgentSessionID: testSessionID, Input: "synthetic"}); !errors.Is(err, ErrRuntimeRequest) {
+		t.Fatalf("artifact staging failure did not fail closed: %v", err)
+	}
+	service.syntheticMu.Lock()
+	pending := len(service.syntheticTurns)
+	service.syntheticMu.Unlock()
+	if pending != 0 {
+		t.Fatalf("artifact failure retained %d terminal barriers", pending)
+	}
+	record, err := store.Get(testSessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.State != StateFailed || record.ActiveTurnID != "" || record.FailureCode != "synthetic_artifact_failed" {
+		t.Fatalf("artifact failure left usable or active session state: %+v", record)
+	}
+	_, replay, _, cancel, err := service.SubscribeEventsV3(testSessionID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	for _, event := range replay {
+		if event.Terminal {
+			t.Fatalf("artifact failure released buffered terminal: %+v", replay)
+		}
 	}
 }
 

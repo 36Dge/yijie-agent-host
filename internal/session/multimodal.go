@@ -137,8 +137,15 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 	if operation.State == TurnOperationStateAccepted {
 		return codex.TurnInfo{ID: operation.TurnID}, nil
 	}
+	if err := s.beginSyntheticTerminalBarrier(input.AgentSessionID); err != nil {
+		_, _ = s.store.MarkTurnOperationUncertain(
+			input.AgentSessionID, input.OperationID, inputDigest, "synthetic_terminal_barrier_failed",
+		)
+		return codex.TurnInfo{}, err
+	}
 	turn, err := runtime.StartTurnV2(ctx, record.CodexThreadID, runtimeInputs, normalizedEffort)
 	if err != nil {
+		s.abortSyntheticTerminalBarrier(input.AgentSessionID)
 		// The Runtime protocol has no idempotency key. A timeout or disconnect
 		// cannot prove whether the turn started, so require an explicit resume
 		// before another submission instead of risking a duplicate turn.
@@ -148,17 +155,21 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 		return codex.TurnInfo{}, fmt.Errorf("%w: Runtime turn outcome is unknown", ErrRuntimeRequest)
 	}
 	if err := requireUUID("turn_id", turn.ID); err != nil {
+		s.abortSyntheticTerminalBarrier(input.AgentSessionID)
 		_, _ = s.store.MarkTurnOperationUncertain(
 			input.AgentSessionID, input.OperationID, inputDigest, "turn_start_response_invalid",
 		)
 		return codex.TurnInfo{}, fmt.Errorf("%w: turn/start returned an invalid turn id", ErrRuntimeRequest)
 	}
 	if _, err := s.store.AcceptTurnOperation(input.AgentSessionID, input.OperationID, inputDigest, turn.ID); err != nil {
+		s.abortSyntheticTerminalBarrier(input.AgentSessionID)
 		return codex.TurnInfo{}, err
 	}
 	if s.syntheticArtifacts {
-		if err := s.publishSyntheticArtifacts(input.AgentSessionID, turn.ID); err != nil {
-			s.logger.Warn("failed to publish synthetic artifacts", "failure_code", "synthetic_artifact_failed")
+		if err := s.finishSyntheticTurn(input.AgentSessionID, turn.ID); err != nil {
+			_, _ = s.store.TurnStartFailed(input.AgentSessionID, "synthetic_artifact_failed")
+			_, _ = s.store.MarkFailed(input.AgentSessionID, "synthetic_artifact_failed")
+			return codex.TurnInfo{}, fmt.Errorf("%w: synthetic artifact publication failed", ErrRuntimeRequest)
 		}
 	}
 	return turn, nil

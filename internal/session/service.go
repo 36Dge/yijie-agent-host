@@ -132,6 +132,7 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 	if s.artifacts != nil {
 		s.artifacts.DeleteSession(sessionID)
 	}
+	s.abortSyntheticTerminalBarrier(sessionID)
 	s.reasoningMu.Lock()
 	for key := range s.reasoning {
 		if key.sessionID == sessionID {
@@ -164,6 +165,18 @@ type pendingNotification struct {
 	params json.RawMessage
 }
 
+type syntheticTerminal struct {
+	turnID  string
+	status  string
+	payload EventPayload
+}
+
+type syntheticTerminalBarrier struct {
+	turnID             string
+	terminal           *syntheticTerminal
+	artifactsPublished bool
+}
+
 type Service struct {
 	runtime            Runtime
 	store              *Store
@@ -177,6 +190,9 @@ type Service struct {
 	pendingMu       sync.Mutex
 	pending         map[string][]pendingNotification
 	pendingCount    int
+	syntheticMu     sync.Mutex
+	syntheticTurns  map[string]*syntheticTerminalBarrier
+	terminalMu      sync.Mutex
 	reasoningMu     sync.Mutex
 	reasoning       map[reasoningTurnKey]*reasoningTurnState
 	titleMu         sync.Mutex
@@ -208,6 +224,7 @@ func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Lo
 		events:          events,
 		logger:          logger,
 		pending:         make(map[string][]pendingNotification),
+		syntheticTurns:  make(map[string]*syntheticTerminalBarrier),
 		reasoning:       make(map[reasoningTurnKey]*reasoningTurnState),
 		titleOperations: make(map[titleOperationKey]*titleOperation),
 	}
@@ -331,21 +348,30 @@ func (s *Service) StartTurn(ctx context.Context, input StartTurnInput) (codex.Tu
 	if err != nil {
 		return codex.TurnInfo{}, err
 	}
+	if err := s.beginSyntheticTerminalBarrier(input.AgentSessionID); err != nil {
+		_, _ = s.store.TurnStartFailed(input.AgentSessionID, "synthetic_terminal_barrier_failed")
+		return codex.TurnInfo{}, err
+	}
 	turn, err := s.runtime.StartTurn(ctx, record.CodexThreadID, input.Input, input.ReasoningEffort)
 	if err != nil {
+		s.abortSyntheticTerminalBarrier(input.AgentSessionID)
 		_, _ = s.store.TurnStartFailed(input.AgentSessionID, "turn_start_failed")
 		return codex.TurnInfo{}, fmt.Errorf("%w: %v", ErrRuntimeRequest, err)
 	}
 	if err := requireUUID("turn_id", turn.ID); err != nil {
+		s.abortSyntheticTerminalBarrier(input.AgentSessionID)
 		_, _ = s.store.TurnStartFailed(input.AgentSessionID, "turn_start_response_invalid")
 		return codex.TurnInfo{}, fmt.Errorf("%w: turn/start returned an invalid turn id", ErrRuntimeRequest)
 	}
 	if _, err := s.store.BindTurn(input.AgentSessionID, turn.ID); err != nil {
+		s.abortSyntheticTerminalBarrier(input.AgentSessionID)
 		return codex.TurnInfo{}, err
 	}
 	if s.syntheticArtifacts {
-		if err := s.publishSyntheticArtifacts(input.AgentSessionID, turn.ID); err != nil {
-			s.logger.Warn("failed to publish synthetic artifacts", "failure_code", "synthetic_artifact_failed")
+		if err := s.finishSyntheticTurn(input.AgentSessionID, turn.ID); err != nil {
+			_, _ = s.store.TurnStartFailed(input.AgentSessionID, "synthetic_artifact_failed")
+			_, _ = s.store.MarkFailed(input.AgentSessionID, "synthetic_artifact_failed")
+			return codex.TurnInfo{}, fmt.Errorf("%w: synthetic artifact publication failed", ErrRuntimeRequest)
 		}
 	}
 	return turn, nil
@@ -594,22 +620,16 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 			return err
 		}
 		status := normalizeTurnStatus(notification.Turn.Status)
-		record, err = s.store.CompleteTurn(record.AgentSessionID, notification.Turn.ID, status)
-		if err != nil {
-			return err
-		}
 		payload := EventPayload{Status: status}
 		if notification.Turn.Error != nil {
 			payload.Code = normalizeCodexErrorCode(notification.Turn.Error.CodexErrorInfo)
 			payload.Message = stringPointer(sanitizeMessage(notification.Turn.Error.Message))
 		}
-		s.finalizeInterruptedReasoning(record, notification.Turn.ID, status)
-		return s.publish(record, Event{
-			TurnID:    notification.Turn.ID,
-			EventType: EventTurnCompleted,
-			Terminal:  true,
-			Payload:   payload,
-		})
+		terminal := syntheticTerminal{turnID: notification.Turn.ID, status: status, payload: payload}
+		if deferred, err := s.deferSyntheticTerminal(record.AgentSessionID, terminal); deferred || err != nil {
+			return err
+		}
+		return s.completeTerminal(record, terminal)
 	case RuntimeNotificationError:
 		var notification struct {
 			ThreadID  string    `json:"threadId"`
@@ -669,6 +689,140 @@ type turnNotification struct {
 		Status string     `json:"status"`
 		Error  *turnError `json:"error"`
 	} `json:"turn"`
+}
+
+func (s *Service) beginSyntheticTerminalBarrier(sessionID string) error {
+	if !s.syntheticArtifacts {
+		return nil
+	}
+	s.syntheticMu.Lock()
+	defer s.syntheticMu.Unlock()
+	if s.syntheticTurns[sessionID] != nil {
+		return errors.New("synthetic terminal barrier already exists")
+	}
+	s.syntheticTurns[sessionID] = &syntheticTerminalBarrier{}
+	return nil
+}
+
+func (s *Service) abortSyntheticTerminalBarrier(sessionID string) {
+	s.syntheticMu.Lock()
+	delete(s.syntheticTurns, sessionID)
+	s.syntheticMu.Unlock()
+}
+
+func (s *Service) deferSyntheticTerminal(sessionID string, terminal syntheticTerminal) (bool, error) {
+	if !s.syntheticArtifacts {
+		return false, nil
+	}
+	s.syntheticMu.Lock()
+	defer s.syntheticMu.Unlock()
+	barrier := s.syntheticTurns[sessionID]
+	if barrier == nil || barrier.artifactsPublished {
+		return false, nil
+	}
+	if barrier.turnID != "" && barrier.turnID != terminal.turnID {
+		return true, errors.New("synthetic terminal turn identity conflicts with start response")
+	}
+	if barrier.terminal != nil {
+		if syntheticTerminalsEqual(*barrier.terminal, terminal) {
+			return true, nil
+		}
+		return true, errors.New("synthetic terminal notification conflicts with buffered terminal")
+	}
+	copy := terminal
+	barrier.terminal = &copy
+	return true, nil
+}
+
+func (s *Service) finishSyntheticTurn(sessionID, turnID string) error {
+	s.syntheticMu.Lock()
+	barrier := s.syntheticTurns[sessionID]
+	if barrier == nil {
+		s.syntheticMu.Unlock()
+		return errors.New("synthetic terminal barrier is unavailable")
+	}
+	barrier.turnID = turnID
+	if barrier.terminal != nil && barrier.terminal.turnID != turnID {
+		delete(s.syntheticTurns, sessionID)
+		s.syntheticMu.Unlock()
+		return errors.New("synthetic terminal turn identity conflicts with start response")
+	}
+	s.syntheticMu.Unlock()
+
+	if err := s.publishSyntheticArtifacts(sessionID, turnID); err != nil {
+		s.abortSyntheticTerminalBarrier(sessionID)
+		return err
+	}
+
+	s.syntheticMu.Lock()
+	barrier = s.syntheticTurns[sessionID]
+	if barrier == nil || barrier.turnID != turnID {
+		s.syntheticMu.Unlock()
+		return errors.New("synthetic terminal barrier changed during artifact publication")
+	}
+	barrier.artifactsPublished = true
+	terminal := barrier.terminal
+	s.syntheticMu.Unlock()
+
+	if terminal != nil {
+		record, err := s.store.Get(sessionID)
+		if err != nil {
+			s.abortSyntheticTerminalBarrier(sessionID)
+			return err
+		}
+		if err := s.completeTerminal(record, *terminal); err != nil {
+			s.abortSyntheticTerminalBarrier(sessionID)
+			return err
+		}
+	}
+
+	s.syntheticMu.Lock()
+	if s.syntheticTurns[sessionID] == barrier {
+		delete(s.syntheticTurns, sessionID)
+	}
+	s.syntheticMu.Unlock()
+	return nil
+}
+
+func (s *Service) completeTerminal(record Record, terminal syntheticTerminal) error {
+	if s.syntheticArtifacts {
+		s.terminalMu.Lock()
+		defer s.terminalMu.Unlock()
+		current, err := s.store.Get(record.AgentSessionID)
+		if err != nil {
+			return err
+		}
+		record = current
+		if record.ActiveTurnID == "" && record.LastTurnID == terminal.turnID && record.LastTurnStatus != "" {
+			if record.LastTurnStatus == terminal.status {
+				return nil
+			}
+			return errors.New("terminal notification conflicts with persisted turn status")
+		}
+	}
+	completed, err := s.store.CompleteTurn(record.AgentSessionID, terminal.turnID, terminal.status)
+	if err != nil {
+		return err
+	}
+	s.finalizeInterruptedReasoning(completed, terminal.turnID, terminal.status)
+	return s.publish(completed, Event{
+		TurnID:    terminal.turnID,
+		EventType: EventTurnCompleted,
+		Terminal:  true,
+		Payload:   terminal.payload,
+	})
+}
+
+func syntheticTerminalsEqual(left, right syntheticTerminal) bool {
+	return left.turnID == right.turnID && left.status == right.status &&
+		left.payload.Code == right.payload.Code && stringPointersEqual(left.payload.Message, right.payload.Message)
+}
+
+func stringPointersEqual(left, right *string) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
 }
 
 type turnError struct {
