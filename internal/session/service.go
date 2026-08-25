@@ -16,6 +16,7 @@ import (
 
 	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	"github.com/36Dge/yijie-agent-host/internal/imagegen"
 )
 
 const (
@@ -132,6 +133,7 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 	if s.artifacts != nil {
 		s.artifacts.DeleteSession(sessionID)
 	}
+	s.clearImageSession(sessionID)
 	s.abortSyntheticTerminalBarrier(sessionID)
 	s.reasoningMu.Lock()
 	for key := range s.reasoning {
@@ -198,6 +200,9 @@ type Service struct {
 	titleMu         sync.Mutex
 	titleGenerator  TitleGenerator
 	titleOperations map[titleOperationKey]*titleOperation
+	imageGenerator  imagegen.Generator
+	imageMu         sync.Mutex
+	imageTurns      map[string]*imageTurn
 }
 
 type ServiceOption func(*Service)
@@ -214,6 +219,10 @@ func WithV3Artifacts(events *EventHub, artifacts *artifact.Store, synthetic bool
 	}
 }
 
+func WithImageGenerator(generator imagegen.Generator) ServiceOption {
+	return func(service *Service) { service.imageGenerator = generator }
+}
+
 func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Logger, options ...ServiceOption) *Service {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -227,6 +236,7 @@ func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Lo
 		syntheticTurns:  make(map[string]*syntheticTerminalBarrier),
 		reasoning:       make(map[reasoningTurnKey]*reasoningTurnState),
 		titleOperations: make(map[titleOperationKey]*titleOperation),
+		imageTurns:      make(map[string]*imageTurn),
 	}
 	for _, option := range options {
 		if option != nil {
@@ -348,23 +358,35 @@ func (s *Service) StartTurn(ctx context.Context, input StartTurnInput) (codex.Tu
 	if err != nil {
 		return codex.TurnInfo{}, err
 	}
+	if err := s.beginImageTurn(record, nil); err != nil {
+		_, _ = s.store.TurnStartFailed(input.AgentSessionID, "image_turn_state_failed")
+		return codex.TurnInfo{}, err
+	}
 	if err := s.beginSyntheticTerminalBarrier(input.AgentSessionID); err != nil {
+		s.clearImageTurn(record.CodexThreadID)
 		_, _ = s.store.TurnStartFailed(input.AgentSessionID, "synthetic_terminal_barrier_failed")
 		return codex.TurnInfo{}, err
 	}
 	turn, err := s.runtime.StartTurn(ctx, record.CodexThreadID, input.Input, input.ReasoningEffort)
 	if err != nil {
+		s.clearImageTurn(record.CodexThreadID)
 		s.abortSyntheticTerminalBarrier(input.AgentSessionID)
 		_, _ = s.store.TurnStartFailed(input.AgentSessionID, "turn_start_failed")
 		return codex.TurnInfo{}, fmt.Errorf("%w: %v", ErrRuntimeRequest, err)
 	}
 	if err := requireUUID("turn_id", turn.ID); err != nil {
+		s.clearImageTurn(record.CodexThreadID)
 		s.abortSyntheticTerminalBarrier(input.AgentSessionID)
 		_, _ = s.store.TurnStartFailed(input.AgentSessionID, "turn_start_response_invalid")
 		return codex.TurnInfo{}, fmt.Errorf("%w: turn/start returned an invalid turn id", ErrRuntimeRequest)
 	}
 	if _, err := s.store.BindTurn(input.AgentSessionID, turn.ID); err != nil {
+		s.clearImageTurn(record.CodexThreadID)
 		s.abortSyntheticTerminalBarrier(input.AgentSessionID)
+		return codex.TurnInfo{}, err
+	}
+	if err := s.bindImageTurn(record.CodexThreadID, turn.ID); err != nil {
+		s.clearImageTurn(record.CodexThreadID)
 		return codex.TurnInfo{}, err
 	}
 	if s.syntheticArtifacts {
@@ -394,6 +416,7 @@ func (s *Service) InterruptTurn(ctx context.Context, sessionID, turnID string, t
 	if _, err := s.store.UpdateTrace(sessionID, trace); err != nil {
 		return err
 	}
+	s.cancelImageTurn(record.CodexThreadID, turnID)
 	if err := s.runtime.InterruptTurn(ctx, record.CodexThreadID, turnID); err != nil {
 		return fmt.Errorf("%w: %v", ErrRuntimeRequest, err)
 	}
@@ -509,6 +532,9 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		if err != nil {
 			return err
 		}
+		if err := s.bindImageTurn(notification.ThreadID, notification.Turn.ID); err != nil {
+			return err
+		}
 		return s.publish(record, Event{
 			TurnID:    notification.Turn.ID,
 			EventType: EventTurnStarted,
@@ -619,6 +645,7 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		if err != nil {
 			return err
 		}
+		s.clearImageTurn(notification.ThreadID)
 		status := normalizeTurnStatus(notification.Turn.Status)
 		payload := EventPayload{Status: status}
 		if notification.Turn.Error != nil {

@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"syscall"
 	"testing"
@@ -181,10 +182,14 @@ func TestRuntimeCompatibilityProjectionMatchesHostAdapter(t *testing.T) {
 		projection.ApprovalPolicy != codex.SessionApprovalPolicy {
 		t.Fatalf("Host policy projection drifted from the locked contract: %+v", projection)
 	}
-	if !reflect.DeepEqual(projection.RuntimeMethods, codex.SupportedSessionRuntimeMethods()) {
+	runtimeMethods := append(codex.SupportedSessionRuntimeMethods(), codex.SupportedSkillsRuntimeMethods()...)
+	sort.Strings(runtimeMethods)
+	if !reflect.DeepEqual(projection.RuntimeMethods, runtimeMethods) {
 		t.Fatalf("Runtime method projection drifted: %v", projection.RuntimeMethods)
 	}
-	if !reflect.DeepEqual(projection.RuntimeNotifications, session.SupportedRuntimeNotifications()) {
+	runtimeNotifications := append(session.SupportedRuntimeNotifications(), codex.RuntimeNotificationSkillsChanged)
+	sort.Strings(runtimeNotifications)
+	if !reflect.DeepEqual(projection.RuntimeNotifications, runtimeNotifications) {
 		t.Fatalf("Runtime notification projection drifted: %v", projection.RuntimeNotifications)
 	}
 }
@@ -388,6 +393,41 @@ func TestLoadConfigRejectsInvalidDuration(t *testing.T) {
 	}
 }
 
+func TestParseAgentHostParentPIDRequiresExactStartupParent(t *testing.T) {
+	const startupParentPID = 4242
+	tests := []struct {
+		name    string
+		value   string
+		wantPID int
+		wantErr bool
+	}{
+		{name: "missing keeps watchdog disabled", value: "", wantPID: 0},
+		{name: "exact startup parent", value: "4242", wantPID: startupParentPID},
+		{name: "different process", value: "4243", wantErr: true},
+		{name: "init is not a Desktop parent", value: "1", wantErr: true},
+		{name: "zero", value: "0", wantErr: true},
+		{name: "negative", value: "-1", wantErr: true},
+		{name: "leading zero", value: "04242", wantErr: true},
+		{name: "leading whitespace", value: " 4242", wantErr: true},
+		{name: "trailing whitespace", value: "4242 ", wantErr: true},
+		{name: "not a pid", value: "desktop", wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			pid, err := parseAgentHostParentPID(test.value, startupParentPID)
+			if test.wantErr {
+				if err == nil {
+					t.Fatalf("expected %q to be rejected, got pid=%d", test.value, pid)
+				}
+				return
+			}
+			if err != nil || pid != test.wantPID {
+				t.Fatalf("unexpected parent PID result: pid=%d err=%v", pid, err)
+			}
+		})
+	}
+}
+
 func TestLoadConfigRequiresExplicitMiniMaxProviderAndProtectsKeyFile(t *testing.T) {
 	for _, key := range []string{
 		"YIJIE_MODEL_PROVIDER", "YIJIE_MINIMAX_API_KEY", "YIJIE_MINIMAX_API_KEY_FILE", "YIJIE_AGENT_HOST_HOME",
@@ -497,7 +537,8 @@ func TestLoadConfigAcceptsOnlyExactFEAT126FakeProfile(t *testing.T) {
 	if !config.Runtime.FakeResponses.Enabled || config.Runtime.FakeResponses.RunID != runID ||
 		config.Runtime.MiniMax.Enabled || !config.RawReasoningV2Enabled || !config.CleanupV2Enabled ||
 		config.TitleV2Enabled || config.MultimodalV2Enabled ||
-		config.FEAT126TestParentPID != os.Getppid() || config.FEAT126ProjectDir != projectDirectory {
+		config.ParentPID != os.Getppid() || config.FEAT126TestParentPID != os.Getppid() ||
+		config.FEAT126ProjectDir != projectDirectory {
 		t.Fatalf("unexpected FEAT-126 fake profile: %#v", config)
 	}
 
@@ -1364,6 +1405,39 @@ func TestLoadConfigKeepsV2DraftCapabilitiesOffAndLocalOnly(t *testing.T) {
 	t.Setenv("YIJIE_CODEX_HOME", filepath.Join(t.TempDir(), "codex-home"))
 	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "cannot capability-disable tools") {
 		t.Fatalf("title flag was not held closed for the pinned Runtime: %v", err)
+	}
+}
+
+func TestLoadConfigGatesFEAT128ImageGenerationOnExactLocalConjunction(t *testing.T) {
+	for _, key := range []string{
+		"YIJIE_FEAT128_IMAGE_GENERATION_ENABLED", "YIJIE_MODEL_PROVIDER", "YIJIE_MINIMAX_API_KEY",
+		"YIJIE_MINIMAX_API_KEY_FILE", "YIJIE_AGENT_HOST_HOME", "YIJIE_CODEX_HOME", "YIJIE_ENV",
+		"YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED", "YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED",
+		"YIJIE_FEAT128_SYNTHETIC_ENABLED", "YIJIE_FEAT128_SYNTHETIC_MANIFEST",
+		"YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED",
+	} {
+		t.Setenv(key, "")
+	}
+	t.Setenv("YIJIE_FEAT128_IMAGE_GENERATION_ENABLED", "true")
+	t.Setenv("YIJIE_MODEL_PROVIDER", codex.MiniMaxProviderID)
+	t.Setenv("YIJIE_MINIMAX_API_KEY", "synthetic-test-key")
+	t.Setenv("YIJIE_AGENT_HOST_HOME", filepath.Join(t.TempDir(), "host-home"))
+	t.Setenv("YIJIE_CODEX_HOME", filepath.Join(t.TempDir(), "codex-home"))
+	t.Setenv("YIJIE_ENV", "local")
+	t.Setenv("YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED", "true")
+	t.Setenv("YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED", "true")
+	config, err := LoadConfig()
+	if err != nil || !config.ImageGenerationEnabled || !config.Runtime.DynamicToolsEnabled {
+		t.Fatalf("exact image generation conjunction rejected: %#v err=%v", config, err)
+	}
+	t.Setenv("YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED", "false")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("image generation accepted without multimodal v2")
+	}
+	t.Setenv("YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED", "true")
+	t.Setenv("YIJIE_FEAT128_IMAGE_GENERATION_ENABLED", "1")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("image generation accepted a non-exact flag")
 	}
 }
 

@@ -20,4 +20,4 @@ fi
 cd "$repo_root"
 YIJIE_CODEX_INTEGRATION_BINARY="$runtime_binary" \
 YIJIE_CODEX_INTEGRATION_MANIFEST="$runtime_manifest" \
-  go test -count=1 -run '^(TestPinnedRuntimeIntegration|TestPinnedRuntimeMiniMaxConfigurationIntegration)$' ./internal/codex
+  go test -count=1 -run '^(TestPinnedRuntimeIntegration|TestPinnedRuntimeMiniMaxConfigurationIntegration|TestPinnedRuntimeManagedSkillLifecycle)$' ./internal/codex ./internal/integration

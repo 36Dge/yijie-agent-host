@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contracts_version": "0.4.0",
+  "contracts_version": "0.5.0",
   "runtime": {
     "repository": "https://github.com/36Dge/yijie-codex.git",
     "repository_commit": "0ce5902ed400866be0196886bb78f693a004d68d",
@@ -18,6 +18,9 @@
     "sandbox": "read-only",
     "approval_policy": "never",
     "runtime_methods": [
+      "skills/config/write",
+      "skills/extraRoots/set",
+      "skills/list",
       "thread/resume",
       "thread/start",
       "turn/interrupt",
@@ -28,6 +31,7 @@
       "item/agentMessage/delta",
       "item/completed",
       "item/started",
+      "skills/changed",
       "thread/started",
       "turn/completed",
       "turn/started",

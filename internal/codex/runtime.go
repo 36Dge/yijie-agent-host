@@ -37,17 +37,18 @@ const (
 )
 
 type Config struct {
-	BinaryPath      string
-	ManifestPath    string
-	CodexHome       string
-	StartupTimeout  time.Duration
-	RequestTimeout  time.Duration
-	ShutdownTimeout time.Duration
-	MaxMessageBytes int
-	WriteQueueDepth int
-	StderrTailBytes int
-	MiniMax         MiniMaxConfig
-	FakeResponses   FakeResponsesConfig
+	BinaryPath          string
+	ManifestPath        string
+	CodexHome           string
+	StartupTimeout      time.Duration
+	RequestTimeout      time.Duration
+	ShutdownTimeout     time.Duration
+	MaxMessageBytes     int
+	WriteQueueDepth     int
+	StderrTailBytes     int
+	MiniMax             MiniMaxConfig
+	FakeResponses       FakeResponsesConfig
+	DynamicToolsEnabled bool
 
 	// testArtifactPolicy is intentionally package-private. Production always
 	// uses the exact Runtime Baseline 0 artifact policy.
@@ -110,6 +111,9 @@ func (c Config) validate() error {
 	if c.MiniMax.Enabled && c.FakeResponses.Enabled {
 		return errors.New("MiniMax and fake Responses providers are mutually exclusive")
 	}
+	if c.DynamicToolsEnabled && !c.MiniMax.Enabled {
+		return errors.New("Runtime dynamic tools require the MiniMax provider")
+	}
 	return nil
 }
 
@@ -159,6 +163,7 @@ type Manager struct {
 	stderr   *tailBuffer
 
 	notificationHandler NotificationHandler
+	dynamicToolHandler  DynamicToolHandler
 	deleteWaiters       map[string]chan struct{}
 	titleCollectors     map[string]*titleCollector
 	pendingTitleStarts  int
@@ -174,7 +179,7 @@ func NewManager(config Config, logger *slog.Logger) *Manager {
 		status: Status{
 			State:           StateNotConfigured,
 			Transport:       ExpectedTransport,
-			ExperimentalAPI: false,
+			ExperimentalAPI: config.DynamicToolsEnabled,
 		},
 		deleteWaiters:   make(map[string]chan struct{}),
 		titleCollectors: make(map[string]*titleCollector),
@@ -203,6 +208,13 @@ func (m *Manager) Start(ctx context.Context) error {
 	if err := m.config.validate(); err != nil {
 		m.fail("runtime_config_invalid")
 		return err
+	}
+	m.mu.Lock()
+	dynamicToolHandler := m.dynamicToolHandler
+	m.mu.Unlock()
+	if m.config.DynamicToolsEnabled && dynamicToolHandler == nil {
+		m.fail("runtime_config_invalid")
+		return errors.New("Runtime dynamic tool handler is not configured")
 	}
 	if m.config.MiniMax.Enabled {
 		if err := prepareMiniMaxCodexHome(m.config.CodexHome); err != nil {
@@ -273,6 +285,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		m.handleNotification,
 		m.handleClientFailure,
 	)
+	client.setServerRequestHandler(m.handleServerRequest)
 	m.mu.Lock()
 	m.client = client
 	m.mu.Unlock()
@@ -289,7 +302,7 @@ func (m *Manager) Start(ctx context.Context) error {
 			Title:   "Yijie Agent Host",
 			Version: "0.1.0",
 		},
-		Capabilities: initializeCapabilities{ExperimentalAPI: false},
+		Capabilities: initializeCapabilities{ExperimentalAPI: m.config.DynamicToolsEnabled},
 	}, &initialized); err != nil {
 		m.abortStartup("initialize_failed")
 		return fmt.Errorf("initialize app-server: %w", err)
@@ -546,7 +559,7 @@ func (m *Manager) setArtifact(artifact ArtifactInfo) {
 	m.status.UpstreamTag = artifact.UpstreamTag
 	m.status.UpstreamCommit = artifact.UpstreamCommit
 	m.status.Transport = artifact.Transport
-	m.status.ExperimentalAPI = artifact.ExperimentalAPI
+	m.status.ExperimentalAPI = m.config.DynamicToolsEnabled
 	m.mu.Unlock()
 }
 

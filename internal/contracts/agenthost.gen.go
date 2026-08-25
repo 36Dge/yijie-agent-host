@@ -484,6 +484,147 @@ func (e HealthResponseStatus) Valid() bool {
 	}
 }
 
+// Defines values for ManagedSkillCapabilityReadiness.
+const (
+	ManagedSkillCapabilityReadinessBlocked  ManagedSkillCapabilityReadiness = "blocked"
+	ManagedSkillCapabilityReadinessDegraded ManagedSkillCapabilityReadiness = "degraded"
+	ManagedSkillCapabilityReadinessReady    ManagedSkillCapabilityReadiness = "ready"
+)
+
+// Valid indicates whether the value is a known member of the ManagedSkillCapabilityReadiness enum.
+func (e ManagedSkillCapabilityReadiness) Valid() bool {
+	switch e {
+	case ManagedSkillCapabilityReadinessBlocked:
+		return true
+	case ManagedSkillCapabilityReadinessDegraded:
+		return true
+	case ManagedSkillCapabilityReadinessReady:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ManagedSkillCatalogStatus.
+const (
+	ManagedSkillCatalogStatusBlocked     ManagedSkillCatalogStatus = "blocked"
+	ManagedSkillCatalogStatusInstallable ManagedSkillCatalogStatus = "installable"
+)
+
+// Valid indicates whether the value is a known member of the ManagedSkillCatalogStatus enum.
+func (e ManagedSkillCatalogStatus) Valid() bool {
+	switch e {
+	case ManagedSkillCatalogStatusBlocked:
+		return true
+	case ManagedSkillCatalogStatusInstallable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ManagedSkillFailureCode.
+const (
+	ManagedSkillFailureCodeArchiveChecksumMismatch ManagedSkillFailureCode = "archive_checksum_mismatch"
+	ManagedSkillFailureCodeArchiveTooLarge         ManagedSkillFailureCode = "archive_too_large"
+	ManagedSkillFailureCodeArchiveUnsafe           ManagedSkillFailureCode = "archive_unsafe"
+	ManagedSkillFailureCodeBundleManifestInvalid   ManagedSkillFailureCode = "bundle_manifest_invalid"
+	ManagedSkillFailureCodeBundleMissing           ManagedSkillFailureCode = "bundle_missing"
+	ManagedSkillFailureCodeCapabilityUnavailable   ManagedSkillFailureCode = "capability_unavailable"
+	ManagedSkillFailureCodeEmpty                   ManagedSkillFailureCode = ""
+	ManagedSkillFailureCodeInstallFailed           ManagedSkillFailureCode = "install_failed"
+	ManagedSkillFailureCodeInstallReceiptInvalid   ManagedSkillFailureCode = "install_receipt_invalid"
+	ManagedSkillFailureCodeInstalledFilesCorrupt   ManagedSkillFailureCode = "installed_files_corrupt"
+	ManagedSkillFailureCodeInstalledFilesMissing   ManagedSkillFailureCode = "installed_files_missing"
+	ManagedSkillFailureCodeRuntimeSyncFailed       ManagedSkillFailureCode = "runtime_sync_failed"
+	ManagedSkillFailureCodeRuntimeUnavailable      ManagedSkillFailureCode = "runtime_unavailable"
+	ManagedSkillFailureCodeScanFailed              ManagedSkillFailureCode = "scan_failed"
+	ManagedSkillFailureCodeUninstallFailed         ManagedSkillFailureCode = "uninstall_failed"
+)
+
+// Valid indicates whether the value is a known member of the ManagedSkillFailureCode enum.
+func (e ManagedSkillFailureCode) Valid() bool {
+	switch e {
+	case ManagedSkillFailureCodeArchiveChecksumMismatch:
+		return true
+	case ManagedSkillFailureCodeArchiveTooLarge:
+		return true
+	case ManagedSkillFailureCodeArchiveUnsafe:
+		return true
+	case ManagedSkillFailureCodeBundleManifestInvalid:
+		return true
+	case ManagedSkillFailureCodeBundleMissing:
+		return true
+	case ManagedSkillFailureCodeCapabilityUnavailable:
+		return true
+	case ManagedSkillFailureCodeEmpty:
+		return true
+	case ManagedSkillFailureCodeInstallFailed:
+		return true
+	case ManagedSkillFailureCodeInstallReceiptInvalid:
+		return true
+	case ManagedSkillFailureCodeInstalledFilesCorrupt:
+		return true
+	case ManagedSkillFailureCodeInstalledFilesMissing:
+		return true
+	case ManagedSkillFailureCodeRuntimeSyncFailed:
+		return true
+	case ManagedSkillFailureCodeRuntimeUnavailable:
+		return true
+	case ManagedSkillFailureCodeScanFailed:
+		return true
+	case ManagedSkillFailureCodeUninstallFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ManagedSkillInstallationStatus.
+const (
+	Error        ManagedSkillInstallationStatus = "error"
+	Installed    ManagedSkillInstallationStatus = "installed"
+	Installing   ManagedSkillInstallationStatus = "installing"
+	NotInstalled ManagedSkillInstallationStatus = "not_installed"
+	Uninstalling ManagedSkillInstallationStatus = "uninstalling"
+)
+
+// Valid indicates whether the value is a known member of the ManagedSkillInstallationStatus enum.
+func (e ManagedSkillInstallationStatus) Valid() bool {
+	switch e {
+	case Error:
+		return true
+	case Installed:
+		return true
+	case Installing:
+		return true
+	case NotInstalled:
+		return true
+	case Uninstalling:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ManagedSkillMaintenanceStatus.
+const (
+	Maintained   ManagedSkillMaintenanceStatus = "maintained"
+	Unmaintained ManagedSkillMaintenanceStatus = "unmaintained"
+)
+
+// Valid indicates whether the value is a known member of the ManagedSkillMaintenanceStatus enum.
+func (e ManagedSkillMaintenanceStatus) Valid() bool {
+	switch e {
+	case Maintained:
+		return true
+	case Unmaintained:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NotReadyResponseStatus.
 const (
 	NotReady NotReadyResponseStatus = "not_ready"
@@ -645,13 +786,13 @@ func (e RuntimeStatusModel) Valid() bool {
 
 // Defines values for RuntimeStatusModelProvider.
 const (
-	RuntimeStatusModelProviderMinimax RuntimeStatusModelProvider = "minimax"
+	Minimax RuntimeStatusModelProvider = "minimax"
 )
 
 // Valid indicates whether the value is a known member of the RuntimeStatusModelProvider enum.
 func (e RuntimeStatusModelProvider) Valid() bool {
 	switch e {
-	case RuntimeStatusModelProviderMinimax:
+	case Minimax:
 		return true
 	default:
 		return false
@@ -712,6 +853,147 @@ const (
 func (e RuntimeStatusUpstreamTag) Valid() bool {
 	switch e {
 	case RustV01446:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SkillErrorResponseErrorCode.
+const (
+	SkillErrorResponseErrorCodeArchiveChecksumMismatch SkillErrorResponseErrorCode = "archive_checksum_mismatch"
+	SkillErrorResponseErrorCodeArchiveTooLarge         SkillErrorResponseErrorCode = "archive_too_large"
+	SkillErrorResponseErrorCodeArchiveUnsafe           SkillErrorResponseErrorCode = "archive_unsafe"
+	SkillErrorResponseErrorCodeBundleManifestInvalid   SkillErrorResponseErrorCode = "bundle_manifest_invalid"
+	SkillErrorResponseErrorCodeBundleMissing           SkillErrorResponseErrorCode = "bundle_missing"
+	SkillErrorResponseErrorCodeCapabilityDenied        SkillErrorResponseErrorCode = "capability_denied"
+	SkillErrorResponseErrorCodeInstallFailed           SkillErrorResponseErrorCode = "install_failed"
+	SkillErrorResponseErrorCodeInternalError           SkillErrorResponseErrorCode = "internal_error"
+	SkillErrorResponseErrorCodeInvalidRequest          SkillErrorResponseErrorCode = "invalid_request"
+	SkillErrorResponseErrorCodeRuntimeSyncFailed       SkillErrorResponseErrorCode = "runtime_sync_failed"
+	SkillErrorResponseErrorCodeRuntimeUnavailable      SkillErrorResponseErrorCode = "runtime_unavailable"
+	SkillErrorResponseErrorCodeScanFailed              SkillErrorResponseErrorCode = "scan_failed"
+	SkillErrorResponseErrorCodeSkillBusy               SkillErrorResponseErrorCode = "skill_busy"
+	SkillErrorResponseErrorCodeSkillNotFound           SkillErrorResponseErrorCode = "skill_not_found"
+	SkillErrorResponseErrorCodeSkillNotInstallable     SkillErrorResponseErrorCode = "skill_not_installable"
+	SkillErrorResponseErrorCodeSkillOperationConflict  SkillErrorResponseErrorCode = "skill_operation_conflict"
+	SkillErrorResponseErrorCodeUnauthorized            SkillErrorResponseErrorCode = "unauthorized"
+	SkillErrorResponseErrorCodeUninstallFailed         SkillErrorResponseErrorCode = "uninstall_failed"
+)
+
+// Valid indicates whether the value is a known member of the SkillErrorResponseErrorCode enum.
+func (e SkillErrorResponseErrorCode) Valid() bool {
+	switch e {
+	case SkillErrorResponseErrorCodeArchiveChecksumMismatch:
+		return true
+	case SkillErrorResponseErrorCodeArchiveTooLarge:
+		return true
+	case SkillErrorResponseErrorCodeArchiveUnsafe:
+		return true
+	case SkillErrorResponseErrorCodeBundleManifestInvalid:
+		return true
+	case SkillErrorResponseErrorCodeBundleMissing:
+		return true
+	case SkillErrorResponseErrorCodeCapabilityDenied:
+		return true
+	case SkillErrorResponseErrorCodeInstallFailed:
+		return true
+	case SkillErrorResponseErrorCodeInternalError:
+		return true
+	case SkillErrorResponseErrorCodeInvalidRequest:
+		return true
+	case SkillErrorResponseErrorCodeRuntimeSyncFailed:
+		return true
+	case SkillErrorResponseErrorCodeRuntimeUnavailable:
+		return true
+	case SkillErrorResponseErrorCodeScanFailed:
+		return true
+	case SkillErrorResponseErrorCodeSkillBusy:
+		return true
+	case SkillErrorResponseErrorCodeSkillNotFound:
+		return true
+	case SkillErrorResponseErrorCodeSkillNotInstallable:
+		return true
+	case SkillErrorResponseErrorCodeSkillOperationConflict:
+		return true
+	case SkillErrorResponseErrorCodeUnauthorized:
+		return true
+	case SkillErrorResponseErrorCodeUninstallFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SkillListResponseSchemaVersion.
+const (
+	N1 SkillListResponseSchemaVersion = 1
+)
+
+// Valid indicates whether the value is a known member of the SkillListResponseSchemaVersion enum.
+func (e SkillListResponseSchemaVersion) Valid() bool {
+	switch e {
+	case N1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SkillMutationResponseOutcome.
+const (
+	SkillMutationResponseOutcomeComplete SkillMutationResponseOutcome = "complete"
+)
+
+// Valid indicates whether the value is a known member of the SkillMutationResponseOutcome enum.
+func (e SkillMutationResponseOutcome) Valid() bool {
+	switch e {
+	case SkillMutationResponseOutcomeComplete:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SkillScanRequestReason.
+const (
+	AppUpgrade       SkillScanRequestReason = "app_upgrade"
+	DirectoryChanged SkillScanRequestReason = "directory_changed"
+	PageOpen         SkillScanRequestReason = "page_open"
+	Startup          SkillScanRequestReason = "startup"
+	UserRetry        SkillScanRequestReason = "user_retry"
+	WindowResume     SkillScanRequestReason = "window_resume"
+)
+
+// Valid indicates whether the value is a known member of the SkillScanRequestReason enum.
+func (e SkillScanRequestReason) Valid() bool {
+	switch e {
+	case AppUpgrade:
+		return true
+	case DirectoryChanged:
+		return true
+	case PageOpen:
+		return true
+	case Startup:
+		return true
+	case UserRetry:
+		return true
+	case WindowResume:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SkillScanResponseOutcome.
+const (
+	SkillScanResponseOutcomeComplete SkillScanResponseOutcome = "complete"
+)
+
+// Valid indicates whether the value is a known member of the SkillScanResponseOutcome enum.
+func (e SkillScanResponseOutcome) Valid() bool {
+	switch e {
+	case SkillScanResponseOutcomeComplete:
 		return true
 	default:
 		return false
@@ -1217,6 +1499,39 @@ type HealthResponseService string
 // HealthResponseStatus defines model for HealthResponse.Status.
 type HealthResponseStatus string
 
+// ManagedSkill defines model for ManagedSkill.
+type ManagedSkill struct {
+	CapabilityReadiness ManagedSkillCapabilityReadiness `json:"capability_readiness"`
+	CatalogStatus       ManagedSkillCatalogStatus       `json:"catalog_status"`
+
+	// Enabled False when not installed or explicitly disabled.
+	Enabled            bool                           `json:"enabled"`
+	FailureCode        ManagedSkillFailureCode        `json:"failure_code"`
+	Id                 SkillIdValue                   `json:"id"`
+	InstallationStatus ManagedSkillInstallationStatus `json:"installation_status"`
+	MaintenanceStatus  ManagedSkillMaintenanceStatus  `json:"maintenance_status"`
+	RuntimeName        string                         `json:"runtime_name"`
+
+	// RuntimeVisible True only after Runtime confirms the exact installed and enabled Skill in its current projection.
+	RuntimeVisible bool            `json:"runtime_visible"`
+	Version        SemanticVersion `json:"version"`
+}
+
+// ManagedSkillCapabilityReadiness defines model for ManagedSkill.CapabilityReadiness.
+type ManagedSkillCapabilityReadiness string
+
+// ManagedSkillCatalogStatus defines model for ManagedSkill.CatalogStatus.
+type ManagedSkillCatalogStatus string
+
+// ManagedSkillFailureCode defines model for ManagedSkill.FailureCode.
+type ManagedSkillFailureCode string
+
+// ManagedSkillInstallationStatus defines model for ManagedSkill.InstallationStatus.
+type ManagedSkillInstallationStatus string
+
+// ManagedSkillMaintenanceStatus defines model for ManagedSkill.MaintenanceStatus.
+type ManagedSkillMaintenanceStatus string
+
 // NotReadyResponse defines model for NotReadyResponse.
 type NotReadyResponse struct {
 	RuntimeState RuntimeState           `json:"runtime_state"`
@@ -1279,9 +1594,95 @@ type RuntimeStatusUpstreamCommit string
 // RuntimeStatusUpstreamTag defines model for RuntimeStatus.UpstreamTag.
 type RuntimeStatusUpstreamTag string
 
+// SemanticVersion defines model for SemanticVersion.
+type SemanticVersion = string
+
 // SessionResponse defines model for SessionResponse.
 type SessionResponse struct {
 	Session AgentSession `json:"session"`
+}
+
+// Sha256 Lowercase SHA-256. When this schema is used by a property named `catalog_revision`, the digest is over the exact raw validated `bundle-manifest.json` bytes; install compares it in constant time without re-serialization or normalization.
+type Sha256 = string
+
+// SkillEnabledRequest defines model for SkillEnabledRequest.
+type SkillEnabledRequest struct {
+	Enabled     bool               `json:"enabled"`
+	OperationId openapi_types.UUID `json:"operation_id"`
+}
+
+// SkillErrorResponse Content-free Skill management failure. It never contains a path, token, archive bytes, Skill instructions, or Runtime payload.
+type SkillErrorResponse struct {
+	Error struct {
+		Code    SkillErrorResponseErrorCode `json:"code"`
+		Message string                      `json:"message"`
+	} `json:"error"`
+}
+
+// SkillErrorResponseErrorCode defines model for SkillErrorResponse.Error.Code.
+type SkillErrorResponseErrorCode string
+
+// SkillIdValue defines model for SkillIdValue.
+type SkillIdValue = string
+
+// SkillInstallRequest defines model for SkillInstallRequest.
+type SkillInstallRequest struct {
+	// CatalogRevision Lowercase SHA-256. When this schema is used by a property named `catalog_revision`, the digest is over the exact raw validated `bundle-manifest.json` bytes; install compares it in constant time without re-serialization or normalization.
+	CatalogRevision Sha256 `json:"catalog_revision"`
+
+	// ExpectedArchiveSha256 Lowercase SHA-256. When this schema is used by a property named `catalog_revision`, the digest is over the exact raw validated `bundle-manifest.json` bytes; install compares it in constant time without re-serialization or normalization.
+	ExpectedArchiveSha256 Sha256             `json:"expected_archive_sha256"`
+	ExpectedVersion       SemanticVersion    `json:"expected_version"`
+	OperationId           openapi_types.UUID `json:"operation_id"`
+}
+
+// SkillListResponse defines model for SkillListResponse.
+type SkillListResponse struct {
+	// CatalogRevision Lowercase SHA-256. When this schema is used by a property named `catalog_revision`, the digest is over the exact raw validated `bundle-manifest.json` bytes; install compares it in constant time without re-serialization or normalization.
+	CatalogRevision Sha256                         `json:"catalog_revision"`
+	ScannedAt       time.Time                      `json:"scanned_at"`
+	SchemaVersion   SkillListResponseSchemaVersion `json:"schema_version"`
+	Skills          []ManagedSkill                 `json:"skills"`
+}
+
+// SkillListResponseSchemaVersion defines model for SkillListResponse.SchemaVersion.
+type SkillListResponseSchemaVersion int32
+
+// SkillMutationResponse defines model for SkillMutationResponse.
+type SkillMutationResponse struct {
+	OperationId openapi_types.UUID           `json:"operation_id"`
+	Outcome     SkillMutationResponseOutcome `json:"outcome"`
+	Skill       ManagedSkill                 `json:"skill"`
+}
+
+// SkillMutationResponseOutcome defines model for SkillMutationResponse.Outcome.
+type SkillMutationResponseOutcome string
+
+// SkillScanRequest defines model for SkillScanRequest.
+type SkillScanRequest struct {
+	OperationId openapi_types.UUID     `json:"operation_id"`
+	Reason      SkillScanRequestReason `json:"reason"`
+}
+
+// SkillScanRequestReason defines model for SkillScanRequest.Reason.
+type SkillScanRequestReason string
+
+// SkillScanResponse defines model for SkillScanResponse.
+type SkillScanResponse struct {
+	// CatalogRevision Lowercase SHA-256. When this schema is used by a property named `catalog_revision`, the digest is over the exact raw validated `bundle-manifest.json` bytes; install compares it in constant time without re-serialization or normalization.
+	CatalogRevision Sha256                   `json:"catalog_revision"`
+	OperationId     openapi_types.UUID       `json:"operation_id"`
+	Outcome         SkillScanResponseOutcome `json:"outcome"`
+	ScannedAt       time.Time                `json:"scanned_at"`
+	Skills          []ManagedSkill           `json:"skills"`
+}
+
+// SkillScanResponseOutcome defines model for SkillScanResponse.Outcome.
+type SkillScanResponseOutcome string
+
+// SkillUninstallRequest defines model for SkillUninstallRequest.
+type SkillUninstallRequest struct {
+	OperationId openapi_types.UUID `json:"operation_id"`
 }
 
 // StartSessionRequest defines model for StartSessionRequest.
@@ -1523,6 +1924,9 @@ type EventStreamId = openapi_types.UUID
 // LastEventId defines model for LastEventId.
 type LastEventId = string
 
+// SkillId defines model for SkillId.
+type SkillId = string
+
 // TaskId defines model for TaskId.
 type TaskId = openapi_types.UUID
 
@@ -1558,6 +1962,30 @@ type RuntimeRequestFailed = ErrorResponse
 
 // SessionNotFound defines model for SessionNotFound.
 type SessionNotFound = ErrorResponse
+
+// SkillBadRequest Content-free Skill management failure. It never contains a path, token, archive bytes, Skill instructions, or Runtime payload.
+type SkillBadRequest = SkillErrorResponse
+
+// SkillConflict Content-free Skill management failure. It never contains a path, token, archive bytes, Skill instructions, or Runtime payload.
+type SkillConflict = SkillErrorResponse
+
+// SkillForbidden Content-free Skill management failure. It never contains a path, token, archive bytes, Skill instructions, or Runtime payload.
+type SkillForbidden = SkillErrorResponse
+
+// SkillInternalError Content-free Skill management failure. It never contains a path, token, archive bytes, Skill instructions, or Runtime payload.
+type SkillInternalError = SkillErrorResponse
+
+// SkillNotFound Content-free Skill management failure. It never contains a path, token, archive bytes, Skill instructions, or Runtime payload.
+type SkillNotFound = SkillErrorResponse
+
+// SkillUnauthorized Content-free Skill management failure. It never contains a path, token, archive bytes, Skill instructions, or Runtime payload.
+type SkillUnauthorized = SkillErrorResponse
+
+// SkillUnavailable Content-free Skill management failure. It never contains a path, token, archive bytes, Skill instructions, or Runtime payload.
+type SkillUnavailable = SkillErrorResponse
+
+// SkillUnprocessable Content-free Skill management failure. It never contains a path, token, archive bytes, Skill instructions, or Runtime payload.
+type SkillUnprocessable = SkillErrorResponse
 
 // TitleGenerationUnavailable defines model for TitleGenerationUnavailable.
 type TitleGenerationUnavailable = TitleGenerationUnavailableError
@@ -1670,6 +2098,18 @@ type StartAgentTurnJSONRequestBody = StartTurnRequest
 
 // InterruptAgentTurnJSONRequestBody defines body for InterruptAgentTurn for application/json ContentType.
 type InterruptAgentTurnJSONRequestBody = TraceRequest
+
+// ScanManagedSkillsJSONRequestBody defines body for ScanManagedSkills for application/json ContentType.
+type ScanManagedSkillsJSONRequestBody = SkillScanRequest
+
+// SetManagedSkillEnabledJSONRequestBody defines body for SetManagedSkillEnabled for application/json ContentType.
+type SetManagedSkillEnabledJSONRequestBody = SkillEnabledRequest
+
+// InstallManagedSkillJSONRequestBody defines body for InstallManagedSkill for application/json ContentType.
+type InstallManagedSkillJSONRequestBody = SkillInstallRequest
+
+// UninstallManagedSkillJSONRequestBody defines body for UninstallManagedSkill for application/json ContentType.
+type UninstallManagedSkillJSONRequestBody = SkillUninstallRequest
 
 // StartAgentSessionJSONRequestBody defines body for StartAgentSession for application/json ContentType.
 type StartAgentSessionJSONRequestBody = StartSessionRequest

@@ -43,6 +43,8 @@ type outboundMessage struct {
 	done    chan error
 }
 
+type serverRequestHandler func(context.Context, string, json.RawMessage) (any, *RPCError)
+
 type Client struct {
 	stdin           io.WriteCloser
 	stdout          io.Reader
@@ -50,6 +52,9 @@ type Client struct {
 	writes          chan outboundMessage
 	onNotification  func(string, json.RawMessage)
 	onFatal         func(error)
+	onServerRequest serverRequestHandler
+	requestContext  context.Context
+	cancelRequests  context.CancelFunc
 
 	mu      sync.Mutex
 	nextID  int64
@@ -70,6 +75,7 @@ func NewClient(
 	onNotification func(string, json.RawMessage),
 	onFatal func(error),
 ) *Client {
+	requestContext, cancelRequests := context.WithCancel(context.Background())
 	return &Client{
 		stdin:           stdin,
 		stdout:          stdout,
@@ -77,10 +83,16 @@ func NewClient(
 		writes:          make(chan outboundMessage, writeQueueDepth),
 		onNotification:  onNotification,
 		onFatal:         onFatal,
+		requestContext:  requestContext,
+		cancelRequests:  cancelRequests,
 		nextID:          -1,
 		pending:         make(map[string]chan pendingResponse),
 		closed:          make(chan struct{}),
 	}
+}
+
+func (c *Client) setServerRequestHandler(handler serverRequestHandler) {
+	c.onServerRequest = handler
 }
 
 func (c *Client) Start() {
@@ -256,7 +268,10 @@ func (c *Client) handleMessage(message wireMessage) error {
 		if _, err := requestIDKey(message.ID); err != nil {
 			return err
 		}
-		return c.rejectServerRequest(message.ID)
+		id := append(json.RawMessage(nil), message.ID...)
+		params := append(json.RawMessage(nil), message.Params...)
+		go c.handleServerRequest(id, message.Method, params)
+		return nil
 	}
 	if !hasID {
 		return errors.New("invalid app-server message without method or id")
@@ -285,6 +300,37 @@ func (c *Client) handleMessage(message wireMessage) error {
 	}
 	response <- pendingResponse{result: message.Result}
 	return nil
+}
+
+func (c *Client) handleServerRequest(id json.RawMessage, method string, params json.RawMessage) {
+	if c.onServerRequest == nil {
+		_ = c.respondServerRequest(id, nil, &RPCError{
+			Code: methodNotFoundCode, Message: "Method not supported by Yijie Agent Host Runtime Baseline 2",
+		})
+		return
+	}
+	result, rpcError := c.onServerRequest(c.requestContext, method, params)
+	_ = c.respondServerRequest(id, result, rpcError)
+}
+
+func (c *Client) respondServerRequest(id json.RawMessage, result any, rpcError *RPCError) error {
+	var payload []byte
+	var err error
+	if rpcError != nil {
+		payload, err = json.Marshal(struct {
+			ID    json.RawMessage `json:"id"`
+			Error *RPCError       `json:"error"`
+		}{ID: id, Error: rpcError})
+	} else {
+		payload, err = json.Marshal(struct {
+			ID     json.RawMessage `json:"id"`
+			Result any             `json:"result"`
+		}{ID: id, Result: result})
+	}
+	if err != nil {
+		return err
+	}
+	return c.enqueue(c.requestContext, append(payload, '\n'))
 }
 
 func (c *Client) rejectServerRequest(id json.RawMessage) error {
@@ -317,6 +363,7 @@ func (c *Client) removePending(key string) {
 
 func (c *Client) fail(err error) {
 	c.failOnce.Do(func() {
+		c.cancelRequests()
 		c.mu.Lock()
 		c.fatal = err
 		close(c.closed)

@@ -137,7 +137,14 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 	if operation.State == TurnOperationStateAccepted {
 		return codex.TurnInfo{ID: operation.TurnID}, nil
 	}
+	if err := s.beginImageTurn(record, imageReferences(input.ContentBlocks)); err != nil {
+		_, _ = s.store.MarkTurnOperationUncertain(
+			input.AgentSessionID, input.OperationID, inputDigest, "image_turn_state_failed",
+		)
+		return codex.TurnInfo{}, err
+	}
 	if err := s.beginSyntheticTerminalBarrier(input.AgentSessionID); err != nil {
+		s.clearImageTurn(record.CodexThreadID)
 		_, _ = s.store.MarkTurnOperationUncertain(
 			input.AgentSessionID, input.OperationID, inputDigest, "synthetic_terminal_barrier_failed",
 		)
@@ -145,6 +152,7 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 	}
 	turn, err := runtime.StartTurnV2(ctx, record.CodexThreadID, runtimeInputs, normalizedEffort)
 	if err != nil {
+		s.clearImageTurn(record.CodexThreadID)
 		s.abortSyntheticTerminalBarrier(input.AgentSessionID)
 		// The Runtime protocol has no idempotency key. A timeout or disconnect
 		// cannot prove whether the turn started, so require an explicit resume
@@ -155,6 +163,7 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 		return codex.TurnInfo{}, fmt.Errorf("%w: Runtime turn outcome is unknown", ErrRuntimeRequest)
 	}
 	if err := requireUUID("turn_id", turn.ID); err != nil {
+		s.clearImageTurn(record.CodexThreadID)
 		s.abortSyntheticTerminalBarrier(input.AgentSessionID)
 		_, _ = s.store.MarkTurnOperationUncertain(
 			input.AgentSessionID, input.OperationID, inputDigest, "turn_start_response_invalid",
@@ -162,7 +171,12 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 		return codex.TurnInfo{}, fmt.Errorf("%w: turn/start returned an invalid turn id", ErrRuntimeRequest)
 	}
 	if _, err := s.store.AcceptTurnOperation(input.AgentSessionID, input.OperationID, inputDigest, turn.ID); err != nil {
+		s.clearImageTurn(record.CodexThreadID)
 		s.abortSyntheticTerminalBarrier(input.AgentSessionID)
+		return codex.TurnInfo{}, err
+	}
+	if err := s.bindImageTurn(record.CodexThreadID, turn.ID); err != nil {
+		s.clearImageTurn(record.CodexThreadID)
 		return codex.TurnInfo{}, err
 	}
 	if s.syntheticArtifacts {

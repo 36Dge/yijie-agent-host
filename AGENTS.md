@@ -12,7 +12,7 @@
 
 - `internal/codex` 校验 Runtime Baseline 0 manifest、binary SHA-256、大小和精确版本；
 - desktop-host 以受管子进程启动固定 `codex app-server`，使用 JSONL over stdio；
-- stable API、`experimentalApi=false` 和 `initialize → initialized` 已通过真实 Runtime 集成测试；
+- 默认 stable API、`experimentalApi=false` 和 `initialize → initialized` 已通过真实 Runtime 集成测试；FEAT-128 图片开关是唯一受限的 experimental dynamic-tool 例外；
 - transport 支持双向 request/response/notification 分类、有界消息与写队列、超时、取消、半关闭和异常退出检测；
 - 未实现的 Runtime 反向请求统一 fail closed；
 - `/healthz` 只表示 Host 存活，`/readyz` 只有 Runtime 完成握手时才成功，`/v1/status` 不暴露本地路径；
@@ -21,14 +21,16 @@
 - `task_id → agent_session_id → codex_thread_id → turn_id` 映射使用独立 Host Home 中的 bbolt 持久化；
 - 会话内容只做当前进程内有界事件重放，不持久化，Host 重启产生新 `stream_id`；
 - 本机会话 HTTP/SSE 使用 Host 自动生成的 bearer token，Runtime 权限固定为 read-only/never。
+- FEAT-129 已实现精确 `local + demo_fast` 的 owner-only Skill 查询、扫描、安装、启停、卸载与 Runtime Skills API 重放；只注册 receipt 有效的具体 Skill 目录，operation ID 不静默裁剪。Desktop/Tauri/UI 与客户端分发许可不在本仓完成范围内。
 
 FEAT-128 S3 另已实现默认关闭的显式 v3 Artifact event/resource surface、每进程密钥 encrypted
 spool、20/64 MiB item 与 256 MiB/session、1 GiB/global limits、24h TTL、content/poster
 GET/HEAD、单 range、幂等 ACK 和 strict-local 四类 synthetic producer。Artifact bytes/path 不进入
-SSE、bbolt 或日志。真实 MiniMax/video/file/report producer 仍关闭，Desktop S4 及端到端 UI 也不在
-本仓完成范围内；不得把 synthetic 能力描述为真实模型能力。
+SSE、bbolt 或日志。默认关闭的真实 MiniMax `image-01` producer 仅允许 local + MiniMax + multimodal v2 +
+v3 Artifact exact conjunction，支持文生图和当前轮单张 PNG/JPEG 人物参考生图；普通看图/分析不得触发。
+Desktop 及端到端 UI 不在本仓完成范围内；不得把 synthetic 能力描述为真实模型能力。
 
-审批、MCP、Skills/Plugins、Desktop 打包、平台身份、多租户服务认证、自动故障恢复和 cloud runner 尚未实现，不得把 Runtime Baseline 2 描述为完整 Agent 链路。
+审批、MCP、通用 Plugins、Desktop 打包、平台身份、多租户服务认证、自动故障恢复和 cloud runner 尚未实现，不得把 Runtime Baseline 2 或 FEAT-129 Host 层描述为完整 Agent 链路。
 
 ## 仓库边界
 
@@ -52,7 +54,7 @@ SSE、bbolt 或日志。真实 MiniMax/video/file/report producer 仍关闭，De
 - `internal/events/`：Codex event 到易界事件的纯映射；
 - `internal/policy/`：工具风险和审批策略适配，不成为业务权限真相源；
 - `internal/session/`：task、session、thread 映射及生命周期；
-- `internal/skills/`、`internal/plugins/`、`internal/tools/`：装载和配置适配，不复制资产或连接器实现；
+- `internal/skills/`：受管 Skill bundle 校验、安装状态、操作重放与 Runtime 投影，不复制业务资产；`internal/plugins/`、`internal/tools/`：装载和配置适配，不复制资产或连接器实现；
 - `internal/security/`：输入校验、脱敏和最小权限边界；
 - `api/`：本仓库实现所需的局部接口材料，稳定跨仓库契约以 `yijie-contracts` 为源。
 
@@ -69,8 +71,8 @@ SSE、bbolt 或日志。真实 MiniMax/video/file/report producer 仍关闭，De
 - 事件必须保留 `trace_id`、`task_id`、`agent_session_id` 和 `codex_thread_id` 的关联，并定义顺序、重复、断线重放和终态语义；
 - 超时、取消和用户中止必须沿 Desktop、Agent Host、Runtime 和工具调用链传播。
 
-当前 `api/contracts.lock` 已固定 FEAT-128 `0.4.0` local candidate 的完整 commit、OpenAPI、
-Runtime compatibility、Agent session event v1/v2/v3 与 ReportDocumentV1 源 digest，以及
+当前 `api/contracts.lock` 已固定 FEAT-129 `0.5.0` local candidate `d6dff903e0c12b6a5e69599df1e33ef46d8bea6b` 的 OpenAPI、
+Runtime compatibility、Agent session event v1/v2/v3、ReportDocumentV1、Skill Bundle Manifest v1 与 Skill fixture 源 digest，以及
 `oapi-codegen` identity/version；该 candidate 尚无 tag、未发布。`make sync-contracts` 只接受干净 Git
 仓库中可解析的完整 candidate commit 或匹配版本的不可移动 tag，并从该 commit 的 Git
 对象同步；`contract-check` 会验证 ref→commit、generator、digest、snapshot 与生成类型。
@@ -113,14 +115,14 @@ Baseline 2 对断线和退出的处理是撤销 readiness、失败所有等待�
 ## 已固定的 Runtime Baseline 1/2 决策
 
 - Runtime 来自相邻 `yijie-codex` Runtime Baseline 0：`rust-v0.144.6` / `5d1fbf26c43abc65a203928b2e31561cb039e06d`；
-- 只支持 `codex-cli 0.144.6`、`aarch64-apple-darwin`、stdio、stable API 和 `experimentalApi=false`；
+- 只支持 `codex-cli 0.144.6`、`aarch64-apple-darwin` 和 stdio；默认 stable API/`experimentalApi=false`，仅 FEAT-128 图片 exact-local 开关启用时为注册单一 `generate_image` 使用 `experimentalApi=true`；
 - Host 通过绝对 binary/manifest/`CODEX_HOME` 路径消费产物，不使用 URL 连接本地 Runtime；
 - `codex app-server` 参数固定为 `--listen stdio:// --strict-config`；该版本顶层 CLI 不公开 `--session-source`；
 - Runtime 只接受 manifest 固定的单一 FEAT-126 日志安全 patch；canonical `yijie-codex/codex-rs` 仍不得直接修改；
 - 模型认证固定为 MiniMax 中国站按量付费 API Key，endpoint 为 `https://api.minimaxi.com/v1`，模型为 `MiniMax-M3`，wire API 为 Responses；
 - Key 由 Host 显式从环境或 owner-only 文件读取，只以 `MINIMAX_API_KEY` 注入 Runtime；
 - Runtime Home 与 Host Home 独立；Host Home 使用 bbolt 持久化映射，并保存本机 HTTP bearer token；
-- Baseline 2 只支持 read-only/never，不接工具、审批、MCP 或 experimental API；
+- Baseline 2 只支持 read-only/never，不接审批或 MCP；FEAT-128 图片工具是默认关闭且参数封闭的唯一 experimental 例外；
 - 真实模型门禁最多 2 次短请求，人工显式执行，不进入 CI。
 
 ## 必须先确认的决策

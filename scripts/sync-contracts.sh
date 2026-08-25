@@ -14,6 +14,24 @@ if [ -n "$(git -C "$contracts_repo" status --porcelain)" ]; then
   echo "Agent Host contract source must be clean before synchronization: $contracts_repo" >&2
   exit 1
 fi
+managed_targets=(
+  api/contracts.lock
+  api/openapi/agent-host.yaml
+  api/compatibility/agent-host-runtime-v1.json
+  api/jsonschema/agent-session-event.schema.json
+  api/jsonschema/agent-session-event-v2.schema.json
+  api/jsonschema/agent-session-event-v3.schema.json
+  api/jsonschema/report-document-v1.schema.json
+  api/jsonschema/skill-bundle-manifest-v1.schema.json
+  api/fixtures/skills/bundle-v1
+  api/fixtures/agent/host-skills-v1
+  internal/contracts/agenthost.gen.go
+  internal/session/fixtures/synthetic-video-16x16.mp4.base64
+)
+if [ -n "$(git -C "$repo_root" status --porcelain --untracked-files=all -- "${managed_targets[@]}")" ]; then
+  echo "Agent Host contract targets contain uncommitted changes; synchronize in a clean worktree." >&2
+  exit 1
+fi
 
 contracts_commit="$(git -C "$contracts_repo" rev-parse --verify "${requested_ref}^{commit}" 2>/dev/null || true)"
 full_commit_pattern='^[0-9a-f]{40}$'
@@ -35,6 +53,9 @@ source_event_schema="$temporary_dir/agent-session-event.schema.json"
 source_event_v2_schema="$temporary_dir/agent-session-event-v2.schema.json"
 source_event_v3_schema="$temporary_dir/agent-session-event-v3.schema.json"
 source_report_v1_schema="$temporary_dir/report-document-v1.schema.json"
+source_skill_bundle_schema="$temporary_dir/skill-bundle-manifest-v1.schema.json"
+source_skill_fixtures="$temporary_dir/skill-bundle-v1"
+source_host_skill_fixtures="$temporary_dir/host-skills-v1"
 source_synthetic_video="$temporary_dir/synthetic-video-16x16.mp4.base64"
 decoded_synthetic_video="$temporary_dir/synthetic-video-16x16.mp4"
 source_package="$temporary_dir/package.json"
@@ -44,6 +65,32 @@ git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event.
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event-v2.schema.json" >"$source_event_v2_schema"
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event-v3.schema.json" >"$source_event_v3_schema"
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/report/report-document-v1.schema.json" >"$source_report_v1_schema"
+git -C "$contracts_repo" show "$contracts_commit:jsonschema/skills/skill-bundle-manifest-v1.schema.json" >"$source_skill_bundle_schema"
+mkdir -p "$source_skill_fixtures/packages"
+skill_fixture_files=(
+  manifest-valid.json
+  manifest-checksum-mismatch.json
+  manifest-zip-slip.json
+  packages/fixture-model-only-0.1.0.zip
+  packages/fixture-model-only-checksum-mismatch.zip
+  packages/fixture-zip-slip.zip
+)
+for relative in "${skill_fixture_files[@]}"; do
+  git -C "$contracts_repo" show "$contracts_commit:tests/fixtures/skills/bundle-v1/$relative" >"$source_skill_fixtures/$relative"
+done
+mkdir -p "$source_host_skill_fixtures"
+host_skill_fixture_files=(
+  scan-request.json
+  install-request.json
+  enabled-request.json
+  uninstall-request.json
+  list-response.json
+  mutation-response.json
+  error-archive-unsafe.json
+)
+for relative in "${host_skill_fixture_files[@]}"; do
+  git -C "$contracts_repo" show "$contracts_commit:tests/fixtures/agent/host-skills-v1/$relative" >"$source_host_skill_fixtures/$relative"
+done
 git -C "$contracts_repo" show "$contracts_commit:tests/fixtures/agent/resources-v3/synthetic-video-16x16.mp4.base64" >"$source_synthetic_video"
 git -C "$contracts_repo" show "$contracts_commit:package.json" >"$source_package"
 
@@ -75,6 +122,31 @@ sha256_file() {
   fi
 }
 
+fixture_snapshot_sha256() {
+  local root="$1"
+  shift
+  while IFS= read -r relative; do
+    printf '%s\0%s\n' "$relative" "$(sha256_file "$root/$relative")"
+  done < <(printf '%s\n' "$@" | LC_ALL=C sort) |
+    if command -v shasum >/dev/null 2>&1; then shasum -a 256 | awk '{ print $1 }'; else sha256sum | awk '{ print $1 }'; fi
+}
+
+assert_source_fixture_set() {
+  local source_prefix="$1"
+  shift
+  local expected actual
+  expected="$(printf '%s\n' "$@" | LC_ALL=C sort)"
+  actual="$(git -C "$contracts_repo" ls-tree -r --name-only "$contracts_commit" -- "$source_prefix" |
+    sed "s#^$source_prefix/##" | LC_ALL=C sort)"
+  if [ "$actual" != "$expected" ]; then
+    echo "Contracts fixture set drifted from the synchronized allowlist: $source_prefix" >&2
+    exit 1
+  fi
+}
+
+assert_source_fixture_set "tests/fixtures/skills/bundle-v1" "${skill_fixture_files[@]}"
+assert_source_fixture_set "tests/fixtures/agent/host-skills-v1" "${host_skill_fixture_files[@]}"
+
 decode_base64_file() {
   local source="$1"
   local destination="$2"
@@ -92,13 +164,22 @@ decode_base64_file "$source_synthetic_video" "$decoded_synthetic_video"
 synthetic_video_tree="$(git -C "$contracts_repo" rev-parse "$contracts_commit:tests/fixtures/agent/resources-v3")"
 synthetic_video_raw_size="$(wc -c <"$decoded_synthetic_video" | tr -d '[:space:]')"
 
-mkdir -p "$repo_root/api/openapi" "$repo_root/api/compatibility" "$repo_root/api/jsonschema" "$repo_root/internal/session/fixtures"
+mkdir -p "$repo_root/api/openapi" "$repo_root/api/compatibility" "$repo_root/api/jsonschema" \
+  "$repo_root/api/fixtures/skills/bundle-v1/packages" "$repo_root/api/fixtures/agent/host-skills-v1" \
+  "$repo_root/internal/session/fixtures"
 cp "$source_openapi" "$repo_root/api/openapi/agent-host.yaml"
 cp "$source_compatibility" "$repo_root/api/compatibility/agent-host-runtime-v1.json"
 cp "$source_event_schema" "$repo_root/api/jsonschema/agent-session-event.schema.json"
 cp "$source_event_v2_schema" "$repo_root/api/jsonschema/agent-session-event-v2.schema.json"
 cp "$source_event_v3_schema" "$repo_root/api/jsonschema/agent-session-event-v3.schema.json"
 cp "$source_report_v1_schema" "$repo_root/api/jsonschema/report-document-v1.schema.json"
+cp "$source_skill_bundle_schema" "$repo_root/api/jsonschema/skill-bundle-manifest-v1.schema.json"
+for relative in "${skill_fixture_files[@]}"; do
+  cp "$source_skill_fixtures/$relative" "$repo_root/api/fixtures/skills/bundle-v1/$relative"
+done
+for relative in "${host_skill_fixture_files[@]}"; do
+  cp "$source_host_skill_fixtures/$relative" "$repo_root/api/fixtures/agent/host-skills-v1/$relative"
+done
 cp "$source_synthetic_video" "$repo_root/internal/session/fixtures/synthetic-video-16x16.mp4.base64"
 
 lock_file="$repo_root/api/contracts.lock"
@@ -115,6 +196,11 @@ temporary_lock="$lock_file.tmp"
   printf 'AGENT_SESSION_EVENT_V2_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event-v2.schema.json")"
   printf 'AGENT_SESSION_EVENT_V3_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event-v3.schema.json")"
   printf 'REPORT_DOCUMENT_V1_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/report-document-v1.schema.json")"
+  printf 'SKILL_BUNDLE_MANIFEST_V1_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/skill-bundle-manifest-v1.schema.json")"
+  printf 'SKILL_BUNDLE_FIXTURE_TREE=%s\n' "$(git -C "$contracts_repo" rev-parse "$contracts_commit:tests/fixtures/skills/bundle-v1")"
+  printf 'SKILL_BUNDLE_FIXTURE_SNAPSHOT_SHA256=%s\n' "$(fixture_snapshot_sha256 "$repo_root/api/fixtures/skills/bundle-v1" "${skill_fixture_files[@]}")"
+  printf 'HOST_SKILLS_V1_FIXTURE_TREE=%s\n' "$(git -C "$contracts_repo" rev-parse "$contracts_commit:tests/fixtures/agent/host-skills-v1")"
+  printf 'HOST_SKILLS_V1_FIXTURE_SNAPSHOT_SHA256=%s\n' "$(fixture_snapshot_sha256 "$repo_root/api/fixtures/agent/host-skills-v1" "${host_skill_fixture_files[@]}")"
   printf 'SYNTHETIC_VIDEO_FIXTURE_SOURCE=%s\n' 'tests/fixtures/agent/resources-v3/synthetic-video-16x16.mp4.base64'
   printf 'SYNTHETIC_VIDEO_FIXTURE_TREE=%s\n' "$synthetic_video_tree"
   printf 'SYNTHETIC_VIDEO_FIXTURE_SOURCE_SHA256=%s\n' "$(sha256_file "$source_synthetic_video")"

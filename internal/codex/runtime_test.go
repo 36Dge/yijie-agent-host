@@ -49,7 +49,7 @@ func TestRuntimeHelperProcess(t *testing.T) {
 	}
 
 	mode := os.Getenv("YIJIE_FAKE_MODE")
-	if mode == "baseline2" || mode == "title" || mode == "multimodal" {
+	if mode == "baseline2" || mode == "title" || mode == "multimodal" || mode == "dynamic_tool" {
 		expectedKey := "test-minimax-key"
 		if mode == "title" {
 			expectedKey = "synthetic-test-key"
@@ -77,7 +77,8 @@ func TestRuntimeHelperProcess(t *testing.T) {
 		switch message.Method {
 		case "initialize":
 			capabilities, ok := message.Params["capabilities"].(map[string]any)
-			if !ok || capabilities["experimentalApi"] != false {
+			wantExperimental := mode == "dynamic_tool"
+			if !ok || capabilities["experimentalApi"] != wantExperimental {
 				os.Exit(23)
 			}
 			if mode == "timeout" {
@@ -121,12 +122,28 @@ func TestRuntimeHelperProcess(t *testing.T) {
 				})
 			}
 		case "thread/start":
-			if mode != "baseline2" && mode != "title" && mode != "feat126_fake" && mode != "multimodal" {
+			if mode != "baseline2" && mode != "title" && mode != "feat126_fake" && mode != "multimodal" && mode != "dynamic_tool" {
 				os.Exit(29)
 			}
 			if message.Params["model"] != MiniMaxModel || message.Params["modelProvider"] != MiniMaxProviderID ||
 				message.Params["approvalPolicy"] != "never" || message.Params["sandbox"] != "read-only" {
 				os.Exit(30)
+			}
+			if mode == "dynamic_tool" {
+				tools, ok := message.Params["dynamicTools"].([]any)
+				tool, toolOK := map[string]any(nil), false
+				if ok && len(tools) == 1 {
+					tool, toolOK = tools[0].(map[string]any)
+				}
+				schema, schemaOK := tool["inputSchema"].(map[string]any)
+				if !toolOK || tool["name"] != DynamicToolGenerateImage || !schemaOK || schema["additionalProperties"] != false ||
+					!strings.Contains(message.Params["developerInstructions"].(string), "explicitly allowed in this read-only session") ||
+					!strings.Contains(message.Params["developerInstructions"].(string), "Never call it for ordinary image viewing or analysis") {
+					os.Exit(37)
+				}
+				if resultFile := os.Getenv("YIJIE_FAKE_RESULT_FILE"); resultFile != "" {
+					_ = os.WriteFile(resultFile, []byte("dynamic_registered"), 0o600)
+				}
 			}
 			if mode == "title" {
 				if message.Params["ephemeral"] != true {
@@ -646,6 +663,36 @@ func TestManagerBaseline2ThreadTurnMethods(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for delete notification forwarding")
+	}
+}
+
+func TestManagerEnablesExperimentalAPIAndRegistersClosedImageToolOnlyWhenConfigured(t *testing.T) {
+	resultFile := filepath.Join(t.TempDir(), "dynamic-tool-result")
+	t.Setenv("YIJIE_FAKE_MODE", "dynamic_tool")
+	t.Setenv("YIJIE_FAKE_RESULT_FILE", resultFile)
+	config := newRuntimeFixture(t)
+	config.MiniMax = MiniMaxConfig{Enabled: true, APIKey: "test-minimax-key"}
+	config.DynamicToolsEnabled = true
+	manager := NewManager(config, nil)
+	if err := manager.SetDynamicToolHandler(func(context.Context, DynamicToolCall) DynamicToolResult {
+		return DynamicToolResult{Success: true, Text: "published"}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = manager.Shutdown(ctx)
+	})
+	if _, err := manager.StartThread(context.Background(), t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(resultFile)
+	if err != nil || string(content) != "dynamic_registered" || !manager.Snapshot().ExperimentalAPI {
+		t.Fatalf("dynamic tool registration failed: content=%q status=%+v err=%v", content, manager.Snapshot(), err)
 	}
 }
 

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "catalog_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "scanned_at": "2026-08-25T00:00:00Z",
+  "skills": [
+    {
+      "id": "yijie.content-marketing.copywriting",
+      "runtime_name": "copywriting",
+      "version": "0.1.0",
+      "catalog_status": "installable",
+      "maintenance_status": "maintained",
+      "capability_readiness": "ready",
+      "installation_status": "not_installed",
+      "enabled": false,
+      "runtime_visible": false,
+      "failure_code": ""
+    }
+  ]
+}

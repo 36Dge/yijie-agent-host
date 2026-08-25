@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "archive_unsafe",
+    "message": "Skill archive failed safety validation"
+  }
+}

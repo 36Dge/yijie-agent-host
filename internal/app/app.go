@@ -30,22 +30,25 @@ const (
 )
 
 type Config struct {
-	Environment           string
-	Port                  string
-	HostHome              string
-	Runtime               codex.Config
-	RawReasoningV2Enabled bool
-	TitleV2Enabled        bool
-	CleanupV2Enabled      bool
-	MultimodalV2Enabled   bool
-	ArtifactV3Enabled     bool
-	ArtifactSynthetic     bool
-	ArtifactManifest      string
-	InstanceNonce         string
-	FEAT126TestParentPID  int
-	FEAT126TestRunID      string
-	FEAT126TestProfile    string
-	FEAT126ProjectDir     string
+	Environment            string
+	Port                   string
+	HostHome               string
+	ParentPID              int
+	Runtime                codex.Config
+	RawReasoningV2Enabled  bool
+	TitleV2Enabled         bool
+	CleanupV2Enabled       bool
+	MultimodalV2Enabled    bool
+	ArtifactV3Enabled      bool
+	ArtifactSynthetic      bool
+	ArtifactManifest       string
+	ImageGenerationEnabled bool
+	InstanceNonce          string
+	FEAT126TestParentPID   int
+	FEAT126TestRunID       string
+	FEAT126TestProfile     string
+	FEAT126ProjectDir      string
+	Skills                 SkillFeatureConfig
 }
 
 type RuntimeStatusProvider interface {
@@ -62,13 +65,18 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if validateDirectory == nil {
 		return Config{}, errors.New("directory authority validator is required")
 	}
+	startupParentPID := os.Getppid()
+	parentPID, err := parseAgentHostParentPID(os.Getenv("YIJIE_AGENT_HOST_PARENT_PID"), startupParentPID)
+	if err != nil {
+		return Config{}, err
+	}
 	runtimeConfig := codex.DefaultConfig()
 	runtimeConfig.BinaryPath = os.Getenv("YIJIE_CODEX_BINARY")
 	runtimeConfig.ManifestPath = os.Getenv("YIJIE_CODEX_MANIFEST")
 	runtimeConfig.CodexHome = os.Getenv("YIJIE_CODEX_HOME")
 
 	provider := os.Getenv("YIJIE_MODEL_PROVIDER")
-	fakeProfile, err := loadFEAT126FakeResponsesProfile(validateDirectory)
+	fakeProfile, err := loadFEAT126FakeResponsesProfile(validateDirectory, startupParentPID)
 	if err != nil {
 		return Config{}, err
 	}
@@ -99,6 +107,9 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	testParentPID := 0
 	if fakeProfile.Enabled {
 		testParentPID, _ = strconv.Atoi(os.Getenv("YIJIE_FEAT126_S10_PARENT_PID"))
+		if parentPID == 0 {
+			parentPID = testParentPID
+		}
 	}
 
 	if runtimeConfig.StartupTimeout, err = durationEnv("YIJIE_CODEX_STARTUP_TIMEOUT", runtimeConfig.StartupTimeout); err != nil {
@@ -136,6 +147,10 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		return Config{}, err
 	}
 	artifactV3, err := boolEnv("YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	imageGeneration, err := exactBoolEnv("YIJIE_FEAT128_IMAGE_GENERATION_ENABLED")
 	if err != nil {
 		return Config{}, err
 	}
@@ -177,6 +192,11 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if syntheticArtifact && !artifactV3 {
 		return Config{}, errors.New("FEAT-128 synthetic profile requires the v3 Artifact capability")
 	}
+	if imageGeneration && (environment != "local" || !artifactV3 || !multimodalV2 || !runtimeConfig.MiniMax.Enabled ||
+		runtimeConfig.FakeResponses.Enabled || syntheticArtifact) {
+		return Config{}, errors.New("FEAT-128 image generation requires the exact local MiniMax and v3 Artifact conjunction")
+	}
+	runtimeConfig.DynamicToolsEnabled = imageGeneration
 	if feat128S10Profile && (environment != "local" || !artifactV3 || !syntheticArtifact ||
 		artifactManifest != session.SyntheticArtifactManifest || !runtimeConfig.FakeResponses.Enabled ||
 		runtimeConfig.MiniMax.Enabled) {
@@ -212,24 +232,34 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 			return Config{}, err
 		}
 	}
+	skillFeature, err := loadSkillFeatureConfig()
+	if err != nil {
+		return Config{}, err
+	}
+	if err := validateSkillHostAuthority(skillFeature, hostHome); err != nil {
+		return Config{}, err
+	}
 
 	return Config{
-		Environment:           environment,
-		Port:                  env("YIJIE_AGENT_HOST_PORT", "18080"),
-		HostHome:              hostHome,
-		Runtime:               runtimeConfig,
-		RawReasoningV2Enabled: rawV2,
-		TitleV2Enabled:        titleV2,
-		CleanupV2Enabled:      cleanupV2,
-		MultimodalV2Enabled:   multimodalV2,
-		ArtifactV3Enabled:     artifactV3,
-		ArtifactSynthetic:     syntheticArtifact,
-		ArtifactManifest:      artifactManifest,
-		InstanceNonce:         instanceNonce,
-		FEAT126TestParentPID:  testParentPID,
-		FEAT126TestRunID:      fakeProfile.RunID,
-		FEAT126TestProfile:    feat126TestProfileName(fakeProfile),
-		FEAT126ProjectDir:     feat126ProjectDirectory,
+		Environment:            environment,
+		Port:                   env("YIJIE_AGENT_HOST_PORT", "18080"),
+		HostHome:               hostHome,
+		ParentPID:              parentPID,
+		Runtime:                runtimeConfig,
+		RawReasoningV2Enabled:  rawV2,
+		TitleV2Enabled:         titleV2,
+		CleanupV2Enabled:       cleanupV2,
+		MultimodalV2Enabled:    multimodalV2,
+		ArtifactV3Enabled:      artifactV3,
+		ArtifactSynthetic:      syntheticArtifact,
+		ArtifactManifest:       artifactManifest,
+		ImageGenerationEnabled: imageGeneration,
+		InstanceNonce:          instanceNonce,
+		FEAT126TestParentPID:   testParentPID,
+		FEAT126TestRunID:       fakeProfile.RunID,
+		FEAT126TestProfile:     feat126TestProfileName(fakeProfile),
+		FEAT126ProjectDir:      feat126ProjectDirectory,
+		Skills:                 skillFeature,
 	}, nil
 }
 
@@ -274,7 +304,7 @@ func feat126TestProfileName(profile codex.FakeResponsesConfig) string {
 	return ""
 }
 
-func loadFEAT126FakeResponsesProfile(validateDirectory directoryAuthorityValidator) (codex.FakeResponsesConfig, error) {
+func loadFEAT126FakeResponsesProfile(validateDirectory directoryAuthorityValidator, startupParentPID int) (codex.FakeResponsesConfig, error) {
 	const (
 		masterKey          = "YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED"
 		runIDKey           = "YIJIE_FEAT126_S10_RUN_ID"
@@ -305,7 +335,7 @@ func loadFEAT126FakeResponsesProfile(validateDirectory directoryAuthorityValidat
 		return codex.FakeResponsesConfig{}, errors.New("YIJIE_FEAT126_FAKE_RESPONSES_BASE_URL must use the fixed loopback endpoint")
 	}
 	parsedParentPID, err := strconv.Atoi(parentPID)
-	if err != nil || parsedParentPID <= 0 || parsedParentPID != os.Getppid() {
+	if err != nil || parsedParentPID <= 0 || parsedParentPID != startupParentPID {
 		return codex.FakeResponsesConfig{}, errors.New("YIJIE_FEAT126_S10_PARENT_PID must match the Host parent process")
 	}
 	cleanLogDir, err := validateDirectory(hostLogDir, "YIJIE_FEAT126_S10_HOST_LOG_DIR")
@@ -326,6 +356,17 @@ func loadFEAT126FakeResponsesProfile(validateDirectory directoryAuthorityValidat
 	return codex.FakeResponsesConfig{
 		Enabled: true, BaseURL: baseURL, RunID: runID, FixtureID: codex.FEAT126FakeFixtureID,
 	}, nil
+}
+
+func parseAgentHostParentPID(value string, startupParentPID int) (int, error) {
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 1 || strconv.Itoa(parsed) != value || parsed != startupParentPID {
+		return 0, errors.New("YIJIE_AGENT_HOST_PARENT_PID must exactly match the Host parent process")
+	}
+	return parsed, nil
 }
 
 func validateOwnerOnlyDirectoryAuthority(value, authority string) (string, error) {
@@ -430,7 +471,13 @@ type artifactSessionService interface {
 	AcknowledgeArtifact(string, string, session.ArtifactAcknowledgement) (session.ArtifactReceipt, error)
 }
 
-func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionService, apiToken string) http.Handler {
+func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionService, apiToken string, options ...HandlerOption) http.Handler {
+	handlerOptions := handlerOptions{}
+	for _, option := range options {
+		if option != nil {
+			option(&handlerOptions)
+		}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		setInstanceNonceHeader(w, config.InstanceNonce)
@@ -522,6 +569,7 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 			}
 		}
 	}
+	registerSkillRoutes(mux, config.Skills, handlerOptions.skillService, apiToken)
 	return mux
 }
 
@@ -1355,4 +1403,15 @@ func boolEnv(key string, fallback bool) (bool, error) {
 		return false, fmt.Errorf("parse %s: %w", key, err)
 	}
 	return parsed, nil
+}
+
+func exactBoolEnv(key string) (bool, error) {
+	switch os.Getenv(key) {
+	case "", "false":
+		return false, nil
+	case "true":
+		return true, nil
+	default:
+		return false, fmt.Errorf("%s must be exact true or false", key)
+	}
 }

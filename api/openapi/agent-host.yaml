@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Yijie Agent Host Local API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     Local loopback HTTP and Server-Sent Events contract for the Yijie Desktop
     Agent Host sidecar. The Host is a thin adapter over the pinned Codex Runtime;
@@ -9,7 +9,15 @@ info:
 
     The three system endpoints are unauthenticated so the process can be
     diagnosed before Runtime initialization. Every session, turn, and event
-    endpoint requires the owner-only bearer token generated in the Host home.
+    endpoint and every Skill management endpoint requires the owner-only bearer
+    token generated in the Host home.
+
+    In the exact `YIJIE_ENV=local` + `YIJIE_LOCAL_PROFILE=demo_fast` Desktop
+    profile, the native launcher establishes a fixed local identity with the
+    declared capabilities and supplies this bearer transparently. The user sees
+    no login, account-authentication, or permission-prompt flow. This usability
+    rule does not remove the process boundary and must not be enabled for a
+    public or production listener.
 
     This document is authoritative for HTTP paths, authentication, request and
     response envelopes, status codes, headers, and SSE framing. The JSON value
@@ -37,6 +45,8 @@ tags:
     description: Process-local, bounded SSE replay and live delivery.
   - name: Artifacts
     description: Owner-only v3 structured-artifact content, poster, and commit acknowledgement.
+  - name: Skills
+    description: Owner-only local Skill catalog, installation state, and Runtime visibility management.
 paths:
   /healthz:
     get:
@@ -1049,6 +1059,227 @@ paths:
           $ref: "#/components/responses/ArtifactExpired"
         "500":
           $ref: "#/components/responses/ArtifactInternalError"
+  /v1/skills:
+    get:
+      operationId: listManagedSkills
+      summary: List the bundled catalog and current managed Skill state
+      description: |
+        Returns a content-free projection of the bundled catalog, the managed
+        installation directory, and the current Runtime visibility state. It
+        never returns an archive path, App Data path, SKILL.md content, token, or
+        arbitrary filesystem metadata. Unknown Runtime Skills outside the
+        Desktop-managed root are not included.
+
+        `plugin.read` is required in addition to the owner-only local bearer.
+        The capability is an allow-only local profile decision and is never
+        inferred from possession of the bearer token.
+      tags: [Skills]
+      x-yijie-required-capability: plugin.read
+      responses:
+        "200":
+          description: Current bounded Skill catalog and state projection.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillListResponse"
+        "401":
+          $ref: "#/components/responses/SkillUnauthorized"
+        "403":
+          $ref: "#/components/responses/SkillForbidden"
+        "500":
+          $ref: "#/components/responses/SkillInternalError"
+        "503":
+          $ref: "#/components/responses/SkillUnavailable"
+  /v1/skills/scan-operations:
+    post:
+      operationId: scanManagedSkills
+      summary: Reconcile the managed Skill directory with the bundled catalog
+      description: |
+        Performs an idempotent bounded scan of the preconfigured Desktop-managed
+        Skill root. The request accepts no path. Host canonicalizes its configured
+        root, ignores unknown directories, rejects invalid receipts, stops
+        projecting missing or corrupt Skills, and refreshes Runtime state through
+        the pinned Skills API. The same `operation_id` and reason may return the
+        completed result; reuse with different canonical input is a conflict.
+      tags: [Skills]
+      x-yijie-required-capability: plugin.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillScanRequest"
+      responses:
+        "200":
+          description: Scan completed and the response reflects the converged managed state.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillScanResponse"
+        "400":
+          $ref: "#/components/responses/SkillBadRequest"
+        "401":
+          $ref: "#/components/responses/SkillUnauthorized"
+        "403":
+          $ref: "#/components/responses/SkillForbidden"
+        "409":
+          $ref: "#/components/responses/SkillConflict"
+        "500":
+          $ref: "#/components/responses/SkillInternalError"
+        "503":
+          $ref: "#/components/responses/SkillUnavailable"
+  /v1/skills/{skill_id}/install-operations:
+    parameters:
+      - $ref: "#/components/parameters/SkillId"
+    post:
+      operationId: installManagedSkill
+      summary: Install one catalog Skill from the preconfigured bundled resource root
+      description: |
+        Installs only the exact catalog entry named by `skill_id`. Desktop binds
+        the request to its catalog view with the expected version, archive digest,
+        and catalog revision; it never supplies an archive or destination path.
+        Host must require a manifest entry whose provenance and redistribution
+        reviews are verified and whose catalog status is `installable`, validate
+        SHA-256, file count, expanded size, relative ZIP entries, regular-file
+        types, and the required SKILL.md, then commit through a same-volume staging
+        directory and atomic rename. A failure leaves no registered partial copy
+        and preserves any previously usable version. Successful first install is
+        enabled by default and becomes visible from the next Runtime Skill snapshot.
+
+        The same canonical request and `operation_id` is idempotent. Reuse with
+        different input returns `skill_operation_conflict`.
+      tags: [Skills]
+      x-yijie-required-capability: plugin.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillInstallRequest"
+      responses:
+        "200":
+          description: Installation and Runtime projection completed.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillMutationResponse"
+        "400":
+          $ref: "#/components/responses/SkillBadRequest"
+        "401":
+          $ref: "#/components/responses/SkillUnauthorized"
+        "403":
+          $ref: "#/components/responses/SkillForbidden"
+        "404":
+          $ref: "#/components/responses/SkillNotFound"
+        "409":
+          $ref: "#/components/responses/SkillConflict"
+        "422":
+          $ref: "#/components/responses/SkillUnprocessable"
+        "500":
+          $ref: "#/components/responses/SkillInternalError"
+        "503":
+          $ref: "#/components/responses/SkillUnavailable"
+  /v1/skills/{skill_id}/enabled:
+    parameters:
+      - $ref: "#/components/parameters/SkillId"
+    put:
+      operationId: setManagedSkillEnabled
+      summary: Enable or disable one installed Skill
+      description: |
+        Persists the desired enabled state in the Desktop-managed root and maps
+        the exact canonical SKILL.md to Runtime `skills/config/write`. Disabling
+        keeps files installed but removes the Skill from the next model-visible
+        snapshot; enabling restores visibility from the next snapshot. The state
+        must be replayable after Desktop, Host, or Runtime restart. The request
+        contains no path and cannot target a Skill outside the managed catalog.
+        The same canonical enabled value and `operation_id` is idempotent; reuse
+        with a different value returns `skill_operation_conflict`.
+      tags: [Skills]
+      x-yijie-required-capability: plugin.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillEnabledRequest"
+      responses:
+        "200":
+          description: Enabled state and Runtime projection converged.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillMutationResponse"
+        "400":
+          $ref: "#/components/responses/SkillBadRequest"
+        "401":
+          $ref: "#/components/responses/SkillUnauthorized"
+        "403":
+          $ref: "#/components/responses/SkillForbidden"
+        "404":
+          $ref: "#/components/responses/SkillNotFound"
+        "409":
+          $ref: "#/components/responses/SkillConflict"
+        "500":
+          $ref: "#/components/responses/SkillInternalError"
+        "503":
+          $ref: "#/components/responses/SkillUnavailable"
+  /v1/skills/{skill_id}/uninstall-operations:
+    parameters:
+      - $ref: "#/components/parameters/SkillId"
+    post:
+      operationId: uninstallManagedSkill
+      summary: Uninstall one managed Skill copy
+      description: |
+        Stops Runtime projection, then removes only the exact canonical managed
+        installation directory and its receipt/disabled marker. It never deletes
+        the bundled read-only archive, source repository, arbitrary symlink target,
+        or path supplied by Desktop. The same canonical request and `operation_id`
+        is idempotent; a missing installation returns the converged not-installed
+        result while an unknown catalog ID remains `skill_not_found`.
+      tags: [Skills]
+      x-yijie-required-capability: plugin.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillUninstallRequest"
+      responses:
+        "200":
+          description: The managed copy is absent and no longer projected to Runtime.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillMutationResponse"
+        "400":
+          $ref: "#/components/responses/SkillBadRequest"
+        "401":
+          $ref: "#/components/responses/SkillUnauthorized"
+        "403":
+          $ref: "#/components/responses/SkillForbidden"
+        "404":
+          $ref: "#/components/responses/SkillNotFound"
+        "409":
+          $ref: "#/components/responses/SkillConflict"
+        "500":
+          $ref: "#/components/responses/SkillInternalError"
+        "503":
+          $ref: "#/components/responses/SkillUnavailable"
 components:
   securitySchemes:
     localBearer:
@@ -1086,6 +1317,16 @@ components:
       schema:
         type: string
         format: uuid
+    SkillId:
+      name: skill_id
+      in: path
+      required: true
+      description: Stable catalog identifier. It is resolved through the signed-in bundle manifest and is never interpreted as a path.
+      schema:
+        type: string
+        minLength: 3
+        maxLength: 128
+        pattern: "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$"
     TurnId:
       name: turn_id
       in: path
@@ -1229,6 +1470,101 @@ components:
             error:
               code: internal_error
               message: Agent Host operation failed
+    SkillBadRequest:
+      description: "`invalid_request`: the operation ID, Skill ID, version, digest, catalog revision, or closed request body is invalid."
+      x-yijie-error-codes: [invalid_request]
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SkillErrorResponse"
+    SkillUnauthorized:
+      description: "`unauthorized`: a valid owner-only local Agent Host bearer token is required."
+      x-yijie-error-codes: [unauthorized]
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SkillErrorResponse"
+    SkillForbidden:
+      description: "`capability_denied`: the exact local identity does not have the operation's declared plugin capability."
+      x-yijie-error-codes: [capability_denied]
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SkillErrorResponse"
+    SkillNotFound:
+      description: "`skill_not_found`: the stable Skill ID is absent from the loaded bundle catalog."
+      x-yijie-error-codes: [skill_not_found]
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SkillErrorResponse"
+    SkillConflict:
+      description: "`skill_operation_conflict` or `skill_busy`: the idempotency key was reused with different input or another mutation is active."
+      x-yijie-error-codes: [skill_operation_conflict, skill_busy]
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SkillErrorResponse"
+    SkillUnprocessable:
+      description: |
+        The catalog item cannot be installed safely: `skill_not_installable`,
+        `bundle_missing`, `bundle_manifest_invalid`, `archive_checksum_mismatch`,
+        `archive_unsafe`, or `archive_too_large`.
+      x-yijie-error-codes:
+        - skill_not_installable
+        - bundle_missing
+        - bundle_manifest_invalid
+        - archive_checksum_mismatch
+        - archive_unsafe
+        - archive_too_large
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SkillErrorResponse"
+    SkillUnavailable:
+      description: "`runtime_unavailable` or `runtime_sync_failed`: Runtime projection cannot currently converge."
+      x-yijie-error-codes: [runtime_unavailable, runtime_sync_failed]
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+        Retry-After:
+          description: Optional bounded delay before retrying the same idempotent operation.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 60
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SkillErrorResponse"
+    SkillInternalError:
+      description: "`install_failed`, `uninstall_failed`, `scan_failed`, or `internal_error` without any local path or archive content."
+      x-yijie-error-codes: [install_failed, uninstall_failed, scan_failed, internal_error]
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/SkillErrorResponse"
     TitleOperationConflict:
       description: "`title_operation_conflict`: the operation ID was already used with different canonical input."
       headers:
@@ -2051,6 +2387,210 @@ components:
                 - artifact_ack_conflict
                 - artifact_range_not_satisfiable
                 - artifact_resource_unavailable
+                - internal_error
+            message:
+              type: string
+              minLength: 1
+              maxLength: 256
+    SkillListResponse:
+      type: object
+      additionalProperties: false
+      required: [schema_version, catalog_revision, scanned_at, skills]
+      properties:
+        schema_version:
+          type: integer
+          format: int32
+          enum: [1]
+        catalog_revision:
+          $ref: "#/components/schemas/Sha256"
+        scanned_at:
+          type: string
+          format: date-time
+        skills:
+          type: array
+          maxItems: 256
+          items:
+            $ref: "#/components/schemas/ManagedSkill"
+    SkillScanResponse:
+      type: object
+      additionalProperties: false
+      required: [operation_id, outcome, catalog_revision, scanned_at, skills]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+          enum: [complete]
+        catalog_revision:
+          $ref: "#/components/schemas/Sha256"
+        scanned_at:
+          type: string
+          format: date-time
+        skills:
+          type: array
+          maxItems: 256
+          items:
+            $ref: "#/components/schemas/ManagedSkill"
+    SkillMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [operation_id, outcome, skill]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+          enum: [complete]
+        skill:
+          $ref: "#/components/schemas/ManagedSkill"
+    ManagedSkill:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - runtime_name
+        - version
+        - catalog_status
+        - maintenance_status
+        - capability_readiness
+        - installation_status
+        - enabled
+        - runtime_visible
+        - failure_code
+      properties:
+        id:
+          $ref: "#/components/schemas/SkillIdValue"
+        runtime_name:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        version:
+          $ref: "#/components/schemas/SemanticVersion"
+        catalog_status:
+          type: string
+          enum: [installable, blocked]
+        maintenance_status:
+          type: string
+          enum: [maintained, unmaintained]
+        capability_readiness:
+          type: string
+          enum: [ready, degraded, blocked]
+        installation_status:
+          type: string
+          enum: [not_installed, installing, installed, uninstalling, error]
+        enabled:
+          type: boolean
+          description: False when not installed or explicitly disabled.
+        runtime_visible:
+          type: boolean
+          description: True only after Runtime confirms the exact installed and enabled Skill in its current projection.
+        failure_code:
+          type: string
+          enum:
+            - ""
+            - bundle_missing
+            - bundle_manifest_invalid
+            - archive_checksum_mismatch
+            - archive_unsafe
+            - archive_too_large
+            - install_receipt_invalid
+            - installed_files_missing
+            - installed_files_corrupt
+            - capability_unavailable
+            - runtime_unavailable
+            - runtime_sync_failed
+            - install_failed
+            - uninstall_failed
+            - scan_failed
+    SkillScanRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id, reason]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          enum: [startup, page_open, app_upgrade, window_resume, directory_changed, user_retry]
+    SkillInstallRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id, expected_version, expected_archive_sha256, catalog_revision]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        expected_version:
+          $ref: "#/components/schemas/SemanticVersion"
+        expected_archive_sha256:
+          $ref: "#/components/schemas/Sha256"
+        catalog_revision:
+          $ref: "#/components/schemas/Sha256"
+    SkillEnabledRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id, enabled]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        enabled:
+          type: boolean
+    SkillUninstallRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+    SkillIdValue:
+      type: string
+      minLength: 3
+      maxLength: 128
+      pattern: "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$"
+    SemanticVersion:
+      type: string
+      pattern: "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    Sha256:
+      description: Lowercase SHA-256. When this schema is used by a property named `catalog_revision`, the digest is over the exact raw validated `bundle-manifest.json` bytes; install compares it in constant time without re-serialization or normalization.
+      type: string
+      pattern: "^[a-f0-9]{64}$"
+    SkillErrorResponse:
+      description: Content-free Skill management failure. It never contains a path, token, archive bytes, Skill instructions, or Runtime payload.
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - unauthorized
+                - capability_denied
+                - invalid_request
+                - skill_not_found
+                - skill_not_installable
+                - skill_operation_conflict
+                - skill_busy
+                - bundle_missing
+                - bundle_manifest_invalid
+                - archive_checksum_mismatch
+                - archive_unsafe
+                - archive_too_large
+                - install_failed
+                - uninstall_failed
+                - scan_failed
+                - runtime_unavailable
+                - runtime_sync_failed
                 - internal_error
             message:
               type: string

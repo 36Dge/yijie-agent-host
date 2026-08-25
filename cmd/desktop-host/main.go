@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -15,8 +16,10 @@ import (
 	"github.com/36Dge/yijie-agent-host/internal/app"
 	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	"github.com/36Dge/yijie-agent-host/internal/imagegen"
 	"github.com/36Dge/yijie-agent-host/internal/security"
 	"github.com/36Dge/yijie-agent-host/internal/session"
+	"github.com/36Dge/yijie-agent-host/internal/skills"
 )
 
 func main() {
@@ -44,6 +47,7 @@ func run(logger *slog.Logger) error {
 	var sessionService *session.Service
 	var sessionStore *session.Store
 	var artifactStore *artifact.Store
+	var skillService *skills.Service
 	var apiToken string
 	if config.HostHome != "" {
 		storeOptions := make([]session.StoreOption, 0, 1)
@@ -79,6 +83,13 @@ func run(logger *slog.Logger) error {
 				session.NewEventHubVersion(session.EventSchemaVersionV3, 512, 64), artifactStore, config.ArtifactSynthetic,
 			))
 		}
+		if config.ImageGenerationEnabled {
+			imageClient, imageErr := imagegen.NewMiniMaxClient(config.Runtime.MiniMax.APIKey)
+			if imageErr != nil {
+				return imageErr
+			}
+			serviceOptions = append(serviceOptions, session.WithImageGenerator(imageClient))
+		}
 		sessionService = session.NewService(
 			runtime,
 			sessionStore,
@@ -86,13 +97,40 @@ func run(logger *slog.Logger) error {
 			logger,
 			serviceOptions...,
 		)
-		if err := runtime.SetNotificationHandler(sessionService.HandleNotification); err != nil {
+		if config.ImageGenerationEnabled {
+			if err := runtime.SetDynamicToolHandler(sessionService.HandleDynamicToolCall); err != nil {
+				return err
+			}
+		}
+	}
+	if config.Skills.Enabled() {
+		skillService, err = skills.NewService(skills.Config{
+			BundleRoot:  config.Skills.BundleRoot,
+			ManagedRoot: config.Skills.InstallRoot,
+			Runtime:     runtime,
+		})
+		if err != nil {
+			return err
+		}
+		defer skillService.Close()
+	}
+	if sessionService != nil || skillService != nil {
+		if err := runtime.SetNotificationHandler(func(method string, params json.RawMessage) {
+			if sessionService != nil {
+				sessionService.HandleNotification(method, params)
+			}
+			if skillService != nil && method == codex.RuntimeNotificationSkillsChanged {
+				if err := skillService.HandleRuntimeNotification(params); err != nil {
+					logger.Warn("ignored invalid Runtime Skills notification", "failure_code", "skills_changed_invalid")
+				}
+			}
+		}); err != nil {
 			return err
 		}
 	}
 	server := &http.Server{
 		Addr:              "127.0.0.1:" + config.Port,
-		Handler:           app.NewHandler(config, runtime, sessionService, apiToken),
+		Handler:           app.NewHandler(config, runtime, sessionService, apiToken, app.WithSkillService(skillService)),
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      0,
 		IdleTimeout:       30 * time.Second,
@@ -102,6 +140,9 @@ func run(logger *slog.Logger) error {
 	defer cancelRuntime()
 	if artifactStore != nil {
 		go artifactStore.RunJanitor(runtimeCtx, time.Minute)
+	}
+	if skillService != nil {
+		go skillService.Run(runtimeCtx)
 	}
 	runtimeStarted := make(chan struct{})
 	go func() {
@@ -123,15 +164,19 @@ func run(logger *slog.Logger) error {
 	watchdogContext, cancelWatchdog := context.WithCancel(context.Background())
 	defer cancelWatchdog()
 	var parentExited <-chan struct{}
-	if config.FEAT126TestParentPID != 0 {
-		parentExited = watchParent(watchdogContext, config.FEAT126TestParentPID, 100*time.Millisecond, os.Getppid)
+	if config.ParentPID != 0 {
+		parentExited = watchParent(watchdogContext, config.ParentPID, 100*time.Millisecond, os.Getppid)
 	}
 
 	var serveErr error
 	select {
 	case <-stop:
 	case <-parentExited:
-		logger.Warn("FEAT-126 test parent exited", "failure_code", "test_parent_exited")
+		if config.FEAT126TestParentPID != 0 {
+			logger.Warn("FEAT-126 test parent exited", "failure_code", "test_parent_exited")
+		} else {
+			logger.Warn("Agent Host parent exited", "failure_code", "parent_exited")
+		}
 	case err := <-serverErrors:
 		if !errors.Is(err, http.ErrServerClosed) {
 			serveErr = fmt.Errorf("serve HTTP: %w", err)

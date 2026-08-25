@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "bundle_id": "yijie.desktop.skill-packages",
+  "bundle_version": "0.1.0",
+  "distribution_channel": "desktop-release",
+  "source": {
+    "repository": "https://github.com/36Dge/yijie-contracts.git",
+    "revision_kind": "git-commit",
+    "revision": "1111111111111111111111111111111111111111",
+    "tree_sha256": "7b8fd089aa498c3c4e55b9657c7f3498e52fd7e83ad01b84fe3043b49e3c2f57"
+  },
+  "skills": [
+    {
+      "id": "yijie.fixture.model-only",
+      "runtime_name": "yijie-fixture-model-only",
+      "category": "content-marketing",
+      "order": 0,
+      "display_name": "合成模型技能",
+      "description": "仅用于验证 Desktop 本地 Skill Bundle 契约与归档安全边界。",
+      "version": "0.1.0",
+      "entrypoint": "SKILL.md",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "edit"
+      },
+      "risk": {
+        "level": "low",
+        "reasons": [
+          "合成 fixture，不访问网络、文件系统或外部工具。"
+        ]
+      },
+      "provenance": {
+        "source_type": "internal",
+        "source_reference": "tests/fixtures/skills/bundle-v1/source/model-only",
+        "source_version": "0.1.0",
+        "source_sha256": "7b8fd089aa498c3c4e55b9657c7f3498e52fd7e83ad01b84fe3043b49e3c2f57",
+        "review_status": "verified",
+        "reviewed_by": "FEAT-129 contract fixture owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "CC0-1.0",
+        "redistribution_status": "verified",
+        "authorization_scope": "desktop-distribution",
+        "evidence_reference": "tests/fixtures/skills/bundle-v1/source/LICENSE",
+        "reviewed_by": "FEAT-129 contract fixture owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "model-only",
+        "network": "none",
+        "filesystem": "none",
+        "required_tools": []
+      },
+      "archive": {
+        "path": "packages/fixture-model-only-0.1.0.zip",
+        "sha256": "c8e52d29f4da7ffe7a2771c48f9439672d7cd269f7879439564e50c177f21ab6",
+        "compressed_size_bytes": 391,
+        "uncompressed_size_bytes": 187,
+        "file_count": 2
+      },
+      "release": {
+        "catalog_status": "installable",
+        "maintenance_status": "maintained"
+      }
+    }
+  ]
+}

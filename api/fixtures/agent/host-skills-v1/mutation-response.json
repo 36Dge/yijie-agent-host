@@ -1,0 +1,16 @@
+{
+  "operation_id": "019fbd88-cbc3-7bf1-934d-7b05cd693f71",
+  "outcome": "complete",
+  "skill": {
+    "id": "yijie.content-marketing.copywriting",
+    "runtime_name": "copywriting",
+    "version": "0.1.0",
+    "catalog_status": "installable",
+    "maintenance_status": "maintained",
+    "capability_readiness": "ready",
+    "installation_status": "installed",
+    "enabled": true,
+    "runtime_visible": true,
+    "failure_code": ""
+  }
+}

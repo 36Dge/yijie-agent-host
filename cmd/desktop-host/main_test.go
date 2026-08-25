@@ -54,3 +54,14 @@ func TestWatchParentSignalsOnlyAfterTheExpectedParentChanges(t *testing.T) {
 		t.Fatal("watchdog did not signal after parent exit")
 	}
 }
+
+func TestWatchParentSignalsWhenTheParentChangedBeforeWatching(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	exited := watchParent(ctx, 42, time.Hour, func() int { return 1 })
+	select {
+	case <-exited:
+	case <-time.After(time.Second):
+		t.Fatal("watchdog did not immediately detect an already exited parent")
+	}
+}

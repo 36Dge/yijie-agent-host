@@ -22,6 +22,8 @@ const (
 	RuntimeNotificationThreadDeleted = "thread/deleted"
 	RuntimeMethodTurnInterrupt       = "turn/interrupt"
 	RuntimeMethodTurnStart           = "turn/start"
+	RuntimeMethodDynamicToolCall     = "item/tool/call"
+	DynamicToolGenerateImage         = "generate_image"
 	SessionApprovalPolicy            = "never"
 	SessionSandbox                   = "read-only"
 )
@@ -42,6 +44,44 @@ func SupportedSessionRuntimeMethods() []string {
 }
 
 type NotificationHandler func(method string, params json.RawMessage)
+
+type DynamicToolCall struct {
+	ThreadID  string
+	TurnID    string
+	CallID    string
+	Tool      string
+	Arguments json.RawMessage
+}
+
+type DynamicToolResult struct {
+	Success bool
+	Text    string
+}
+
+type DynamicToolHandler func(context.Context, DynamicToolCall) DynamicToolResult
+
+type dynamicToolSpec struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"inputSchema"`
+}
+
+func imageGenerationToolSpec() dynamicToolSpec {
+	return dynamicToolSpec{
+		Name:        DynamicToolGenerateImage,
+		Description: "Generate one new real image from text, or generate one new image based on the current turn's single character reference. This is not a general image-editing or image-analysis tool.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"prompt":       map[string]any{"type": "string", "minLength": 1, "maxLength": 1500},
+				"mode":         map[string]any{"type": "string", "enum": []string{"text_to_image", "subject_reference"}},
+				"aspect_ratio": map[string]any{"type": "string", "enum": []string{"1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"}},
+			},
+			"required":             []string{"prompt", "mode"},
+			"additionalProperties": false,
+		},
+	}
+}
 
 type ThreadInfo struct {
 	ID             string
@@ -128,6 +168,53 @@ func (m *Manager) SetNotificationHandler(handler NotificationHandler) error {
 	return nil
 }
 
+func (m *Manager) SetDynamicToolHandler(handler DynamicToolHandler) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.started {
+		return errors.New("dynamic tool handler must be set before Runtime startup")
+	}
+	if m.config.DynamicToolsEnabled && handler == nil {
+		return errors.New("dynamic tool handler is required when Runtime dynamic tools are enabled")
+	}
+	m.dynamicToolHandler = handler
+	return nil
+}
+
+func (m *Manager) handleServerRequest(ctx context.Context, method string, raw json.RawMessage) (any, *RPCError) {
+	if method != RuntimeMethodDynamicToolCall || !m.config.DynamicToolsEnabled {
+		return nil, &RPCError{Code: methodNotFoundCode, Message: "Method not supported by Yijie Agent Host Runtime Baseline 2"}
+	}
+	var params struct {
+		ThreadID  string          `json:"threadId"`
+		TurnID    string          `json:"turnId"`
+		CallID    string          `json:"callId"`
+		Namespace *string         `json:"namespace"`
+		Tool      string          `json:"tool"`
+		Arguments json.RawMessage `json:"arguments"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&params); err != nil || params.ThreadID == "" || params.TurnID == "" ||
+		params.CallID == "" || params.Tool != DynamicToolGenerateImage || params.Namespace != nil || len(params.Arguments) == 0 {
+		return nil, &RPCError{Code: -32602, Message: "Invalid dynamic tool call"}
+	}
+	m.mu.Lock()
+	handler := m.dynamicToolHandler
+	m.mu.Unlock()
+	if handler == nil {
+		return nil, &RPCError{Code: -32603, Message: "Dynamic tool unavailable"}
+	}
+	result := handler(ctx, DynamicToolCall{
+		ThreadID: params.ThreadID, TurnID: params.TurnID, CallID: params.CallID,
+		Tool: params.Tool, Arguments: append(json.RawMessage(nil), params.Arguments...),
+	})
+	return struct {
+		ContentItems []map[string]string `json:"contentItems"`
+		Success      bool                `json:"success"`
+	}{ContentItems: []map[string]string{{"type": "inputText", "text": result.Text}}, Success: result.Success}, nil
+}
+
 func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, error) {
 	if !m.config.MiniMax.Enabled && !m.config.FakeResponses.Enabled {
 		return ThreadInfo{}, errors.New("model provider is not configured")
@@ -136,21 +223,29 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		return ThreadInfo{}, err
 	}
 	params := struct {
-		Model                 string `json:"model"`
-		ModelProvider         string `json:"modelProvider"`
-		Cwd                   string `json:"cwd"`
-		ApprovalPolicy        string `json:"approvalPolicy"`
-		Sandbox               string `json:"sandbox"`
-		DeveloperInstructions string `json:"developerInstructions"`
-		Ephemeral             bool   `json:"ephemeral"`
+		Model                 string            `json:"model"`
+		ModelProvider         string            `json:"modelProvider"`
+		Cwd                   string            `json:"cwd"`
+		ApprovalPolicy        string            `json:"approvalPolicy"`
+		Sandbox               string            `json:"sandbox"`
+		DeveloperInstructions string            `json:"developerInstructions"`
+		Ephemeral             bool              `json:"ephemeral"`
+		DynamicTools          []dynamicToolSpec `json:"dynamicTools,omitempty"`
 	}{
 		Model:                 MiniMaxModel,
 		ModelProvider:         MiniMaxProviderID,
 		Cwd:                   cwd,
 		ApprovalPolicy:        SessionApprovalPolicy,
 		Sandbox:               SessionSandbox,
-		DeveloperInstructions: "Runtime Baseline 2 is read-only. Do not modify files or request elevated permissions.",
+		DeveloperInstructions: "Runtime Baseline 2 is read-only for workspace and operating-system actions. Do not modify files or request elevated permissions.",
 		Ephemeral:             false,
+	}
+	if m.config.DynamicToolsEnabled {
+		if m.dynamicToolHandler == nil {
+			return ThreadInfo{}, errors.New("dynamic tool handler is not configured")
+		}
+		params.DeveloperInstructions += " The Host-owned generate_image dynamic tool is explicitly allowed in this read-only session and does not modify the workspace. It is the only permitted tool. Call generate_image exactly once only when the user explicitly asks to generate a new image, or to generate from the current turn's single character reference image. Never call it for ordinary image viewing or analysis, and never invent image output."
+		params.DynamicTools = []dynamicToolSpec{imageGenerationToolSpec()}
 	}
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadStart, params, &response); err != nil {
