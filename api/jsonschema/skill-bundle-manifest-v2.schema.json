@@ -1,0 +1,406 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.yijie.ai/skills/skill-bundle-manifest-v2.schema.json",
+  "title": "SkillBundleManifestV2",
+  "description": "Closed Catalog First manifest for bundled and metadata-only YiJie Desktop Skill entries.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "bundle_id",
+    "bundle_version",
+    "distribution_channel",
+    "source",
+    "skills"
+  ],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "bundle_id": {
+      "type": "string",
+      "const": "yijie.desktop.skill-packages"
+    },
+    "bundle_version": { "$ref": "#/$defs/semanticVersion" },
+    "distribution_channel": { "enum": ["local-development", "desktop-release"] },
+    "source": { "$ref": "#/$defs/bundleSource" },
+    "skills": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/skillEntry" }
+    }
+  },
+  "allOf": [
+      {
+        "if": {
+          "properties": { "distribution_channel": { "const": "desktop-release" } },
+          "required": ["distribution_channel"]
+        },
+        "then": {
+          "properties": {
+            "skills": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "if": {
+                  "properties": {
+                    "release": {
+                      "type": "object",
+                      "properties": { "catalog_status": { "const": "installable" } },
+                      "required": ["catalog_status"]
+                    }
+                  },
+                  "required": ["release"]
+                },
+                "then": {
+                  "properties": {
+                    "license": {
+                      "type": "object",
+                      "properties": { "authorization_scope": { "const": "desktop-distribution" } },
+                      "required": ["authorization_scope"]
+                    }
+                  },
+                  "required": ["license"]
+                }
+              }
+            }
+          }
+        }
+      }
+  ],
+  "$defs": {
+    "semanticVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "relativeReference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "bundleSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "revision_kind", "revision", "tree_sha256"],
+      "properties": {
+        "repository": { "type": "string", "format": "uri" },
+        "revision_kind": { "enum": ["git-commit", "working-tree"] },
+        "revision": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "tree_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "skillEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "runtime_name",
+        "category",
+        "order",
+        "display_name",
+        "description",
+        "version",
+        "icon",
+        "risk",
+        "provenance",
+        "license",
+        "capabilities",
+        "release"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$"
+        },
+        "runtime_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "sourcing-selection",
+            "market-research",
+            "content-marketing",
+            "traffic-advertising",
+            "store-operations"
+          ]
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "\\S"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "\\S"
+        },
+        "version": { "$ref": "#/$defs/semanticVersion" },
+        "catalog_entry_mode": { "enum": ["bundled", "catalog-only"] },
+        "entrypoint": { "const": "SKILL.md" },
+        "icon": { "$ref": "#/$defs/icon" },
+        "risk": { "$ref": "#/$defs/risk" },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "license": { "$ref": "#/$defs/license" },
+        "capabilities": { "$ref": "#/$defs/capabilities" },
+        "archive": { "$ref": "#/$defs/archive" },
+        "release": { "$ref": "#/$defs/release" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "release": {
+                "type": "object",
+                "properties": { "catalog_status": { "const": "installable" } },
+                "required": ["catalog_status"]
+              }
+            },
+            "required": ["release"]
+          },
+          "then": {
+            "required": ["entrypoint", "archive"],
+            "properties": {
+              "entrypoint": { "const": "SKILL.md" },
+              "archive": { "$ref": "#/$defs/archive" },
+              "provenance": {
+                "type": "object",
+                "properties": { "review_status": { "const": "verified" } },
+                "required": ["review_status"]
+              },
+              "license": {
+                "type": "object",
+                "properties": { "redistribution_status": { "const": "verified" } },
+                "required": ["redistribution_status"]
+              },
+              "release": {
+                "type": "object",
+                "properties": { "blocked_reason": false }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capabilities": {
+                "type": "object",
+                "properties": { "execution_mode": { "const": "model-only" } },
+                "required": ["execution_mode"]
+              }
+            },
+            "required": ["capabilities"]
+          },
+          "then": {
+            "properties": {
+              "capabilities": {
+                "type": "object",
+                "properties": {
+                  "network": { "const": "none" },
+                  "filesystem": { "const": "none" },
+                  "required_tools": { "type": "array", "maxItems": 0 }
+                },
+                "required": ["network", "filesystem", "required_tools"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "catalog_entry_mode": { "const": "catalog-only" } },
+            "required": ["catalog_entry_mode"]
+          },
+          "then": {
+            "properties": {
+              "entrypoint": false,
+              "archive": false,
+              "release": {
+                "type": "object",
+                "properties": {
+                  "catalog_status": { "const": "blocked" },
+                  "blocked_reason": {
+                    "enum": [
+                      "source_unverified",
+                      "license_unverified",
+                      "distribution_not_authorized",
+                      "security_review_pending",
+                      "capability_unavailable",
+                      "maintenance_ended"
+                    ]
+                  }
+                },
+                "required": ["catalog_status", "blocked_reason"]
+              },
+              "license": {
+                "type": "object",
+                "properties": {
+                  "redistribution_status": { "enum": ["unverified", "blocked"] },
+                  "authorization_scope": { "const": "none" }
+                },
+                "required": ["redistribution_status", "authorization_scope"]
+              }
+            }
+          },
+          "else": {
+            "required": ["entrypoint", "archive"],
+            "properties": {
+              "entrypoint": { "const": "SKILL.md" },
+              "archive": { "$ref": "#/$defs/archive" }
+            }
+          }
+        }
+      ]
+    },
+    "icon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registry", "key"],
+      "properties": {
+        "registry": { "const": "yj-icon-v1" },
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][A-Za-z0-9]*$"
+        }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "reasons"],
+      "properties": {
+        "level": { "enum": ["low", "medium", "high", "critical"] },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "\\S" }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_type",
+        "source_reference",
+        "source_version",
+        "source_sha256",
+        "review_status",
+        "reviewed_by",
+        "reviewed_at"
+      ],
+      "properties": {
+        "source_type": { "enum": ["internal", "partner", "third-party"] },
+        "source_reference": { "$ref": "#/$defs/relativeReference" },
+        "source_version": { "$ref": "#/$defs/semanticVersion" },
+        "source_sha256": { "$ref": "#/$defs/sha256" },
+        "review_status": { "enum": ["verified", "blocked"] },
+        "reviewed_by": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S" },
+        "reviewed_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "license": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expression",
+        "redistribution_status",
+        "authorization_scope",
+        "evidence_reference",
+        "reviewed_by",
+        "reviewed_at"
+      ],
+      "properties": {
+        "expression": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S" },
+        "redistribution_status": { "enum": ["verified", "unverified", "blocked"] },
+        "authorization_scope": { "enum": ["none", "local-development", "desktop-distribution"] },
+        "evidence_reference": { "$ref": "#/$defs/relativeReference" },
+        "reviewed_by": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "\\S" },
+        "reviewed_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["execution_mode", "network", "filesystem", "required_tools"],
+      "properties": {
+        "execution_mode": { "enum": ["model-only", "tool-assisted"] },
+        "network": { "enum": ["none", "optional", "required"] },
+        "filesystem": { "enum": ["none", "read", "write"] },
+        "required_tools": {
+          "type": "array",
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9_]*(?:[./-][a-z0-9_]+)*$"
+          }
+        }
+      }
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "compressed_size_bytes",
+        "uncompressed_size_bytes",
+        "file_count"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 14,
+          "maxLength": 240,
+          "pattern": "^packages/[a-z0-9][a-z0-9.-]*\\.zip$"
+        },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "compressed_size_bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "uncompressed_size_bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "file_count": { "type": "integer", "minimum": 1, "maximum": 2048 }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalog_status", "maintenance_status"],
+      "properties": {
+        "catalog_status": { "enum": ["installable", "blocked"] },
+        "maintenance_status": { "enum": ["maintained", "unmaintained"] },
+        "blocked_reason": {
+          "enum": [
+            "source_unverified",
+            "license_unverified",
+            "distribution_not_authorized",
+            "security_review_pending",
+            "capability_unavailable",
+            "maintenance_ended"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -16,7 +16,7 @@ Agent Host Runtime Baseline 2 已完成真实 thread/turn 的只读最小垂直�
 - 每进程事件流有独立 `stream_id` 和单调 `sequence`，支持有界进程内重放；
 - 会话 HTTP API 使用 Host 自动生成的本机 bearer token；Runtime 固定 `read-only`、`approvalPolicy=never`。
 - FEAT-128 提供默认关闭的 v3 Artifact SSE、encrypted staging、content/poster/ACK/range 与 strict-local synthetic producer；另有默认关闭的 MiniMax `image-01` 中国区文生图/单张人物参考生图 provider projection。
-- FEAT-129 提供精确 `local + demo_fast` 下的本地 Skill 查询、扫描、原子安装、启停和卸载，并只将当前 catalog 中 receipt 有效的具体 Skill 目录通过固定 Runtime Skills API 重放；HTTP 边界仍校验 owner-only bearer 与 `plugin.read`/`plugin.manage`。
+- FEAT-129 提供精确 `local + demo_fast` 下的本地 Skill 查询、扫描、原子安装、启停和卸载，精确消费 Contracts 0.5.1 / Manifest v2 与 `yijie-skills@0.3.0` 的 38 项目录，并只将当前 catalog 中 receipt 有效的具体 Skill 目录通过固定 Runtime Skills API 重放；HTTP 边界仍校验 owner-only bearer 与 `plugin.read`/`plugin.manage`。
 
 完整范围和证据见 [`docs/runtime-baseline-2.md`](docs/runtime-baseline-2.md)。Baseline 1 的产物与生命周期基线仍见 [`docs/runtime-baseline-1.md`](docs/runtime-baseline-1.md)。
 
@@ -76,7 +76,7 @@ export YIJIE_SKILL_BUNDLE_ROOT=/absolute/path/to/read-only/skill-packages
 export YIJIE_SKILL_INSTALL_ROOT=/absolute/path/to/private/app-data/skills
 ```
 
-两个根目录必须同时存在、为规范绝对路径且互不重叠；`YIJIE_AGENT_HOST_HOME` 也必须为规范绝对路径。正常 Desktop 流程透明读取并携带 Host bearer，用户不需要登录或手动授权，但直接调用 Host 不能绕过 bearer/capability 校验。内置包的 `desktop-distribution` 许可由 `yijie-skills` 发布治理负责，不因本地技术校验通过而自动获得。
+两个根目录必须同时存在、为规范绝对路径且互不重叠；`YIJIE_AGENT_HOST_HOME` 也必须为规范绝对路径。正常 Desktop 流程透明读取并携带 Host bearer，用户不需要登录或手动授权，但直接调用 Host 不能绕过 bearer/capability 校验。当前锁定的 `yijie-skills@0.3.0` 清单中 38 项均已声明并验证 `desktop-distribution`，正式产品目录不存在 blocked 条目。
 
 Runtime 不会注册整个 App Data 根；清单外目录、损坏安装和包含额外嵌套 `SKILL.md` 的包均 fail closed。operation ID 不做静默过期或裁剪；当前本地 journal 最多保留 4096 条，达到上限后新 operation 返回 `skill_busy`，旧 ID 仍保持重放/冲突语义。
 
@@ -109,19 +109,20 @@ PNG/JPEG 人物参考生图；普通看图/分析不会调用。Key 继续使用
 ## 验证
 
 ```bash
-YIJIE_CONTRACTS_REF=d6dff903e0c12b6a5e69599df1e33ef46d8bea6b make sync-contracts # 从不可变 0.5.0 local candidate 同步并重新生成 DTO
+YIJIE_CONTRACTS_REF=164b14f609537d727a52326832da04430aecc4ab make sync-contracts # 从不可变 0.5.1 commit 同步并重新生成 DTO
 make contract-check # 校验契约版本、快照哈希、相邻源和生成物，无网络依赖
+make skills-conformance # 重建并验证 yijie-skills@0.3.0 的 38 项双渠道包
 make lint           # gofmt、go vet 和 shell 语法
 make test           # 契约同步检查、race 单测和故障测试；不依赖真实 Runtime
-make runtime-test  # 固定产物握手、thread 与 Skills 生命周期；不请求模型
+make runtime-test  # 固定产物握手、thread 与真实 38 Skill Runtime 生命周期；不请求模型
 make runtime-turn-test # 显式真实测试，最多 2 次短 MiniMax 请求，不在 CI
 ```
 
-`api/contracts.lock` 固定当前消费的 `0.5.0` local candidate 完整 commit（尚无 tag、未发布）、
+`api/contracts.lock` 固定当前消费的 Contracts `0.5.1` 完整 commit（尚无 tag、未发布）、
 `oapi-codegen` identity/version，以及 OpenAPI、Runtime 兼容清单、Agent session
-event v1/v2/v3、ReportDocumentV1 与 Skill Bundle Manifest v1 JSON Schema 的 SHA-256，并精确快照 Skill 正常包、摘要损坏包和 Zip Slip 包。同步脚本拒绝 dirty source，并从已锁定 commit 的 Git
+event v1/v2/v3、ReportDocumentV1 与 Skill Bundle Manifest v1/v2 JSON Schema 的 SHA-256，并精确快照 v2 38 项目录及正常包、摘要损坏包和 Zip Slip 包。`api/skills.lock` 另行固定 `yijie-skills@0.3.0` commit、源码树、双渠道 Manifest 与 38 个归档清单摘要。同步脚本拒绝 dirty source，并从已锁定 commit 的 Git
 对象读取源文件；不得手改 `api/` 快照或 `internal/contracts/agenthost.gen.go`。测试会
-验证 ref provenance、generator、digest 与生成漂移。V1/v2 producer conformance 保持原有测试；
+验证 ref provenance、generator、digest 与生成漂移。Manifest v1 只保留兼容与恶意 fixture 回归，产品主路径是 v2；
 v3 S3 已实现但默认关闭，并由 schema、auth/range/integrity/ACK/TTL/restart/synthetic conformance tests 约束。
 这不代表真实 provider 的付费验证或端到端 Desktop UI 已完成。
 

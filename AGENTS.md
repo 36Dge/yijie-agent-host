@@ -71,13 +71,19 @@ Desktop 及端到端 UI 不在本仓完成范围内；不得把 synthetic 能力
 - 事件必须保留 `trace_id`、`task_id`、`agent_session_id` 和 `codex_thread_id` 的关联，并定义顺序、重复、断线重放和终态语义；
 - 超时、取消和用户中止必须沿 Desktop、Agent Host、Runtime 和工具调用链传播。
 
-当前 `api/contracts.lock` 已固定 FEAT-129 `0.5.0` local candidate `d6dff903e0c12b6a5e69599df1e33ef46d8bea6b` 的 OpenAPI、
-Runtime compatibility、Agent session event v1/v2/v3、ReportDocumentV1、Skill Bundle Manifest v1 与 Skill fixture 源 digest，以及
+当前 `api/contracts.lock` 已固定 FEAT-129 Contracts `0.5.1` commit `164b14f609537d727a52326832da04430aecc4ab` 的 OpenAPI、
+Runtime compatibility、Agent session event v1/v2/v3、ReportDocumentV1、Skill Bundle Manifest v1/v2 与 Skill fixture 源 digest，以及
 `oapi-codegen` identity/version；该 candidate 尚无 tag、未发布。`make sync-contracts` 只接受干净 Git
 仓库中可解析的完整 candidate commit 或匹配版本的不可移动 tag，并从该 commit 的 Git
 对象同步；`contract-check` 会验证 ref→commit、generator、digest、snapshot 与生成类型。
 因此当前契约来源锁阻塞项已经关闭，后续版本不得退回 dirty/floating sibling
 或只记录计划 tag 的做法。
+
+`api/skills.lock` 独立固定 `yijie-skills@0.3.0` commit
+`10c45bec29603b002e861e1499d5b4e684251af5`、源码树、双渠道 Manifest 和 38 个归档清单摘要。
+`make skills-conformance` 必须从该干净 commit 重新确定性生成 `local-development` 与
+`desktop-release` 包，并验证 38 项均 installable、分类 `5/9/7/9/8`、归档逐字节一致和完整生命周期。
+Manifest v1 仅保留向后兼容及固定恶意归档回归，不得作为 FEAT-129 产品目录主路径。
 
 `internal/session.Event/EventPayload` 当前是 JSON Schema 尚无 Go generator 时的显式
 adapter 例外，由 Agent Runtime Team 负责，并由 schema conformance test 约束。移除
@@ -143,6 +149,7 @@ make runtime-test  # 固定产物握手和 provider/thread 配置，不调用模
 make runtime-turn-test # 人工显式 MiniMax 垂直切片，最多 2 次短请求
 make sync-contracts # 从相邻 yijie-contracts 同步固定快照并生成 DTO
 make contract-check # 校验快照、版本、哈希及生成物；make test 会先执行
+make skills-conformance # 重建并验证 yijie-skills@0.3.0 的 38 项双渠道包
 make generate      # 仅从已锁定的本地 OpenAPI 快照生成 Go DTO
 make dev           # 启动 desktop-host；未配置 Runtime 时 readiness 为 false
 ```

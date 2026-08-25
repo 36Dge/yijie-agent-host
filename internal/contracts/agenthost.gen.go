@@ -505,6 +505,36 @@ func (e ManagedSkillCapabilityReadiness) Valid() bool {
 	}
 }
 
+// Defines values for ManagedSkillCatalogBlockedReason.
+const (
+	CapabilityUnavailable     ManagedSkillCatalogBlockedReason = "capability_unavailable"
+	DistributionNotAuthorized ManagedSkillCatalogBlockedReason = "distribution_not_authorized"
+	LicenseUnverified         ManagedSkillCatalogBlockedReason = "license_unverified"
+	MaintenanceEnded          ManagedSkillCatalogBlockedReason = "maintenance_ended"
+	SecurityReviewPending     ManagedSkillCatalogBlockedReason = "security_review_pending"
+	SourceUnverified          ManagedSkillCatalogBlockedReason = "source_unverified"
+)
+
+// Valid indicates whether the value is a known member of the ManagedSkillCatalogBlockedReason enum.
+func (e ManagedSkillCatalogBlockedReason) Valid() bool {
+	switch e {
+	case CapabilityUnavailable:
+		return true
+	case DistributionNotAuthorized:
+		return true
+	case LicenseUnverified:
+		return true
+	case MaintenanceEnded:
+		return true
+	case SecurityReviewPending:
+		return true
+	case SourceUnverified:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ManagedSkillCatalogStatus.
 const (
 	ManagedSkillCatalogStatusBlocked     ManagedSkillCatalogStatus = "blocked"
@@ -1502,7 +1532,13 @@ type HealthResponseStatus string
 // ManagedSkill defines model for ManagedSkill.
 type ManagedSkill struct {
 	CapabilityReadiness ManagedSkillCapabilityReadiness `json:"capability_readiness"`
-	CatalogStatus       ManagedSkillCatalogStatus       `json:"catalog_status"`
+
+	// CatalogBlockedReason Required by the Skills v1 semantic contract for every blocked catalog
+	// projection and omitted for an installable entry. It exposes exactly
+	// one stable primary reason and never includes source text, archive
+	// metadata, filesystem locations, or free-form upstream failure details.
+	CatalogBlockedReason *ManagedSkillCatalogBlockedReason `json:"catalog_blocked_reason,omitempty"`
+	CatalogStatus        ManagedSkillCatalogStatus         `json:"catalog_status"`
 
 	// Enabled False when not installed or explicitly disabled.
 	Enabled            bool                           `json:"enabled"`
@@ -1519,6 +1555,12 @@ type ManagedSkill struct {
 
 // ManagedSkillCapabilityReadiness defines model for ManagedSkill.CapabilityReadiness.
 type ManagedSkillCapabilityReadiness string
+
+// ManagedSkillCatalogBlockedReason Required by the Skills v1 semantic contract for every blocked catalog
+// projection and omitted for an installable entry. It exposes exactly
+// one stable primary reason and never includes source text, archive
+// metadata, filesystem locations, or free-form upstream failure details.
+type ManagedSkillCatalogBlockedReason string
 
 // ManagedSkillCatalogStatus defines model for ManagedSkill.CatalogStatus.
 type ManagedSkillCatalogStatus string

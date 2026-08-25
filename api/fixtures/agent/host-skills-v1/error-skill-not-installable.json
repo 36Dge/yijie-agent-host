@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "skill_not_installable",
+    "message": "The catalog-only Skill has no installable archive."
+  }
+}

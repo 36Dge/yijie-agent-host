@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -25,15 +26,62 @@ import (
 const fixtureSkillID = "yijie.fixture.model-only"
 
 type fixtureCatalog struct {
-	Skills []struct {
-		ID          string `json:"id"`
-		RuntimeName string `json:"runtime_name"`
-		Version     string `json:"version"`
-		Archive     struct {
-			Path   string `json:"path"`
-			SHA256 string `json:"sha256"`
-		} `json:"archive"`
-	} `json:"skills"`
+	SchemaVersion       int                   `json:"schema_version"`
+	BundleVersion       string                `json:"bundle_version"`
+	DistributionChannel string                `json:"distribution_channel"`
+	Source              fixtureCatalogSource  `json:"source"`
+	Skills              []fixtureCatalogSkill `json:"skills"`
+}
+
+type fixtureCatalogSource struct {
+	Repository string `json:"repository"`
+	Revision   string `json:"revision"`
+	TreeSHA256 string `json:"tree_sha256"`
+}
+
+type fixtureCatalogSkill struct {
+	ID               string `json:"id"`
+	RuntimeName      string `json:"runtime_name"`
+	Category         string `json:"category"`
+	Version          string `json:"version"`
+	CatalogEntryMode string `json:"catalog_entry_mode"`
+	Icon             struct {
+		Registry string `json:"registry"`
+		Key      string `json:"key"`
+	} `json:"icon"`
+	Risk struct {
+		Level   string   `json:"level"`
+		Reasons []string `json:"reasons"`
+	} `json:"risk"`
+	Provenance struct {
+		SourceReference string `json:"source_reference"`
+		SourceSHA256    string `json:"source_sha256"`
+		ReviewStatus    string `json:"review_status"`
+	} `json:"provenance"`
+	License struct {
+		Expression           string `json:"expression"`
+		RedistributionStatus string `json:"redistribution_status"`
+		AuthorizationScope   string `json:"authorization_scope"`
+		EvidenceReference    string `json:"evidence_reference"`
+	} `json:"license"`
+	Capabilities struct {
+		ExecutionMode string   `json:"execution_mode"`
+		Network       string   `json:"network"`
+		Filesystem    string   `json:"filesystem"`
+		RequiredTools []string `json:"required_tools"`
+	} `json:"capabilities"`
+	Archive struct {
+		Path                  string `json:"path"`
+		SHA256                string `json:"sha256"`
+		CompressedSizeBytes   int64  `json:"compressed_size_bytes"`
+		UncompressedSizeBytes int64  `json:"uncompressed_size_bytes"`
+		FileCount             int    `json:"file_count"`
+	} `json:"archive"`
+	Release struct {
+		CatalogStatus     string `json:"catalog_status"`
+		MaintenanceStatus string `json:"maintenance_status"`
+		BlockedReason     string `json:"blocked_reason"`
+	} `json:"release"`
 }
 
 type filesystemSkillsRuntime struct {
@@ -156,7 +204,7 @@ func (r *filesystemSkillsRuntime) ListSkills(_ context.Context, cwds []string, _
 				return nil
 			}
 			projection.Skills = append(projection.Skills, codex.SkillMetadata{
-				Name:        r.runtimeName,
+				Name:        runtimeNameFromSkillFile(skillPath, r.runtimeName),
 				Description: "fixture",
 				Path:        skillPath,
 				Scope:       codex.SkillScopeUser,
@@ -170,6 +218,31 @@ func (r *filesystemSkillsRuntime) ListSkills(_ context.Context, cwds []string, _
 	}
 	sort.Slice(projection.Skills, func(i, j int) bool { return projection.Skills[i].Path < projection.Skills[j].Path })
 	return []codex.SkillsListEntry{projection}, nil
+}
+
+func runtimeNameFromSkillFile(skillPath, fallback string) string {
+	raw, err := os.ReadFile(skillPath)
+	if err != nil {
+		return fallback
+	}
+	inFrontmatter := false
+	for _, line := range strings.Split(string(raw), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "---" {
+			if inFrontmatter {
+				break
+			}
+			inFrontmatter = true
+			continue
+		}
+		if inFrontmatter && strings.HasPrefix(trimmed, "name:") {
+			name := strings.Trim(strings.TrimSpace(strings.TrimPrefix(trimmed, "name:")), `"'`)
+			if name != "" {
+				return name
+			}
+		}
+	}
+	return fallback
 }
 
 func TestManagedSkillFixtureLifecycleAndRestartReplay(t *testing.T) {
@@ -576,44 +649,294 @@ func TestSkillFixtureCatalogShape(t *testing.T) {
 	}
 }
 
-func TestLocalDevelopmentCopywritingBundleConsumption(t *testing.T) {
-	bundleRoot := os.Getenv("YIJIE_SKILLS_BUNDLE_ROOT")
-	if bundleRoot == "" {
-		t.Skip("set YIJIE_SKILLS_BUNDLE_ROOT to the deterministic yijie-skills bundle")
+func TestYijieSkillsV030DualChannelConformance(t *testing.T) {
+	if os.Getenv("YIJIE_SKILLS_CONFORMANCE") != "1" {
+		t.Skip("set YIJIE_SKILLS_CONFORMANCE=1 and both 0.3.0 bundle roots")
 	}
-	raw, err := os.ReadFile(filepath.Join(bundleRoot, "bundle-manifest.json"))
+	localRoot := os.Getenv("YIJIE_SKILLS_LOCAL_BUNDLE_ROOT")
+	if localRoot == "" {
+		localRoot = os.Getenv("YIJIE_SKILLS_BUNDLE_ROOT")
+	}
+	releaseRoot := os.Getenv("YIJIE_SKILLS_DESKTOP_RELEASE_BUNDLE_ROOT")
+	if localRoot == "" || releaseRoot == "" {
+		t.Fatal("both YIJIE_SKILLS_LOCAL_BUNDLE_ROOT and YIJIE_SKILLS_DESKTOP_RELEASE_BUNDLE_ROOT are required")
+	}
+
+	localRaw, local := readProductBundle(t, localRoot, "local-development", "cc2b9be4d0e640e0888e97f6f7a09149a248386931786a7a089c8094304d94a5")
+	releaseRaw, release := readProductBundle(t, releaseRoot, "desktop-release", "9f8459077615514183fdd4c81ff3b6b2ef1ea735257b04c040399d4c91c1daa2")
+	assertProductChannelsEquivalent(t, localRoot, localRaw, local, releaseRoot, releaseRaw, release)
+
+	for index, channel := range []struct {
+		name     string
+		root     string
+		raw      []byte
+		manifest fixtureCatalog
+	}{
+		{name: "local-development", root: localRoot, raw: localRaw, manifest: local},
+		{name: "desktop-release", root: releaseRoot, raw: releaseRaw, manifest: release},
+	} {
+		t.Run(channel.name, func(t *testing.T) {
+			runThirtyEightSkillLifecycle(t, index+1, channel.root, channel.raw, channel.manifest)
+		})
+	}
+}
+
+func readProductBundle(t *testing.T, root, channel, manifestSHA string) ([]byte, fixtureCatalog) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(root, "bundle-manifest.json"))
 	if err != nil {
-		t.Fatalf("read local-development bundle manifest: %v", err)
+		t.Fatalf("read %s manifest: %v", channel, err)
 	}
-	var manifest struct {
-		DistributionChannel string `json:"distribution_channel"`
-		fixtureCatalog
+	digest := sha256.Sum256(raw)
+	if hex.EncodeToString(digest[:]) != manifestSHA {
+		t.Fatalf("%s manifest SHA-256=%s, want %s", channel, hex.EncodeToString(digest[:]), manifestSHA)
 	}
-	if err := json.Unmarshal(raw, &manifest); err != nil || len(manifest.Skills) != 1 {
-		t.Fatalf("decode local-development bundle: skills=%d err=%v", len(manifest.Skills), err)
+	var manifest fixtureCatalog
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatalf("decode %s manifest: %v", channel, err)
 	}
-	if manifest.DistributionChannel != "local-development" || manifest.Skills[0].ID != "yijie.content-marketing.copywriting" {
-		t.Fatalf("unexpected local-development bundle identity: channel=%q skill=%q", manifest.DistributionChannel, manifest.Skills[0].ID)
+	if manifest.SchemaVersion != 2 || manifest.BundleVersion != "0.3.0" ||
+		manifest.DistributionChannel != channel || len(manifest.Skills) != 38 ||
+		manifest.Source.Repository != "https://github.com/36Dge/yijie-skills.git" ||
+		manifest.Source.Revision != "10c45bec29603b002e861e1499d5b4e684251af5" ||
+		manifest.Source.TreeSHA256 != "3247a14004c76170cf41a2d854e2ceffa1fd43de6e0ca8bb596f1d61d9be1029" {
+		t.Fatalf("unexpected %s producer identity: %#v", channel, manifest)
 	}
+	wantCategories := map[string]int{
+		"sourcing-selection":  5,
+		"market-research":     9,
+		"content-marketing":   7,
+		"traffic-advertising": 9,
+		"store-operations":    8,
+	}
+	gotCategories := make(map[string]int, len(wantCategories))
+	seenIDs := make(map[string]struct{}, len(manifest.Skills))
+	seenRuntimeNames := make(map[string]struct{}, len(manifest.Skills))
+	for _, skill := range manifest.Skills {
+		gotCategories[skill.Category]++
+		if _, exists := seenIDs[skill.ID]; exists {
+			t.Fatalf("%s contains duplicate Skill id %s", channel, skill.ID)
+		}
+		if _, exists := seenRuntimeNames[skill.RuntimeName]; exists {
+			t.Fatalf("%s contains duplicate Runtime name %s", channel, skill.RuntimeName)
+		}
+		seenIDs[skill.ID] = struct{}{}
+		seenRuntimeNames[skill.RuntimeName] = struct{}{}
+		if skill.CatalogEntryMode != "bundled" || skill.Release.CatalogStatus != "installable" ||
+			skill.Release.BlockedReason != "" || skill.Release.MaintenanceStatus != "maintained" ||
+			skill.Archive.Path == "" || skill.Archive.SHA256 == "" || skill.Archive.FileCount < 1 ||
+			skill.Icon.Registry == "" || skill.Icon.Key == "" || skill.Risk.Level == "" || len(skill.Risk.Reasons) == 0 ||
+			skill.Provenance.SourceReference == "" || skill.Provenance.SourceSHA256 == "" || skill.Provenance.ReviewStatus != "verified" ||
+			skill.License.Expression == "" || skill.License.RedistributionStatus != "verified" ||
+			skill.License.AuthorizationScope != "desktop-distribution" || skill.License.EvidenceReference == "" ||
+			skill.Capabilities.ExecutionMode == "" {
+			t.Fatalf("%s has incomplete or blocked metadata for %s: %#v", channel, skill.ID, skill)
+		}
+		archive, err := os.ReadFile(filepath.Join(root, skill.Archive.Path))
+		if err != nil {
+			t.Fatalf("read %s archive for %s: %v", channel, skill.ID, err)
+		}
+		archiveDigest := sha256.Sum256(archive)
+		if hex.EncodeToString(archiveDigest[:]) != skill.Archive.SHA256 || int64(len(archive)) != skill.Archive.CompressedSizeBytes {
+			t.Fatalf("%s archive metadata mismatch for %s", channel, skill.ID)
+		}
+	}
+	for category, want := range wantCategories {
+		if gotCategories[category] != want {
+			t.Fatalf("%s category %s=%d, want %d (all=%v)", channel, category, gotCategories[category], want, gotCategories)
+		}
+	}
+	return raw, manifest
+}
+
+func assertProductChannelsEquivalent(
+	t *testing.T,
+	localRoot string,
+	localRaw []byte,
+	local fixtureCatalog,
+	releaseRoot string,
+	releaseRaw []byte,
+	release fixtureCatalog,
+) {
+	t.Helper()
+	var localDocument, releaseDocument map[string]any
+	if err := json.Unmarshal(localRaw, &localDocument); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(releaseRaw, &releaseDocument); err != nil {
+		t.Fatal(err)
+	}
+	localDocument["distribution_channel"] = "normalized"
+	releaseDocument["distribution_channel"] = "normalized"
+	localCanonical, _ := json.Marshal(localDocument)
+	releaseCanonical, _ := json.Marshal(releaseDocument)
+	if !bytes.Equal(localCanonical, releaseCanonical) {
+		t.Fatal("local-development and desktop-release manifests differ beyond distribution_channel")
+	}
+	if len(local.Skills) != len(release.Skills) {
+		t.Fatal("producer channels have different archive inventories")
+	}
+	for index, localSkill := range local.Skills {
+		releaseSkill := release.Skills[index]
+		if localSkill.ID != releaseSkill.ID || localSkill.Archive.Path != releaseSkill.Archive.Path {
+			t.Fatalf("producer channel order differs at %d", index)
+		}
+		localArchive, err := os.ReadFile(filepath.Join(localRoot, localSkill.Archive.Path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		releaseArchive, err := os.ReadFile(filepath.Join(releaseRoot, releaseSkill.Archive.Path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(localArchive, releaseArchive) {
+			t.Fatalf("producer channel archive differs for %s", localSkill.ID)
+		}
+	}
+}
+
+func runThirtyEightSkillLifecycle(t *testing.T, namespace int, bundleRoot string, raw []byte, manifest fixtureCatalog) {
+	t.Helper()
 	managedRoot := filepath.Join(t.TempDir(), "managed")
 	if err := os.Mkdir(managedRoot, 0o700); err != nil {
-		t.Fatalf("create managed root: %v", err)
+		t.Fatal(err)
 	}
-	runtime := newFilesystemSkillsRuntime(manifest.Skills[0].RuntimeName)
-	service, err := skills.NewService(skills.Config{BundleRoot: bundleRoot, ManagedRoot: managedRoot, Runtime: runtime})
+	runtimeOne := newFilesystemSkillsRuntime("")
+	service, err := skills.NewService(skills.Config{BundleRoot: bundleRoot, ManagedRoot: managedRoot, Runtime: runtimeOne})
 	if err != nil {
-		t.Fatalf("open local-development Skill service: %v (cause: %v)", err, errors.Unwrap(err))
+		t.Fatalf("open %s 38-Skill service: %v (cause: %v)", manifest.DistributionChannel, err, errors.Unwrap(err))
 	}
-	defer service.Close()
-	digest := sha256.Sum256(raw)
-	state, err := service.Install(context.Background(), skills.InstallInput{
-		OperationID:           "019fbd88-cbc3-7bf1-934d-7b05cd693f90",
-		SkillID:               manifest.Skills[0].ID,
-		ExpectedVersion:       manifest.Skills[0].Version,
-		ExpectedArchiveSHA256: manifest.Skills[0].Archive.SHA256,
-		CatalogRevision:       hex.EncodeToString(digest[:]),
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	initial, err := service.List(ctx)
+	if err != nil || len(initial.Skills) != 38 {
+		t.Fatalf("initial %s query: skills=%d err=%v", manifest.DistributionChannel, len(initial.Skills), err)
+	}
+	for _, state := range initial.Skills {
+		if state.CatalogStatus != "installable" || state.CatalogBlockedReason != "" ||
+			state.InstallationStatus != "not_installed" || state.CapabilityReadiness == "blocked" {
+			t.Fatalf("unexpected initial product state: %#v", state)
+		}
+	}
+	scanned, err := service.Scan(ctx, skills.ScanInput{
+		OperationID: productOperationID(namespace, 1), Reason: "page_open",
 	})
-	if err != nil || state.InstallationStatus != "installed" || !state.RuntimeVisible {
-		t.Fatalf("consume deterministic copywriting bundle: state=%#v err=%v", state, err)
+	if err != nil {
+		t.Fatalf("scan %s catalog: %v", manifest.DistributionChannel, err)
 	}
+	assertThirtyEightStates(t, scanned, "not_installed", false, false)
+	revision := sha256.Sum256(raw)
+	for index, skill := range manifest.Skills {
+		state, err := service.Install(ctx, skills.InstallInput{
+			OperationID:           productOperationID(namespace, 10+index),
+			SkillID:               skill.ID,
+			ExpectedVersion:       skill.Version,
+			ExpectedArchiveSHA256: skill.Archive.SHA256,
+			CatalogRevision:       hex.EncodeToString(revision[:]),
+		})
+		if err != nil || state.InstallationStatus != "installed" || !state.Enabled || !state.RuntimeVisible {
+			t.Fatalf("install %s[%d] %s: state=%#v err=%v", manifest.DistributionChannel, index, skill.ID, state, err)
+		}
+	}
+	installed, err := service.List(ctx)
+	assertThirtyEightStates(t, installed, "installed", true, true)
+	for index, skill := range manifest.Skills {
+		state, err := service.SetEnabled(ctx, skills.EnabledInput{
+			OperationID: productOperationID(namespace, 100+index), SkillID: skill.ID, Enabled: false,
+		})
+		if err != nil || !isInstalledButInvisible(state) {
+			t.Fatalf("disable %s: state=%#v err=%v", skill.ID, state, err)
+		}
+	}
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	runtimeTwo := newFilesystemSkillsRuntime("")
+	restarted, err := skills.NewService(skills.Config{BundleRoot: bundleRoot, ManagedRoot: managedRoot, Runtime: runtimeTwo})
+	if err != nil {
+		t.Fatalf("restart %s service: %v", manifest.DistributionChannel, err)
+	}
+	defer restarted.Close()
+	replayed, err := restarted.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertThirtyEightStates(t, replayed, "installed", false, false)
+	for index, skill := range manifest.Skills {
+		state, err := restarted.SetEnabled(ctx, skills.EnabledInput{
+			OperationID: productOperationID(namespace, 200+index), SkillID: skill.ID, Enabled: true,
+		})
+		if err != nil || !state.RuntimeVisible {
+			t.Fatalf("re-enable %s after restart: state=%#v err=%v", skill.ID, state, err)
+		}
+	}
+
+	movedSkill := manifest.Skills[len(manifest.Skills)/2]
+	movedRoot := filepath.Join(filepath.Dir(managedRoot), "moved-"+manifest.DistributionChannel)
+	if err := os.Rename(filepath.Join(managedRoot, movedSkill.ID), movedRoot); err != nil {
+		t.Fatalf("move installed Skill outside managed root: %v", err)
+	}
+	movedSnapshot, err := restarted.Scan(ctx, skills.ScanInput{
+		OperationID: productOperationID(namespace, 300), Reason: "directory_changed",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	movedState := snapshotStateByID(t, movedSnapshot, movedSkill.ID)
+	if movedState.InstallationStatus != "not_installed" || movedState.Enabled || movedState.RuntimeVisible {
+		t.Fatalf("moved Skill remained active: %#v", movedState)
+	}
+	reinstalled, err := restarted.Install(ctx, skills.InstallInput{
+		OperationID:           productOperationID(namespace, 301),
+		SkillID:               movedSkill.ID,
+		ExpectedVersion:       movedSkill.Version,
+		ExpectedArchiveSHA256: movedSkill.Archive.SHA256,
+		CatalogRevision:       hex.EncodeToString(revision[:]),
+	})
+	if err != nil || !reinstalled.RuntimeVisible {
+		t.Fatalf("reinstall moved Skill: state=%#v err=%v", reinstalled, err)
+	}
+
+	for index, skill := range manifest.Skills {
+		state, err := restarted.Uninstall(ctx, skills.UninstallInput{
+			OperationID: productOperationID(namespace, 400+index), SkillID: skill.ID,
+		})
+		if err != nil || state.InstallationStatus != "not_installed" || state.Enabled || state.RuntimeVisible {
+			t.Fatalf("uninstall %s: state=%#v err=%v", skill.ID, state, err)
+		}
+	}
+	final, err := restarted.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertThirtyEightStates(t, final, "not_installed", false, false)
+}
+
+func productOperationID(namespace, sequence int) string {
+	return fmt.Sprintf("019fbd88-cbc3-7bf1-934f-%012x", namespace*1000+sequence)
+}
+
+func assertThirtyEightStates(t *testing.T, snapshot skills.Snapshot, status string, enabled, visible bool) {
+	t.Helper()
+	if len(snapshot.Skills) != 38 {
+		t.Fatalf("snapshot contains %d Skills, want 38", len(snapshot.Skills))
+	}
+	for _, state := range snapshot.Skills {
+		if state.CatalogStatus != "installable" || state.CatalogBlockedReason != "" ||
+			state.InstallationStatus != status || state.Enabled != enabled || state.RuntimeVisible != visible {
+			t.Fatalf("unexpected 38-Skill lifecycle state: %#v", state)
+		}
+	}
+}
+
+func snapshotStateByID(t *testing.T, snapshot skills.Snapshot, id string) skills.State {
+	t.Helper()
+	for _, state := range snapshot.Skills {
+		if state.ID == id {
+			return state
+		}
+	}
+	t.Fatalf("snapshot omitted %s", id)
+	return skills.State{}
 }

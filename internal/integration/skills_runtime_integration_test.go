@@ -88,6 +88,87 @@ func TestPinnedRuntimeManagedSkillLifecycle(t *testing.T) {
 	}
 }
 
+func TestPinnedRuntimeYijieSkillsV030ThirtyEightProjection(t *testing.T) {
+	binaryPath := os.Getenv("YIJIE_CODEX_INTEGRATION_BINARY")
+	manifestPath := os.Getenv("YIJIE_CODEX_INTEGRATION_MANIFEST")
+	bundleRoot := os.Getenv("YIJIE_SKILLS_LOCAL_BUNDLE_ROOT")
+	if binaryPath == "" || manifestPath == "" || bundleRoot == "" {
+		t.Skip("set pinned Runtime paths and YIJIE_SKILLS_LOCAL_BUNDLE_ROOT")
+	}
+	raw, manifest := readProductBundle(t, bundleRoot, "local-development", "cc2b9be4d0e640e0888e97f6f7a09149a248386931786a7a089c8094304d94a5")
+	revision := sha256.Sum256(raw)
+	managedRoot := filepath.Join(t.TempDir(), "managed")
+	if err := os.Mkdir(managedRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	managedRoot, err := filepath.EvalSymlinks(managedRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	codexHome := t.TempDir()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	firstManager, firstService := startPinnedSkillsRuntime(t, binaryPath, manifestPath, codexHome, bundleRoot, managedRoot)
+	initial, err := firstService.List(ctx)
+	if err != nil || len(initial.Skills) != 38 {
+		t.Fatalf("query product catalog through pinned Runtime: skills=%d err=%v", len(initial.Skills), err)
+	}
+	for index, skill := range manifest.Skills {
+		state, err := firstService.Install(ctx, skills.InstallInput{
+			OperationID:           productOperationID(3, 10+index),
+			SkillID:               skill.ID,
+			ExpectedVersion:       skill.Version,
+			ExpectedArchiveSHA256: skill.Archive.SHA256,
+			CatalogRevision:       hex.EncodeToString(revision[:]),
+		})
+		if err != nil || !state.RuntimeVisible {
+			t.Fatalf("install product Skill %s through pinned Runtime: state=%#v err=%v", skill.ID, state, err)
+		}
+	}
+	expectedPaths := make([]string, 0, len(manifest.Skills))
+	for _, skill := range manifest.Skills {
+		expectedPaths = append(expectedPaths, filepath.Join(managedRoot, skill.ID, "SKILL.md"))
+	}
+	assertPinnedRuntimeManagedPaths(t, ctx, firstManager, managedRoot, expectedPaths)
+	for index, skill := range manifest.Skills {
+		state, err := firstService.SetEnabled(ctx, skills.EnabledInput{
+			OperationID: productOperationID(3, 100+index), SkillID: skill.ID, Enabled: false,
+		})
+		if err != nil || !isInstalledButInvisible(state) {
+			t.Fatalf("disable product Skill %s through pinned Runtime: state=%#v err=%v", skill.ID, state, err)
+		}
+	}
+	assertPinnedRuntimeManagedPaths(t, ctx, firstManager, managedRoot, nil)
+	shutdownPinnedSkillsRuntime(t, firstManager, firstService)
+
+	secondManager, secondService := startPinnedSkillsRuntime(t, binaryPath, manifestPath, codexHome, bundleRoot, managedRoot)
+	defer shutdownPinnedSkillsRuntime(t, secondManager, secondService)
+	replayed, err := secondService.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertThirtyEightStates(t, replayed, "installed", false, false)
+	for index, skill := range manifest.Skills {
+		state, err := secondService.SetEnabled(ctx, skills.EnabledInput{
+			OperationID: productOperationID(3, 200+index), SkillID: skill.ID, Enabled: true,
+		})
+		if err != nil || !state.RuntimeVisible {
+			t.Fatalf("re-enable product Skill %s through restarted Runtime: state=%#v err=%v", skill.ID, state, err)
+		}
+	}
+	assertPinnedRuntimeManagedPaths(t, ctx, secondManager, managedRoot, expectedPaths)
+	for index, skill := range manifest.Skills {
+		state, err := secondService.Uninstall(ctx, skills.UninstallInput{
+			OperationID: productOperationID(3, 300+index), SkillID: skill.ID,
+		})
+		if err != nil || state.InstallationStatus != "not_installed" || state.RuntimeVisible {
+			t.Fatalf("uninstall product Skill %s through pinned Runtime: state=%#v err=%v", skill.ID, state, err)
+		}
+	}
+	assertPinnedRuntimeManagedPaths(t, ctx, secondManager, managedRoot, nil)
+}
+
 func assertPinnedRuntimeManagedPaths(
 	t *testing.T,
 	ctx context.Context,

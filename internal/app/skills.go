@@ -42,6 +42,16 @@ type skillHandler struct {
 	manage   bool
 }
 
+type skillOperation uint8
+
+const (
+	skillOperationList skillOperation = iota
+	skillOperationScan
+	skillOperationInstall
+	skillOperationEnabled
+	skillOperationUninstall
+)
+
 func registerSkillRoutes(mux *http.ServeMux, config SkillFeatureConfig, service SkillService, apiToken string) {
 	handler := &skillHandler{
 		service:  service,
@@ -78,7 +88,7 @@ func (h *skillHandler) authorize(capability bool, next http.Handler) http.Handle
 func (h *skillHandler) list(w http.ResponseWriter, r *http.Request) {
 	snapshot, err := h.service.List(r.Context())
 	if err != nil {
-		writeSkillServiceError(w, err)
+		writeSkillServiceError(w, skillOperationList, err)
 		return
 	}
 	response, err := skillListResponse(snapshot)
@@ -100,7 +110,7 @@ func (h *skillHandler) scan(w http.ResponseWriter, r *http.Request) {
 		Reason:      string(request.Reason),
 	})
 	if err != nil {
-		writeSkillServiceError(w, err)
+		writeSkillServiceError(w, skillOperationScan, err)
 		return
 	}
 	states, err := managedSkillResponses(snapshot.Skills)
@@ -136,7 +146,7 @@ func (h *skillHandler) install(w http.ResponseWriter, r *http.Request) {
 		CatalogRevision:       request.CatalogRevision,
 	})
 	if err != nil {
-		writeSkillServiceError(w, err)
+		writeSkillServiceError(w, skillOperationInstall, err)
 		return
 	}
 	h.writeMutation(w, request.OperationId, state)
@@ -159,7 +169,7 @@ func (h *skillHandler) setEnabled(w http.ResponseWriter, r *http.Request) {
 		Enabled:     request.Enabled,
 	})
 	if err != nil {
-		writeSkillServiceError(w, err)
+		writeSkillServiceError(w, skillOperationEnabled, err)
 		return
 	}
 	h.writeMutation(w, request.OperationId, state)
@@ -181,7 +191,7 @@ func (h *skillHandler) uninstall(w http.ResponseWriter, r *http.Request) {
 		SkillID:     skillID,
 	})
 	if err != nil {
-		writeSkillServiceError(w, err)
+		writeSkillServiceError(w, skillOperationUninstall, err)
 		return
 	}
 	h.writeMutation(w, request.OperationId, state)
@@ -234,7 +244,7 @@ func managedSkillResponse(state skills.State) (agenthostcontract.ManagedSkill, e
 	if !capability.Valid() || !catalog.Valid() || !failure.Valid() || !installation.Valid() || !maintenance.Valid() {
 		return agenthostcontract.ManagedSkill{}, errInvalidSkillProjection
 	}
-	return agenthostcontract.ManagedSkill{
+	result := agenthostcontract.ManagedSkill{
 		CapabilityReadiness: capability,
 		CatalogStatus:       catalog,
 		Enabled:             state.Enabled,
@@ -245,40 +255,93 @@ func managedSkillResponse(state skills.State) (agenthostcontract.ManagedSkill, e
 		RuntimeName:         state.RuntimeName,
 		RuntimeVisible:      state.RuntimeVisible,
 		Version:             state.Version,
-	}, nil
+	}
+	if state.CatalogStatus == "blocked" {
+		blockedReason := agenthostcontract.ManagedSkillCatalogBlockedReason(state.CatalogBlockedReason)
+		if !blockedReason.Valid() {
+			return agenthostcontract.ManagedSkill{}, errInvalidSkillProjection
+		}
+		result.CatalogBlockedReason = &blockedReason
+	} else if state.CatalogBlockedReason != "" {
+		return agenthostcontract.ManagedSkill{}, errInvalidSkillProjection
+	}
+	return result, nil
 }
 
 func validManagedSkillID(value string) bool {
 	return len(value) >= 3 && len(value) <= 128 && managedSkillIDPattern.MatchString(value)
 }
 
-func writeSkillServiceError(w http.ResponseWriter, err error) {
+func writeSkillServiceError(w http.ResponseWriter, operation skillOperation, err error) {
 	var serviceError *skills.ServiceError
 	if !errors.As(err, &serviceError) {
 		writeSkillInternalError(w)
 		return
 	}
-	code := serviceError.Code
-	status := http.StatusInternalServerError
+	status, contractCode := skillErrorDisposition(operation, serviceError.Code)
+	writeSkillError(w, status, contractCode)
+}
+
+func skillErrorDisposition(operation skillOperation, code skills.ErrorCode) (int, agenthostcontract.SkillErrorResponseErrorCode) {
+	internal := agenthostcontract.SkillErrorResponseErrorCodeInternalError
+	switch code {
+	case skills.CodeRuntimeUnavailable:
+		return http.StatusServiceUnavailable, agenthostcontract.SkillErrorResponseErrorCodeRuntimeUnavailable
+	case skills.CodeRuntimeSyncFailed:
+		return http.StatusServiceUnavailable, agenthostcontract.SkillErrorResponseErrorCodeRuntimeSyncFailed
+	case skills.CodeCapabilityUnavailable:
+		return http.StatusServiceUnavailable, agenthostcontract.SkillErrorResponseErrorCodeRuntimeUnavailable
+	}
+	if operation == skillOperationList {
+		return http.StatusInternalServerError, internal
+	}
 	switch code {
 	case skills.CodeInvalidRequest:
-		status = http.StatusBadRequest
-	case skills.CodeNotFound:
-		status = http.StatusNotFound
-	case skills.CodeOperationConflict, skills.CodeBusy:
-		status = http.StatusConflict
-	case skills.CodeNotInstallable, skills.CodeBundleMissing, skills.CodeManifestInvalid,
-		skills.CodeArchiveChecksum, skills.CodeArchiveUnsafe, skills.CodeArchiveTooLarge:
-		status = http.StatusUnprocessableEntity
-	case skills.CodeRuntimeUnavailable, skills.CodeRuntimeSyncFailed, skills.CodeCapabilityUnavailable:
-		status = http.StatusServiceUnavailable
+		return http.StatusBadRequest, agenthostcontract.SkillErrorResponseErrorCodeInvalidRequest
+	case skills.CodeOperationConflict:
+		return http.StatusConflict, agenthostcontract.SkillErrorResponseErrorCodeSkillOperationConflict
+	case skills.CodeBusy:
+		return http.StatusConflict, agenthostcontract.SkillErrorResponseErrorCodeSkillBusy
 	}
-	contractCode := agenthostcontract.SkillErrorResponseErrorCode(code)
-	if !contractCode.Valid() {
-		writeSkillInternalError(w)
-		return
+	if operation == skillOperationScan {
+		if code == skills.CodeScanFailed {
+			return http.StatusInternalServerError, agenthostcontract.SkillErrorResponseErrorCodeScanFailed
+		}
+		return http.StatusInternalServerError, internal
 	}
-	writeSkillError(w, status, contractCode)
+	if code == skills.CodeNotFound {
+		return http.StatusNotFound, agenthostcontract.SkillErrorResponseErrorCodeSkillNotFound
+	}
+	if operation == skillOperationInstall {
+		switch code {
+		case skills.CodeNotInstallable:
+			return http.StatusUnprocessableEntity, agenthostcontract.SkillErrorResponseErrorCodeSkillNotInstallable
+		case skills.CodeBundleMissing:
+			return http.StatusUnprocessableEntity, agenthostcontract.SkillErrorResponseErrorCodeBundleMissing
+		case skills.CodeManifestInvalid:
+			return http.StatusUnprocessableEntity, agenthostcontract.SkillErrorResponseErrorCodeBundleManifestInvalid
+		case skills.CodeArchiveChecksum:
+			return http.StatusUnprocessableEntity, agenthostcontract.SkillErrorResponseErrorCodeArchiveChecksumMismatch
+		case skills.CodeArchiveUnsafe:
+			return http.StatusUnprocessableEntity, agenthostcontract.SkillErrorResponseErrorCodeArchiveUnsafe
+		case skills.CodeArchiveTooLarge:
+			return http.StatusUnprocessableEntity, agenthostcontract.SkillErrorResponseErrorCodeArchiveTooLarge
+		case skills.CodeInstallFailed:
+			return http.StatusInternalServerError, agenthostcontract.SkillErrorResponseErrorCodeInstallFailed
+		}
+	}
+	if operation == skillOperationEnabled {
+		if code == skills.CodeNotInstallable {
+			return http.StatusBadRequest, agenthostcontract.SkillErrorResponseErrorCodeInvalidRequest
+		}
+		if code == skills.CodeInstallFailed {
+			return http.StatusInternalServerError, agenthostcontract.SkillErrorResponseErrorCodeInstallFailed
+		}
+	}
+	if operation == skillOperationUninstall && code == skills.CodeUninstallFailed {
+		return http.StatusInternalServerError, agenthostcontract.SkillErrorResponseErrorCodeUninstallFailed
+	}
+	return http.StatusInternalServerError, internal
 }
 
 func writeSkillInvalidRequest(w http.ResponseWriter) {
@@ -306,6 +369,8 @@ func skillErrorMessage(code agenthostcontract.SkillErrorResponseErrorCode) strin
 		return "request parameters are invalid"
 	case agenthostcontract.SkillErrorResponseErrorCodeArchiveUnsafe:
 		return "Skill archive failed safety validation"
+	case agenthostcontract.SkillErrorResponseErrorCodeSkillNotInstallable:
+		return "The catalog-only Skill has no installable archive."
 	default:
 		return "Skill operation failed"
 	}

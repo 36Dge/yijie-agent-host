@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Yijie Agent Host Local API
-  version: 0.5.0
+  version: 0.5.1
   description: |
     Local loopback HTTP and Server-Sent Events contract for the Yijie Desktop
     Agent Host sidecar. The Host is a thin adapter over the pinned Codex Runtime;
@@ -1064,7 +1064,8 @@ paths:
       operationId: listManagedSkills
       summary: List the bundled catalog and current managed Skill state
       description: |
-        Returns a content-free projection of the bundled catalog, the managed
+        Returns a content-free projection of the bundled and catalog-only
+        entries, the managed
         installation directory, and the current Runtime visibility state. It
         never returns an archive path, App Data path, SKILL.md content, token, or
         arbitrary filesystem metadata. Unknown Runtime Skills outside the
@@ -1144,7 +1145,9 @@ paths:
         Installs only the exact catalog entry named by `skill_id`. Desktop binds
         the request to its catalog view with the expected version, archive digest,
         and catalog revision; it never supplies an archive or destination path.
-        Host must require a manifest entry whose provenance and redistribution
+        A `catalog-only` entry has no archive and must be rejected as
+        `skill_not_installable` before any digest or archive access. For a
+        bundled entry, Host must require a manifest entry whose provenance and redistribution
         reviews are verified and whose catalog status is `installable`, validate
         SHA-256, file count, expanded size, relative ZIP entries, regular-file
         types, and the required SKILL.md, then commit through a same-volume staging
@@ -1522,7 +1525,8 @@ components:
             $ref: "#/components/schemas/SkillErrorResponse"
     SkillUnprocessable:
       description: |
-        The catalog item cannot be installed safely: `skill_not_installable`,
+        The catalog item cannot be installed safely: `skill_not_installable`
+        (including every catalog-only or blocked entry),
         `bundle_missing`, `bundle_manifest_invalid`, `archive_checksum_mismatch`,
         `archive_unsafe`, or `archive_too_large`.
       x-yijie-error-codes:
@@ -2472,6 +2476,20 @@ components:
         catalog_status:
           type: string
           enum: [installable, blocked]
+        catalog_blocked_reason:
+          type: string
+          description: |
+            Required by the Skills v1 semantic contract for every blocked catalog
+            projection and omitted for an installable entry. It exposes exactly
+            one stable primary reason and never includes source text, archive
+            metadata, filesystem locations, or free-form upstream failure details.
+          enum:
+            - source_unverified
+            - license_unverified
+            - distribution_not_authorized
+            - security_review_pending
+            - capability_unavailable
+            - maintenance_ended
         maintenance_status:
           type: string
           enum: [maintained, unmaintained]

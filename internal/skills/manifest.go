@@ -24,9 +24,9 @@ const (
 )
 
 var (
-	manifestSchemaOnce sync.Once
-	manifestSchema     *jsonschema.Schema
-	manifestSchemaErr  error
+	manifestSchemasOnce sync.Once
+	manifestSchemas     map[int]*jsonschema.Schema
+	manifestSchemasErr  error
 )
 
 type Manifest struct {
@@ -46,21 +46,22 @@ type BundleSource struct {
 }
 
 type ManifestSkill struct {
-	ID           string       `json:"id"`
-	RuntimeName  string       `json:"runtime_name"`
-	Category     string       `json:"category"`
-	Order        int          `json:"order"`
-	DisplayName  string       `json:"display_name"`
-	Description  string       `json:"description"`
-	Version      string       `json:"version"`
-	Entrypoint   string       `json:"entrypoint"`
-	Icon         SkillIcon    `json:"icon"`
-	Risk         SkillRisk    `json:"risk"`
-	Provenance   Provenance   `json:"provenance"`
-	License      License      `json:"license"`
-	Capabilities Capabilities `json:"capabilities"`
-	Archive      Archive      `json:"archive"`
-	Release      Release      `json:"release"`
+	ID               string       `json:"id"`
+	RuntimeName      string       `json:"runtime_name"`
+	Category         string       `json:"category"`
+	Order            int          `json:"order"`
+	DisplayName      string       `json:"display_name"`
+	Description      string       `json:"description"`
+	Version          string       `json:"version"`
+	CatalogEntryMode string       `json:"catalog_entry_mode"`
+	Entrypoint       string       `json:"entrypoint"`
+	Icon             SkillIcon    `json:"icon"`
+	Risk             SkillRisk    `json:"risk"`
+	Provenance       Provenance   `json:"provenance"`
+	License          License      `json:"license"`
+	Capabilities     Capabilities `json:"capabilities"`
+	Archive          Archive      `json:"archive"`
+	Release          Release      `json:"release"`
 }
 
 type SkillIcon struct {
@@ -110,6 +111,7 @@ type Archive struct {
 type Release struct {
 	CatalogStatus     string `json:"catalog_status"`
 	MaintenanceStatus string `json:"maintenance_status"`
+	BlockedReason     string `json:"blocked_reason"`
 }
 
 type catalog struct {
@@ -149,16 +151,22 @@ func loadCatalog(bundleRoot string) (catalog, error) {
 	if err != nil || len(raw) < 1 || len(raw) > maxManifestBytes {
 		return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("manifest file is invalid"))
 	}
-	schema, err := compiledManifestSchema()
-	if err != nil {
-		return catalog{}, errorWithCode(CodeManifestInvalid, err)
-	}
 	instance, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
 	if err != nil {
 		return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("manifest JSON is invalid"))
 	}
+	var header struct {
+		SchemaVersion int `json:"schema_version"`
+	}
+	if err := json.Unmarshal(raw, &header); err != nil {
+		return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("manifest JSON is invalid"))
+	}
+	schema, err := compiledManifestSchema(header.SchemaVersion)
+	if err != nil {
+		return catalog{}, errorWithCode(CodeManifestInvalid, err)
+	}
 	if err := schema.Validate(instance); err != nil {
-		return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("manifest does not match Skill Bundle Manifest v1"))
+		return catalog{}, errorWithCode(CodeManifestInvalid, fmt.Errorf("manifest does not match Skill Bundle Manifest v%d", header.SchemaVersion))
 	}
 	var manifest Manifest
 	if err := strictJSON(raw, &manifest); err != nil {
@@ -174,42 +182,78 @@ func loadCatalog(bundleRoot string) (catalog, error) {
 		if _, exists := runtimeNames[skill.RuntimeName]; exists {
 			return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("duplicate Runtime name"))
 		}
-		if _, exists := archivePaths[skill.Archive.Path]; exists {
-			return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("duplicate archive path"))
+		mode := catalogEntryMode(skill)
+		if mode != "bundled" && mode != "catalog-only" {
+			return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("Skill catalog entry mode is invalid"))
 		}
-		if _, err := resolveUnder(bundleRoot, skill.Archive.Path); err != nil {
-			return catalog{}, errorWithCode(CodeManifestInvalid, err)
+		if skill.Archive.Path != "" {
+			if _, exists := archivePaths[skill.Archive.Path]; exists {
+				return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("duplicate archive path"))
+			}
+			if _, err := resolveUnder(bundleRoot, skill.Archive.Path); err != nil {
+				return catalog{}, errorWithCode(CodeManifestInvalid, err)
+			}
+			archivePaths[skill.Archive.Path] = struct{}{}
 		}
-		if skill.Release.CatalogStatus == "installable" &&
-			(skill.Provenance.ReviewStatus != "verified" || skill.License.RedistributionStatus != "verified") {
-			return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("installable Skill review is not verified"))
+		if skill.Release.CatalogStatus == "installable" {
+			if mode != "bundled" || skill.Entrypoint != "SKILL.md" || skill.Archive.Path == "" ||
+				skill.Provenance.ReviewStatus != "verified" || skill.License.RedistributionStatus != "verified" ||
+				(skill.License.AuthorizationScope != "local-development" && skill.License.AuthorizationScope != "desktop-distribution") {
+				return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("installable Skill is not a verified bundled entry"))
+			}
+		} else if mode == "catalog-only" && (skill.Entrypoint != "" || skill.Archive.Path != "" || skill.Release.BlockedReason == "") {
+			return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("catalog-only Skill contains bundled content or lacks a blocked reason"))
 		}
 		byID[skill.ID] = skill
 		runtimeNames[skill.RuntimeName] = struct{}{}
-		archivePaths[skill.Archive.Path] = struct{}{}
 	}
 	digest := sha256.Sum256(raw)
 	return catalog{manifest: manifest, revision: hex.EncodeToString(digest[:]), byID: byID}, nil
 }
 
-func compiledManifestSchema() (*jsonschema.Schema, error) {
-	manifestSchemaOnce.Do(func() {
-		compiler := jsonschema.NewCompiler()
-		compiler.UseRegexpEngine(compileECMAScriptRegexp)
-		compiler.AssertFormat()
-		const resource = "https://contracts.yijie.ai/skills/skill-bundle-manifest-v1.schema.json"
-		schemaDocument, err := jsonschema.UnmarshalJSON(bytes.NewReader(contractschema.SkillBundleManifestV1))
-		if err != nil {
-			manifestSchemaErr = err
-			return
+func compiledManifestSchema(version int) (*jsonschema.Schema, error) {
+	manifestSchemasOnce.Do(func() {
+		manifestSchemas = make(map[int]*jsonschema.Schema, 2)
+		for schemaVersion, source := range map[int][]byte{
+			1: contractschema.SkillBundleManifestV1,
+			2: contractschema.SkillBundleManifestV2,
+		} {
+			compiler := jsonschema.NewCompiler()
+			compiler.UseRegexpEngine(compileECMAScriptRegexp)
+			compiler.AssertFormat()
+			resource := fmt.Sprintf("https://contracts.yijie.ai/skills/skill-bundle-manifest-v%d.schema.json", schemaVersion)
+			schemaDocument, err := jsonschema.UnmarshalJSON(bytes.NewReader(source))
+			if err != nil {
+				manifestSchemasErr = err
+				return
+			}
+			if err := compiler.AddResource(resource, schemaDocument); err != nil {
+				manifestSchemasErr = err
+				return
+			}
+			compiled, err := compiler.Compile(resource)
+			if err != nil {
+				manifestSchemasErr = err
+				return
+			}
+			manifestSchemas[schemaVersion] = compiled
 		}
-		if err := compiler.AddResource(resource, schemaDocument); err != nil {
-			manifestSchemaErr = err
-			return
-		}
-		manifestSchema, manifestSchemaErr = compiler.Compile(resource)
 	})
-	return manifestSchema, manifestSchemaErr
+	if manifestSchemasErr != nil {
+		return nil, manifestSchemasErr
+	}
+	schema, ok := manifestSchemas[version]
+	if !ok {
+		return nil, fmt.Errorf("unsupported Skill Bundle Manifest version %d", version)
+	}
+	return schema, nil
+}
+
+func catalogEntryMode(skill ManifestSkill) string {
+	if skill.CatalogEntryMode == "" {
+		return "bundled"
+	}
+	return skill.CatalogEntryMode
 }
 
 type ecmaScriptRegexp regexp2.Regexp

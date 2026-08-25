@@ -1,0 +1,1910 @@
+{
+  "schema_version": 2,
+  "bundle_id": "yijie.desktop.skill-packages",
+  "bundle_version": "0.5.1",
+  "distribution_channel": "desktop-release",
+  "source": {
+    "repository": "https://github.com/36Dge/yijie-contracts.git",
+    "revision_kind": "git-commit",
+    "revision": "1111111111111111111111111111111111111111",
+    "tree_sha256": "0d0e3a3047bfa9f5d5a518024ce41d5c429e109a608321a755ed503cea88e8f0"
+  },
+  "skills": [
+    {
+      "id": "yijie.sourcing-selection.aliexpress-supplier-evaluator",
+      "runtime_name": "aliexpress-supplier-evaluator",
+      "category": "sourcing-selection",
+      "order": 0,
+      "display_name": "AliExpress 供应商评估",
+      "description": "合成目录 fixture：AliExpress 供应商评估；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillSourcing"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/aliexpress-supplier-evaluator/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "fef92b9ae29560b0c7a6186628537bbabb2363683ef15ff93a0c5f9885ad7e80",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/aliexpress-supplier-evaluator/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "browser.search",
+          "supplier.data"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.sourcing-selection.dropshipping-supplier-integrator",
+      "runtime_name": "dropshipping-supplier-integrator",
+      "category": "sourcing-selection",
+      "order": 1,
+      "display_name": "代发货供应商集成",
+      "description": "合成目录 fixture：代发货供应商集成；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillSourcing"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/dropshipping-supplier-integrator/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "10aac3e1e74e97dd24bc8f10af92526c2c73cc0dc83ee9ff583110617d02a82b",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/dropshipping-supplier-integrator/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "supplier.data",
+          "store.write"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.sourcing-selection.product-supplier-sourcing",
+      "runtime_name": "product-supplier-sourcing",
+      "category": "sourcing-selection",
+      "order": 2,
+      "display_name": "产品供应商寻源",
+      "description": "合成目录 fixture：产品供应商寻源；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillSourcing"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/product-supplier-sourcing/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "a1ca13aead1baad9633ecf6cb21ac885b24a73c9f897166565451c04dc0062a9",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/product-supplier-sourcing/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "browser.search",
+          "supplier.data"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.sourcing-selection.sales-negotiator",
+      "runtime_name": "sales-negotiator",
+      "category": "sourcing-selection",
+      "order": 3,
+      "display_name": "销售谈判专家",
+      "description": "合成目录 fixture：销售谈判专家；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillSourcing"
+      },
+      "risk": {
+        "level": "low",
+        "reasons": [
+          "合成目录条目不包含源码、归档或可执行指令。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/sales-negotiator/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "6b072891cc309e374e0570e3f0959db7ca05e91bd22c0063f26ecabe54117cfd",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/sales-negotiator/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "model-only",
+        "network": "none",
+        "filesystem": "none",
+        "required_tools": []
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.sourcing-selection.supplier-performance-manager",
+      "runtime_name": "supplier-performance-manager",
+      "category": "sourcing-selection",
+      "order": 4,
+      "display_name": "供应商绩效管理",
+      "description": "合成目录 fixture：供应商绩效管理；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillSourcing"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/supplier-performance-manager/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "ec4abdd983ab69d36fd8edb4e0a0ca5f4e7542d2fb44937b94b8789c000bbb94",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/supplier-performance-manager/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "supplier.data"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.market-research.alibaba-amazon-market-intel",
+      "runtime_name": "alibaba-amazon-market-intel",
+      "category": "market-research",
+      "order": 0,
+      "display_name": "阿里巴巴与亚马逊市场洞察",
+      "description": "合成目录 fixture：阿里巴巴与亚马逊市场洞察；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillResearch"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/alibaba-amazon-market-intel/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "ec2690378afe27d8a76a66ee720a7cdcda24c808b9b3136b3b59d68875fb356d",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/alibaba-amazon-market-intel/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "marketplace.data"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.market-research.competitor-deep-analysis",
+      "runtime_name": "competitor-deep-analysis",
+      "category": "market-research",
+      "order": 1,
+      "display_name": "竞品深度分析",
+      "description": "合成目录 fixture：竞品深度分析；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillResearch"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/competitor-deep-analysis/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "c465cd4792ff4202057dbf2f957668bc7af353bc6f6fe5da41e035bb14262d17",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/competitor-deep-analysis/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "browser.search",
+          "marketplace.data"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.market-research.cross-border-selection",
+      "runtime_name": "cross-border-selection",
+      "category": "market-research",
+      "order": 2,
+      "display_name": "跨境选品",
+      "description": "合成目录 fixture：跨境选品；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillResearch"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/cross-border-selection/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "1a463ea5fc09609bd2292d34f949500ec162e123a8591c3ec4b0a74bed52882b",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/cross-border-selection/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "marketplace.data"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.market-research.jungle-scout-deep-dive-analyzer",
+      "runtime_name": "jungle-scout-deep-dive-analyzer",
+      "category": "market-research",
+      "order": 3,
+      "display_name": "Jungle Scout 深度分析",
+      "description": "合成目录 fixture：Jungle Scout 深度分析；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillResearch"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/jungle-scout-deep-dive-analyzer/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "40381054a4dd220ef34914e9d2b4c6bd197adc6ad77f54e85e27832820dd5f81",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/jungle-scout-deep-dive-analyzer/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "jungle_scout.data"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.market-research.market-insight-product-selection",
+      "runtime_name": "market-insight-product-selection",
+      "category": "market-research",
+      "order": 4,
+      "display_name": "市场洞察选品",
+      "description": "合成目录 fixture：市场洞察选品；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillResearch"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/market-insight-product-selection/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "4f41727c303b8148ca91860bee7c72e1388bc6adae3710352345a5173604bedd",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/market-insight-product-selection/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "marketplace.data"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.market-research.product-attribute-analyzer",
+      "runtime_name": "product-attribute-analyzer",
+      "category": "market-research",
+      "order": 5,
+      "display_name": "产品属性分析",
+      "description": "合成目录 fixture：产品属性分析；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillResearch"
+      },
+      "risk": {
+        "level": "low",
+        "reasons": [
+          "合成目录条目不包含源码、归档或可执行指令。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/product-attribute-analyzer/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "891f73741459ac68ba1c2bc51aae35b165acca47771ad3ec024c0f2e11b0594e",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/product-attribute-analyzer/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "model-only",
+        "network": "none",
+        "filesystem": "none",
+        "required_tools": []
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.market-research.product-selection",
+      "runtime_name": "product-selection",
+      "category": "market-research",
+      "order": 6,
+      "display_name": "产品选品",
+      "description": "合成目录 fixture：产品选品；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillResearch"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/product-selection/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "e3d71cd3000b314e408bb5d50769033abd6ff5e9c5dde3e74733848510aee2ca",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/product-selection/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "marketplace.data"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.market-research.review-analyst-agent",
+      "runtime_name": "review-analyst-agent",
+      "category": "market-research",
+      "order": 7,
+      "display_name": "评论分析助手",
+      "description": "合成目录 fixture：评论分析助手；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillResearch"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/review-analyst-agent/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "1722abc9560fdcd8dc9d08911e07fdf9e7c4216e1adb33f3eb26649d7efda64c",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/review-analyst-agent/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "marketplace.reviews"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.market-research.scenario-driven-product-scout",
+      "runtime_name": "scenario-driven-product-scout",
+      "category": "market-research",
+      "order": 8,
+      "display_name": "场景驱动选品",
+      "description": "合成目录 fixture：场景驱动选品；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillResearch"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/scenario-driven-product-scout/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "3d36a3bcb400497507187bb3eac7d127f90f9a54e0f7b4e80cc5862899abce2e",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/scenario-driven-product-scout/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "browser.search"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.content-marketing.content-breakdown",
+      "runtime_name": "content-breakdown",
+      "category": "content-marketing",
+      "order": 0,
+      "display_name": "内容拆解",
+      "description": "合成目录 fixture：内容拆解；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillContent"
+      },
+      "risk": {
+        "level": "low",
+        "reasons": [
+          "合成目录条目不包含源码、归档或可执行指令。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/content-breakdown/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "698006625d61731c646b63630f73727b7fe351660d76f0bc9e662c95d82ecd11",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/content-breakdown/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "model-only",
+        "network": "none",
+        "filesystem": "none",
+        "required_tools": []
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.content-marketing.content-strategy",
+      "runtime_name": "content-strategy",
+      "category": "content-marketing",
+      "order": 1,
+      "display_name": "内容策略",
+      "description": "合成目录 fixture：内容策略；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillContent"
+      },
+      "risk": {
+        "level": "low",
+        "reasons": [
+          "合成目录条目不包含源码、归档或可执行指令。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/content-strategy/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "903a88ac523307ff95e953cd4f63278402c945d8af5b03320eb482e625597d2d",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/content-strategy/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "model-only",
+        "network": "none",
+        "filesystem": "none",
+        "required_tools": []
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.content-marketing.copywriting",
+      "runtime_name": "copywriting",
+      "category": "content-marketing",
+      "order": 2,
+      "display_name": "文案创作",
+      "description": "合成可安装文案 Skill，用于固定 38 项目录中的正常安装投影。",
+      "version": "0.1.0",
+      "entrypoint": "SKILL.md",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "edit"
+      },
+      "risk": {
+        "level": "low",
+        "reasons": [
+          "合成 fixture，不访问网络、文件系统或外部工具。"
+        ]
+      },
+      "provenance": {
+        "source_type": "internal",
+        "source_reference": "tests/fixtures/skills/bundle-v1/source/model-only",
+        "source_version": "0.1.0",
+        "source_sha256": "f0819022b03718cbdfa532fb42b9e8f4aa3ce3562525298b007384c12a2668fc",
+        "review_status": "verified",
+        "reviewed_by": "FEAT-129 contract fixture owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "CC0-1.0",
+        "redistribution_status": "verified",
+        "authorization_scope": "desktop-distribution",
+        "evidence_reference": "tests/fixtures/skills/bundle-v1/source/LICENSE",
+        "reviewed_by": "FEAT-129 contract fixture owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "model-only",
+        "network": "none",
+        "filesystem": "none",
+        "required_tools": []
+      },
+      "archive": {
+        "path": "packages/fixture-copywriting-0.1.0.zip",
+        "sha256": "0be8fb3745a32207c6dedb46090044763d47aa64ccf0147653591cb1c9171032",
+        "compressed_size_bytes": 417,
+        "uncompressed_size_bytes": 213,
+        "file_count": 2
+      },
+      "release": {
+        "catalog_status": "installable",
+        "maintenance_status": "maintained"
+      },
+      "catalog_entry_mode": "bundled"
+    },
+    {
+      "id": "yijie.content-marketing.product-marketing-context",
+      "runtime_name": "product-marketing-context",
+      "category": "content-marketing",
+      "order": 3,
+      "display_name": "产品营销上下文",
+      "description": "合成目录 fixture：产品营销上下文；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillContent"
+      },
+      "risk": {
+        "level": "low",
+        "reasons": [
+          "合成目录条目不包含源码、归档或可执行指令。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/product-marketing-context/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "f3b5131ee61e847a26817fb24eb444332c452a820ff84de6941bd64ae318172d",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/product-marketing-context/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "model-only",
+        "network": "none",
+        "filesystem": "none",
+        "required_tools": []
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.content-marketing.social-media-content-creator",
+      "runtime_name": "social-media-content-creator",
+      "category": "content-marketing",
+      "order": 4,
+      "display_name": "社交媒体内容创作",
+      "description": "合成目录 fixture：社交媒体内容创作；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillContent"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/social-media-content-creator/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "91204904f3867733f7565d3d58f1f902de62378fe4b5496448d7ca23fbde7e7f",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/social-media-content-creator/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "social.publish"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.content-marketing.vibe-marketing",
+      "runtime_name": "vibe-marketing",
+      "category": "content-marketing",
+      "order": 5,
+      "display_name": "氛围营销",
+      "description": "合成目录 fixture：氛围营销；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillContent"
+      },
+      "risk": {
+        "level": "low",
+        "reasons": [
+          "合成目录条目不包含源码、归档或可执行指令。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/vibe-marketing/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "e2ae596f849702cdcd94b806cb4fe8e2c7be591bf8d65d9c06683d11b9b53257",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/vibe-marketing/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "model-only",
+        "network": "none",
+        "filesystem": "none",
+        "required_tools": []
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.content-marketing.xiaohongshu-content-creator",
+      "runtime_name": "xiaohongshu-content-creator",
+      "category": "content-marketing",
+      "order": 6,
+      "display_name": "小红书内容创作",
+      "description": "合成目录 fixture：小红书内容创作；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillContent"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/xiaohongshu-content-creator/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "2a53427c4517d84ad91634c6cab65f68a171fd0df67044e8bfbbe8f9aa398bf3",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/xiaohongshu-content-creator/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "xiaohongshu.publish"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.traffic-advertising.amazon-listing-expert",
+      "runtime_name": "amazon-listing-expert",
+      "category": "traffic-advertising",
+      "order": 0,
+      "display_name": "亚马逊 Listing 专家",
+      "description": "合成目录 fixture：亚马逊 Listing 专家；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillTraffic"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/amazon-listing-expert/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "600270c087f6e56446a63c3921d453199522d8186da85d150087fc6d4ca87c3c",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/amazon-listing-expert/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "amazon.listing"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.traffic-advertising.amazon-ppc-campaign-manager",
+      "runtime_name": "amazon-ppc-campaign-manager",
+      "category": "traffic-advertising",
+      "order": 1,
+      "display_name": "亚马逊 PPC 广告管理",
+      "description": "合成目录 fixture：亚马逊 PPC 广告管理；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillTraffic"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/amazon-ppc-campaign-manager/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "94643377812ae855e6918e0d61f0a8c8a25b3075de4efdb2e402b5275801b895",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/amazon-ppc-campaign-manager/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "amazon.ads"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.traffic-advertising.amz-hot-keywords",
+      "runtime_name": "amz-hot-keywords",
+      "category": "traffic-advertising",
+      "order": 2,
+      "display_name": "亚马逊热门关键词",
+      "description": "合成目录 fixture：亚马逊热门关键词；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillTraffic"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/amz-hot-keywords/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "fa3cfc93692df784ceaef017b7d127705ccea02fa22a836d7d0831ac3d3a957f",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/amz-hot-keywords/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "amazon.keywords"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.traffic-advertising.amz-product-optimizer",
+      "runtime_name": "amz-product-optimizer",
+      "category": "traffic-advertising",
+      "order": 3,
+      "display_name": "亚马逊产品优化",
+      "description": "合成目录 fixture：亚马逊产品优化；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillTraffic"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/amz-product-optimizer/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "40b808e950cf70ff6c32dd46e479c9cb07b409a0336e57333a427ffe8087e460",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/amz-product-optimizer/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "amazon.listing"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.traffic-advertising.ecommerce-seo-optimizer",
+      "runtime_name": "ecommerce-seo-optimizer",
+      "category": "traffic-advertising",
+      "order": 4,
+      "display_name": "电商 SEO 优化",
+      "description": "合成目录 fixture：电商 SEO 优化；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillTraffic"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/ecommerce-seo-optimizer/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "3c38b46d2d334c1d4b4a5aa245e177d584420196f6e0b2af610f570f60715799",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/ecommerce-seo-optimizer/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "browser.search"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.traffic-advertising.etsy-seo-optimizer",
+      "runtime_name": "etsy-seo-optimizer",
+      "category": "traffic-advertising",
+      "order": 5,
+      "display_name": "Etsy SEO 优化",
+      "description": "合成目录 fixture：Etsy SEO 优化；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillTraffic"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/etsy-seo-optimizer/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "8cee0444d080ff3ee4e236ef846e594225eb6bc3dfd9fda21c33f03efa1d5f5b",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/etsy-seo-optimizer/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "etsy.listing"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.traffic-advertising.product-description-generator",
+      "runtime_name": "product-description-generator",
+      "category": "traffic-advertising",
+      "order": 6,
+      "display_name": "产品描述生成",
+      "description": "合成目录 fixture：产品描述生成；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillTraffic"
+      },
+      "risk": {
+        "level": "low",
+        "reasons": [
+          "合成目录条目不包含源码、归档或可执行指令。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/product-description-generator/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "3c4844cef9942fae6d5711e124741947405feeee6206f2ff7e144c1bb72bc41c",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/product-description-generator/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "model-only",
+        "network": "none",
+        "filesystem": "none",
+        "required_tools": []
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.traffic-advertising.seo-keyword-research",
+      "runtime_name": "seo-keyword-research",
+      "category": "traffic-advertising",
+      "order": 7,
+      "display_name": "SEO 关键词研究",
+      "description": "合成目录 fixture：SEO 关键词研究；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillTraffic"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/seo-keyword-research/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "d35a33f1146452201e625869c9a20c566db572e12f18fde215537f3753dc47d7",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/seo-keyword-research/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "browser.search"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.traffic-advertising.tiktok-ads-strategy",
+      "runtime_name": "tiktok-ads-strategy",
+      "category": "traffic-advertising",
+      "order": 8,
+      "display_name": "TikTok 广告策略",
+      "description": "合成目录 fixture：TikTok 广告策略；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillTraffic"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/tiktok-ads-strategy/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "c307b5ca811a056ef1b1b9f1f8ef418ea97ec51d65d355d381466a9ce9584782",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/tiktok-ads-strategy/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "tiktok.ads"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.store-operations.amazon-brand-protection",
+      "runtime_name": "amazon-brand-protection",
+      "category": "store-operations",
+      "order": 0,
+      "display_name": "亚马逊品牌保护",
+      "description": "合成目录 fixture：亚马逊品牌保护；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillOperations"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/amazon-brand-protection/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "d0cd182d61b03ada2714008e818d846c89399fecd9c2f618d1c9501f79c4e664",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/amazon-brand-protection/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "amazon.brand"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.store-operations.buy-now-pay-later-setup",
+      "runtime_name": "buy-now-pay-later-setup",
+      "category": "store-operations",
+      "order": 1,
+      "display_name": "先买后付配置",
+      "description": "合成目录 fixture：先买后付配置；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillOperations"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/buy-now-pay-later-setup/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "d127855fa9fac399f2e583343eb015f985dfa9ca0d60fc85836a6f03d25b8d5c",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/buy-now-pay-later-setup/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "payments.configure"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.store-operations.ecommerce-gdpr-compliance",
+      "runtime_name": "ecommerce-gdpr-compliance",
+      "category": "store-operations",
+      "order": 2,
+      "display_name": "电商 GDPR 合规",
+      "description": "合成目录 fixture：电商 GDPR 合规；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillOperations"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/ecommerce-gdpr-compliance/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "456be87f535eb949d41df3af7f74d7f022c84a1e6115bcd01f567a30bbff9dcb",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/ecommerce-gdpr-compliance/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "store.data"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.store-operations.invoice-generator",
+      "runtime_name": "invoice-generator",
+      "category": "store-operations",
+      "order": 3,
+      "display_name": "发票生成",
+      "description": "合成目录 fixture：发票生成；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillOperations"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/invoice-generator/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "9b706a0bc71dd0f12b3d76c4ab258d7d7c5d48213f7ff29df31fae542181e289",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/invoice-generator/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "store.orders"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.store-operations.multichannel-inventory-sync",
+      "runtime_name": "multichannel-inventory-sync",
+      "category": "store-operations",
+      "order": 4,
+      "display_name": "多渠道库存同步",
+      "description": "合成目录 fixture：多渠道库存同步；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillOperations"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/multichannel-inventory-sync/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "c64663372615224ad85d3f2b719cd6cdc3df8b1123e7a1ae885c2beff5234d8a",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/multichannel-inventory-sync/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "inventory.read",
+          "inventory.write"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.store-operations.payment-fraud-detector",
+      "runtime_name": "payment-fraud-detector",
+      "category": "store-operations",
+      "order": 5,
+      "display_name": "支付欺诈检测",
+      "description": "合成目录 fixture：支付欺诈检测；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillOperations"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/payment-fraud-detector/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "e074a3b27f310e000caf463affca26dc33c5630e851cdc02b4479fe7894dd56b",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/payment-fraud-detector/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "payments.risk"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.store-operations.tiktok-shop-setup",
+      "runtime_name": "tiktok-shop-setup",
+      "category": "store-operations",
+      "order": 6,
+      "display_name": "TikTok Shop 配置",
+      "description": "合成目录 fixture：TikTok Shop 配置；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillOperations"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/tiktok-shop-setup/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "f2ca34b88af5f781a978aa9978d8eeff7edd6ea14b63451a56bcd8bafac0d88b",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/tiktok-shop-setup/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "tiktok.shop"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    },
+    {
+      "id": "yijie.store-operations.warehouse-fulfillment-workflow",
+      "runtime_name": "warehouse-fulfillment-workflow",
+      "category": "store-operations",
+      "order": 7,
+      "display_name": "仓储履约工作流",
+      "description": "合成目录 fixture：仓储履约工作流；不包含观测源码或操作指令。",
+      "version": "0.0.0",
+      "catalog_entry_mode": "catalog-only",
+      "icon": {
+        "registry": "yj-icon-v1",
+        "key": "skillOperations"
+      },
+      "risk": {
+        "level": "medium",
+        "reasons": [
+          "合成目录条目声明外部能力依赖，未连接或调用任何真实服务。"
+        ]
+      },
+      "provenance": {
+        "source_type": "third-party",
+        "source_reference": "tests/fixtures/skills/catalog-v1/warehouse-fulfillment-workflow/SOURCE.txt",
+        "source_version": "0.0.0",
+        "source_sha256": "0c5d365fc2a40983648bf5577d67f6c8926d80ee4e4b4c5cee175985ad23cc05",
+        "review_status": "blocked",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "license": {
+        "expression": "NOASSERTION",
+        "redistribution_status": "blocked",
+        "authorization_scope": "none",
+        "evidence_reference": "tests/fixtures/skills/catalog-v1/warehouse-fulfillment-workflow/LICENSE-REVIEW.txt",
+        "reviewed_by": "FEAT-129 synthetic catalog owner",
+        "reviewed_at": "2026-08-25T00:00:00Z"
+      },
+      "capabilities": {
+        "execution_mode": "tool-assisted",
+        "network": "required",
+        "filesystem": "none",
+        "required_tools": [
+          "warehouse.fulfillment"
+        ]
+      },
+      "release": {
+        "catalog_status": "blocked",
+        "maintenance_status": "maintained",
+        "blocked_reason": "license_unverified"
+      }
+    }
+  ]
+}

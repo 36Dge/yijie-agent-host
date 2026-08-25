@@ -22,6 +22,8 @@ import (
 
 const transactionSeparator = "--"
 
+const rollbackRuntimeTimeout = 10 * time.Second
+
 var validScanReasons = map[string]struct{}{
 	"startup":           {},
 	"page_open":         {},
@@ -32,22 +34,25 @@ var validScanReasons = map[string]struct{}{
 }
 
 type Service struct {
-	mu              sync.Mutex
-	opMu            sync.Mutex
-	bundleRoot      string
-	managedRoot     string
-	bundle          *os.Root
-	managed         *os.Root
-	state           *os.Root
-	runtime         Runtime
-	now             func() time.Time
-	changed         chan struct{}
-	mutation        chan struct{}
-	operations      map[string]*operationRecord
-	registeredRoots []string
-	rootsRegistered bool
-	syncManaged     func(*os.Root) error
-	closed          bool
+	mu                           sync.Mutex
+	opMu                         sync.Mutex
+	bundleRoot                   string
+	managedRoot                  string
+	bundle                       *os.Root
+	managed                      *os.Root
+	state                        *os.Root
+	runtime                      Runtime
+	now                          func() time.Time
+	changed                      chan struct{}
+	mutation                     chan struct{}
+	operations                   map[string]*operationRecord
+	operationStoreNeedsV1Rewrite bool
+	persistOperationsFault       func(operationStore) error
+	registeredRoots              []string
+	rootsRegistered              bool
+	syncManaged                  func(*os.Root) error
+	syncSkill                    func(*os.Root) error
+	closed                       bool
 }
 
 func NewService(config Config) (*Service, error) {
@@ -91,7 +96,8 @@ func NewService(config Config) (*Service, error) {
 		bundle.Close()
 		return nil, errorWithCode(CodeScanFailed, err)
 	}
-	if _, err := loadCatalog(bundleRoot); err != nil {
+	initialCatalog, err := loadCatalog(bundleRoot)
+	if err != nil {
 		bundle.Close()
 		managed.Close()
 		return nil, err
@@ -118,8 +124,13 @@ func NewService(config Config) (*Service, error) {
 		mutation:    make(chan struct{}, 1),
 		operations:  make(map[string]*operationRecord),
 		syncManaged: syncRoot,
+		syncSkill:   syncRoot,
 	}
 	if err := service.loadOperations(); err != nil {
+		service.Close()
+		return nil, errorWithCode(CodeScanFailed, err)
+	}
+	if err := service.migrateLegacyBlockedReasons(initialCatalog); err != nil {
 		service.Close()
 		return nil, errorWithCode(CodeScanFailed, err)
 	}
@@ -184,7 +195,10 @@ func (s *Service) Scan(ctx context.Context, input ScanInput) (Snapshot, error) {
 	snapshot, scanErr := s.reconcileLocked(ctx)
 	s.mu.Unlock()
 	if finishErr := s.finishSnapshotOperation(record, snapshot, scanErr, true); finishErr != nil {
-		scanErr = errors.Join(scanErr, finishErr)
+		// The journal result is the replay contract. If finalization fails, expose
+		// that failure first so the owner and immediate same-ID callers observe
+		// the same ErrorCode.
+		scanErr = errors.Join(finishErr, scanErr)
 	}
 	return snapshot, scanErr
 }
@@ -220,12 +234,15 @@ func (s *Service) Install(ctx context.Context, input InstallInput) (State, error
 	state, installErr := s.installLocked(ctx, input, record)
 	s.mu.Unlock()
 	if finishErr := s.finishStateOperation(record, state, installErr, true); finishErr != nil {
-		installErr = errors.Join(installErr, finishErr)
+		installErr = errors.Join(finishErr, installErr)
 	}
 	return state, installErr
 }
 
 func (s *Service) installLocked(ctx context.Context, input InstallInput, record *operationRecord) (State, error) {
+	if err := s.recoverTransactionsLocked(); err != nil {
+		return State{}, err
+	}
 	catalog, err := loadCatalog(s.bundleRoot)
 	if err != nil {
 		return State{}, err
@@ -234,17 +251,16 @@ func (s *Service) installLocked(ctx context.Context, input InstallInput, record 
 	if err != nil {
 		return State{}, err
 	}
+	if !installableSkill(skill) {
+		return State{}, errorWithCode(CodeNotInstallable, errors.New("Skill is not installable"))
+	}
 	if input.ExpectedVersion != skill.Version ||
 		subtle.ConstantTimeCompare([]byte(input.ExpectedArchiveSHA256), []byte(skill.Archive.SHA256)) != 1 ||
 		subtle.ConstantTimeCompare([]byte(input.CatalogRevision), []byte(catalog.revision)) != 1 {
 		return State{}, errorWithCode(CodeInvalidRequest, errors.New("install precondition does not match catalog"))
 	}
-	if skill.Release.CatalogStatus != "installable" || skill.Provenance.ReviewStatus != "verified" ||
-		skill.License.RedistributionStatus != "verified" {
-		return State{}, errorWithCode(CodeNotInstallable, errors.New("Skill is not installable"))
-	}
-	if capabilityReadiness(skill) != "ready" {
-		return State{}, errorWithCode(CodeNotInstallable, errors.New("Skill capability is unavailable"))
+	if _, err := s.reconcileCatalogLocked(ctx, catalog); err != nil {
+		return State{}, err
 	}
 
 	previous := inspectInstallation(s.managed, skill)
@@ -254,6 +270,9 @@ func (s *Service) installLocked(ctx context.Context, input InstallInput, record 
 			return State{}, err
 		}
 		state := stateByID(snapshot, skill.ID)
+		if err := s.commitStateOperation(record, state); err != nil {
+			return State{}, err
+		}
 		return state, nil
 	}
 
@@ -292,7 +311,7 @@ func (s *Service) installLocked(ctx context.Context, input InstallInput, record 
 	if hadPrevious {
 		if err := s.managed.Rename(skill.ID, backupName); err != nil {
 			_ = s.managed.RemoveAll(stageName)
-			return State{}, errorWithCode(CodeInstallFailed, err)
+			return State{}, s.finishRollbackLocked(record, errorWithCode(CodeInstallFailed, err))
 		}
 	}
 	if err := s.managed.Rename(stageName, skill.ID); err != nil {
@@ -304,50 +323,57 @@ func (s *Service) installLocked(ctx context.Context, input InstallInput, record 
 		if rollbackErr != nil {
 			return State{}, errorWithCode(CodeInstallFailed, errors.New("installation rollback failed"))
 		}
-		return State{}, errorWithCode(CodeInstallFailed, err)
+		if rollbackErr = s.syncManagedRoot(); rollbackErr != nil {
+			return State{}, errorWithCode(CodeInstallFailed, errors.New("installation rollback durability failed"))
+		}
+		return State{}, s.finishRollbackLocked(record, errorWithCode(CodeInstallFailed, err))
 	}
 	if err := s.syncManagedRoot(); err != nil {
 		rollbackErr := s.rollbackInstallLocked(skill.ID, failedName, backupName, hadPrevious)
 		if rollbackErr != nil {
 			return State{}, errorWithCode(CodeInstallFailed, errors.New("installation rollback failed"))
 		}
-		return State{}, errorWithCode(CodeInstallFailed, err)
+		return State{}, s.finishRollbackLocked(record, errorWithCode(CodeInstallFailed, err))
 	}
 	if err := s.updateOperationPhase(record, "filesystem_committed", hadPrevious, previous.enabled); err != nil {
 		rollbackErr := s.rollbackInstallLocked(skill.ID, failedName, backupName, hadPrevious)
-		return State{}, errors.Join(err, rollbackErr)
+		if rollbackErr != nil {
+			return State{}, errors.Join(err, rollbackErr)
+		}
+		return State{}, s.finishRollbackLocked(record, err)
 	}
 
 	snapshot, syncErr := s.reconcileCatalogLocked(ctx, catalog)
 	if syncErr != nil {
 		rollbackErr := s.rollbackInstallLocked(skill.ID, failedName, backupName, hadPrevious)
 		if rollbackErr == nil {
-			_, _ = s.reconcileCatalogLocked(ctx, catalog)
+			rollbackErr = s.reconcileRollbackLocked(catalog)
 		}
 		if rollbackErr != nil {
 			return State{}, errorWithCode(CodeInstallFailed, errors.New("installation rollback failed"))
 		}
-		return State{}, syncErr
-	}
-	if err := s.updateOperationPhase(record, "runtime_confirmed", hadPrevious, previous.enabled); err != nil {
-		rollbackErr := s.rollbackInstallLocked(skill.ID, failedName, backupName, hadPrevious)
-		if rollbackErr == nil {
-			_, _ = s.reconcileCatalogLocked(ctx, catalog)
-		}
-		if rollbackErr != nil {
-			return State{}, errorWithCode(CodeInstallFailed, errors.New("installation rollback failed"))
-		}
-		return State{}, err
-	}
-	if hadPrevious {
-		if err := s.managed.RemoveAll(backupName); err != nil {
-			return State{}, errorWithCode(CodeInstallFailed, err)
-		}
-		if err := s.syncManagedRoot(); err != nil {
-			return State{}, errorWithCode(CodeInstallFailed, err)
-		}
+		return State{}, s.finishRollbackLocked(record, syncErr)
 	}
 	state := stateByID(snapshot, skill.ID)
+	if err := s.commitStateOperation(record, state); err != nil {
+		rollbackErr := s.rollbackInstallLocked(skill.ID, failedName, backupName, hadPrevious)
+		if rollbackErr == nil {
+			rollbackErr = s.reconcileRollbackLocked(catalog)
+		}
+		if rollbackErr != nil {
+			return State{}, errorWithCode(CodeInstallFailed, errors.New("installation rollback failed"))
+		}
+		return State{}, s.finishRollbackLocked(record, err)
+	}
+	if hadPrevious {
+		// The completed success result is the durable commit point. Backup removal is
+		// post-commit garbage collection: a failure must not turn an installed,
+		// Runtime-visible version into a permanently replayed operation error.
+		// recoverTransactionsLocked retries any confirmed backup left behind.
+		if err := s.managed.RemoveAll(backupName); err == nil {
+			_ = s.syncManagedRoot()
+		}
+	}
 	return state, nil
 }
 
@@ -378,18 +404,24 @@ func (s *Service) SetEnabled(ctx context.Context, input EnabledInput) (State, er
 	state, enabledErr := s.setEnabledLocked(ctx, input, record)
 	s.mu.Unlock()
 	if finishErr := s.finishStateOperation(record, state, enabledErr, true); finishErr != nil {
-		enabledErr = errors.Join(enabledErr, finishErr)
+		enabledErr = errors.Join(finishErr, enabledErr)
 	}
 	return state, enabledErr
 }
 
 func (s *Service) setEnabledLocked(ctx context.Context, input EnabledInput, record *operationRecord) (State, error) {
+	if err := s.recoverTransactionsLocked(); err != nil {
+		return State{}, err
+	}
 	catalog, err := loadCatalog(s.bundleRoot)
 	if err != nil {
 		return State{}, err
 	}
 	skill, err := manifestSkill(catalog, input.SkillID)
 	if err != nil {
+		return State{}, err
+	}
+	if _, err := s.reconcileCatalogLocked(ctx, catalog); err != nil {
 		return State{}, err
 	}
 	installed := inspectInstallation(s.managed, skill)
@@ -399,37 +431,38 @@ func (s *Service) setEnabledLocked(ctx context.Context, input EnabledInput, reco
 	if !installed.valid {
 		return State{}, errorWithCode(CodeInvalidRequest, errors.New("installed Skill cannot be enabled"))
 	}
-	if input.Enabled && capabilityReadiness(skill) != "ready" {
-		return State{}, errorWithCode(CodeNotInstallable, errors.New("Skill capability is unavailable"))
+	if input.Enabled && !installableSkill(skill) {
+		return State{}, errorWithCode(CodeNotInstallable, errors.New("Skill is not installable"))
 	}
 	if installed.enabled != input.Enabled {
 		if err := s.updateOperationPhase(record, "committing", true, installed.enabled); err != nil {
 			return State{}, err
 		}
 		if err := s.setDisabledMarkerLocked(skill.ID, !input.Enabled); err != nil {
+			if rollbackErr := s.restoreEnabledStateLocked(catalog, skill.ID, installed.enabled, record); rollbackErr != nil {
+				return State{}, errorWithCode(CodeInstallFailed, errors.Join(err, errors.New("enabled state rollback failed"), rollbackErr))
+			}
 			return State{}, errorWithCode(CodeInstallFailed, err)
 		}
 	}
 	snapshot, syncErr := s.reconcileCatalogLocked(ctx, catalog)
 	if syncErr != nil {
 		if installed.enabled != input.Enabled {
-			if rollbackErr := s.setDisabledMarkerLocked(skill.ID, !installed.enabled); rollbackErr != nil {
+			if rollbackErr := s.restoreEnabledStateLocked(catalog, skill.ID, installed.enabled, record); rollbackErr != nil {
 				return State{}, errorWithCode(CodeInstallFailed, errors.New("enabled state rollback failed"))
 			}
-			_, _ = s.reconcileCatalogLocked(ctx, catalog)
 		}
 		return State{}, syncErr
 	}
-	if err := s.updateOperationPhase(record, "runtime_confirmed", true, installed.enabled); err != nil {
+	state := stateByID(snapshot, skill.ID)
+	if err := s.commitStateOperation(record, state); err != nil {
 		if installed.enabled != input.Enabled {
-			if rollbackErr := s.setDisabledMarkerLocked(skill.ID, !installed.enabled); rollbackErr != nil {
+			if rollbackErr := s.restoreEnabledStateLocked(catalog, skill.ID, installed.enabled, record); rollbackErr != nil {
 				return State{}, errorWithCode(CodeInstallFailed, errors.New("enabled state rollback failed"))
 			}
-			_, _ = s.reconcileCatalogLocked(ctx, catalog)
 		}
 		return State{}, err
 	}
-	state := stateByID(snapshot, skill.ID)
 	return state, nil
 }
 
@@ -460,18 +493,24 @@ func (s *Service) Uninstall(ctx context.Context, input UninstallInput) (State, e
 	state, uninstallErr := s.uninstallLocked(ctx, input, record)
 	s.mu.Unlock()
 	if finishErr := s.finishStateOperation(record, state, uninstallErr, true); finishErr != nil {
-		uninstallErr = errors.Join(uninstallErr, finishErr)
+		uninstallErr = errors.Join(finishErr, uninstallErr)
 	}
 	return state, uninstallErr
 }
 
 func (s *Service) uninstallLocked(ctx context.Context, input UninstallInput, record *operationRecord) (State, error) {
+	if err := s.recoverTransactionsLocked(); err != nil {
+		return State{}, err
+	}
 	catalog, err := loadCatalog(s.bundleRoot)
 	if err != nil {
 		return State{}, err
 	}
 	skill, err := manifestSkill(catalog, input.SkillID)
 	if err != nil {
+		return State{}, err
+	}
+	if _, err := s.reconcileCatalogLocked(ctx, catalog); err != nil {
 		return State{}, err
 	}
 	installed := inspectInstallation(s.managed, skill)
@@ -481,7 +520,13 @@ func (s *Service) uninstallLocked(ctx context.Context, input UninstallInput, rec
 			return State{}, err
 		}
 		state := stateByID(snapshot, skill.ID)
+		if err := s.commitStateOperation(record, state); err != nil {
+			return State{}, err
+		}
 		return state, nil
+	}
+	if err := s.updateOperationPhase(record, "committing", true, installed.enabled); err != nil {
+		return State{}, err
 	}
 
 	// A valid Skill is disabled and confirmed absent from the model-visible
@@ -493,69 +538,47 @@ func (s *Service) uninstallLocked(ctx context.Context, input UninstallInput, rec
 			_, installations := inspectCatalog(s.managed, catalog)
 			roots, rootsErr := s.runtimeRootsLocked(catalog, installations)
 			if rootsErr != nil {
-				return State{}, rootsErr
+				return State{}, s.rollbackUninstallLocked(catalog, record, "", skill.ID, false, rootsErr)
 			}
 			if err := s.setRuntimeRootsLocked(ctx, roots); err != nil {
-				return State{}, err
+				return State{}, s.rollbackUninstallLocked(catalog, record, "", skill.ID, false, err)
 			}
 			if _, err := s.runtime.WriteSkillConfig(ctx, entrypoint, false); err != nil {
-				return State{}, errorWithCode(CodeRuntimeSyncFailed, err)
+				cause := errorWithCode(CodeRuntimeSyncFailed, err)
+				return State{}, s.rollbackUninstallLocked(catalog, record, "", skill.ID, false, cause)
 			}
 			if err := s.confirmRuntimeDisabled(ctx, entrypoint, skill.RuntimeName); err != nil {
-				return State{}, err
+				return State{}, s.rollbackUninstallLocked(catalog, record, "", skill.ID, false, err)
 			}
 		}
 	}
 	trashName := transactionName(".yijie-trash", skill.ID, input.OperationID)
 	_ = s.managed.RemoveAll(trashName)
-	if err := s.updateOperationPhase(record, "committing", true, installed.enabled); err != nil {
-		_, _ = s.reconcileCatalogLocked(ctx, catalog)
-		return State{}, err
-	}
 	if err := s.managed.Rename(skill.ID, trashName); err != nil {
-		_, _ = s.reconcileCatalogLocked(ctx, catalog)
-		return State{}, errorWithCode(CodeUninstallFailed, err)
+		cause := errorWithCode(CodeUninstallFailed, err)
+		return State{}, s.rollbackUninstallLocked(catalog, record, trashName, skill.ID, false, cause)
 	}
 	if err := s.syncManagedRoot(); err != nil {
-		rollbackErr := s.restoreTrashLocked(trashName, skill.ID)
-		if rollbackErr != nil {
-			return State{}, errorWithCode(CodeUninstallFailed, errors.New("uninstall rollback failed"))
-		}
-		_, _ = s.reconcileCatalogLocked(ctx, catalog)
-		return State{}, errorWithCode(CodeUninstallFailed, err)
+		cause := errorWithCode(CodeUninstallFailed, err)
+		return State{}, s.rollbackUninstallLocked(catalog, record, trashName, skill.ID, true, cause)
 	}
 	if err := s.updateOperationPhase(record, "filesystem_committed", true, installed.enabled); err != nil {
-		if rollbackErr := s.restoreTrashLocked(trashName, skill.ID); rollbackErr != nil {
-			return State{}, errorWithCode(CodeUninstallFailed, errors.New("uninstall rollback failed"))
-		}
-		_, _ = s.reconcileCatalogLocked(ctx, catalog)
-		return State{}, err
+		return State{}, s.rollbackUninstallLocked(catalog, record, trashName, skill.ID, true, err)
 	}
 	snapshot, syncErr := s.reconcileCatalogLocked(ctx, catalog)
 	if syncErr != nil {
-		if rollbackErr := s.restoreTrashLocked(trashName, skill.ID); rollbackErr != nil {
-			return State{}, errorWithCode(CodeUninstallFailed, errors.New("uninstall rollback failed"))
-		}
-		_, _ = s.reconcileCatalogLocked(ctx, catalog)
-		return State{}, syncErr
-	}
-	if err := s.updateOperationPhase(record, "runtime_confirmed", true, installed.enabled); err != nil {
-		if rollbackErr := s.restoreTrashLocked(trashName, skill.ID); rollbackErr != nil {
-			return State{}, errorWithCode(CodeUninstallFailed, errors.New("uninstall rollback failed"))
-		}
-		_, _ = s.reconcileCatalogLocked(ctx, catalog)
-		return State{}, err
-	}
-	if err := s.managed.RemoveAll(trashName); err != nil {
-		if rollbackErr := s.managed.Rename(trashName, skill.ID); rollbackErr == nil {
-			_, _ = s.reconcileCatalogLocked(ctx, catalog)
-		}
-		return State{}, errorWithCode(CodeUninstallFailed, err)
-	}
-	if err := s.syncManagedRoot(); err != nil {
-		return State{}, errorWithCode(CodeUninstallFailed, err)
+		return State{}, s.rollbackUninstallLocked(catalog, record, trashName, skill.ID, true, syncErr)
 	}
 	state := stateByID(snapshot, skill.ID)
+	if err := s.commitStateOperation(record, state); err != nil {
+		return State{}, s.rollbackUninstallLocked(catalog, record, trashName, skill.ID, true, err)
+	}
+	// Runtime confirmation is also the uninstall commit point. Trash cleanup is
+	// retryable garbage collection; reporting failure after the target is gone
+	// would make the idempotency journal disagree with filesystem/Runtime truth.
+	if err := s.managed.RemoveAll(trashName); err == nil {
+		_ = s.syncManagedRoot()
+	}
 	return state, nil
 }
 
@@ -635,13 +658,14 @@ func inspectCatalog(managed *os.Root, catalog catalog) ([]State, map[string]inst
 		installed := inspectInstallation(managed, skill)
 		installations[skill.ID] = installed
 		state := State{
-			ID:                  skill.ID,
-			RuntimeName:         skill.RuntimeName,
-			Version:             skill.Version,
-			CatalogStatus:       skill.Release.CatalogStatus,
-			MaintenanceStatus:   skill.Release.MaintenanceStatus,
-			CapabilityReadiness: capabilityReadiness(skill),
-			InstallationStatus:  "not_installed",
+			ID:                   skill.ID,
+			RuntimeName:          skill.RuntimeName,
+			Version:              skill.Version,
+			CatalogStatus:        skill.Release.CatalogStatus,
+			CatalogBlockedReason: catalogBlockedReason(skill),
+			MaintenanceStatus:    skill.Release.MaintenanceStatus,
+			CapabilityReadiness:  capabilityReadiness(skill),
+			InstallationStatus:   "not_installed",
 		}
 		if installed.exists {
 			state.InstallationStatus = "error"
@@ -679,7 +703,7 @@ func (s *Service) syncRuntimeLocked(
 	expectedPathByID := make(map[string]string, len(catalog.manifest.Skills))
 	for _, skill := range catalog.manifest.Skills {
 		installed := installations[skill.ID]
-		enabled := installed.valid && installed.enabled && capabilityReadiness(skill) == "ready"
+		enabled := installed.valid && installed.enabled && installableSkill(skill)
 		desired[skill.ID] = enabled
 		entrypoint := filepath.Join(s.managedRoot, skill.ID, skill.Entrypoint)
 		if !installed.valid {
@@ -760,6 +784,11 @@ func (s *Service) setRuntimeRootsLocked(ctx context.Context, roots []string) err
 		return nil
 	}
 	if err := s.runtime.SetSkillsExtraRoots(ctx, roots); err != nil {
+		// The Runtime may have applied the request before a timeout/transport
+		// failure. Invalidate the cache so compensation and retries always resend
+		// the desired roots instead of trusting an ambiguous local snapshot.
+		s.registeredRoots = nil
+		s.rootsRegistered = false
 		return errorWithCode(CodeRuntimeSyncFailed, err)
 	}
 	s.registeredRoots = append(s.registeredRoots[:0], roots...)
@@ -791,6 +820,39 @@ func (s *Service) restoreTrashLocked(trashName, skillID string) error {
 		return err
 	}
 	return s.syncManagedRoot()
+}
+
+func (s *Service) finishRollbackLocked(record *operationRecord, cause error) error {
+	if err := s.updateOperationPhase(record, "reserved", false, false); err != nil {
+		return errors.Join(cause, err)
+	}
+	return cause
+}
+
+func (s *Service) rollbackUninstallLocked(
+	current catalog,
+	record *operationRecord,
+	trashName string,
+	skillID string,
+	movedToTrash bool,
+	cause error,
+) error {
+	if movedToTrash {
+		if err := s.restoreTrashLocked(trashName, skillID); err != nil {
+			return errorWithCode(CodeUninstallFailed, errors.Join(errors.New("uninstall rollback failed"), cause, err))
+		}
+	}
+	if err := s.reconcileRollbackLocked(current); err != nil {
+		return errorWithCode(CodeUninstallFailed, errors.Join(errors.New("uninstall Runtime rollback failed"), cause, err))
+	}
+	return s.finishRollbackLocked(record, cause)
+}
+
+func (s *Service) reconcileRollbackLocked(current catalog) error {
+	rollbackContext, cancel := context.WithTimeout(context.Background(), rollbackRuntimeTimeout)
+	defer cancel()
+	_, err := s.reconcileCatalogLocked(rollbackContext, current)
+	return err
 }
 
 func (s *Service) confirmRuntimeDisabled(ctx context.Context, entrypoint, runtimeName string) error {
@@ -833,30 +895,53 @@ func (s *Service) setDisabledMarkerLocked(skillID string, disabled bool) error {
 	}
 	defer skillRoot.Close()
 	if disabled {
-		if _, err := skillRoot.Lstat(disabledFileName); err == nil {
-			return nil
+		if info, err := skillRoot.Lstat(disabledFileName); err == nil {
+			if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o077 != 0 || info.Size() != 0 {
+				return errors.New("disabled marker is invalid")
+			}
+			// A previous create may have succeeded while its directory fsync
+			// failed. Retry the durability boundary before recovery clears the
+			// journal phase.
+			return s.syncSkill(skillRoot)
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 		if err := writeOwnerOnlyFile(skillRoot, disabledFileName, nil); err != nil {
 			return err
 		}
-		return syncRoot(skillRoot)
+		return s.syncSkill(skillRoot)
 	}
 	if err := skillRoot.Remove(disabledFileName); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return syncRoot(skillRoot)
+	return s.syncSkill(skillRoot)
+}
+
+func (s *Service) restoreEnabledStateLocked(
+	current catalog,
+	skillID string,
+	enabled bool,
+	record *operationRecord,
+) error {
+	if err := s.setDisabledMarkerLocked(skillID, !enabled); err != nil {
+		return err
+	}
+	if err := s.reconcileRollbackLocked(current); err != nil {
+		return err
+	}
+	return s.updateOperationPhase(record, "reserved", false, false)
 }
 
 func (s *Service) recoverTransactionsLocked() error {
 	s.opMu.Lock()
-	records := make(map[string]*operationRecord, len(s.operations))
+	records := make(map[string]operationRecord, len(s.operations))
 	for id, record := range s.operations {
-		records[id] = record
+		records[id] = *record
 	}
 	s.opMu.Unlock()
 
+	managedChanged := false
+	managedNeedsSync := false
 	entries, err := fs.ReadDir(s.managed.FS(), ".")
 	if err != nil {
 		return errorWithCode(CodeScanFailed, err)
@@ -868,31 +953,36 @@ func (s *Service) recoverTransactionsLocked() error {
 			if err := s.managed.RemoveAll(name); err != nil {
 				return errorWithCode(CodeScanFailed, err)
 			}
+			managedChanged = true
 		case strings.HasPrefix(name, ".yijie-failed"+transactionSeparator):
 			if _, _, ok := parseSkillTransactionName(name); ok {
 				if err := s.managed.RemoveAll(name); err != nil {
 					return errorWithCode(CodeScanFailed, err)
 				}
+				managedChanged = true
 			}
 		case strings.HasPrefix(name, ".yijie-trash"+transactionSeparator):
 			skillID, operationID, ok := parseSkillTransactionName(name)
 			if !ok {
 				continue
 			}
-			record := records[operationID]
-			confirmed := record != nil && (record.Status == "complete" || record.Phase == "runtime_confirmed")
+			record, exists := records[operationID]
+			confirmed := exists && transactionConfirmed(&record)
 			if confirmed {
 				if err := s.managed.RemoveAll(name); err != nil {
 					return errorWithCode(CodeScanFailed, err)
 				}
+				managedChanged = true
 			} else if _, targetErr := s.managed.Lstat(skillID); errors.Is(targetErr, os.ErrNotExist) {
 				if err := s.managed.Rename(name, skillID); err != nil {
 					return errorWithCode(CodeScanFailed, err)
 				}
+				managedChanged = true
 			} else if targetErr == nil {
 				if err := s.managed.RemoveAll(name); err != nil {
 					return errorWithCode(CodeScanFailed, err)
 				}
+				managedChanged = true
 			} else {
 				return errorWithCode(CodeScanFailed, targetErr)
 			}
@@ -901,25 +991,26 @@ func (s *Service) recoverTransactionsLocked() error {
 			if !ok {
 				continue
 			}
-			record := records[operationID]
-			confirmed := record != nil && (record.Status == "complete" || record.Phase == "runtime_confirmed")
-			if _, targetErr := s.managed.Lstat(skillID); errors.Is(targetErr, os.ErrNotExist) {
+			record, exists := records[operationID]
+			confirmed := exists && transactionConfirmed(&record)
+			if confirmed {
+				if err := s.managed.RemoveAll(name); err != nil {
+					return errorWithCode(CodeScanFailed, err)
+				}
+				managedChanged = true
+			} else if _, targetErr := s.managed.Lstat(skillID); errors.Is(targetErr, os.ErrNotExist) {
 				if err := s.managed.Rename(name, skillID); err != nil {
 					return errorWithCode(CodeScanFailed, err)
 				}
+				managedChanged = true
 			} else if targetErr == nil {
-				if confirmed {
-					if err := s.managed.RemoveAll(name); err != nil {
-						return errorWithCode(CodeScanFailed, err)
-					}
-				} else {
-					if err := s.managed.RemoveAll(skillID); err != nil {
-						return errorWithCode(CodeScanFailed, err)
-					}
-					if err := s.managed.Rename(name, skillID); err != nil {
-						return errorWithCode(CodeScanFailed, err)
-					}
+				if err := s.managed.RemoveAll(skillID); err != nil {
+					return errorWithCode(CodeScanFailed, err)
 				}
+				if err := s.managed.Rename(name, skillID); err != nil {
+					return errorWithCode(CodeScanFailed, err)
+				}
+				managedChanged = true
 			} else {
 				return errorWithCode(CodeScanFailed, targetErr)
 			}
@@ -936,11 +1027,21 @@ func (s *Service) recoverTransactionsLocked() error {
 		}
 		switch record.Kind {
 		case "install":
+			// A previous rollback may already have restored the target namespace
+			// before its managed-root fsync failed. Even if no transaction name is
+			// left to mutate on this pass, retry that durability boundary before
+			// clearing the journal phase.
+			managedNeedsSync = true
 			if !record.HadPrevious {
 				if err := s.managed.RemoveAll(record.SkillID); err != nil {
 					return errorWithCode(CodeScanFailed, err)
 				}
+				managedChanged = true
 			}
+		case "uninstall":
+			// The inverse rename may likewise have completed before its directory
+			// fsync failed, leaving no trash name for this recovery pass to see.
+			managedNeedsSync = true
 		case "enabled":
 			if err := s.setDisabledMarkerLocked(record.SkillID, !record.PreviousEnabled); err != nil &&
 				!errors.Is(err, os.ErrNotExist) {
@@ -949,10 +1050,25 @@ func (s *Service) recoverTransactionsLocked() error {
 		}
 	}
 
+	// Make every filesystem recovery durable before clearing its journal phase.
+	// If this fsync fails, the original phase remains available for the next
+	// List/restart and every recovery action above is idempotent.
+	if managedChanged || managedNeedsSync {
+		if err := s.syncManagedRoot(); err != nil {
+			return errorWithCode(CodeScanFailed, err)
+		}
+	}
+
 	s.opMu.Lock()
 	for _, record := range s.operations {
 		if record.Status == "in_progress" {
-			record.Phase = "reserved"
+			if record.ErrorCode != "" {
+				record.Status = "complete"
+				record.Phase = "complete"
+				record.CompletedAt = s.now().UTC()
+			} else {
+				record.Phase = "reserved"
+			}
 			record.HadPrevious = false
 			record.PreviousEnabled = false
 		}
@@ -962,7 +1078,12 @@ func (s *Service) recoverTransactionsLocked() error {
 	if persistErr != nil {
 		return errorWithCode(CodeScanFailed, persistErr)
 	}
-	return syncRoot(s.managed)
+	return nil
+}
+
+func transactionConfirmed(record *operationRecord) bool {
+	return record != nil &&
+		((record.Status == "complete" && record.ErrorCode == "") || record.Phase == "runtime_confirmed")
 }
 
 func operationFingerprint(parts ...string) string {
@@ -982,14 +1103,46 @@ func validateOperationID(value string) error {
 }
 
 func capabilityReadiness(skill ManifestSkill) string {
-	if skill.Release.CatalogStatus != "installable" {
-		return "blocked"
-	}
 	if skill.Capabilities.ExecutionMode == "model-only" && skill.Capabilities.Network == "none" &&
 		skill.Capabilities.Filesystem == "none" && len(skill.Capabilities.RequiredTools) == 0 {
 		return "ready"
 	}
+	if installableSkill(skill) {
+		return "degraded"
+	}
 	return "blocked"
+}
+
+func installableSkill(skill ManifestSkill) bool {
+	return skill.Release.CatalogStatus == "installable" && catalogEntryMode(skill) == "bundled" &&
+		skill.Entrypoint == "SKILL.md" && skill.Archive.Path != "" &&
+		skill.Provenance.ReviewStatus == "verified" && skill.License.RedistributionStatus == "verified" &&
+		(skill.License.AuthorizationScope == "local-development" || skill.License.AuthorizationScope == "desktop-distribution")
+}
+
+func catalogBlockedReason(skill ManifestSkill) string {
+	if skill.Release.CatalogStatus == "installable" {
+		return ""
+	}
+	if skill.Release.BlockedReason != "" {
+		return skill.Release.BlockedReason
+	}
+	if skill.Provenance.ReviewStatus != "verified" {
+		return "source_unverified"
+	}
+	if skill.License.RedistributionStatus != "verified" {
+		return "license_unverified"
+	}
+	if skill.License.AuthorizationScope == "none" {
+		return "distribution_not_authorized"
+	}
+	if skill.Release.MaintenanceStatus == "unmaintained" {
+		return "maintenance_ended"
+	}
+	if capabilityReadiness(skill) == "blocked" {
+		return "capability_unavailable"
+	}
+	return "security_review_pending"
 }
 
 func stateByID(snapshot Snapshot, id string) State {

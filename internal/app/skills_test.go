@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	agenthostcontract "github.com/36Dge/yijie-agent-host/internal/contracts"
@@ -68,17 +67,31 @@ func TestSkillRoutesAuthorizeBearerBeforeCapabilityAndBody(t *testing.T) {
 		WithSkillService(service),
 	)
 
-	request := httptest.NewRequest(http.MethodPost, "/v1/skills/scan-operations", strings.NewReader("not-json"))
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
-	assertSkillError(t, response, http.StatusUnauthorized, agenthostcontract.SkillErrorResponseErrorCodeUnauthorized)
+	for _, route := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/v1/skills"},
+		{method: http.MethodPost, path: "/v1/skills/scan-operations"},
+		{method: http.MethodPost, path: "/v1/skills/yijie.content-marketing.copywriting/install-operations"},
+		{method: http.MethodPut, path: "/v1/skills/yijie.content-marketing.copywriting/enabled"},
+		{method: http.MethodPost, path: "/v1/skills/yijie.content-marketing.copywriting/uninstall-operations"},
+	} {
+		t.Run(route.method+" "+route.path, func(t *testing.T) {
+			request := httptest.NewRequest(route.method, route.path, strings.NewReader("not-json"))
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			assertSkillError(t, response, http.StatusUnauthorized, agenthostcontract.SkillErrorResponseErrorCodeUnauthorized)
 
-	request = httptest.NewRequest(http.MethodPost, "/v1/skills/scan-operations", strings.NewReader("not-json"))
-	request.Header.Set("Authorization", "Bearer api-token")
-	response = httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
-	assertSkillError(t, response, http.StatusForbidden, agenthostcontract.SkillErrorResponseErrorCodeCapabilityDenied)
-	if service.scanInput.OperationID != "" {
+			request = httptest.NewRequest(route.method, route.path, strings.NewReader("not-json"))
+			request.Header.Set("Authorization", "Bearer api-token")
+			response = httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			assertSkillError(t, response, http.StatusForbidden, agenthostcontract.SkillErrorResponseErrorCodeCapabilityDenied)
+		})
+	}
+	if service.listCalls != 0 || service.scanInput.OperationID != "" || service.installInput.OperationID != "" ||
+		service.enabledInput.OperationID != "" || service.uninstallInput.OperationID != "" {
 		t.Fatal("authorization failure reached the Skill service")
 	}
 
@@ -88,14 +101,14 @@ func TestSkillRoutesAuthorizeBearerBeforeCapabilityAndBody(t *testing.T) {
 		nil,
 		"api-token",
 	)
-	request = authorizedRequest(http.MethodGet, "/v1/skills", "")
-	response = httptest.NewRecorder()
+	request := authorizedRequest(http.MethodGet, "/v1/skills", "")
+	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	assertSkillError(t, response, http.StatusServiceUnavailable, agenthostcontract.SkillErrorResponseErrorCodeRuntimeUnavailable)
 }
 
 func TestSkillListMatchesCanonicalContractFixture(t *testing.T) {
-	service := &skillServiceStub{snapshot: canonicalSkillSnapshot(false)}
+	service := &skillServiceStub{snapshot: canonicalSkillSnapshot(t)}
 	handler := skillTestHandler(service)
 	request := authorizedRequest(http.MethodGet, "/v1/skills", "")
 	response := httptest.NewRecorder()
@@ -112,7 +125,7 @@ func TestSkillListMatchesCanonicalContractFixture(t *testing.T) {
 
 func TestSkillMutationRoutesConsumePinnedRequests(t *testing.T) {
 	service := &skillServiceStub{
-		snapshot: canonicalSkillSnapshot(false),
+		snapshot: canonicalSkillSnapshot(t),
 		state:    canonicalSkillState(true),
 	}
 	handler := skillTestHandler(service)
@@ -134,8 +147,8 @@ func TestSkillMutationRoutesConsumePinnedRequests(t *testing.T) {
 	assertJSONFixtureEqual(t, install.Body.Bytes(), "mutation-response.json")
 	if service.installInput.SkillID != "yijie.content-marketing.copywriting" ||
 		service.installInput.ExpectedVersion != "0.1.0" ||
-		service.installInput.ExpectedArchiveSHA256 != strings.Repeat("b", 64) ||
-		service.installInput.CatalogRevision != strings.Repeat("a", 64) {
+		service.installInput.ExpectedArchiveSHA256 != "0be8fb3745a32207c6dedb46090044763d47aa64ccf0147653591cb1c9171032" ||
+		service.installInput.CatalogRevision != "407d0760e1d06ef3446955fba19b39da26d1f740b2f63b601edae903b1664c18" {
 		t.Fatalf("unexpected install input: %#v", service.installInput)
 	}
 
@@ -180,11 +193,96 @@ func TestSkillArchiveUnsafeErrorMatchesPinnedFixture(t *testing.T) {
 	assertJSONFixtureEqual(t, response.Body.Bytes(), "error-archive-unsafe.json")
 }
 
+func TestSkillNotInstallableErrorMatchesPinnedFixture(t *testing.T) {
+	service := &skillServiceStub{err: &skills.ServiceError{Code: skills.CodeNotInstallable}}
+	handler := skillTestHandler(service)
+	response := serveSkillFixture(t, handler, http.MethodPost, "/v1/skills/yijie.content-marketing.copywriting/install-operations", "install-request.json")
+	assertSkillError(t, response, http.StatusUnprocessableEntity, agenthostcontract.SkillErrorResponseErrorCodeSkillNotInstallable)
+	assertJSONFixtureEqual(t, response.Body.Bytes(), "error-skill-not-installable.json")
+}
+
 func TestSkillFirstUseStalePreconditionMapsToBadRequest(t *testing.T) {
 	service := &skillServiceStub{err: &skills.ServiceError{Code: skills.CodeInvalidRequest}}
 	handler := skillTestHandler(service)
 	response := serveSkillFixture(t, handler, http.MethodPost, "/v1/skills/yijie.content-marketing.copywriting/install-operations", "install-request.json")
 	assertSkillError(t, response, http.StatusBadRequest, agenthostcontract.SkillErrorResponseErrorCodeInvalidRequest)
+}
+
+func TestSkillServiceErrorsStayWithinEachRouteContract(t *testing.T) {
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		fixture    string
+		serviceErr skills.ErrorCode
+		status     int
+		code       agenthostcontract.SkillErrorResponseErrorCode
+	}{
+		{
+			name: "list catalog failure is internal", method: http.MethodGet, path: "/v1/skills",
+			serviceErr: skills.CodeBundleMissing, status: http.StatusInternalServerError,
+			code: agenthostcontract.SkillErrorResponseErrorCodeInternalError,
+		},
+		{
+			name: "list Runtime failure is unavailable", method: http.MethodGet, path: "/v1/skills",
+			serviceErr: skills.CodeRuntimeSyncFailed, status: http.StatusServiceUnavailable,
+			code: agenthostcontract.SkillErrorResponseErrorCodeRuntimeSyncFailed,
+		},
+		{
+			name: "scan manifest failure is internal", method: http.MethodPost, path: "/v1/skills/scan-operations", fixture: "scan-request.json",
+			serviceErr: skills.CodeManifestInvalid, status: http.StatusInternalServerError,
+			code: agenthostcontract.SkillErrorResponseErrorCodeInternalError,
+		},
+		{
+			name: "scan contention is conflict", method: http.MethodPost, path: "/v1/skills/scan-operations", fixture: "scan-request.json",
+			serviceErr: skills.CodeBusy, status: http.StatusConflict,
+			code: agenthostcontract.SkillErrorResponseErrorCodeSkillBusy,
+		},
+		{
+			name: "install archive failure is unprocessable", method: http.MethodPost,
+			path: "/v1/skills/yijie.content-marketing.copywriting/install-operations", fixture: "install-request.json",
+			serviceErr: skills.CodeArchiveUnsafe, status: http.StatusUnprocessableEntity,
+			code: agenthostcontract.SkillErrorResponseErrorCodeArchiveUnsafe,
+		},
+		{
+			name: "enable blocked is bad request", method: http.MethodPut,
+			path: "/v1/skills/yijie.content-marketing.copywriting/enabled", fixture: "enabled-request.json",
+			serviceErr: skills.CodeNotInstallable, status: http.StatusBadRequest,
+			code: agenthostcontract.SkillErrorResponseErrorCodeInvalidRequest,
+		},
+		{
+			name: "enable Runtime failure is unavailable", method: http.MethodPut,
+			path: "/v1/skills/yijie.content-marketing.copywriting/enabled", fixture: "enabled-request.json",
+			serviceErr: skills.CodeRuntimeUnavailable, status: http.StatusServiceUnavailable,
+			code: agenthostcontract.SkillErrorResponseErrorCodeRuntimeUnavailable,
+		},
+		{
+			name: "uninstall catalog failure is internal", method: http.MethodPost,
+			path: "/v1/skills/yijie.content-marketing.copywriting/uninstall-operations", fixture: "uninstall-request.json",
+			serviceErr: skills.CodeBundleMissing, status: http.StatusInternalServerError,
+			code: agenthostcontract.SkillErrorResponseErrorCodeInternalError,
+		},
+		{
+			name: "uninstall unknown Skill is not found", method: http.MethodPost,
+			path: "/v1/skills/yijie.content-marketing.copywriting/uninstall-operations", fixture: "uninstall-request.json",
+			serviceErr: skills.CodeNotFound, status: http.StatusNotFound,
+			code: agenthostcontract.SkillErrorResponseErrorCodeSkillNotFound,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service := &skillServiceStub{err: &skills.ServiceError{Code: test.serviceErr}}
+			handler := skillTestHandler(service)
+			body := ""
+			if test.fixture != "" {
+				body = fixtureText(t, test.fixture)
+			}
+			request := authorizedRequest(test.method, test.path, body)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			assertSkillError(t, response, test.status, test.code)
+		})
+	}
 }
 
 func skillTestHandler(service SkillService) http.Handler {
@@ -197,12 +295,37 @@ func skillTestHandler(service SkillService) http.Handler {
 	)
 }
 
-func canonicalSkillSnapshot(installed bool) skills.Snapshot {
-	return skills.Snapshot{
-		CatalogRevision: strings.Repeat("a", 64),
-		ScannedAt:       time.Date(2026, 8, 25, 0, 0, 0, 0, time.UTC),
-		Skills:          []skills.State{canonicalSkillState(installed)},
+func canonicalSkillSnapshot(t *testing.T) skills.Snapshot {
+	t.Helper()
+	var fixture agenthostcontract.SkillListResponse
+	if err := json.Unmarshal([]byte(fixtureText(t, "list-response.json")), &fixture); err != nil {
+		t.Fatalf("decode canonical Skill list fixture: %v", err)
 	}
+	snapshot := skills.Snapshot{
+		CatalogRevision: string(fixture.CatalogRevision),
+		ScannedAt:       fixture.ScannedAt,
+		Skills:          make([]skills.State, 0, len(fixture.Skills)),
+	}
+	for _, skill := range fixture.Skills {
+		blockedReason := ""
+		if skill.CatalogBlockedReason != nil {
+			blockedReason = string(*skill.CatalogBlockedReason)
+		}
+		snapshot.Skills = append(snapshot.Skills, skills.State{
+			ID:                   string(skill.Id),
+			RuntimeName:          skill.RuntimeName,
+			Version:              string(skill.Version),
+			CatalogStatus:        string(skill.CatalogStatus),
+			CatalogBlockedReason: blockedReason,
+			MaintenanceStatus:    string(skill.MaintenanceStatus),
+			CapabilityReadiness:  string(skill.CapabilityReadiness),
+			InstallationStatus:   string(skill.InstallationStatus),
+			Enabled:              skill.Enabled,
+			RuntimeVisible:       skill.RuntimeVisible,
+			FailureCode:          string(skill.FailureCode),
+		})
+	}
+	return snapshot
 }
 
 func canonicalSkillState(installed bool) skills.State {

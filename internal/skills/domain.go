@@ -64,16 +64,17 @@ func ErrorCodeOf(err error) ErrorCode {
 }
 
 type State struct {
-	ID                  string
-	RuntimeName         string
-	Version             string
-	CatalogStatus       string
-	MaintenanceStatus   string
-	CapabilityReadiness string
-	InstallationStatus  string
-	Enabled             bool
-	RuntimeVisible      bool
-	FailureCode         string
+	ID                   string
+	RuntimeName          string
+	Version              string
+	CatalogStatus        string
+	CatalogBlockedReason string
+	MaintenanceStatus    string
+	CapabilityReadiness  string
+	InstallationStatus   string
+	Enabled              bool
+	RuntimeVisible       bool
+	FailureCode          string
 }
 
 type Snapshot struct {

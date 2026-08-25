@@ -76,16 +76,17 @@ Host 不持久化输入、delta、完成消息、provider 原始响应、API Key
 
 ```bash
 make contract-check
+make skills-conformance
 make lint
 make test
 make runtime-test
 make runtime-turn-test
 ```
 
-前三项是无计费常规门禁。`runtime-test` 使用固定真实二进制验证产物、握手、受管 provider 配置和真实 `thread/start`，但不调用模型。
+前四项是无计费常规门禁。FEAT-129 增量中的 `skills-conformance` 会从锁定的 `yijie-skills@0.3.0` 重建并验证 38 项双渠道包；`runtime-test` 使用固定真实二进制验证产物、握手、受管 provider 配置、真实 `thread/start` 和 38 Skill Runtime 投影，但不调用模型。
 
 `runtime-turn-test` 必须人工显式执行，不进入 CI，最多发起 2 次短请求：第一轮验证正常 turn 和 agent message 事件；重启 Runtime 后验证 `thread/resume`；第二轮立即验证 `turn/interrupt` 和最终 `interrupted`。测试不会打印 Key。
 
 ## Baseline 2 之后
 
-尚未完成且不属于本基线：Desktop 正式打包/Key 导入 UX、Host 自动重启与活动 turn 恢复、跨进程事件持久化、平台身份与多租户认证、MCP/工具策略/审批、Skills/Plugins、cloud runner。进入 Baseline 3 前应先确定工具和审批信任边界。
+尚未完成且不属于本基线：Desktop 正式打包/Key 导入 UX、Host 自动重启与活动 turn 恢复、跨进程事件持久化、平台身份与多租户认证、MCP/工具策略/审批、Plugin UI 与 cloud runner。FEAT-129 后续仍需完成 Tauri 资源同步和 Desktop 38 卡片 UI；进入 Baseline 3 前应先确定工具和审批信任边界。

@@ -38,18 +38,42 @@ type operationStore struct {
 }
 
 type persistedOperation struct {
-	ID              string     `json:"id"`
-	Fingerprint     string     `json:"fingerprint"`
-	Kind            string     `json:"kind"`
-	SkillID         string     `json:"skill_id"`
-	Status          string     `json:"status"`
-	Phase           string     `json:"phase"`
-	HadPrevious     bool       `json:"had_previous"`
-	PreviousEnabled bool       `json:"previous_enabled"`
-	State           *State     `json:"state,omitempty"`
-	Snapshot        *Snapshot  `json:"snapshot,omitempty"`
-	ErrorCode       ErrorCode  `json:"error_code"`
-	CompletedAt     *time.Time `json:"completed_at,omitempty"`
+	ID              string               `json:"id"`
+	Fingerprint     string               `json:"fingerprint"`
+	Kind            string               `json:"kind"`
+	SkillID         string               `json:"skill_id"`
+	Status          string               `json:"status"`
+	Phase           string               `json:"phase"`
+	HadPrevious     bool                 `json:"had_previous"`
+	PreviousEnabled bool                 `json:"previous_enabled"`
+	State           *persistedStateV1    `json:"state,omitempty"`
+	Snapshot        *persistedSnapshotV1 `json:"snapshot,omitempty"`
+	ErrorCode       ErrorCode            `json:"error_code"`
+	CompletedAt     *time.Time           `json:"completed_at,omitempty"`
+}
+
+// persistedStateV1 intentionally mirrors the pre-Manifest-v2 journal shape.
+// CatalogBlockedReason is accepted only to migrate journals written by 0.5.1
+// development builds; it is never emitted. Keeping schema_version 1 readable by
+// the previous Host makes an application rollback safe after any v2 operation.
+type persistedStateV1 struct {
+	ID                   string
+	RuntimeName          string
+	Version              string
+	CatalogStatus        string
+	CatalogBlockedReason *string `json:",omitempty"`
+	MaintenanceStatus    string
+	CapabilityReadiness  string
+	InstallationStatus   string
+	Enabled              bool
+	RuntimeVisible       bool
+	FailureCode          string
+}
+
+type persistedSnapshotV1 struct {
+	CatalogRevision string
+	ScannedAt       time.Time
+	Skills          []persistedStateV1
 }
 
 func initializeStateRoot(managed *os.Root) (*os.Root, error) {
@@ -89,6 +113,9 @@ func (s *Service) loadOperations() error {
 		if _, duplicate := s.operations[persisted.ID]; duplicate {
 			return errors.New("Skill operation journal contains duplicate ids")
 		}
+		if persistedContainsBlockedReason(persisted) {
+			s.operationStoreNeedsV1Rewrite = true
+		}
 		record := &operationRecord{
 			ID:              persisted.ID,
 			Fingerprint:     persisted.Fingerprint,
@@ -98,8 +125,8 @@ func (s *Service) loadOperations() error {
 			Phase:           persisted.Phase,
 			HadPrevious:     persisted.HadPrevious,
 			PreviousEnabled: persisted.PreviousEnabled,
-			State:           cloneStatePointer(persisted.State),
-			Snapshot:        cloneSnapshotPointer(persisted.Snapshot),
+			State:           stateFromPersistedV1(persisted.State),
+			Snapshot:        snapshotFromPersistedV1(persisted.Snapshot),
 			ErrorCode:       persisted.ErrorCode,
 			CompletedAt:     dereferenceTime(persisted.CompletedAt),
 			done:            make(chan struct{}),
@@ -111,6 +138,41 @@ func (s *Service) loadOperations() error {
 		s.operations[record.ID] = record
 	}
 	return nil
+}
+
+// Contracts 0.5.0 operation journals could contain successful blocked catalog
+// projections without a reason. Contracts 0.5.1 requires one on every HTTP
+// projection, so upgrade the durable replay value once during startup instead
+// of accepting the journal and later turning an idempotent replay into HTTP 500.
+func (s *Service) migrateLegacyBlockedReasons(current catalog) error {
+	for _, record := range s.operations {
+		backfillLegacyBlockedReason(record.State, current)
+		if record.Snapshot == nil {
+			continue
+		}
+		for index := range record.Snapshot.Skills {
+			backfillLegacyBlockedReason(&record.Snapshot.Skills[index], current)
+		}
+	}
+	if !s.operationStoreNeedsV1Rewrite {
+		return nil
+	}
+	return s.persistOperationsLocked()
+}
+
+func backfillLegacyBlockedReason(state *State, current catalog) bool {
+	if state == nil || state.CatalogStatus != "blocked" || state.CatalogBlockedReason != "" {
+		return false
+	}
+	reason := "maintenance_ended"
+	if skill, exists := current.byID[state.ID]; exists {
+		reason = catalogBlockedReason(skill)
+		if reason == "" {
+			reason = "security_review_pending"
+		}
+	}
+	state.CatalogBlockedReason = reason
+	return true
 }
 
 func validatePersistedOperation(operation persistedOperation) error {
@@ -138,6 +200,13 @@ func validatePersistedOperation(operation persistedOperation) error {
 	if operation.Status == "in_progress" && operation.CompletedAt != nil {
 		return errors.New("Skill in-progress operation has a completion time")
 	}
+	// The previous Host recovery resets every in-progress phase to reserved but
+	// preserves unknown fields such as the v2 ambiguous-result ErrorCode. Accept
+	// that downgrade-safe transitional shape; current recovery immediately
+	// finalizes it as a replayable completed error.
+	if operation.Status == "in_progress" && operation.ErrorCode != "" && !validErrorCode(operation.ErrorCode) {
+		return errors.New("Skill in-progress operation error is invalid")
+	}
 	if operation.Status == "complete" {
 		if operation.CompletedAt == nil || operation.CompletedAt.IsZero() {
 			return errors.New("Skill operation journal completion time is invalid")
@@ -151,10 +220,10 @@ func validatePersistedOperation(operation persistedOperation) error {
 		if operation.ErrorCode == "" && operation.Kind != "scan" && operation.State == nil {
 			return errors.New("Skill mutation operation journal result is missing")
 		}
-		if operation.Snapshot != nil && !validSnapshot(*operation.Snapshot) {
+		if operation.Snapshot != nil && !validSnapshot(*snapshotFromPersistedV1(operation.Snapshot)) {
 			return errors.New("Skill scan operation journal result is invalid")
 		}
-		if operation.State != nil && !validState(*operation.State) {
+		if operation.State != nil && !validState(*stateFromPersistedV1(operation.State)) {
 			return errors.New("Skill mutation operation journal result is invalid")
 		}
 	}
@@ -209,6 +278,15 @@ func validState(state State) bool {
 	if state.CatalogStatus != "installable" && state.CatalogStatus != "blocked" {
 		return false
 	}
+	// Empty is accepted only for operation journals written before Contracts
+	// 0.5.1. Fresh v2 catalog projections always populate blocked reasons, and
+	// the HTTP adapter rejects a blocked response without one.
+	if state.CatalogStatus == "installable" && state.CatalogBlockedReason != "" {
+		return false
+	}
+	if state.CatalogBlockedReason != "" && !validCatalogBlockedReason(state.CatalogBlockedReason) {
+		return false
+	}
 	if state.MaintenanceStatus != "maintained" && state.MaintenanceStatus != "unmaintained" {
 		return false
 	}
@@ -230,6 +308,16 @@ func validState(state State) bool {
 		return false
 	}
 	return true
+}
+
+func validCatalogBlockedReason(reason string) bool {
+	switch reason {
+	case "source_unverified", "license_unverified", "distribution_not_authorized",
+		"security_review_pending", "capability_unavailable", "maintenance_ended":
+		return true
+	default:
+		return false
+	}
 }
 
 func validStateFailureCode(code string) bool {
@@ -261,11 +349,16 @@ func (s *Service) persistOperationsLocked() error {
 			Phase:           record.Phase,
 			HadPrevious:     record.HadPrevious,
 			PreviousEnabled: record.PreviousEnabled,
-			State:           cloneStatePointer(record.State),
-			Snapshot:        cloneSnapshotPointer(record.Snapshot),
+			State:           stateToPersistedV1(record.State),
+			Snapshot:        snapshotToPersistedV1(record.Snapshot),
 			ErrorCode:       record.ErrorCode,
 			CompletedAt:     timePointer(record.CompletedAt),
 		})
+	}
+	if s.persistOperationsFault != nil {
+		if err := s.persistOperationsFault(stored); err != nil {
+			return err
+		}
 	}
 	raw, err := json.Marshal(stored)
 	if err != nil {
@@ -284,7 +377,71 @@ func (s *Service) persistOperationsLocked() error {
 		_ = s.state.Remove(temporary)
 		return err
 	}
-	return syncRoot(s.state)
+	if err := syncRoot(s.state); err != nil {
+		return err
+	}
+	s.operationStoreNeedsV1Rewrite = false
+	return nil
+}
+
+func persistedContainsBlockedReason(operation persistedOperation) bool {
+	if operation.State != nil && operation.State.CatalogBlockedReason != nil {
+		return true
+	}
+	if operation.Snapshot != nil {
+		for index := range operation.Snapshot.Skills {
+			if operation.Snapshot.Skills[index].CatalogBlockedReason != nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func stateFromPersistedV1(state *persistedStateV1) *State {
+	if state == nil {
+		return nil
+	}
+	return &State{
+		ID: state.ID, RuntimeName: state.RuntimeName, Version: state.Version,
+		CatalogStatus: state.CatalogStatus, MaintenanceStatus: state.MaintenanceStatus,
+		CapabilityReadiness: state.CapabilityReadiness, InstallationStatus: state.InstallationStatus,
+		Enabled: state.Enabled, RuntimeVisible: state.RuntimeVisible, FailureCode: state.FailureCode,
+	}
+}
+
+func snapshotFromPersistedV1(snapshot *persistedSnapshotV1) *Snapshot {
+	if snapshot == nil {
+		return nil
+	}
+	converted := &Snapshot{CatalogRevision: snapshot.CatalogRevision, ScannedAt: snapshot.ScannedAt, Skills: make([]State, len(snapshot.Skills))}
+	for index := range snapshot.Skills {
+		converted.Skills[index] = *stateFromPersistedV1(&snapshot.Skills[index])
+	}
+	return converted
+}
+
+func stateToPersistedV1(state *State) *persistedStateV1 {
+	if state == nil {
+		return nil
+	}
+	return &persistedStateV1{
+		ID: state.ID, RuntimeName: state.RuntimeName, Version: state.Version,
+		CatalogStatus: state.CatalogStatus, MaintenanceStatus: state.MaintenanceStatus,
+		CapabilityReadiness: state.CapabilityReadiness, InstallationStatus: state.InstallationStatus,
+		Enabled: state.Enabled, RuntimeVisible: state.RuntimeVisible, FailureCode: state.FailureCode,
+	}
+}
+
+func snapshotToPersistedV1(snapshot *Snapshot) *persistedSnapshotV1 {
+	if snapshot == nil {
+		return nil
+	}
+	converted := &persistedSnapshotV1{CatalogRevision: snapshot.CatalogRevision, ScannedAt: snapshot.ScannedAt, Skills: make([]persistedStateV1, len(snapshot.Skills))}
+	for index := range snapshot.Skills {
+		converted.Skills[index] = *stateToPersistedV1(&snapshot.Skills[index])
+	}
+	return converted
 }
 
 func (s *Service) reserveOperation(id, fingerprint, kind, skillID string) (*operationRecord, bool, error) {
@@ -295,6 +452,12 @@ func (s *Service) reserveOperation(id, fingerprint, kind, skillID string) (*oper
 			return nil, false, errorWithCode(CodeOperationConflict, errors.New("operation id was reused with different input"))
 		}
 		if existing.Status == "in_progress" && channelClosed(existing.done) {
+			// An ambiguous failed generation is immutable until recovery converts it
+			// to a replayable completed error. This keeps existing joiners and an
+			// immediate same-ID caller on the same result without racing field reset.
+			if existing.ErrorCode != "" || existing.Phase != "reserved" {
+				return existing, false, nil
+			}
 			existing.done = make(chan struct{})
 			existing.State = nil
 			existing.Snapshot = nil
@@ -305,7 +468,7 @@ func (s *Service) reserveOperation(id, fingerprint, kind, skillID string) (*oper
 		return existing, false, nil
 	}
 	if len(s.operations) >= maxOperations {
-		// Never evict an idempotency key: 0.5.0 defines no expiry window. New
+		// Never evict an idempotency key: Contracts 0.5.1 defines no expiry window. New
 		// operations fail closed at the bounded storage limit while every old ID
 		// continues to replay or conflict deterministically.
 		return nil, false, errorWithCode(CodeBusy, errors.New("Skill operation journal is full"))
@@ -345,6 +508,35 @@ func (s *Service) updateOperationPhase(record *operationRecord, phase string, ha
 	return nil
 }
 
+// commitStateOperation makes the successful result and commit decision one
+// durable journal write. Callers keep rollback material until it succeeds, so
+// a journal failure can still restore filesystem and Runtime state before an
+// error response is returned.
+func (s *Service) commitStateOperation(record *operationRecord, state State) error {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	oldStatus := record.Status
+	oldPhase := record.Phase
+	oldState := record.State
+	oldErrorCode := record.ErrorCode
+	oldCompletedAt := record.CompletedAt
+	copyState := state
+	record.Status = "complete"
+	record.Phase = "complete"
+	record.State = &copyState
+	record.ErrorCode = ""
+	record.CompletedAt = s.now().UTC()
+	if err := s.persistOperationsLocked(); err != nil {
+		record.Status = oldStatus
+		record.Phase = oldPhase
+		record.State = oldState
+		record.ErrorCode = oldErrorCode
+		record.CompletedAt = oldCompletedAt
+		return errorWithCode(CodeScanFailed, err)
+	}
+	return nil
+}
+
 func (s *Service) finishStateOperation(record *operationRecord, state State, operationErr error, keep bool) error {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
@@ -355,6 +547,24 @@ func (s *Service) finishStateOperation(record *operationRecord, state State, ope
 		if persistErr != nil {
 			return errorWithCode(CodeScanFailed, persistErr)
 		}
+		return nil
+	}
+	if record.Status == "complete" && operationErr == nil {
+		closeOnce(record.done)
+		return nil
+	}
+	// A failed mutation whose durable phase is past reserved still has an
+	// ambiguous filesystem or Runtime commit. Preserve its in-progress phase so
+	// recovery can restore the previous state; marking it complete would make a
+	// leftover backup/trash look like committed garbage on restart.
+	if operationErr != nil && record.Status == "in_progress" && record.Phase != "reserved" {
+		record.ErrorCode = ErrorCodeOf(operationErr)
+		if err := s.persistOperationsLocked(); err != nil {
+			record.ErrorCode = CodeScanFailed
+			closeOnce(record.done)
+			return errorWithCode(CodeScanFailed, err)
+		}
+		closeOnce(record.done)
 		return nil
 	}
 	oldStatus := record.Status

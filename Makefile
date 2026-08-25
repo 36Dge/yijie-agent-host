@@ -1,4 +1,7 @@
-.PHONY: dev test runtime-test runtime-turn-test feat126-eval feat126-fake-readiness lint generate sync-contracts contract-check
+.PHONY: dev test runtime-test runtime-turn-test feat126-eval feat126-fake-readiness lint generate sync-contracts contract-check skills-conformance
+
+YIJIE_SKILLS_REPO ?= ../yijie-skills
+YIJIE_SKILLS_REPO_ABS := $(abspath $(YIJIE_SKILLS_REPO))
 
 dev:
 	go run ./cmd/desktop-host
@@ -34,3 +37,13 @@ sync-contracts:
 
 contract-check:
 	./scripts/check-contracts.sh
+
+skills-conformance:
+	YIJIE_SKILLS_REPO="$(YIJIE_SKILLS_REPO_ABS)" ./scripts/check-skills-producer.sh --provenance-only
+	$(MAKE) -C "$(YIJIE_SKILLS_REPO_ABS)" package
+	$(MAKE) -C "$(YIJIE_SKILLS_REPO_ABS)" package-desktop-release
+	YIJIE_SKILLS_REPO="$(YIJIE_SKILLS_REPO_ABS)" ./scripts/check-skills-producer.sh
+	YIJIE_SKILLS_CONFORMANCE=1 \
+		YIJIE_SKILLS_LOCAL_BUNDLE_ROOT="$(YIJIE_SKILLS_REPO_ABS)/dist/skill-packages" \
+		YIJIE_SKILLS_DESKTOP_RELEASE_BUNDLE_ROOT="$(YIJIE_SKILLS_REPO_ABS)/dist/skill-packages-desktop-release" \
+		go test -race ./internal/integration -run '^TestYijieSkillsV030DualChannelConformance$$' -count=1

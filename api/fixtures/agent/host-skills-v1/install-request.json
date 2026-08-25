@@ -1,6 +1,6 @@
 {
   "operation_id": "019fbd88-cbc3-7bf1-934d-7b05cd693f71",
   "expected_version": "0.1.0",
-  "expected_archive_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-  "catalog_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  "expected_archive_sha256": "0be8fb3745a32207c6dedb46090044763d47aa64ccf0147653591cb1c9171032",
+  "catalog_revision": "407d0760e1d06ef3446955fba19b39da26d1f740b2f63b601edae903b1664c18"
 }

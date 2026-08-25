@@ -9,17 +9,23 @@ snapshot_event_schema="$repo_root/api/jsonschema/agent-session-event.schema.json
 snapshot_event_v2_schema="$repo_root/api/jsonschema/agent-session-event-v2.schema.json"
 snapshot_event_v3_schema="$repo_root/api/jsonschema/agent-session-event-v3.schema.json"
 snapshot_report_v1_schema="$repo_root/api/jsonschema/report-document-v1.schema.json"
-snapshot_skill_bundle_schema="$repo_root/api/jsonschema/skill-bundle-manifest-v1.schema.json"
-snapshot_skill_fixtures="$repo_root/api/fixtures/skills/bundle-v1"
+snapshot_skill_bundle_v1_schema="$repo_root/api/jsonschema/skill-bundle-manifest-v1.schema.json"
+snapshot_skill_bundle_v2_schema="$repo_root/api/jsonschema/skill-bundle-manifest-v2.schema.json"
+snapshot_skill_v1_fixtures="$repo_root/api/fixtures/skills/bundle-v1"
+snapshot_skill_v2_fixtures="$repo_root/api/fixtures/skills/bundle-v2"
 snapshot_host_skill_fixtures="$repo_root/api/fixtures/agent/host-skills-v1"
 snapshot_synthetic_video="$repo_root/internal/session/fixtures/synthetic-video-16x16.mp4.base64"
-skill_fixture_files=(
+skill_v1_fixture_files=(
   manifest-valid.json
   manifest-checksum-mismatch.json
   manifest-zip-slip.json
   packages/fixture-model-only-0.1.0.zip
   packages/fixture-model-only-checksum-mismatch.zip
   packages/fixture-zip-slip.zip
+)
+skill_v2_fixture_files=(
+  manifest-catalog-38.json
+  packages/fixture-copywriting-0.1.0.zip
 )
 host_skill_fixture_files=(
   scan-request.json
@@ -29,18 +35,26 @@ host_skill_fixture_files=(
   list-response.json
   mutation-response.json
   error-archive-unsafe.json
+  error-skill-not-installable.json
 )
 
 if [ ! -f "$lock_file" ] || [ ! -f "$snapshot_openapi" ] || [ ! -f "$snapshot_compatibility" ] ||
   [ ! -f "$snapshot_event_schema" ] || [ ! -f "$snapshot_event_v2_schema" ] ||
   [ ! -f "$snapshot_event_v3_schema" ] || [ ! -f "$snapshot_report_v1_schema" ] ||
-  [ ! -f "$snapshot_skill_bundle_schema" ] || [ ! -f "$snapshot_synthetic_video" ]; then
+  [ ! -f "$snapshot_skill_bundle_v1_schema" ] || [ ! -f "$snapshot_skill_bundle_v2_schema" ] ||
+  [ ! -f "$snapshot_synthetic_video" ]; then
   echo "Agent Host contract snapshot is incomplete; run make sync-contracts." >&2
   exit 1
 fi
-for relative in "${skill_fixture_files[@]}"; do
-  if [ ! -f "$snapshot_skill_fixtures/$relative" ]; then
+for relative in "${skill_v1_fixture_files[@]}"; do
+  if [ ! -f "$snapshot_skill_v1_fixtures/$relative" ]; then
     echo "Agent Host Skill fixture snapshot is incomplete; run make sync-contracts." >&2
+    exit 1
+  fi
+done
+for relative in "${skill_v2_fixture_files[@]}"; do
+  if [ ! -f "$snapshot_skill_v2_fixtures/$relative" ]; then
+    echo "Agent Host Skill v2 fixture snapshot is incomplete; run make sync-contracts." >&2
     exit 1
   fi
 done
@@ -74,8 +88,11 @@ AGENT_SESSION_EVENT_V2_SCHEMA_SHA256="$(lock_value AGENT_SESSION_EVENT_V2_SCHEMA
 AGENT_SESSION_EVENT_V3_SCHEMA_SHA256="$(lock_value AGENT_SESSION_EVENT_V3_SCHEMA_SHA256)"
 REPORT_DOCUMENT_V1_SCHEMA_SHA256="$(lock_value REPORT_DOCUMENT_V1_SCHEMA_SHA256)"
 SKILL_BUNDLE_MANIFEST_V1_SCHEMA_SHA256="$(lock_value SKILL_BUNDLE_MANIFEST_V1_SCHEMA_SHA256)"
+SKILL_BUNDLE_MANIFEST_V2_SCHEMA_SHA256="$(lock_value SKILL_BUNDLE_MANIFEST_V2_SCHEMA_SHA256)"
 SKILL_BUNDLE_FIXTURE_TREE="$(lock_value SKILL_BUNDLE_FIXTURE_TREE)"
 SKILL_BUNDLE_FIXTURE_SNAPSHOT_SHA256="$(lock_value SKILL_BUNDLE_FIXTURE_SNAPSHOT_SHA256)"
+SKILL_BUNDLE_V2_FIXTURE_TREE="$(lock_value SKILL_BUNDLE_V2_FIXTURE_TREE)"
+SKILL_BUNDLE_V2_FIXTURE_SNAPSHOT_SHA256="$(lock_value SKILL_BUNDLE_V2_FIXTURE_SNAPSHOT_SHA256)"
 HOST_SKILLS_V1_FIXTURE_TREE="$(lock_value HOST_SKILLS_V1_FIXTURE_TREE)"
 HOST_SKILLS_V1_FIXTURE_SNAPSHOT_SHA256="$(lock_value HOST_SKILLS_V1_FIXTURE_SNAPSHOT_SHA256)"
 SYNTHETIC_VIDEO_FIXTURE_SOURCE="$(lock_value SYNTHETIC_VIDEO_FIXTURE_SOURCE)"
@@ -115,8 +132,11 @@ fi
 if [[ ! "$AGENT_SESSION_EVENT_V3_SCHEMA_SHA256" =~ $sha256_pattern ]] ||
   [[ ! "$REPORT_DOCUMENT_V1_SCHEMA_SHA256" =~ $sha256_pattern ]] ||
   [[ ! "$SKILL_BUNDLE_MANIFEST_V1_SCHEMA_SHA256" =~ $sha256_pattern ]] ||
+  [[ ! "$SKILL_BUNDLE_MANIFEST_V2_SCHEMA_SHA256" =~ $sha256_pattern ]] ||
   [[ ! "$SKILL_BUNDLE_FIXTURE_TREE" =~ $full_commit_pattern ]] ||
   [[ ! "$SKILL_BUNDLE_FIXTURE_SNAPSHOT_SHA256" =~ $sha256_pattern ]] ||
+  [[ ! "$SKILL_BUNDLE_V2_FIXTURE_TREE" =~ $full_commit_pattern ]] ||
+  [[ ! "$SKILL_BUNDLE_V2_FIXTURE_SNAPSHOT_SHA256" =~ $sha256_pattern ]] ||
   [[ ! "$HOST_SKILLS_V1_FIXTURE_TREE" =~ $full_commit_pattern ]] ||
   [[ ! "$HOST_SKILLS_V1_FIXTURE_SNAPSHOT_SHA256" =~ $sha256_pattern ]]; then
   echo "Agent Host contract digests are invalid." >&2
@@ -205,14 +225,23 @@ if [ "$(sha256_file "$snapshot_report_v1_schema")" != "$REPORT_DOCUMENT_V1_SCHEM
   echo "Report document v1 JSON Schema snapshot hash does not match api/contracts.lock." >&2
   exit 1
 fi
-if [ "$(sha256_file "$snapshot_skill_bundle_schema")" != "$SKILL_BUNDLE_MANIFEST_V1_SCHEMA_SHA256" ]; then
+if [ "$(sha256_file "$snapshot_skill_bundle_v1_schema")" != "$SKILL_BUNDLE_MANIFEST_V1_SCHEMA_SHA256" ]; then
   echo "Skill Bundle Manifest v1 JSON Schema snapshot hash does not match api/contracts.lock." >&2
   exit 1
 fi
-assert_snapshot_fixture_set "$snapshot_skill_fixtures" "${skill_fixture_files[@]}"
+if [ "$(sha256_file "$snapshot_skill_bundle_v2_schema")" != "$SKILL_BUNDLE_MANIFEST_V2_SCHEMA_SHA256" ]; then
+  echo "Skill Bundle Manifest v2 JSON Schema snapshot hash does not match api/contracts.lock." >&2
+  exit 1
+fi
+assert_snapshot_fixture_set "$snapshot_skill_v1_fixtures" "${skill_v1_fixture_files[@]}"
+assert_snapshot_fixture_set "$snapshot_skill_v2_fixtures" "${skill_v2_fixture_files[@]}"
 assert_snapshot_fixture_set "$snapshot_host_skill_fixtures" "${host_skill_fixture_files[@]}"
-if [ "$(fixture_snapshot_sha256 "$snapshot_skill_fixtures" "${skill_fixture_files[@]}")" != "$SKILL_BUNDLE_FIXTURE_SNAPSHOT_SHA256" ]; then
+if [ "$(fixture_snapshot_sha256 "$snapshot_skill_v1_fixtures" "${skill_v1_fixture_files[@]}")" != "$SKILL_BUNDLE_FIXTURE_SNAPSHOT_SHA256" ]; then
   echo "Skill Bundle fixture snapshot digest does not match api/contracts.lock." >&2
+  exit 1
+fi
+if [ "$(fixture_snapshot_sha256 "$snapshot_skill_v2_fixtures" "${skill_v2_fixture_files[@]}")" != "$SKILL_BUNDLE_V2_FIXTURE_SNAPSHOT_SHA256" ]; then
+  echo "Skill Bundle v2 fixture snapshot digest does not match api/contracts.lock." >&2
   exit 1
 fi
 if [ "$(fixture_snapshot_sha256 "$snapshot_host_skill_fixtures" "${host_skill_fixture_files[@]}")" != "$HOST_SKILLS_V1_FIXTURE_SNAPSHOT_SHA256" ]; then
@@ -248,8 +277,10 @@ if git -C "$contracts_repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
   source_event_v2_schema="$temporary_dir/agent-session-event-v2.schema.json"
   source_event_v3_schema="$temporary_dir/agent-session-event-v3.schema.json"
   source_report_v1_schema="$temporary_dir/report-document-v1.schema.json"
-  source_skill_bundle_schema="$temporary_dir/skill-bundle-manifest-v1.schema.json"
-  source_skill_fixtures="$temporary_dir/skill-bundle-v1"
+  source_skill_bundle_v1_schema="$temporary_dir/skill-bundle-manifest-v1.schema.json"
+  source_skill_bundle_v2_schema="$temporary_dir/skill-bundle-manifest-v2.schema.json"
+  source_skill_v1_fixtures="$temporary_dir/skill-bundle-v1"
+  source_skill_v2_fixtures="$temporary_dir/skill-bundle-v2"
   source_host_skill_fixtures="$temporary_dir/host-skills-v1"
   source_synthetic_video="$temporary_dir/synthetic-video-16x16.mp4.base64"
   source_package="$temporary_dir/package.json"
@@ -259,10 +290,15 @@ if git -C "$contracts_repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
   git -C "$contracts_repo" show "$CONTRACTS_COMMIT:jsonschema/agent/session-event-v2.schema.json" >"$source_event_v2_schema"
   git -C "$contracts_repo" show "$CONTRACTS_COMMIT:jsonschema/agent/session-event-v3.schema.json" >"$source_event_v3_schema"
   git -C "$contracts_repo" show "$CONTRACTS_COMMIT:jsonschema/report/report-document-v1.schema.json" >"$source_report_v1_schema"
-  git -C "$contracts_repo" show "$CONTRACTS_COMMIT:jsonschema/skills/skill-bundle-manifest-v1.schema.json" >"$source_skill_bundle_schema"
-  mkdir -p "$source_skill_fixtures/packages"
-  for relative in "${skill_fixture_files[@]}"; do
-    git -C "$contracts_repo" show "$CONTRACTS_COMMIT:tests/fixtures/skills/bundle-v1/$relative" >"$source_skill_fixtures/$relative"
+  git -C "$contracts_repo" show "$CONTRACTS_COMMIT:jsonschema/skills/skill-bundle-manifest-v1.schema.json" >"$source_skill_bundle_v1_schema"
+  git -C "$contracts_repo" show "$CONTRACTS_COMMIT:jsonschema/skills/skill-bundle-manifest-v2.schema.json" >"$source_skill_bundle_v2_schema"
+  mkdir -p "$source_skill_v1_fixtures/packages"
+  for relative in "${skill_v1_fixture_files[@]}"; do
+    git -C "$contracts_repo" show "$CONTRACTS_COMMIT:tests/fixtures/skills/bundle-v1/$relative" >"$source_skill_v1_fixtures/$relative"
+  done
+  mkdir -p "$source_skill_v2_fixtures/packages"
+  for relative in "${skill_v2_fixture_files[@]}"; do
+    git -C "$contracts_repo" show "$CONTRACTS_COMMIT:tests/fixtures/skills/bundle-v2/$relative" >"$source_skill_v2_fixtures/$relative"
   done
   mkdir -p "$source_host_skill_fixtures"
   for relative in "${host_skill_fixture_files[@]}"; do
@@ -277,9 +313,13 @@ if git -C "$contracts_repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
   cmp "$source_event_v2_schema" "$snapshot_event_v2_schema"
   cmp "$source_event_v3_schema" "$snapshot_event_v3_schema"
   cmp "$source_report_v1_schema" "$snapshot_report_v1_schema"
-  cmp "$source_skill_bundle_schema" "$snapshot_skill_bundle_schema"
-  for relative in "${skill_fixture_files[@]}"; do
-    cmp "$source_skill_fixtures/$relative" "$snapshot_skill_fixtures/$relative"
+  cmp "$source_skill_bundle_v1_schema" "$snapshot_skill_bundle_v1_schema"
+  cmp "$source_skill_bundle_v2_schema" "$snapshot_skill_bundle_v2_schema"
+  for relative in "${skill_v1_fixture_files[@]}"; do
+    cmp "$source_skill_v1_fixtures/$relative" "$snapshot_skill_v1_fixtures/$relative"
+  done
+  for relative in "${skill_v2_fixture_files[@]}"; do
+    cmp "$source_skill_v2_fixtures/$relative" "$snapshot_skill_v2_fixtures/$relative"
   done
   for relative in "${host_skill_fixture_files[@]}"; do
     cmp "$source_host_skill_fixtures/$relative" "$snapshot_host_skill_fixtures/$relative"
@@ -297,6 +337,11 @@ if git -C "$contracts_repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
   source_skill_fixture_tree="$(git -C "$contracts_repo" rev-parse "$CONTRACTS_COMMIT:tests/fixtures/skills/bundle-v1")"
   if [ "$source_skill_fixture_tree" != "$SKILL_BUNDLE_FIXTURE_TREE" ]; then
     echo "Contracts Skill fixture tree does not match api/contracts.lock." >&2
+    exit 1
+  fi
+  source_skill_v2_fixture_tree="$(git -C "$contracts_repo" rev-parse "$CONTRACTS_COMMIT:tests/fixtures/skills/bundle-v2")"
+  if [ "$source_skill_v2_fixture_tree" != "$SKILL_BUNDLE_V2_FIXTURE_TREE" ]; then
+    echo "Contracts Skill v2 fixture tree does not match api/contracts.lock." >&2
     exit 1
   fi
   source_host_skill_fixture_tree="$(git -C "$contracts_repo" rev-parse "$CONTRACTS_COMMIT:tests/fixtures/agent/host-skills-v1")"
