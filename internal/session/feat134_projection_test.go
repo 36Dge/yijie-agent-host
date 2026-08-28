@@ -96,6 +96,47 @@ func TestFEAT134V4ProjectsAgentPhaseAndStablePlanSnapshots(t *testing.T) {
 	}
 }
 
+func TestFEAT134V4KeepsStructuredNonReasoningContentOpaque(t *testing.T) {
+	store := openBoundFEAT134Store(t)
+	v4 := NewEventHubVersion(EventSchemaVersionV4, 8, 2)
+	var logs bytes.Buffer
+	service := NewService(
+		&fakeRuntime{}, store, NewEventHub(8, 2), slog.New(slog.NewTextHandler(&logs, nil)),
+		WithV4Events(v4), WithRawReasoningProjection(true),
+	)
+	const contentCanary = "FEAT134_STRUCTURED_USER_CONTENT_CANARY"
+	notification := map[string]any{
+		"threadId": testThreadID,
+		"turnId":   testTurnID,
+		"item": map[string]any{
+			"id":   "user-1",
+			"type": "userMessage",
+			"content": []any{
+				map[string]any{"type": "text", "text": contentCanary},
+			},
+		},
+	}
+	service.HandleNotification(RuntimeNotificationItemStarted, rawJSON(t, notification))
+	service.HandleNotification(RuntimeNotificationItemCompleted, rawJSON(t, notification))
+
+	_, replay, _, cancel, err := service.SubscribeEventsV4(testSessionID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if len(replay) != 2 || replay[0].EventType != EventItemStarted || replay[1].EventType != EventItemCompleted {
+		t.Fatalf("structured non-reasoning content broke the lifecycle: %+v", replay)
+	}
+	for _, event := range replay {
+		if event.Payload.ItemType != "userMessage" || event.Payload.Text != nil || event.Payload.Phase != nil {
+			t.Fatalf("structured user content crossed the v4 projection: %+v", event.Payload)
+		}
+	}
+	if strings.Contains(logs.String(), contentCanary) {
+		t.Fatal("structured non-reasoning content entered Host logs")
+	}
+}
+
 func TestFEAT134RejectsMalformedPlanSourcesWithoutInventingClearState(t *testing.T) {
 	tests := []struct {
 		name string
@@ -173,6 +214,12 @@ func TestFEAT134RejectsMissingAuthoritativeRuntimeFields(t *testing.T) {
 		{
 			name: "reasoning content index missing", method: RuntimeNotificationReasoningTextDelta,
 			params:    map[string]any{"threadId": testThreadID, "turnId": testTurnID, "itemId": "reasoning-1", "delta": "synthetic"},
+			wantEvent: EventError,
+		},
+		{
+			name: "reasoning completed content has non-string entry", method: RuntimeNotificationItemCompleted,
+			params: map[string]any{"threadId": testThreadID, "turnId": testTurnID,
+				"item": map[string]any{"id": "reasoning-1", "type": "reasoning", "content": []any{map[string]any{"text": "synthetic"}}}},
 			wantEvent: EventError,
 		},
 		{

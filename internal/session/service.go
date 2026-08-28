@@ -685,7 +685,11 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 				}
 			}
 			if notification.Item.Type == "reasoning" {
-				if err := s.finalizeReasoning(record, notification.TurnID, notification.Item.ID, notification.Item.Content); err != nil {
+				var contents []string
+				if len(notification.Item.Content) == 0 || json.Unmarshal(notification.Item.Content, &contents) != nil {
+					return errors.New("reasoning item notification has invalid content")
+				}
+				if err := s.finalizeReasoning(record, notification.TurnID, notification.Item.ID, contents); err != nil {
 					return err
 				}
 			}
@@ -1046,11 +1050,14 @@ type itemNotification struct {
 	ThreadID string `json:"threadId"`
 	TurnID   string `json:"turnId"`
 	Item     struct {
-		ID      string   `json:"id"`
-		Type    string   `json:"type"`
-		Text    *string  `json:"text"`
-		Phase   *string  `json:"phase"`
-		Content []string `json:"content"`
+		ID    string  `json:"id"`
+		Type  string  `json:"type"`
+		Text  *string `json:"text"`
+		Phase *string `json:"phase"`
+		// Runtime Item content is type-specific. Keep it opaque during envelope decoding so
+		// structured user/tool content cannot make an otherwise valid lifecycle malformed;
+		// only completed reasoning Items decode the closed []string raw-reasoning shape.
+		Content json.RawMessage `json:"content"`
 	} `json:"item"`
 }
 
