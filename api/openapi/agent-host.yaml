@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Yijie Agent Host Local API
-  version: 0.5.1
+  version: 0.6.0
   description: |
     Local loopback HTTP and Server-Sent Events contract for the Yijie Desktop
     Agent Host sidecar. The Host is a thin adapter over the pinned Codex Runtime;
@@ -22,7 +22,7 @@ info:
     This document is authoritative for HTTP paths, authentication, request and
     response envelopes, status codes, headers, and SSE framing. The JSON value
     carried by each SSE `data` line is governed by the explicitly negotiated
-    AgentSessionEvent v1, v2, or v3 JSON Schema, not by a duplicate OpenAPI schema.
+    AgentSessionEvent v1, v2, v3, or v4 JSON Schema, not by a duplicate OpenAPI schema.
   contact:
     name: Yijie Agent Host owners
 servers:
@@ -913,6 +913,122 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /v4/agent-sessions/{agent_session_id}/events:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+    get:
+      operationId: streamAgentSessionEventsV4
+      summary: Replay and stream explicitly negotiated Agent session events v4
+      description: |
+        Opens the v4 Server-Sent Events stream. The required
+        `event_schema_version=4` query parameter prevents accidental v4 output to
+        an older consumer. V4 preserves every v3 lifecycle, reasoning, and
+        structured-artifact variant. It additionally carries the stable Runtime
+        AgentMessage `phase` on AgentMessage lifecycle events and authoritative
+        `turn.plan.updated` snapshots.
+
+        Every plan update replaces the prior plan for its turn in presentation
+        order; an empty plan clears it. Missing or null explanation clears the
+        prior explanation. AgentMessage delta events remain text-only and are
+        correlated to lifecycle metadata by `item_id`. The Host must not persist
+        prompt, reasoning, plan, or final-response body text in logs, metrics,
+        traces, audit, or error bodies.
+
+        Before process-memory retention or SSE write, the compact JSON `data`
+        value must be at most 1 MiB in UTF-8 bytes. The Host never truncates an
+        AgentMessage, plan snapshot, or authoritative lifecycle payload. Existing
+        reasoning-specific limits continue to finalize reasoning as unavailable
+        with `limit_exceeded`. If another turn-scoped Runtime notification cannot
+        be represented within the v4 structural, field-byte, or aggregate limit,
+        the Host rejects that source event, emits one sanitized non-retryable
+        `error` with code `limit_exceeded`, and marks the projection failed. Its
+        eventual turn terminal is `failed` with the same code; if the rejected
+        source is already `turn.completed`, the Host emits that sanitized failed
+        terminal directly. Rejected content is absent from the problem event,
+        terminal event, logs, telemetry, and error bodies.
+
+        No-turn sources also fail content-free. Managed model/provider identity
+        is validated against v4 bounds before `thread.started` is retained; a
+        violation fails session start with sanitized HTTP `500 internal_error`
+        and emits no invalid thread event. An oversized thread-scoped Runtime
+        warning is replaced by one sanitized `warning` with
+        `code=limit_exceeded`, the same constant message, and
+        `will_retry=false`; it does not invent a Turn or a terminal.
+
+        The authoritative resume query is `after`; `after_sequence` is not an
+        alias and must be rejected as an unknown parameter. `Last-Event-ID`
+        overrides `stream_id` and `after`. Delivery is at least once and consumers
+        deduplicate by `event_id` inside the current `stream_id` ordering domain.
+      tags: [Events]
+      externalDocs:
+        description: Authoritative AgentSessionEventV4 JSON Schema
+        url: https://contracts.yijie.ai/agent/session-event-v4.schema.json
+      parameters:
+        - $ref: "#/components/parameters/EventSchemaVersionV4"
+        - $ref: "#/components/parameters/EventStreamId"
+        - $ref: "#/components/parameters/EventAfter"
+        - $ref: "#/components/parameters/LastEventId"
+      responses:
+        "200":
+          description: Retained v4 events were replayed and the connection is subscribed for live v4 events.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+            X-Accel-Buffering:
+              description: Disables reverse-proxy response buffering.
+              required: true
+              schema:
+                type: string
+                enum: ["no"]
+            X-Yijie-Event-Stream-ID:
+              description: Actual process-local stream identifier used by every returned SSE event ID.
+              required: true
+              schema:
+                type: string
+                format: uuid
+            X-Yijie-Event-Schema-Version:
+              description: Confirms that every returned data event uses AgentSessionEventV4.
+              required: true
+              schema:
+                type: integer
+                enum: [4]
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: UTF-8 SSE frames whose compact data values validate as AgentSessionEventV4 and do not exceed 1 MiB.
+                x-yijie-event-data-schema: ../../jsonschema/agent/session-event-v4.schema.json
+        "400":
+          description: "`invalid_request` or `invalid_event_cursor`: schema negotiation, identifier, or cursor is invalid."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          description: "`event_stream_changed` or `event_replay_unavailable`: the requested v4 cursor cannot be resumed safely."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "`streaming_unsupported` or `internal_error`: the v4 stream cannot be served safely."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/content:
     parameters:
       - $ref: "#/components/parameters/AgentSessionId"
@@ -1392,6 +1508,15 @@ components:
         type: integer
         format: int32
         enum: [3]
+    EventSchemaVersionV4:
+      name: event_schema_version
+      in: query
+      required: true
+      description: Explicit negotiation guard. Only integer value 4 is accepted on the v4 event stream.
+      schema:
+        type: integer
+        format: int32
+        enum: [4]
     ByteRange:
       name: Range
       in: header

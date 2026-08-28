@@ -585,7 +585,7 @@ func TestV3PreservesV2ReasoningAndLifecycleVariants(t *testing.T) {
 		t.Fatal(err)
 	}
 	v3 := NewEventHubVersion(EventSchemaVersionV3, 32, 8)
-	service := NewService(&fakeRuntime{}, store, NewEventHub(16, 8), nil, WithV3Artifacts(v3, nil, false))
+	service := NewService(&fakeRuntime{}, store, NewEventHub(16, 8), nil, WithV3Artifacts(v3, nil, false), WithRawReasoningProjection(true))
 	service.HandleNotification(RuntimeNotificationReasoningTextDelta, rawJSON(t, map[string]any{
 		"threadId": testThreadID, "turnId": testTurnID, "itemId": "reasoning-v3", "contentIndex": 0, "delta": "safe reasoning",
 	}))

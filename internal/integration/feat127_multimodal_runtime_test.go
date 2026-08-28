@@ -159,7 +159,9 @@ func TestPinnedRuntimeFEAT127MultimodalFakeResponses(t *testing.T) {
 			observedAnswer.WriteString(*event.Payload.Delta)
 		}
 		if event.EventType == session.EventItemCompleted && event.Payload.ItemType == "agentMessage" {
-			observedAnswer.WriteString(event.Payload.Text)
+			if event.Payload.Text != nil {
+				observedAnswer.WriteString(*event.Payload.Text)
+			}
 		}
 	}
 	if answer := observedAnswer.String(); !strings.Contains(answer, "ALPHA-7319") || !strings.Contains(answer, "\u52a0\u53f7") {

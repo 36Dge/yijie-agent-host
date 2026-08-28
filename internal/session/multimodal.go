@@ -114,6 +114,9 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 	if normalizedEffort != "none" && normalizedEffort != "high" {
 		return codex.TurnInfo{}, fmt.Errorf("%w: reasoning effort must be none or high", ErrInvalidArgument)
 	}
+	if s.fixedReasoningEffort != "" {
+		normalizedEffort = s.fixedReasoningEffort
+	}
 	runtimeInputs, err := validateAndMapTurnV2Blocks(input.ContentBlocks)
 	if err != nil {
 		return codex.TurnInfo{}, err

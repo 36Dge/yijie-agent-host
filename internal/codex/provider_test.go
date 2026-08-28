@@ -13,7 +13,7 @@ func TestPrepareMiniMaxCodexHomeWritesSecretFreeManagedConfig(t *testing.T) {
 	if err := os.Chmod(home, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := prepareMiniMaxCodexHome(home); err != nil {
+	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileDefault); err != nil {
 		t.Fatal(err)
 	}
 	config, err := os.ReadFile(filepath.Join(home, "config.toml"))
@@ -25,6 +25,8 @@ func TestPrepareMiniMaxCodexHomeWritesSecretFreeManagedConfig(t *testing.T) {
 	}
 	for _, required := range []string{
 		`model = "MiniMax-M3"`,
+		`model_reasoning_effort = "none"`,
+		`model_reasoning_summary = "none"`,
 		`base_url = "https://api.minimaxi.com/v1"`,
 		`env_key = "MINIMAX_API_KEY"`,
 		`wire_api = "responses"`,
@@ -36,6 +38,9 @@ func TestPrepareMiniMaxCodexHomeWritesSecretFreeManagedConfig(t *testing.T) {
 	}
 	if strings.Contains(string(config), "test-secret") {
 		t.Fatal("managed config contains a secret")
+	}
+	if strings.Contains(string(config), "show_raw_agent_reasoning") {
+		t.Fatal("default managed profile enabled raw reasoning")
 	}
 	homeInfo, err := os.Stat(home)
 	if err != nil {
@@ -53,8 +58,32 @@ func TestPrepareMiniMaxCodexHomeWritesSecretFreeManagedConfig(t *testing.T) {
 			t.Fatalf("managed file %s is accessible to group/other: %o", name, info.Mode().Perm())
 		}
 	}
-	if err := prepareMiniMaxCodexHome(home); err != nil {
+	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileDefault); err != nil {
 		t.Fatalf("managed config should be idempotent: %v", err)
+	}
+}
+
+func TestPrepareMiniMaxCodexHomeWritesHighRawManagedProfile(t *testing.T) {
+	home := t.TempDir()
+	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileHighRaw); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(filepath.Join(home, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, required := range []string{
+		`model_reasoning_effort = "high"`,
+		`model_reasoning_summary = "none"`,
+		`show_raw_agent_reasoning = true`,
+	} {
+		if strings.Count(text, required) != 1 {
+			t.Fatalf("high/raw managed config must contain exactly one %q: %s", required, text)
+		}
+	}
+	if strings.Contains(text, `model_reasoning_effort = "none"`) {
+		t.Fatal("high/raw managed config retained the default reasoning effort")
 	}
 }
 
@@ -63,7 +92,7 @@ func TestPrepareMiniMaxCodexHomeRefusesUnmanagedConfig(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("model = \"other\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := prepareMiniMaxCodexHome(home); err == nil {
+	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileDefault); err == nil {
 		t.Fatal("expected unmanaged config to be preserved")
 	}
 	config, err := os.ReadFile(filepath.Join(home, "config.toml"))
@@ -159,6 +188,24 @@ func TestMiniMaxConfigValidation(t *testing.T) {
 	}
 	if err := (MiniMaxConfig{Enabled: true, APIKey: "test-secret"}).validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestManagedReasoningProfileValidation(t *testing.T) {
+	if err := ManagedReasoningProfileDefault.validate(false, false); err != nil {
+		t.Fatalf("default profile should preserve the unconfigured baseline: %v", err)
+	}
+	if err := ManagedReasoningProfileHighRaw.validate(true, false); err != nil {
+		t.Fatalf("valid managed high/raw profile was rejected: %v", err)
+	}
+	if err := ManagedReasoningProfileHighRaw.validate(false, false); err == nil {
+		t.Fatal("high/raw profile accepted a disabled MiniMax provider")
+	}
+	if err := ManagedReasoningProfileHighRaw.validate(true, true); err == nil {
+		t.Fatal("high/raw profile accepted experimental Runtime tools")
+	}
+	if err := ManagedReasoningProfile(255).validate(true, false); err == nil {
+		t.Fatal("unknown managed reasoning profile was accepted")
 	}
 }
 

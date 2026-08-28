@@ -30,25 +30,26 @@ const (
 )
 
 type Config struct {
-	Environment            string
-	Port                   string
-	HostHome               string
-	ParentPID              int
-	Runtime                codex.Config
-	RawReasoningV2Enabled  bool
-	TitleV2Enabled         bool
-	CleanupV2Enabled       bool
-	MultimodalV2Enabled    bool
-	ArtifactV3Enabled      bool
-	ArtifactSynthetic      bool
-	ArtifactManifest       string
-	ImageGenerationEnabled bool
-	InstanceNonce          string
-	FEAT126TestParentPID   int
-	FEAT126TestRunID       string
-	FEAT126TestProfile     string
-	FEAT126ProjectDir      string
-	Skills                 SkillFeatureConfig
+	Environment             string
+	Port                    string
+	HostHome                string
+	ParentPID               int
+	Runtime                 codex.Config
+	RawReasoningV2Enabled   bool
+	FEAT134StreamingEnabled bool
+	TitleV2Enabled          bool
+	CleanupV2Enabled        bool
+	MultimodalV2Enabled     bool
+	ArtifactV3Enabled       bool
+	ArtifactSynthetic       bool
+	ArtifactManifest        string
+	ImageGenerationEnabled  bool
+	InstanceNonce           string
+	FEAT126TestParentPID    int
+	FEAT126TestRunID        string
+	FEAT126TestProfile      string
+	FEAT126ProjectDir       string
+	Skills                  SkillFeatureConfig
 }
 
 type RuntimeStatusProvider interface {
@@ -219,6 +220,13 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 			return Config{}, errors.New("YIJIE_AGENT_HOST_HOME and YIJIE_CODEX_HOME must be separate directories")
 		}
 	}
+	feat134Streaming, err := loadFEAT134StreamingProfile(environment, hostHome, runtimeConfig)
+	if err != nil {
+		return Config{}, err
+	}
+	if feat134Streaming {
+		runtimeConfig.ManagedReasoningProfile = codex.ManagedReasoningProfileHighRaw
+	}
 	feat126ProjectDirectory := ""
 	if fakeProfile.Enabled {
 		feat126ProjectDirectory, err = validateFEAT126ProjectAuthority(
@@ -241,26 +249,132 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	}
 
 	return Config{
-		Environment:            environment,
-		Port:                   env("YIJIE_AGENT_HOST_PORT", "18080"),
-		HostHome:               hostHome,
-		ParentPID:              parentPID,
-		Runtime:                runtimeConfig,
-		RawReasoningV2Enabled:  rawV2,
-		TitleV2Enabled:         titleV2,
-		CleanupV2Enabled:       cleanupV2,
-		MultimodalV2Enabled:    multimodalV2,
-		ArtifactV3Enabled:      artifactV3,
-		ArtifactSynthetic:      syntheticArtifact,
-		ArtifactManifest:       artifactManifest,
-		ImageGenerationEnabled: imageGeneration,
-		InstanceNonce:          instanceNonce,
-		FEAT126TestParentPID:   testParentPID,
-		FEAT126TestRunID:       fakeProfile.RunID,
-		FEAT126TestProfile:     feat126TestProfileName(fakeProfile),
-		FEAT126ProjectDir:      feat126ProjectDirectory,
-		Skills:                 skillFeature,
+		Environment:             environment,
+		Port:                    env("YIJIE_AGENT_HOST_PORT", "18080"),
+		HostHome:                hostHome,
+		ParentPID:               parentPID,
+		Runtime:                 runtimeConfig,
+		RawReasoningV2Enabled:   rawV2,
+		FEAT134StreamingEnabled: feat134Streaming,
+		TitleV2Enabled:          titleV2,
+		CleanupV2Enabled:        cleanupV2,
+		MultimodalV2Enabled:     multimodalV2,
+		ArtifactV3Enabled:       artifactV3,
+		ArtifactSynthetic:       syntheticArtifact,
+		ArtifactManifest:        artifactManifest,
+		ImageGenerationEnabled:  imageGeneration,
+		InstanceNonce:           instanceNonce,
+		FEAT126TestParentPID:    testParentPID,
+		FEAT126TestRunID:        fakeProfile.RunID,
+		FEAT126TestProfile:      feat126TestProfileName(fakeProfile),
+		FEAT126ProjectDir:       feat126ProjectDirectory,
+		Skills:                  skillFeature,
 	}, nil
+}
+
+func loadFEAT134StreamingProfile(environment, hostHome string, runtimeConfig codex.Config) (bool, error) {
+	enabled, err := exactBoolEnv("YIJIE_FEAT134_STREAMING_ENABLED")
+	if err != nil || !enabled {
+		return false, err
+	}
+	rawEnvironment, environmentSet := os.LookupEnv("YIJIE_ENV")
+	localProfile, profileSet := os.LookupEnv("YIJIE_LOCAL_PROFILE")
+	if !environmentSet || !profileSet || rawEnvironment != "local" || environment != "local" || localProfile != "demo_fast" {
+		return false, errors.New("FEAT-134 streaming requires the exact explicit local demo_fast profile")
+	}
+	if !runtimeConfig.MiniMax.Enabled || runtimeConfig.FakeResponses.Enabled {
+		return false, errors.New("FEAT-134 streaming requires the managed MiniMax provider")
+	}
+	if !canonicalAbsolutePath(hostHome) || !canonicalAbsolutePath(runtimeConfig.CodexHome) {
+		return false, errors.New("FEAT-134 streaming requires separate canonical absolute Host and Runtime homes")
+	}
+	sameAuthority, authorityErr := samePhysicalAuthorityAllowMissing(hostHome, runtimeConfig.CodexHome)
+	if authorityErr != nil {
+		return false, errors.New("FEAT-134 streaming cannot verify separate Host and Runtime homes")
+	}
+	if sameAuthority {
+		return false, errors.New("FEAT-134 streaming requires separate canonical absolute Host and Runtime homes")
+	}
+	if runtimeConfig.DynamicToolsEnabled {
+		return false, errors.New("FEAT-134 streaming requires experimental Runtime tools to remain disabled")
+	}
+	return true, nil
+}
+
+type physicalAuthorityPath struct {
+	path     string
+	info     os.FileInfo
+	missing  []string
+	complete bool
+}
+
+func samePhysicalAuthorityAllowMissing(first, second string) (bool, error) {
+	firstAuthority, err := resolvePhysicalAuthorityPath(first)
+	if err != nil {
+		return false, err
+	}
+	secondAuthority, err := resolvePhysicalAuthorityPath(second)
+	if err != nil {
+		return false, err
+	}
+	if firstAuthority.complete && secondAuthority.complete {
+		return os.SameFile(firstAuthority.info, secondAuthority.info), nil
+	}
+	if os.SameFile(firstAuthority.info, secondAuthority.info) &&
+		equalPathComponents(firstAuthority.missing, secondAuthority.missing) {
+		return true, nil
+	}
+	return firstAuthority.path == secondAuthority.path, nil
+}
+
+func equalPathComponents(first, second []string) bool {
+	if len(first) != len(second) {
+		return false
+	}
+	for index := range first {
+		if first[index] != second[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func resolvePhysicalAuthorityPath(value string) (physicalAuthorityPath, error) {
+	candidate := value
+	missing := make([]string, 0, 2)
+	for {
+		info, err := os.Lstat(candidate)
+		if err == nil {
+			resolved, resolveErr := filepath.EvalSymlinks(candidate)
+			if resolveErr != nil {
+				return physicalAuthorityPath{}, resolveErr
+			}
+			resolvedInfo, statErr := os.Stat(resolved)
+			if statErr != nil {
+				return physicalAuthorityPath{}, statErr
+			}
+			orderedMissing := make([]string, len(missing))
+			for index := len(missing) - 1; index >= 0; index-- {
+				resolved = filepath.Join(resolved, missing[index])
+				orderedMissing[len(missing)-1-index] = missing[index]
+			}
+			return physicalAuthorityPath{
+				path:     filepath.Clean(resolved),
+				info:     resolvedInfo,
+				missing:  orderedMissing,
+				complete: len(missing) == 0 && info != nil,
+			}, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return physicalAuthorityPath{}, err
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			return physicalAuthorityPath{}, err
+		}
+		missing = append(missing, filepath.Base(candidate))
+		candidate = parent
+	}
 }
 
 func loadFEAT128SyntheticProfile() (bool, string, error) {
@@ -471,6 +585,10 @@ type artifactSessionService interface {
 	AcknowledgeArtifact(string, string, session.ArtifactAcknowledgement) (session.ArtifactReceipt, error)
 }
 
+type feat134SessionService interface {
+	SubscribeEventsV4(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)
+}
+
 func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionService, apiToken string, options ...HandlerOption) http.Handler {
 	handlerOptions := handlerOptions{}
 	for _, option := range options {
@@ -566,6 +684,11 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 				mux.Handle("GET /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/poster", handler.authorize(http.HandlerFunc(handler.artifactPoster)))
 				mux.Handle("HEAD /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/poster", handler.authorize(http.HandlerFunc(handler.artifactPoster)))
 				mux.Handle("POST /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/ack", handler.authorize(http.HandlerFunc(handler.artifactAck)))
+			}
+		}
+		if config.FEAT134StreamingEnabled {
+			if _, ok := sessions.(feat134SessionService); ok {
+				mux.Handle("GET /v4/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.eventsV4)))
 			}
 		}
 	}
@@ -750,6 +873,27 @@ func (h *sessionHandler) eventsV3(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("X-Yijie-Event-Schema-Version", "3")
 	h.streamEvents(w, r, service.SubscribeEventsV3)
+}
+
+func (h *sessionHandler) eventsV4(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(feat134SessionService)
+	if !ok {
+		writeSessionError(w, session.ErrSessionNotUsable)
+		return
+	}
+	query := r.URL.Query()
+	for key := range query {
+		if key != "event_schema_version" && key != "stream_id" && key != "after" {
+			writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event query is invalid")
+			return
+		}
+	}
+	if values := query["event_schema_version"]; len(values) != 1 || values[0] != "4" {
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event_schema_version=4 is required")
+		return
+	}
+	w.Header().Set("X-Yijie-Event-Schema-Version", "4")
+	h.streamEvents(w, r, service.SubscribeEventsV4)
 }
 
 func (h *sessionHandler) artifactContent(w http.ResponseWriter, r *http.Request) {

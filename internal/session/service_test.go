@@ -46,7 +46,7 @@ func TestServiceProjectsBoundedRawReasoningOnlyToNegotiatedV2WithoutLoggingBody(
 	var logs bytes.Buffer
 	v1 := NewEventHub(16, 8)
 	v2 := NewEventHubVersion(EventSchemaVersionV2, 16, 8)
-	service := NewService(&fakeRuntime{}, store, v1, slog.New(slog.NewTextHandler(&logs, nil)), WithV2Events(v2))
+	service := NewService(&fakeRuntime{}, store, v1, slog.New(slog.NewTextHandler(&logs, nil)), WithV2Events(v2), WithRawReasoningProjection(true))
 	const rawCanary = "RAW-REASONING-CANARY-126"
 	service.HandleNotification(RuntimeNotificationReasoningTextDelta, rawJSON(t, map[string]any{
 		"threadId": testThreadID, "turnId": testTurnID, "itemId": "reasoning-1",
@@ -116,7 +116,7 @@ func TestServiceMarksOversizeReasoningUnavailableWithoutBody(t *testing.T) {
 		t.Fatal(err)
 	}
 	v2 := NewEventHubVersion(EventSchemaVersionV2, 16, 8)
-	service := NewService(&fakeRuntime{}, store, NewEventHub(16, 8), nil, WithV2Events(v2))
+	service := NewService(&fakeRuntime{}, store, NewEventHub(16, 8), nil, WithV2Events(v2), WithRawReasoningProjection(true))
 	service.HandleNotification(RuntimeNotificationReasoningTextDelta, rawJSON(t, map[string]any{
 		"threadId": testThreadID, "turnId": testTurnID, "itemId": "reasoning-oversize",
 		"contentIndex": 0, "delta": strings.Repeat("x", (16<<10)+1),
@@ -136,7 +136,7 @@ func TestServiceMarksOversizeReasoningUnavailableWithoutBody(t *testing.T) {
 
 func TestServiceMarksSparseTerminalReasoningAsStreamGapWithContractValidPrefix(t *testing.T) {
 	v2 := NewEventHubVersion(EventSchemaVersionV2, 16, 8)
-	service := NewService(&fakeRuntime{}, nil, NewEventHub(16, 8), nil, WithV2Events(v2))
+	service := NewService(&fakeRuntime{}, nil, NewEventHub(16, 8), nil, WithV2Events(v2), WithRawReasoningProjection(true))
 	record := Record{TaskID: testTaskID, AgentSessionID: testSessionID, CodexThreadID: testThreadID}
 	if err := service.appendReasoningDelta(record, testTurnID, "reasoning-gap", 0, "verified-prefix"); err != nil {
 		t.Fatal(err)
@@ -275,7 +275,7 @@ func TestServiceCleanupRequiresRuntimeConfirmationThenClearsHostSurfaces(t *test
 	v2 := NewEventHubVersion(EventSchemaVersionV2, 8, 2)
 	deletedThread := ""
 	runtime := &fakeRuntime{deleteThread: func(threadID string) error { deletedThread = threadID; return nil }}
-	service := NewService(runtime, store, v1, nil, WithV2Events(v2))
+	service := NewService(runtime, store, v1, nil, WithV2Events(v2), WithRawReasoningProjection(true))
 	if _, err := v1.Publish(Event{AgentSessionID: testSessionID, EventType: EventWarning}); err != nil {
 		t.Fatal(err)
 	}

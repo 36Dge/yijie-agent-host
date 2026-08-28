@@ -1,0 +1,615 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.yijie.ai/agent/session-event-v4.schema.json",
+  "title": "AgentSessionEventV4",
+  "description": "Explicitly negotiated v4 Agent Host event. It preserves every v3 lifecycle, reasoning, and structured-artifact variant, adds authoritative AgentMessage phase on lifecycle events, and adds stable turn.plan.updated snapshots. Ordering is monotonic only within stream_id and delivery is at least once.",
+  "x-yijie-max-sse-data-utf8-bytes": 1048576,
+  "x-yijie-projection-limit-policy": {
+    "mode": "reject_without_truncation",
+    "reasoning_limit_result": "reasoning_finalized_unavailable",
+    "managed_thread_start_result": "http_500_internal_error",
+    "thread_problem_event_type": "warning",
+    "problem_event_type": "error",
+    "problem_code": "limit_exceeded",
+    "will_retry": false,
+    "terminal_status": "failed"
+  },
+  "x-yijie-max-reasoning-items-per-turn": 8,
+  "x-yijie-max-reasoning-utf8-bytes-per-turn": 262144,
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "stream_id",
+    "sequence",
+    "occurred_at",
+    "task_id",
+    "agent_session_id",
+    "codex_thread_id",
+    "event_type",
+    "terminal",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": { "const": 4 },
+    "event_id": { "type": "string", "format": "uuid" },
+    "stream_id": { "type": "string", "format": "uuid" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "trace_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "request_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "tenant_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "user_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "task_id": { "type": "string", "format": "uuid" },
+    "agent_session_id": { "type": "string", "format": "uuid" },
+    "codex_thread_id": { "type": "string", "format": "uuid" },
+    "turn_id": { "type": "string", "format": "uuid" },
+    "item_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "event_type": { "type": "string" },
+    "terminal": { "type": "boolean" },
+    "payload": { "type": "object" }
+  },
+  "oneOf": [
+    { "$ref": "#/definitions/threadStartedEventV4" },
+    { "$ref": "#/definitions/turnStartedEventV4" },
+    { "$ref": "#/definitions/turnPlanUpdatedEventV4" },
+    { "$ref": "#/definitions/itemStartedEventV4" },
+    { "$ref": "#/definitions/agentMessageDeltaEventV4" },
+    { "$ref": "#/definitions/reasoningTextDeltaEventV4" },
+    { "$ref": "#/definitions/reasoningTextFinalizedEventV4" },
+    { "$ref": "#/definitions/itemCompletedEventV4" },
+    { "$ref": "#/definitions/turnCompletedEventV4" },
+    { "$ref": "#/definitions/agentErrorEventV4" },
+    { "$ref": "#/definitions/agentWarningEventV4" },
+    { "$ref": "#/definitions/artifactStartedEvent" },
+    { "$ref": "#/definitions/artifactProgressEvent" },
+    { "$ref": "#/definitions/artifactCompletedEvent" },
+    { "$ref": "#/definitions/artifactFailedEvent" }
+  ],
+  "definitions": {
+    "noTurnOrItem": {
+      "type": "object",
+      "not": {
+        "anyOf": [
+          { "type": "object", "properties": { "turn_id": {} }, "required": ["turn_id"] },
+          { "type": "object", "properties": { "item_id": {} }, "required": ["item_id"] }
+        ]
+      }
+    },
+    "turnWithoutItem": {
+      "type": "object",
+      "properties": { "turn_id": {}, "item_id": {} },
+      "required": ["turn_id"],
+      "not": { "type": "object", "properties": { "item_id": {} }, "required": ["item_id"] }
+    },
+    "threadStartedEventV4": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/definitions/noTurnOrItem" },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": { "const": "thread.started" },
+            "terminal": { "const": false },
+            "payload": { "$ref": "#/definitions/threadStartedPayloadV4" }
+          }
+        }
+      ]
+    },
+    "turnStartedEventV4": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/definitions/turnWithoutItem" },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": { "const": "turn.started" },
+            "terminal": { "const": false },
+            "payload": { "$ref": "#/definitions/turnStartedPayload" }
+          }
+        }
+      ]
+    },
+    "turnPlanUpdatedEventV4": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/definitions/turnWithoutItem" },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": { "const": "turn.plan.updated" },
+            "terminal": { "const": false },
+            "payload": { "$ref": "#/definitions/turnPlanUpdatedPayloadV4" }
+          }
+        }
+      ]
+    },
+    "itemStartedEventV4": {
+      "type": "object",
+      "required": ["turn_id", "item_id"],
+      "properties": {
+        "turn_id": {},
+        "item_id": {},
+        "event_type": { "const": "item.started" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/itemLifecyclePayloadV4" }
+      }
+    },
+    "agentMessageDeltaEventV4": {
+      "type": "object",
+      "required": ["turn_id", "item_id"],
+      "properties": {
+        "turn_id": {},
+        "item_id": {},
+        "event_type": { "const": "item.agent_message.delta" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/agentMessageDeltaPayload" }
+      }
+    },
+    "reasoningTextDeltaEventV4": {
+      "type": "object",
+      "required": ["turn_id", "item_id"],
+      "properties": {
+        "turn_id": {},
+        "item_id": {},
+        "event_type": { "const": "item.reasoning_text.delta" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/reasoningTextDeltaPayloadV4" }
+      }
+    },
+    "reasoningTextFinalizedEventV4": {
+      "type": "object",
+      "required": ["turn_id", "item_id"],
+      "properties": {
+        "turn_id": {},
+        "item_id": {},
+        "event_type": { "const": "item.reasoning_text.finalized" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/reasoningTextFinalizedPayloadV4" }
+      }
+    },
+    "itemCompletedEventV4": {
+      "type": "object",
+      "required": ["turn_id", "item_id"],
+      "properties": {
+        "turn_id": {},
+        "item_id": {},
+        "event_type": { "const": "item.completed" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/itemLifecyclePayloadV4" }
+      }
+    },
+    "turnCompletedEventV4": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/definitions/turnWithoutItem" },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": { "const": "turn.completed" },
+            "terminal": { "const": true },
+            "payload": { "$ref": "#/definitions/turnCompletedPayloadV4" }
+          }
+        }
+      ]
+    },
+    "agentErrorEventV4": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/definitions/turnWithoutItem" },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": { "const": "error" },
+            "terminal": { "const": false },
+            "payload": { "$ref": "#/definitions/agentProblemPayload" }
+          }
+        }
+      ]
+    },
+    "agentWarningEventV4": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/definitions/noTurnOrItem" },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": { "const": "warning" },
+            "terminal": { "const": false },
+            "payload": { "$ref": "#/definitions/agentWarningPayloadV4" }
+          }
+        }
+      ]
+    },
+    "artifactStartedEvent": {
+      "type": "object",
+      "required": ["turn_id"],
+      "properties": {
+        "turn_id": {},
+        "event_type": { "const": "item.artifact.started" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/artifactStartedPayload" }
+      }
+    },
+    "artifactProgressEvent": {
+      "type": "object",
+      "required": ["turn_id"],
+      "properties": {
+        "turn_id": {},
+        "event_type": { "const": "item.artifact.progress" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/artifactProgressPayload" }
+      }
+    },
+    "artifactCompletedEvent": {
+      "type": "object",
+      "required": ["turn_id"],
+      "properties": {
+        "turn_id": {},
+        "event_type": { "const": "item.artifact.completed" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/artifactCompletedPayload" }
+      }
+    },
+    "artifactFailedEvent": {
+      "type": "object",
+      "required": ["turn_id"],
+      "properties": {
+        "turn_id": {},
+        "event_type": { "const": "item.artifact.failed" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/artifactFailedPayload" }
+      }
+    },
+    "threadStartedPayloadV4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "model_provider"],
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "x-yijie-max-utf8-bytes": 1024
+        },
+        "model_provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "x-yijie-max-utf8-bytes": 1024
+        }
+      }
+    },
+    "turnStartedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": { "status": { "const": "in_progress" } }
+    },
+    "turnPlanUpdatedPayloadV4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan"],
+      "properties": {
+        "explanation": {
+          "anyOf": [
+            { "type": "string", "maxLength": 16384, "x-yijie-max-utf8-bytes": 65536 },
+            { "type": "null" }
+          ]
+        },
+        "plan": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "$ref": "#/definitions/turnPlanStepV4" }
+        }
+      }
+    },
+    "turnPlanStepV4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["step", "status"],
+      "properties": {
+        "step": {
+          "type": "string",
+          "maxLength": 16384,
+          "x-yijie-max-utf8-bytes": 65536
+        },
+        "status": { "enum": ["pending", "in_progress", "completed"] }
+      }
+    },
+    "turnCompletedPayloadV4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["completed", "interrupted", "failed"] },
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "itemLifecyclePayloadV4": {
+      "oneOf": [
+        { "$ref": "#/definitions/agentMessageLifecyclePayloadV4" },
+        { "$ref": "#/definitions/nonAgentMessageLifecyclePayloadV4" }
+      ]
+    },
+    "agentMessageLifecyclePayloadV4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_type", "text", "phase"],
+      "properties": {
+        "item_type": { "const": "agentMessage" },
+        "text": { "type": "string", "maxLength": 1048576, "x-yijie-max-utf8-bytes": 1048576 },
+        "phase": {
+          "anyOf": [
+            { "enum": ["commentary", "final_answer"] },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "nonAgentMessageLifecyclePayloadV4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_type"],
+      "properties": {
+        "item_type": {
+          "type": "string",
+          "minLength": 1,
+          "not": { "const": "agentMessage" }
+        },
+        "text": { "type": "string", "maxLength": 1048576, "x-yijie-max-utf8-bytes": 1048576 }
+      }
+    },
+    "agentMessageDeltaPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["delta"],
+      "properties": { "delta": { "type": "string" } }
+    },
+    "reasoningTextDeltaPayloadV4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_index", "delta"],
+      "properties": {
+        "content_index": { "type": "integer", "minimum": 0, "maximum": 7 },
+        "delta": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384,
+          "x-yijie-max-utf8-bytes": 16384
+        }
+      }
+    },
+    "reasoningContentPartV4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_index", "text"],
+      "properties": {
+        "content_index": { "type": "integer", "minimum": 0, "maximum": 7 },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536,
+          "x-yijie-max-utf8-bytes": 65536
+        }
+      }
+    },
+    "reasoningReasonCodeV4": {
+      "enum": [
+        "reasoning_not_emitted",
+        "turn_interrupted",
+        "stream_gap",
+        "runtime_error",
+        "limit_exceeded",
+        "protocol_error",
+        "host_shutdown"
+      ]
+    },
+    "reasoningTextFinalizedPayloadV4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contents"],
+      "properties": {
+        "status": { "enum": ["complete", "incomplete", "unavailable"] },
+        "contents": {
+          "type": "array",
+          "maxItems": 8,
+          "x-yijie-content-index-rule": "zero-based-contiguous-ascending-unique",
+          "items": { "$ref": "#/definitions/reasoningContentPartV4" }
+        },
+        "reason_code": { "$ref": "#/definitions/reasoningReasonCodeV4" }
+      },
+      "x-yijie-max-total-utf8-bytes": 131072,
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "complete" } }, "required": ["status"] },
+          "then": { "properties": { "contents": { "type": "array", "minItems": 1 }, "reason_code": false } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "incomplete" } }, "required": ["status"] },
+          "then": { "required": ["reason_code"], "properties": { "contents": { "type": "array", "minItems": 1 }, "reason_code": {} } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "unavailable" } }, "required": ["status"] },
+          "then": { "required": ["reason_code"], "properties": { "contents": { "type": "array", "maxItems": 0 }, "reason_code": {} } }
+        }
+      ]
+    },
+    "agentProblemPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message", "will_retry"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "will_retry": { "type": "boolean" }
+      }
+    },
+    "agentWarningPayloadV4": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message", "will_retry"],
+      "properties": {
+        "code": { "type": "string", "maxLength": 256 },
+        "message": {
+          "type": "string",
+          "maxLength": 16384,
+          "x-yijie-max-utf8-bytes": 65536
+        },
+        "will_retry": { "const": false }
+      }
+    },
+    "artifactKind": { "enum": ["image", "video", "file", "report"] },
+    "artifactProvenance": { "enum": ["synthetic", "provider", "tool"] },
+    "artifactStartedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "kind", "provenance", "status", "ordinal"],
+      "properties": {
+        "artifact_id": { "type": "string", "format": "uuid" },
+        "kind": { "$ref": "#/definitions/artifactKind" },
+        "provenance": { "$ref": "#/definitions/artifactProvenance" },
+        "status": { "const": "in_progress" },
+        "ordinal": { "type": "integer", "minimum": 0 },
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^/\\\\]+$" }
+      }
+    },
+    "artifactProgressPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "kind", "provenance", "status", "ordinal"],
+      "properties": {
+        "artifact_id": { "type": "string", "format": "uuid" },
+        "kind": { "$ref": "#/definitions/artifactKind" },
+        "provenance": { "$ref": "#/definitions/artifactProvenance" },
+        "status": { "const": "in_progress" },
+        "ordinal": { "type": "integer", "minimum": 0 },
+        "stage": { "enum": ["generating", "processing", "finalizing"] },
+        "progress_percent": { "type": "number", "minimum": 0, "maximum": 100 }
+      },
+      "anyOf": [
+        { "type": "object", "properties": { "stage": {} }, "required": ["stage"] },
+        { "type": "object", "properties": { "progress_percent": {} }, "required": ["progress_percent"] }
+      ]
+    },
+    "artifactCompletedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_id",
+        "kind",
+        "provenance",
+        "status",
+        "ordinal",
+        "media_type",
+        "size_bytes",
+        "sha256",
+        "content_href"
+      ],
+      "properties": {
+        "artifact_id": { "type": "string", "format": "uuid" },
+        "kind": { "$ref": "#/definitions/artifactKind" },
+        "provenance": { "$ref": "#/definitions/artifactProvenance" },
+        "status": { "const": "ready" },
+        "ordinal": { "type": "integer", "minimum": 0 },
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^/\\\\]+$" },
+        "media_type": {
+          "enum": [
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "video/mp4",
+            "text/plain",
+            "text/csv",
+            "application/json",
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.yijie.report+json;version=1"
+          ]
+        },
+        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "content_href": {
+          "type": "string",
+          "pattern": "^/v3/agent-sessions/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/artifacts/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/content$"
+        },
+        "poster_href": {
+          "type": "string",
+          "pattern": "^/v3/agent-sessions/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/artifacts/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/poster$"
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "image" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "media_type": { "enum": ["image/png", "image/jpeg", "image/webp"] },
+              "size_bytes": { "type": "integer", "maximum": 20971520 },
+              "poster_href": false
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "video" } }, "required": ["kind"] },
+          "then": {
+            "properties": { "media_type": { "const": "video/mp4" } }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "file" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "media_type": {
+                "enum": [
+                  "text/plain",
+                  "text/csv",
+                  "application/json",
+                  "application/pdf",
+                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ]
+              },
+              "poster_href": false
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "report" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "media_type": { "const": "application/vnd.yijie.report+json;version=1" },
+              "poster_href": false
+            }
+          }
+        }
+      ]
+    },
+    "artifactFailedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "kind", "provenance", "status", "ordinal", "error_code", "retryable"],
+      "properties": {
+        "artifact_id": { "type": "string", "format": "uuid" },
+        "kind": { "$ref": "#/definitions/artifactKind" },
+        "provenance": { "$ref": "#/definitions/artifactProvenance" },
+        "status": { "const": "failed" },
+        "ordinal": { "type": "integer", "minimum": 0 },
+        "error_code": {
+          "enum": [
+            "generation_failed",
+            "unsupported_provider",
+            "resource_unavailable",
+            "limit_exceeded",
+            "integrity_failed",
+            "protocol_error",
+            "turn_interrupted",
+            "host_shutdown"
+          ]
+        },
+        "retryable": { "type": "boolean" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    }
+  }
+}

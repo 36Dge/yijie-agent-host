@@ -1,0 +1,19 @@
+{
+  "schema_version": 4,
+  "event_id": "019fbf58-10c0-7b00-8000-000000000002",
+  "stream_id": "019fbf58-10c0-7b00-8000-000000000010",
+  "sequence": 8,
+  "occurred_at": "2026-08-28T06:00:01Z",
+  "task_id": "019fbf58-10c0-7b00-8000-000000000020",
+  "agent_session_id": "019fbf58-10c0-7b00-8000-000000000030",
+  "codex_thread_id": "019fbf58-10c0-7b00-8000-000000000040",
+  "turn_id": "019fbf58-10c0-7b00-8000-000000000050",
+  "item_id": "agent-message-final-1",
+  "event_type": "item.completed",
+  "terminal": false,
+  "payload": {
+    "item_type": "agentMessage",
+    "text": "synthetic final response",
+    "phase": "final_answer"
+  }
+}

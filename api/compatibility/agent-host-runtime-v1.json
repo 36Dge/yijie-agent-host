@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contracts_version": "0.5.1",
+  "contracts_version": "0.6.0",
   "runtime": {
     "repository": "https://github.com/36Dge/yijie-codex.git",
     "repository_commit": "0ce5902ed400866be0196886bb78f693a004d68d",
@@ -30,10 +30,12 @@
       "error",
       "item/agentMessage/delta",
       "item/completed",
+      "item/reasoning/textDelta",
       "item/started",
       "skills/changed",
       "thread/started",
       "turn/completed",
+      "turn/plan/updated",
       "turn/started",
       "warning"
     ]

@@ -21,12 +21,14 @@ managed_targets=(
   api/jsonschema/agent-session-event.schema.json
   api/jsonschema/agent-session-event-v2.schema.json
   api/jsonschema/agent-session-event-v3.schema.json
+  api/jsonschema/agent-session-event-v4.schema.json
   api/jsonschema/report-document-v1.schema.json
   api/jsonschema/skill-bundle-manifest-v1.schema.json
   api/jsonschema/skill-bundle-manifest-v2.schema.json
   api/fixtures/skills/bundle-v1
   api/fixtures/skills/bundle-v2
   api/fixtures/agent/host-skills-v1
+  api/fixtures/agent/session-event-v4
   internal/contracts/agenthost.gen.go
   internal/session/fixtures/synthetic-video-16x16.mp4.base64
 )
@@ -54,12 +56,14 @@ source_compatibility="$temporary_dir/agent-host-runtime-v1.json"
 source_event_schema="$temporary_dir/agent-session-event.schema.json"
 source_event_v2_schema="$temporary_dir/agent-session-event-v2.schema.json"
 source_event_v3_schema="$temporary_dir/agent-session-event-v3.schema.json"
+source_event_v4_schema="$temporary_dir/agent-session-event-v4.schema.json"
 source_report_v1_schema="$temporary_dir/report-document-v1.schema.json"
 source_skill_bundle_v1_schema="$temporary_dir/skill-bundle-manifest-v1.schema.json"
 source_skill_bundle_v2_schema="$temporary_dir/skill-bundle-manifest-v2.schema.json"
 source_skill_v1_fixtures="$temporary_dir/skill-bundle-v1"
 source_skill_v2_fixtures="$temporary_dir/skill-bundle-v2"
 source_host_skill_fixtures="$temporary_dir/host-skills-v1"
+source_event_v4_fixtures="$temporary_dir/session-event-v4"
 source_synthetic_video="$temporary_dir/synthetic-video-16x16.mp4.base64"
 decoded_synthetic_video="$temporary_dir/synthetic-video-16x16.mp4"
 source_package="$temporary_dir/package.json"
@@ -68,6 +72,7 @@ git -C "$contracts_repo" show "$contracts_commit:compatibility/agent-host-runtim
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event.schema.json" >"$source_event_schema"
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event-v2.schema.json" >"$source_event_v2_schema"
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event-v3.schema.json" >"$source_event_v3_schema"
+git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event-v4.schema.json" >"$source_event_v4_schema"
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/report/report-document-v1.schema.json" >"$source_report_v1_schema"
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/skills/skill-bundle-manifest-v1.schema.json" >"$source_skill_bundle_v1_schema"
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/skills/skill-bundle-manifest-v2.schema.json" >"$source_skill_bundle_v2_schema"
@@ -104,6 +109,17 @@ host_skill_fixture_files=(
 )
 for relative in "${host_skill_fixture_files[@]}"; do
   git -C "$contracts_repo" show "$contracts_commit:tests/fixtures/agent/host-skills-v1/$relative" >"$source_host_skill_fixtures/$relative"
+done
+mkdir -p "$source_event_v4_fixtures"
+event_v4_fixture_files=(
+  agent-message-commentary-started.json
+  agent-message-final-completed.json
+  agent-message-null-phase-started.json
+  turn-plan-cleared.json
+  turn-plan-updated.json
+)
+for relative in "${event_v4_fixture_files[@]}"; do
+  git -C "$contracts_repo" show "$contracts_commit:tests/fixtures/agent/session-event-v4/$relative" >"$source_event_v4_fixtures/$relative"
 done
 git -C "$contracts_repo" show "$contracts_commit:tests/fixtures/agent/resources-v3/synthetic-video-16x16.mp4.base64" >"$source_synthetic_video"
 git -C "$contracts_repo" show "$contracts_commit:package.json" >"$source_package"
@@ -161,6 +177,7 @@ assert_source_fixture_set() {
 assert_source_fixture_set "tests/fixtures/skills/bundle-v1" "${skill_v1_fixture_files[@]}"
 assert_source_fixture_set "tests/fixtures/skills/bundle-v2" "${skill_v2_fixture_files[@]}"
 assert_source_fixture_set "tests/fixtures/agent/host-skills-v1" "${host_skill_fixture_files[@]}"
+assert_source_fixture_set "tests/fixtures/agent/session-event-v4" "${event_v4_fixture_files[@]}"
 
 decode_base64_file() {
   local source="$1"
@@ -182,12 +199,14 @@ synthetic_video_raw_size="$(wc -c <"$decoded_synthetic_video" | tr -d '[:space:]
 mkdir -p "$repo_root/api/openapi" "$repo_root/api/compatibility" "$repo_root/api/jsonschema" \
   "$repo_root/api/fixtures/skills/bundle-v1/packages" "$repo_root/api/fixtures/skills/bundle-v2/packages" \
   "$repo_root/api/fixtures/agent/host-skills-v1" \
+  "$repo_root/api/fixtures/agent/session-event-v4" \
   "$repo_root/internal/session/fixtures"
 cp "$source_openapi" "$repo_root/api/openapi/agent-host.yaml"
 cp "$source_compatibility" "$repo_root/api/compatibility/agent-host-runtime-v1.json"
 cp "$source_event_schema" "$repo_root/api/jsonschema/agent-session-event.schema.json"
 cp "$source_event_v2_schema" "$repo_root/api/jsonschema/agent-session-event-v2.schema.json"
 cp "$source_event_v3_schema" "$repo_root/api/jsonschema/agent-session-event-v3.schema.json"
+cp "$source_event_v4_schema" "$repo_root/api/jsonschema/agent-session-event-v4.schema.json"
 cp "$source_report_v1_schema" "$repo_root/api/jsonschema/report-document-v1.schema.json"
 cp "$source_skill_bundle_v1_schema" "$repo_root/api/jsonschema/skill-bundle-manifest-v1.schema.json"
 cp "$source_skill_bundle_v2_schema" "$repo_root/api/jsonschema/skill-bundle-manifest-v2.schema.json"
@@ -199,6 +218,9 @@ for relative in "${skill_v2_fixture_files[@]}"; do
 done
 for relative in "${host_skill_fixture_files[@]}"; do
   cp "$source_host_skill_fixtures/$relative" "$repo_root/api/fixtures/agent/host-skills-v1/$relative"
+done
+for relative in "${event_v4_fixture_files[@]}"; do
+  cp "$source_event_v4_fixtures/$relative" "$repo_root/api/fixtures/agent/session-event-v4/$relative"
 done
 cp "$source_synthetic_video" "$repo_root/internal/session/fixtures/synthetic-video-16x16.mp4.base64"
 
@@ -215,6 +237,7 @@ temporary_lock="$lock_file.tmp"
   printf 'AGENT_SESSION_EVENT_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event.schema.json")"
   printf 'AGENT_SESSION_EVENT_V2_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event-v2.schema.json")"
   printf 'AGENT_SESSION_EVENT_V3_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event-v3.schema.json")"
+  printf 'AGENT_SESSION_EVENT_V4_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event-v4.schema.json")"
   printf 'REPORT_DOCUMENT_V1_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/report-document-v1.schema.json")"
   printf 'SKILL_BUNDLE_MANIFEST_V1_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/skill-bundle-manifest-v1.schema.json")"
   printf 'SKILL_BUNDLE_MANIFEST_V2_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/skill-bundle-manifest-v2.schema.json")"
@@ -224,6 +247,8 @@ temporary_lock="$lock_file.tmp"
   printf 'SKILL_BUNDLE_V2_FIXTURE_SNAPSHOT_SHA256=%s\n' "$(fixture_snapshot_sha256 "$repo_root/api/fixtures/skills/bundle-v2" "${skill_v2_fixture_files[@]}")"
   printf 'HOST_SKILLS_V1_FIXTURE_TREE=%s\n' "$(git -C "$contracts_repo" rev-parse "$contracts_commit:tests/fixtures/agent/host-skills-v1")"
   printf 'HOST_SKILLS_V1_FIXTURE_SNAPSHOT_SHA256=%s\n' "$(fixture_snapshot_sha256 "$repo_root/api/fixtures/agent/host-skills-v1" "${host_skill_fixture_files[@]}")"
+  printf 'AGENT_SESSION_EVENT_V4_FIXTURE_TREE=%s\n' "$(git -C "$contracts_repo" rev-parse "$contracts_commit:tests/fixtures/agent/session-event-v4")"
+  printf 'AGENT_SESSION_EVENT_V4_FIXTURE_SNAPSHOT_SHA256=%s\n' "$(fixture_snapshot_sha256 "$repo_root/api/fixtures/agent/session-event-v4" "${event_v4_fixture_files[@]}")"
   printf 'SYNTHETIC_VIDEO_FIXTURE_SOURCE=%s\n' 'tests/fixtures/agent/resources-v3/synthetic-video-16x16.mp4.base64'
   printf 'SYNTHETIC_VIDEO_FIXTURE_TREE=%s\n' "$synthetic_video_tree"
   printf 'SYNTHETIC_VIDEO_FIXTURE_SOURCE_SHA256=%s\n' "$(sha256_file "$source_synthetic_video")"

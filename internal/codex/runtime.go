@@ -37,18 +37,19 @@ const (
 )
 
 type Config struct {
-	BinaryPath          string
-	ManifestPath        string
-	CodexHome           string
-	StartupTimeout      time.Duration
-	RequestTimeout      time.Duration
-	ShutdownTimeout     time.Duration
-	MaxMessageBytes     int
-	WriteQueueDepth     int
-	StderrTailBytes     int
-	MiniMax             MiniMaxConfig
-	FakeResponses       FakeResponsesConfig
-	DynamicToolsEnabled bool
+	BinaryPath              string
+	ManifestPath            string
+	CodexHome               string
+	StartupTimeout          time.Duration
+	RequestTimeout          time.Duration
+	ShutdownTimeout         time.Duration
+	MaxMessageBytes         int
+	WriteQueueDepth         int
+	StderrTailBytes         int
+	MiniMax                 MiniMaxConfig
+	FakeResponses           FakeResponsesConfig
+	ManagedReasoningProfile ManagedReasoningProfile
+	DynamicToolsEnabled     bool
 
 	// testArtifactPolicy is intentionally package-private. Production always
 	// uses the exact Runtime Baseline 0 artifact policy.
@@ -110,6 +111,9 @@ func (c Config) validate() error {
 	}
 	if c.MiniMax.Enabled && c.FakeResponses.Enabled {
 		return errors.New("MiniMax and fake Responses providers are mutually exclusive")
+	}
+	if err := c.ManagedReasoningProfile.validate(c.MiniMax.Enabled, c.DynamicToolsEnabled); err != nil {
+		return err
 	}
 	if c.DynamicToolsEnabled && !c.MiniMax.Enabled {
 		return errors.New("Runtime dynamic tools require the MiniMax provider")
@@ -217,7 +221,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		return errors.New("Runtime dynamic tool handler is not configured")
 	}
 	if m.config.MiniMax.Enabled {
-		if err := prepareMiniMaxCodexHome(m.config.CodexHome); err != nil {
+		if err := prepareMiniMaxCodexHome(m.config.CodexHome, m.config.ManagedReasoningProfile); err != nil {
 			m.fail("provider_config_failed")
 			return err
 		}

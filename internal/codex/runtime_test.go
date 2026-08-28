@@ -433,6 +433,41 @@ func TestManagerHandshakeAndGracefulShutdown(t *testing.T) {
 	}
 }
 
+func TestManagerHighRawManagedProfileKeepsExperimentalAPIDisabled(t *testing.T) {
+	t.Setenv("YIJIE_FAKE_MODE", "baseline2")
+	config := newRuntimeFixture(t)
+	config.MiniMax = MiniMaxConfig{Enabled: true, APIKey: "test-minimax-key"}
+	config.ManagedReasoningProfile = ManagedReasoningProfileHighRaw
+	manager := NewManager(config, nil)
+	if manager.Snapshot().ExperimentalAPI {
+		t.Fatal("high/raw managed profile enabled experimental API before Runtime start")
+	}
+	if err := manager.Start(context.Background()); err != nil {
+		t.Fatalf("start Runtime with high/raw managed profile: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = manager.Shutdown(ctx)
+	})
+	if manager.Snapshot().ExperimentalAPI {
+		t.Fatal("high/raw managed profile enabled experimental API after Runtime initialization")
+	}
+	content, err := os.ReadFile(filepath.Join(config.CodexHome, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		`model_reasoning_effort = "high"`,
+		`model_reasoning_summary = "none"`,
+		`show_raw_agent_reasoning = true`,
+	} {
+		if !strings.Contains(string(content), required) {
+			t.Fatalf("managed Runtime config omitted %q", required)
+		}
+	}
+}
+
 func TestManagerRejectsUnknownReverseRequests(t *testing.T) {
 	resultFile := filepath.Join(t.TempDir(), "reverse-request-result")
 	t.Setenv("YIJIE_FAKE_MODE", "reverse_request")

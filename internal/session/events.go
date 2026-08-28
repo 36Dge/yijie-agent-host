@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"errors"
 	"sync"
 	"time"
@@ -10,12 +11,16 @@ const (
 	EventSchemaVersion   = 1
 	EventSchemaVersionV2 = 2
 	EventSchemaVersionV3 = 3
+	EventSchemaVersionV4 = 4
+
+	maxV4EventDataBytes = 1 << 20
 )
 
 var (
-	ErrStreamChanged     = errors.New("event stream id changed")
-	ErrReplayUnavailable = errors.New("requested events are no longer available")
-	ErrInvalidSequence   = errors.New("event sequence is invalid")
+	ErrStreamChanged      = errors.New("event stream id changed")
+	ErrReplayUnavailable  = errors.New("requested events are no longer available")
+	ErrInvalidSequence    = errors.New("event sequence is invalid")
+	ErrEventLimitExceeded = errors.New("event exceeds negotiated projection limit")
 )
 
 type EventPayload struct {
@@ -23,10 +28,13 @@ type EventPayload struct {
 	ModelProvider string              `json:"model_provider,omitempty"`
 	Status        string              `json:"status,omitempty"`
 	ItemType      string              `json:"item_type,omitempty"`
-	Text          string              `json:"text,omitempty"`
+	Text          *string             `json:"text,omitempty"`
+	V4Text        *string             `json:"-"`
+	Phase         **string            `json:"phase,omitempty"`
 	Delta         *string             `json:"delta,omitempty"`
 	Code          string              `json:"code,omitempty"`
 	Message       *string             `json:"message,omitempty"`
+	V4Message     *string             `json:"-"`
 	WillRetry     *bool               `json:"will_retry,omitempty"`
 	ContentIndex  *int                `json:"content_index,omitempty"`
 	Contents      *[]ReasoningContent `json:"contents,omitempty"`
@@ -45,6 +53,49 @@ type EventPayload struct {
 	PosterHref    string              `json:"poster_href,omitempty"`
 	ErrorCode     string              `json:"error_code,omitempty"`
 	Retryable     *bool               `json:"retryable,omitempty"`
+	Explanation   **string            `json:"explanation,omitempty"`
+	Plan          *[]PlanStep         `json:"plan,omitempty"`
+}
+
+func (payload *EventPayload) UnmarshalJSON(data []byte) error {
+	type eventPayloadAlias EventPayload
+	var decoded eventPayloadAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if raw, ok := fields["phase"]; ok {
+		var value *string
+		if string(raw) != "null" {
+			var phase string
+			if err := json.Unmarshal(raw, &phase); err != nil {
+				return err
+			}
+			value = &phase
+		}
+		decoded.Phase = nullableString(value)
+	}
+	if raw, ok := fields["explanation"]; ok {
+		var value *string
+		if string(raw) != "null" {
+			var explanation string
+			if err := json.Unmarshal(raw, &explanation); err != nil {
+				return err
+			}
+			value = &explanation
+		}
+		decoded.Explanation = nullableString(value)
+	}
+	*payload = EventPayload(decoded)
+	return nil
+}
+
+type PlanStep struct {
+	Step   string `json:"step"`
+	Status string `json:"status"`
 }
 
 type ReasoningContent struct {
@@ -93,7 +144,7 @@ func NewEventHub(capacity, subscriberCapacity int) *EventHub {
 }
 
 func NewEventHubVersion(schemaVersion, capacity, subscriberCapacity int) *EventHub {
-	if schemaVersion != EventSchemaVersionV2 && schemaVersion != EventSchemaVersionV3 {
+	if schemaVersion != EventSchemaVersionV2 && schemaVersion != EventSchemaVersionV3 && schemaVersion != EventSchemaVersionV4 {
 		schemaVersion = EventSchemaVersion
 	}
 	if capacity < 1 {
@@ -121,12 +172,24 @@ func (h *EventHub) Publish(event Event) (Event, error) {
 	if err != nil {
 		return Event{}, err
 	}
-	stream.next++
 	event.SchemaVersion = h.schemaVersion
 	event.EventID = eventID
 	event.StreamID = stream.id
-	event.Sequence = stream.next
+	event.Sequence = stream.next + 1
 	event.OccurredAt = time.Now().UTC()
+	if h.schemaVersion == EventSchemaVersionV4 {
+		if validateErr := validateV4RetainedEvent(event); validateErr != nil {
+			return Event{}, validateErr
+		}
+		encoded, marshalErr := json.Marshal(event)
+		if marshalErr != nil {
+			return Event{}, marshalErr
+		}
+		if len(encoded) > maxV4EventDataBytes {
+			return Event{}, ErrEventLimitExceeded
+		}
+	}
+	stream.next++
 	stream.events = append(stream.events, event)
 	if len(stream.events) > h.capacity {
 		stream.events = append([]Event(nil), stream.events[len(stream.events)-h.capacity:]...)

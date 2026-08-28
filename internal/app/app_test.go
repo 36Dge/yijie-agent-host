@@ -479,6 +479,175 @@ func TestLoadConfigRejectsSharedRuntimeAndHostHome(t *testing.T) {
 	}
 }
 
+func TestLoadFEAT134StreamingProfileRequiresExactLocalManagedAuthority(t *testing.T) {
+	hostHome := filepath.Join(t.TempDir(), "host-home")
+	codexHome := filepath.Join(t.TempDir(), "codex-home")
+	baseRuntime := codex.DefaultConfig()
+	baseRuntime.CodexHome = codexHome
+	baseRuntime.MiniMax = codex.MiniMaxConfig{Enabled: true, APIKey: "synthetic-test-key"}
+
+	tests := []struct {
+		name        string
+		flag        string
+		environment string
+		profile     string
+		hostHome    string
+		mutate      func(*codex.Config)
+		want        bool
+		wantErr     bool
+	}{
+		{name: "exact", flag: "true", environment: "local", profile: "demo_fast", hostHome: hostHome, want: true},
+		{name: "disabled", flag: "false", environment: "production", profile: "other", hostHome: "relative"},
+		{name: "non exact flag", flag: "TRUE", environment: "local", profile: "demo_fast", hostHome: hostHome, wantErr: true},
+		{name: "implicit environment default", flag: "true", profile: "demo_fast", hostHome: hostHome, wantErr: true},
+		{name: "missing profile", flag: "true", environment: "local", hostHome: hostHome, wantErr: true},
+		{name: "profile whitespace", flag: "true", environment: "local", profile: "demo_fast ", hostHome: hostHome, wantErr: true},
+		{name: "production", flag: "true", environment: "production", profile: "demo_fast", hostHome: hostHome, wantErr: true},
+		{
+			name: "provider disabled", flag: "true", environment: "local", profile: "demo_fast", hostHome: hostHome, wantErr: true,
+			mutate: func(config *codex.Config) { config.MiniMax = codex.MiniMaxConfig{} },
+		},
+		{name: "relative Host home", flag: "true", environment: "local", profile: "demo_fast", hostHome: "relative", wantErr: true},
+		{
+			name: "relative Runtime home", flag: "true", environment: "local", profile: "demo_fast", hostHome: hostHome, wantErr: true,
+			mutate: func(config *codex.Config) { config.CodexHome = "relative" },
+		},
+		{
+			name: "shared homes", flag: "true", environment: "local", profile: "demo_fast", hostHome: hostHome, wantErr: true,
+			mutate: func(config *codex.Config) { config.CodexHome = hostHome },
+		},
+		{
+			name: "experimental tools", flag: "true", environment: "local", profile: "demo_fast", hostHome: hostHome, wantErr: true,
+			mutate: func(config *codex.Config) { config.DynamicToolsEnabled = true },
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("YIJIE_FEAT134_STREAMING_ENABLED", test.flag)
+			t.Setenv("YIJIE_ENV", test.environment)
+			t.Setenv("YIJIE_LOCAL_PROFILE", test.profile)
+			runtimeConfig := baseRuntime
+			if test.mutate != nil {
+				test.mutate(&runtimeConfig)
+			}
+			got, err := loadFEAT134StreamingProfile(test.environment, test.hostHome, runtimeConfig)
+			if (err != nil) != test.wantErr || got != test.want {
+				t.Fatalf("profile got=(%t,%v), want=(%t,err=%t)", got, err, test.want, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestFEAT134StreamingHomeAuthorityResolvesAliasesAndMissingPaths(t *testing.T) {
+	t.Setenv("YIJIE_FEAT134_STREAMING_ENABLED", "true")
+	t.Setenv("YIJIE_ENV", "local")
+	t.Setenv("YIJIE_LOCAL_PROFILE", "demo_fast")
+
+	t.Run("distinct homes may both be uncreated", func(t *testing.T) {
+		root := t.TempDir()
+		runtimeConfig := codex.DefaultConfig()
+		runtimeConfig.CodexHome = filepath.Join(root, "codex-home")
+		runtimeConfig.MiniMax = codex.MiniMaxConfig{Enabled: true, APIKey: "synthetic-test-key"}
+		hostHome := filepath.Join(root, "host-home")
+		if _, err := os.Lstat(hostHome); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("Host test path unexpectedly exists: %v", err)
+		}
+		if _, err := os.Lstat(runtimeConfig.CodexHome); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("Runtime test path unexpectedly exists: %v", err)
+		}
+		enabled, err := loadFEAT134StreamingProfile("local", hostHome, runtimeConfig)
+		if err != nil || !enabled {
+			t.Fatalf("distinct uncreated homes were rejected: enabled=%t err=%v", enabled, err)
+		}
+	})
+
+	t.Run("symlink physical alias is rejected before leaf creation", func(t *testing.T) {
+		root := t.TempDir()
+		physicalRoot := filepath.Join(root, "physical")
+		if err := os.Mkdir(physicalRoot, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		aliasRoot := filepath.Join(root, "alias")
+		if err := os.Symlink(physicalRoot, aliasRoot); err != nil {
+			t.Fatal(err)
+		}
+		runtimeConfig := codex.DefaultConfig()
+		runtimeConfig.CodexHome = filepath.Join(aliasRoot, "shared-home")
+		runtimeConfig.MiniMax = codex.MiniMaxConfig{Enabled: true, APIKey: "synthetic-test-key"}
+		if enabled, err := loadFEAT134StreamingProfile(
+			"local", filepath.Join(physicalRoot, "shared-home"), runtimeConfig,
+		); err == nil || enabled {
+			t.Fatalf("symlink alias was accepted: enabled=%t err=%v", enabled, err)
+		}
+	})
+
+	t.Run("existing symlink physical alias is rejected", func(t *testing.T) {
+		root := t.TempDir()
+		physicalHome := filepath.Join(root, "physical-home")
+		if err := os.Mkdir(physicalHome, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		aliasHome := filepath.Join(root, "alias-home")
+		if err := os.Symlink(physicalHome, aliasHome); err != nil {
+			t.Fatal(err)
+		}
+		runtimeConfig := codex.DefaultConfig()
+		runtimeConfig.CodexHome = aliasHome
+		runtimeConfig.MiniMax = codex.MiniMaxConfig{Enabled: true, APIKey: "synthetic-test-key"}
+		if enabled, err := loadFEAT134StreamingProfile("local", physicalHome, runtimeConfig); err == nil || enabled {
+			t.Fatalf("existing symlink alias was accepted: enabled=%t err=%v", enabled, err)
+		}
+	})
+
+	t.Run("authority inspection errors fail closed", func(t *testing.T) {
+		root := t.TempDir()
+		nonDirectory := filepath.Join(root, "not-a-directory")
+		if err := os.WriteFile(nonDirectory, []byte("safe test boundary"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		runtimeConfig := codex.DefaultConfig()
+		runtimeConfig.CodexHome = filepath.Join(root, "codex-home")
+		runtimeConfig.MiniMax = codex.MiniMaxConfig{Enabled: true, APIKey: "synthetic-test-key"}
+		if enabled, err := loadFEAT134StreamingProfile(
+			"local", filepath.Join(nonDirectory, "host-home"), runtimeConfig,
+		); err == nil || enabled {
+			t.Fatalf("unverifiable authority was accepted: enabled=%t err=%v", enabled, err)
+		}
+	})
+}
+
+func TestLoadConfigWiresFEAT134HighRawWithoutExperimentalAPI(t *testing.T) {
+	for _, key := range []string{
+		"YIJIE_FEAT134_STREAMING_ENABLED", "YIJIE_ENV", "YIJIE_LOCAL_PROFILE",
+		"YIJIE_MODEL_PROVIDER", "YIJIE_MINIMAX_API_KEY", "YIJIE_MINIMAX_API_KEY_FILE",
+		"YIJIE_AGENT_HOST_HOME", "YIJIE_CODEX_HOME", "YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED",
+		"YIJIE_FEAT128_IMAGE_GENERATION_ENABLED", "YIJIE_FEAT128_SYNTHETIC_ENABLED",
+		"YIJIE_FEAT128_SYNTHETIC_MANIFEST", "YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED",
+		"YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED", skillBundleRootEnv, skillInstallRootEnv,
+	} {
+		t.Setenv(key, "")
+	}
+	t.Setenv("YIJIE_FEAT134_STREAMING_ENABLED", "true")
+	t.Setenv("YIJIE_ENV", "local")
+	t.Setenv("YIJIE_LOCAL_PROFILE", "demo_fast")
+	t.Setenv("YIJIE_MODEL_PROVIDER", codex.MiniMaxProviderID)
+	t.Setenv("YIJIE_MINIMAX_API_KEY", "synthetic-test-key")
+	t.Setenv("YIJIE_AGENT_HOST_HOME", filepath.Join(t.TempDir(), "host-home"))
+	t.Setenv("YIJIE_CODEX_HOME", filepath.Join(t.TempDir(), "codex-home"))
+
+	config, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("load exact FEAT-134 configuration: %v", err)
+	}
+	if !config.FEAT134StreamingEnabled || config.Runtime.ManagedReasoningProfile != codex.ManagedReasoningProfileHighRaw {
+		t.Fatalf("FEAT-134 managed profile was not wired: %#v", config)
+	}
+	if config.ImageGenerationEnabled || config.Runtime.DynamicToolsEnabled || codex.NewManager(config.Runtime, nil).Snapshot().ExperimentalAPI {
+		t.Fatalf("FEAT-134 enabled experimental Runtime API: %#v", config.Runtime)
+	}
+}
+
 func TestLoadConfigAcceptsOnlyExactFEAT126FakeProfile(t *testing.T) {
 	for _, key := range []string{
 		"YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED", "YIJIE_FEAT126_S10_RUN_ID",

@@ -31,6 +31,33 @@ type MiniMaxConfig struct {
 	APIKey  string
 }
 
+// ManagedReasoningProfile selects one of the Host-owned, closed MiniMax
+// configurations written into the managed CODEX_HOME. The zero value
+// preserves the Runtime Baseline 2 behavior.
+type ManagedReasoningProfile uint8
+
+const (
+	ManagedReasoningProfileDefault ManagedReasoningProfile = iota
+	ManagedReasoningProfileHighRaw
+)
+
+func (p ManagedReasoningProfile) validate(miniMaxEnabled, dynamicToolsEnabled bool) error {
+	switch p {
+	case ManagedReasoningProfileDefault:
+		return nil
+	case ManagedReasoningProfileHighRaw:
+		if !miniMaxEnabled {
+			return errors.New("managed high/raw reasoning profile requires the MiniMax provider")
+		}
+		if dynamicToolsEnabled {
+			return errors.New("managed high/raw reasoning profile requires experimental Runtime tools to remain disabled")
+		}
+		return nil
+	default:
+		return errors.New("unsupported managed reasoning profile")
+	}
+}
+
 type FakeResponsesConfig struct {
 	Enabled   bool
 	BaseURL   string
@@ -85,7 +112,10 @@ func (c MiniMaxConfig) validate() error {
 	return nil
 }
 
-func prepareMiniMaxCodexHome(codexHome string) error {
+func prepareMiniMaxCodexHome(codexHome string, profile ManagedReasoningProfile) error {
+	if err := profile.validate(true, false); err != nil {
+		return err
+	}
 	if err := os.Chmod(codexHome, 0o700); err != nil {
 		return fmt.Errorf("protect managed CODEX_HOME: %w", err)
 	}
@@ -98,23 +128,36 @@ func prepareMiniMaxCodexHome(codexHome string) error {
 		return fmt.Errorf("write MiniMax model catalog: %w", err)
 	}
 
-	config := managedConfigMarker + strings.Join([]string{
+	reasoningLines := []string{
+		"model_reasoning_effort = \"none\"",
+		"model_reasoning_summary = \"none\"",
+	}
+	if profile == ManagedReasoningProfileHighRaw {
+		reasoningLines = []string{
+			"model_reasoning_effort = \"high\"",
+			"model_reasoning_summary = \"none\"",
+			"show_raw_agent_reasoning = true",
+		}
+	}
+	configLines := []string{
 		"model = " + strconv.Quote(MiniMaxModel),
 		"model_provider = " + strconv.Quote(MiniMaxProviderID),
 		"model_context_window = 1000000",
-		"model_reasoning_effort = \"none\"",
-		"model_reasoning_summary = \"none\"",
-		"model_catalog_json = " + strconv.Quote(catalogPath),
+	}
+	configLines = append(configLines, reasoningLines...)
+	configLines = append(configLines,
+		"model_catalog_json = "+strconv.Quote(catalogPath),
 		"",
 		"[model_providers.minimax]",
 		"name = \"MiniMax\"",
-		"base_url = " + strconv.Quote(MiniMaxChinaBaseURL),
-		"env_key = " + strconv.Quote(MiniMaxRuntimeEnvKey),
+		"base_url = "+strconv.Quote(MiniMaxChinaBaseURL),
+		"env_key = "+strconv.Quote(MiniMaxRuntimeEnvKey),
 		"wire_api = \"responses\"",
 		"requires_openai_auth = false",
 		"supports_websockets = false",
 		"",
-	}, "\n")
+	)
+	config := managedConfigMarker + strings.Join(configLines, "\n")
 	if err := writeManagedFile(filepath.Join(codexHome, "config.toml"), []byte(config), true); err != nil {
 		return fmt.Errorf("write managed CODEX_HOME config: %w", err)
 	}

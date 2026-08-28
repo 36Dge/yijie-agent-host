@@ -130,11 +130,16 @@ func (s *Service) publishSyntheticArtifacts(sessionID, turnID string) error {
 
 func (s *Service) publishV3(record Record, event Event) error {
 	if s.eventsV3 == nil {
-		return ErrSessionNotUsable
+		if s.eventsV4 == nil {
+			return ErrSessionNotUsable
+		}
+		return s.publishV4(record, event)
 	}
 	decorateEvent(record, &event)
-	_, err := s.eventsV3.Publish(event)
-	return err
+	if _, err := s.eventsV3.Publish(event); err != nil {
+		return err
+	}
+	return s.publishV4(record, event)
 }
 
 func artifactFailureCode(err error) string {

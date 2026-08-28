@@ -31,6 +31,7 @@ const (
 	EventItemArtifactProgress     = "item.artifact.progress"
 	EventItemArtifactCompleted    = "item.artifact.completed"
 	EventItemArtifactFailed       = "item.artifact.failed"
+	EventTurnPlanUpdated          = "turn.plan.updated"
 	EventTurnCompleted            = "turn.completed"
 	EventError                    = "error"
 	EventWarning                  = "warning"
@@ -44,6 +45,7 @@ const (
 	RuntimeNotificationItemStarted           = "item/started"
 	RuntimeNotificationThreadStarted         = "thread/started"
 	RuntimeNotificationTurnCompleted         = "turn/completed"
+	RuntimeNotificationTurnPlanUpdated       = "turn/plan/updated"
 	RuntimeNotificationTurnStarted           = "turn/started"
 	RuntimeNotificationWarning               = "warning"
 )
@@ -52,9 +54,11 @@ var runtimeNotifications = []string{
 	RuntimeNotificationError,
 	RuntimeNotificationItemAgentMessageDelta,
 	RuntimeNotificationItemCompleted,
+	RuntimeNotificationReasoningTextDelta,
 	RuntimeNotificationItemStarted,
 	RuntimeNotificationThreadStarted,
 	RuntimeNotificationTurnCompleted,
+	RuntimeNotificationTurnPlanUpdated,
 	RuntimeNotificationTurnStarted,
 	RuntimeNotificationWarning,
 }
@@ -130,6 +134,9 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 	if s.eventsV3 != nil {
 		s.eventsV3.DeleteSession(sessionID)
 	}
+	if s.eventsV4 != nil {
+		s.eventsV4.DeleteSession(sessionID)
+	}
 	if s.artifacts != nil {
 		s.artifacts.DeleteSession(sessionID)
 	}
@@ -142,6 +149,7 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 		}
 	}
 	s.reasoningMu.Unlock()
+	s.clearV4Session(sessionID)
 	return CleanupResult{OperationID: operationID, Outcome: "complete", RuntimeThreadTree: "complete", HostMapping: "complete", HostReplay: "complete"}, nil
 }
 
@@ -180,14 +188,17 @@ type syntheticTerminalBarrier struct {
 }
 
 type Service struct {
-	runtime            Runtime
-	store              *Store
-	events             *EventHub
-	eventsV2           *EventHub
-	eventsV3           *EventHub
-	artifacts          *artifact.Store
-	syntheticArtifacts bool
-	logger             *slog.Logger
+	runtime              Runtime
+	store                *Store
+	events               *EventHub
+	eventsV2             *EventHub
+	eventsV3             *EventHub
+	eventsV4             *EventHub
+	artifacts            *artifact.Store
+	syntheticArtifacts   bool
+	rawReasoning         bool
+	fixedReasoningEffort string
+	logger               *slog.Logger
 
 	pendingMu       sync.Mutex
 	pending         map[string][]pendingNotification
@@ -197,6 +208,8 @@ type Service struct {
 	terminalMu      sync.Mutex
 	reasoningMu     sync.Mutex
 	reasoning       map[reasoningTurnKey]*reasoningTurnState
+	v4Mu            sync.Mutex
+	v4Turns         map[v4TurnKey]*v4TurnState
 	titleMu         sync.Mutex
 	titleGenerator  TitleGenerator
 	titleOperations map[titleOperationKey]*titleOperation
@@ -208,7 +221,12 @@ type Service struct {
 type ServiceOption func(*Service)
 
 func WithV2Events(events *EventHub) ServiceOption {
-	return func(service *Service) { service.eventsV2 = events }
+	return func(service *Service) {
+		service.eventsV2 = events
+		// The v2 route is itself the legacy explicit raw-reasoning authority.
+		// V3/V4 hubs never imply this authorization.
+		service.rawReasoning = events != nil
+	}
 }
 
 func WithV3Artifacts(events *EventHub, artifacts *artifact.Store, synthetic bool) ServiceOption {
@@ -216,6 +234,22 @@ func WithV3Artifacts(events *EventHub, artifacts *artifact.Store, synthetic bool
 		service.eventsV3 = events
 		service.artifacts = artifacts
 		service.syntheticArtifacts = synthetic
+	}
+}
+
+func WithV4Events(events *EventHub) ServiceOption {
+	return func(service *Service) { service.eventsV4 = events }
+}
+
+func WithRawReasoningProjection(enabled bool) ServiceOption {
+	return func(service *Service) { service.rawReasoning = enabled }
+}
+
+func WithFixedReasoningEffort(effort string) ServiceOption {
+	return func(service *Service) {
+		if effort == "high" {
+			service.fixedReasoningEffort = effort
+		}
 	}
 }
 
@@ -235,6 +269,7 @@ func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Lo
 		pending:         make(map[string][]pendingNotification),
 		syntheticTurns:  make(map[string]*syntheticTerminalBarrier),
 		reasoning:       make(map[reasoningTurnKey]*reasoningTurnState),
+		v4Turns:         make(map[v4TurnKey]*v4TurnState),
 		titleOperations: make(map[titleOperationKey]*titleOperation),
 		imageTurns:      make(map[string]*imageTurn),
 	}
@@ -276,6 +311,10 @@ func (s *Service) StartSession(ctx context.Context, input StartSessionInput) (Re
 		_, _ = s.store.MarkFailed(sessionID, "thread_start_response_invalid")
 		return Record{}, fmt.Errorf("%w: thread/start returned an invalid thread id", ErrRuntimeRequest)
 	}
+	if s.eventsV4 != nil && (!validV4ManagedIdentity(thread.Model) || !validV4ManagedIdentity(thread.ModelProvider)) {
+		_, _ = s.store.MarkFailed(sessionID, "provider_identity_limit_exceeded")
+		return Record{}, fmt.Errorf("%w: managed provider identity", ErrEventLimitExceeded)
+	}
 	if thread.Model != codex.MiniMaxModel || thread.ModelProvider != codex.MiniMaxProviderID {
 		_, _ = s.store.MarkFailed(sessionID, "provider_identity_mismatch")
 		return Record{}, fmt.Errorf("%w: thread/start returned an unexpected model provider identity", ErrRuntimeRequest)
@@ -316,6 +355,10 @@ func (s *Service) ResumeSession(ctx context.Context, sessionID string, trace Tra
 	if !validUUID(thread.ID) || thread.ID != record.CodexThreadID {
 		_, _ = s.store.MarkFailed(sessionID, "thread_resume_response_invalid")
 		return Record{}, fmt.Errorf("%w: thread/resume returned an unexpected thread id", ErrRuntimeRequest)
+	}
+	if s.eventsV4 != nil && (!validV4ManagedIdentity(thread.Model) || !validV4ManagedIdentity(thread.ModelProvider)) {
+		_, _ = s.store.MarkFailed(sessionID, "provider_identity_limit_exceeded")
+		return Record{}, fmt.Errorf("%w: managed provider identity", ErrEventLimitExceeded)
 	}
 	if thread.Model != codex.MiniMaxModel || thread.ModelProvider != codex.MiniMaxProviderID {
 		_, _ = s.store.MarkFailed(sessionID, "provider_identity_mismatch")
@@ -367,7 +410,11 @@ func (s *Service) StartTurn(ctx context.Context, input StartTurnInput) (codex.Tu
 		_, _ = s.store.TurnStartFailed(input.AgentSessionID, "synthetic_terminal_barrier_failed")
 		return codex.TurnInfo{}, err
 	}
-	turn, err := s.runtime.StartTurn(ctx, record.CodexThreadID, input.Input, input.ReasoningEffort)
+	effectiveEffort := input.ReasoningEffort
+	if s.fixedReasoningEffort != "" {
+		effectiveEffort = s.fixedReasoningEffort
+	}
+	turn, err := s.runtime.StartTurn(ctx, record.CodexThreadID, input.Input, effectiveEffort)
 	if err != nil {
 		s.clearImageTurn(record.CodexThreadID)
 		s.abortSyntheticTerminalBarrier(input.AgentSessionID)
@@ -468,8 +515,30 @@ func (s *Service) SubscribeEventsV3(
 	return s.eventsV3.Subscribe(sessionID, streamID, after)
 }
 
+func (s *Service) SubscribeEventsV4(
+	sessionID, streamID string,
+	after uint64,
+) (string, []Event, <-chan Event, func(), error) {
+	if s.eventsV4 == nil {
+		return "", nil, nil, nil, ErrSessionNotUsable
+	}
+	if err := requireUUID("agent_session_id", sessionID); err != nil {
+		return "", nil, nil, nil, err
+	}
+	if _, err := s.store.Get(sessionID); err != nil {
+		return "", nil, nil, nil, err
+	}
+	return s.eventsV4.Subscribe(sessionID, streamID, after)
+}
+
 func (s *Service) HandleNotification(method string, params json.RawMessage) {
 	if !supportedNotification(method) {
+		return
+	}
+	if method == RuntimeNotificationTurnPlanUpdated && s.eventsV4 == nil {
+		return
+	}
+	if method == RuntimeNotificationReasoningTextDelta && !s.rawReasoning {
 		return
 	}
 	threadID, err := notificationThreadID(method, params)
@@ -486,6 +555,7 @@ func (s *Service) HandleNotification(method string, params json.RawMessage) {
 		return
 	}
 	if err := s.processNotification(method, params); err != nil {
+		s.rejectMalformedV4Notification(method, params)
 		s.logger.Warn("failed to map Codex notification", "method", method)
 	}
 }
@@ -520,6 +590,9 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		if err := requireUUID("turn_id", notification.Turn.ID); err != nil {
 			return err
 		}
+		if s.eventsV4 != nil && notification.Turn.Status != "inProgress" {
+			return errors.New("turn/started notification has invalid Runtime status")
+		}
 		status := normalizeTurnStatus(notification.Turn.Status)
 		if status != "in_progress" {
 			return errors.New("turn/started notification status is not in progress")
@@ -540,6 +613,45 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 			EventType: EventTurnStarted,
 			Payload:   EventPayload{Status: status},
 		})
+	case RuntimeNotificationTurnPlanUpdated:
+		var notification planNotification
+		if err := json.Unmarshal(params, &notification); err != nil {
+			return err
+		}
+		if err := requireUUID("turn_id", notification.TurnID); err != nil {
+			return err
+		}
+		if notification.Plan == nil {
+			return errors.New("turn/plan/updated notification omitted plan array")
+		}
+		record, err := s.store.GetByThread(notification.ThreadID)
+		if err != nil {
+			return err
+		}
+		steps := make([]PlanStep, 0, len(*notification.Plan))
+		for _, step := range *notification.Plan {
+			if step.Step == nil {
+				return errors.New("turn/plan/updated notification omitted step text")
+			}
+			var status string
+			switch step.Status {
+			case "pending", "completed":
+				status = step.Status
+			case "inProgress":
+				status = "in_progress"
+			default:
+				return errors.New("turn/plan/updated notification has invalid step status")
+			}
+			steps = append(steps, PlanStep{Step: *step.Step, Status: status})
+		}
+		return s.publishV4(record, Event{
+			TurnID:    notification.TurnID,
+			EventType: EventTurnPlanUpdated,
+			Payload: EventPayload{
+				Explanation: nullableString(notification.Explanation),
+				Plan:        &steps,
+			},
+		})
 	case RuntimeNotificationItemStarted, RuntimeNotificationItemCompleted:
 		var notification itemNotification
 		if err := json.Unmarshal(params, &notification); err != nil {
@@ -554,22 +666,37 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		if notification.Item.Type == "" {
 			return errors.New("item notification omitted item type")
 		}
+		if s.eventsV4 != nil && notification.Item.Type == "agentMessage" && notification.Item.Text == nil {
+			return errors.New("agent message item notification omitted text")
+		}
 		record, err := s.store.GetByThread(notification.ThreadID)
 		if err != nil {
 			return err
 		}
 		eventType := EventItemStarted
-		text := ""
+		var text *string
 		if method == RuntimeNotificationItemCompleted {
 			eventType = EventItemCompleted
 			if notification.Item.Type == "agentMessage" {
-				text = notification.Item.Text
+				if notification.Item.Text == nil {
+					text = stringPointer("")
+				} else {
+					text = copiedStringPointer(notification.Item.Text)
+				}
 			}
 			if notification.Item.Type == "reasoning" {
 				if err := s.finalizeReasoning(record, notification.TurnID, notification.Item.ID, notification.Item.Content); err != nil {
 					return err
 				}
 			}
+		}
+		var phase **string
+		var v4Text *string
+		if notification.Item.Type == "agentMessage" {
+			if s.eventsV4 != nil && method == RuntimeNotificationItemStarted {
+				v4Text = copiedStringPointer(notification.Item.Text)
+			}
+			phase = nullableString(notification.Item.Phase)
 		}
 		return s.publish(record, Event{
 			TurnID:    notification.TurnID,
@@ -578,14 +705,16 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 			Payload: EventPayload{
 				ItemType: notification.Item.Type,
 				Text:     text,
+				V4Text:   v4Text,
+				Phase:    phase,
 			},
 		})
 	case RuntimeNotificationItemAgentMessageDelta:
 		var notification struct {
-			ThreadID string `json:"threadId"`
-			TurnID   string `json:"turnId"`
-			ItemID   string `json:"itemId"`
-			Delta    string `json:"delta"`
+			ThreadID string  `json:"threadId"`
+			TurnID   string  `json:"turnId"`
+			ItemID   string  `json:"itemId"`
+			Delta    *string `json:"delta"`
 		}
 		if err := json.Unmarshal(params, &notification); err != nil {
 			return err
@@ -596,23 +725,30 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		if notification.ItemID == "" {
 			return errors.New("agent message delta notification omitted item id")
 		}
+		if s.eventsV4 != nil && notification.Delta == nil {
+			return errors.New("agent message delta notification omitted delta")
+		}
 		record, err := s.store.GetByThread(notification.ThreadID)
 		if err != nil {
 			return err
+		}
+		delta := ""
+		if notification.Delta != nil {
+			delta = *notification.Delta
 		}
 		return s.publish(record, Event{
 			TurnID:    notification.TurnID,
 			ItemID:    notification.ItemID,
 			EventType: EventItemAgentMessageDelta,
-			Payload:   EventPayload{Delta: stringPointer(notification.Delta)},
+			Payload:   EventPayload{Delta: stringPointer(delta)},
 		})
 	case RuntimeNotificationReasoningTextDelta:
 		var notification struct {
-			ThreadID     string `json:"threadId"`
-			TurnID       string `json:"turnId"`
-			ItemID       string `json:"itemId"`
-			Delta        string `json:"delta"`
-			ContentIndex int    `json:"contentIndex"`
+			ThreadID     string  `json:"threadId"`
+			TurnID       string  `json:"turnId"`
+			ItemID       string  `json:"itemId"`
+			Delta        *string `json:"delta"`
+			ContentIndex *int    `json:"contentIndex"`
 		}
 		if err := json.Unmarshal(params, &notification); err != nil {
 			return err
@@ -623,11 +759,22 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		if notification.ItemID == "" {
 			return errors.New("reasoning delta notification omitted item id")
 		}
+		if s.eventsV4 != nil && (notification.Delta == nil || notification.ContentIndex == nil) {
+			return errors.New("reasoning delta notification omitted required content")
+		}
 		record, err := s.store.GetByThread(notification.ThreadID)
 		if err != nil {
 			return err
 		}
-		return s.appendReasoningDelta(record, notification.TurnID, notification.ItemID, notification.ContentIndex, notification.Delta)
+		delta := ""
+		if notification.Delta != nil {
+			delta = *notification.Delta
+		}
+		contentIndex := 0
+		if notification.ContentIndex != nil {
+			contentIndex = *notification.ContentIndex
+		}
+		return s.appendReasoningDelta(record, notification.TurnID, notification.ItemID, contentIndex, delta)
 	case RuntimeNotificationTurnCompleted:
 		var notification turnNotification
 		if err := json.Unmarshal(params, &notification); err != nil {
@@ -645,12 +792,25 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		if err != nil {
 			return err
 		}
+		if s.v4SanitizedTerminalPublished(record.AgentSessionID, notification.Turn.ID) {
+			s.clearImageTurn(notification.ThreadID)
+			s.abortSyntheticTerminalBarrier(record.AgentSessionID)
+			s.discardReasoningTurn(record.AgentSessionID, notification.Turn.ID)
+			return nil
+		}
 		s.clearImageTurn(notification.ThreadID)
 		status := normalizeTurnStatus(notification.Turn.Status)
 		payload := EventPayload{Status: status}
 		if notification.Turn.Error != nil {
+			if s.eventsV4 != nil && notification.Turn.Error.Message == nil {
+				return errors.New("turn/completed notification error omitted message")
+			}
 			payload.Code = normalizeCodexErrorCode(notification.Turn.Error.CodexErrorInfo)
-			payload.Message = stringPointer(sanitizeMessage(notification.Turn.Error.Message))
+			message := ""
+			if notification.Turn.Error.Message != nil {
+				message = *notification.Turn.Error.Message
+			}
+			payload.Message, payload.V4Message = sanitizedMessagePointers(message)
 		}
 		terminal := syntheticTerminal{turnID: notification.Turn.ID, status: status, payload: payload}
 		if deferred, err := s.deferSyntheticTerminal(record.AgentSessionID, terminal); deferred || err != nil {
@@ -659,10 +819,10 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		return s.completeTerminal(record, terminal)
 	case RuntimeNotificationError:
 		var notification struct {
-			ThreadID  string    `json:"threadId"`
-			TurnID    string    `json:"turnId"`
-			Error     turnError `json:"error"`
-			WillRetry bool      `json:"willRetry"`
+			ThreadID  string     `json:"threadId"`
+			TurnID    string     `json:"turnId"`
+			Error     *turnError `json:"error"`
+			WillRetry *bool      `json:"willRetry"`
 		}
 		if err := json.Unmarshal(params, &notification); err != nil {
 			return err
@@ -670,37 +830,62 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		if err := requireUUID("turn_id", notification.TurnID); err != nil {
 			return err
 		}
-		record, err := s.store.GetByThread(notification.ThreadID)
-		if err != nil {
-			return err
-		}
-		willRetry := notification.WillRetry
-		return s.publish(record, Event{
-			TurnID:    notification.TurnID,
-			EventType: EventError,
-			Payload: EventPayload{
-				Code:      normalizeCodexErrorCode(notification.Error.CodexErrorInfo),
-				Message:   stringPointer(sanitizeMessage(notification.Error.Message)),
-				WillRetry: &willRetry,
-			},
-		})
-	case RuntimeNotificationWarning:
-		var notification struct {
-			ThreadID string `json:"threadId"`
-			Message  string `json:"message"`
-		}
-		if err := json.Unmarshal(params, &notification); err != nil {
-			return err
+		if s.eventsV4 != nil && (notification.Error == nil || notification.Error.Message == nil || notification.WillRetry == nil) {
+			return errors.New("error notification omitted required content")
 		}
 		record, err := s.store.GetByThread(notification.ThreadID)
 		if err != nil {
 			return err
 		}
 		willRetry := false
+		messageText := ""
+		var codexErrorInfo json.RawMessage
+		if notification.WillRetry != nil {
+			willRetry = *notification.WillRetry
+		}
+		if notification.Error != nil {
+			codexErrorInfo = notification.Error.CodexErrorInfo
+			if notification.Error.Message != nil {
+				messageText = *notification.Error.Message
+			}
+		}
+		message, v4Message := sanitizedMessagePointers(messageText)
+		return s.publish(record, Event{
+			TurnID:    notification.TurnID,
+			EventType: EventError,
+			Payload: EventPayload{
+				Code:      normalizeCodexErrorCode(codexErrorInfo),
+				Message:   message,
+				V4Message: v4Message,
+				WillRetry: &willRetry,
+			},
+		})
+	case RuntimeNotificationWarning:
+		var notification struct {
+			ThreadID string  `json:"threadId"`
+			Message  *string `json:"message"`
+		}
+		if err := json.Unmarshal(params, &notification); err != nil {
+			return err
+		}
+		if s.eventsV4 != nil && notification.Message == nil {
+			return errors.New("warning notification omitted message")
+		}
+		record, err := s.store.GetByThread(notification.ThreadID)
+		if err != nil {
+			return err
+		}
+		willRetry := false
+		messageText := ""
+		if notification.Message != nil {
+			messageText = *notification.Message
+		}
+		message, v4Message := sanitizedMessagePointers(messageText)
 		return s.publish(record, Event{
 			EventType: EventWarning,
 			Payload: EventPayload{
-				Message:   stringPointer(sanitizeMessage(notification.Message)),
+				Message:   message,
+				V4Message: v4Message,
 				WillRetry: &willRetry,
 			},
 		})
@@ -853,7 +1038,7 @@ func stringPointersEqual(left, right *string) bool {
 }
 
 type turnError struct {
-	Message        string          `json:"message"`
+	Message        *string         `json:"message"`
 	CodexErrorInfo json.RawMessage `json:"codexErrorInfo"`
 }
 
@@ -863,29 +1048,45 @@ type itemNotification struct {
 	Item     struct {
 		ID      string   `json:"id"`
 		Type    string   `json:"type"`
-		Text    string   `json:"text"`
+		Text    *string  `json:"text"`
+		Phase   *string  `json:"phase"`
 		Content []string `json:"content"`
 	} `json:"item"`
 }
 
+type planNotification struct {
+	ThreadID    string  `json:"threadId"`
+	TurnID      string  `json:"turnId"`
+	Explanation *string `json:"explanation"`
+	Plan        *[]struct {
+		Step   *string `json:"step"`
+		Status string  `json:"status"`
+	} `json:"plan"`
+}
+
 func (s *Service) publish(record Record, event Event) error {
 	decorateEvent(record, &event)
-	if _, err := s.events.Publish(event); err != nil {
+	legacy := legacyEvent(event)
+	if _, err := s.events.Publish(legacy); err != nil {
 		return err
 	}
 	if s.eventsV2 != nil {
-		if _, err := s.eventsV2.Publish(event); err != nil {
+		if _, err := s.eventsV2.Publish(legacy); err != nil {
 			return err
 		}
 	}
 	if s.eventsV3 != nil {
-		_, err := s.eventsV3.Publish(event)
-		return err
+		if _, err := s.eventsV3.Publish(legacy); err != nil {
+			return err
+		}
 	}
-	return nil
+	return s.publishV4(record, event)
 }
 
 func (s *Service) publishV2(record Record, event Event) error {
+	if !s.rawReasoning {
+		return nil
+	}
 	decorateEvent(record, &event)
 	if s.eventsV2 != nil {
 		if _, err := s.eventsV2.Publish(event); err != nil {
@@ -893,10 +1094,23 @@ func (s *Service) publishV2(record Record, event Event) error {
 		}
 	}
 	if s.eventsV3 != nil {
-		_, err := s.eventsV3.Publish(event)
-		return err
+		if _, err := s.eventsV3.Publish(event); err != nil {
+			return err
+		}
 	}
-	return nil
+	return s.publishV4(record, event)
+}
+
+func legacyEvent(event Event) Event {
+	event.Payload.Phase = nil
+	event.Payload.V4Text = nil
+	event.Payload.V4Message = nil
+	event.Payload.Explanation = nil
+	event.Payload.Plan = nil
+	if event.Payload.Text != nil && *event.Payload.Text == "" {
+		event.Payload.Text = nil
+	}
+	return event
 }
 
 func decorateEvent(record Record, event *Event) {
@@ -920,7 +1134,7 @@ type reasoningTurnState struct {
 }
 
 func (s *Service) appendReasoningDelta(record Record, turnID, itemID string, contentIndex int, delta string) error {
-	if s.eventsV2 == nil && s.eventsV3 == nil {
+	if !s.rawReasoning {
 		return nil
 	}
 	if contentIndex < 0 || contentIndex > 7 || delta == "" {
@@ -963,7 +1177,7 @@ func (s *Service) appendReasoningDelta(record Record, turnID, itemID string, con
 }
 
 func (s *Service) finalizeReasoning(record Record, turnID, itemID string, contents []string) error {
-	if s.eventsV2 == nil && s.eventsV3 == nil {
+	if !s.rawReasoning {
 		return nil
 	}
 	parts, total, valid := validateReasoningContents(contents)
@@ -1044,6 +1258,31 @@ func reasoningPartBytes(parts map[int]string) int {
 	return total
 }
 
+func (s *Service) discardReasoningTurn(sessionID, turnID string) {
+	s.reasoningMu.Lock()
+	delete(s.reasoning, reasoningTurnKey{sessionID: sessionID, turnID: turnID})
+	s.reasoningMu.Unlock()
+}
+
+func (s *Service) takeUnfinishedReasoningItems(sessionID, turnID string) []string {
+	key := reasoningTurnKey{sessionID: sessionID, turnID: turnID}
+	s.reasoningMu.Lock()
+	state := s.reasoning[key]
+	delete(s.reasoning, key)
+	s.reasoningMu.Unlock()
+	if state == nil {
+		return nil
+	}
+	itemIDs := make([]string, 0, len(state.items))
+	for itemID, item := range state.items {
+		if item != nil && !item.finalized {
+			itemIDs = append(itemIDs, itemID)
+		}
+	}
+	sort.Strings(itemIDs)
+	return itemIDs
+}
+
 func (s *Service) finalizeInterruptedReasoning(record Record, turnID, status string) {
 	key := reasoningTurnKey{sessionID: record.AgentSessionID, turnID: turnID}
 	s.reasoningMu.Lock()
@@ -1111,6 +1350,7 @@ func (s *Service) flushPending(threadID string) {
 	s.pendingMu.Unlock()
 	for _, notification := range pending {
 		if err := s.processNotification(notification.method, notification.params); err != nil {
+			s.rejectMalformedV4Notification(notification.method, notification.params)
 			s.logger.Warn("failed to map buffered Codex notification", "method", notification.method)
 		}
 	}
@@ -1216,12 +1456,26 @@ func normalizeCodexErrorCode(raw json.RawMessage) string {
 }
 
 func sanitizeMessage(message string) string {
-	message = bearerPattern.ReplaceAllString(message, "Bearer [REDACTED]")
-	message = strings.ReplaceAll(message, "\x00", "")
+	message = sanitizeFullMessage(message)
 	if len(message) > 4096 {
 		message = message[:4096]
 	}
 	return message
+}
+
+func sanitizeFullMessage(message string) string {
+	message = bearerPattern.ReplaceAllString(message, "Bearer [REDACTED]")
+	message = strings.ReplaceAll(message, "\x00", "")
+	return message
+}
+
+func sanitizedMessagePointers(message string) (*string, *string) {
+	full := sanitizeFullMessage(message)
+	legacy := full
+	if len(legacy) > 4096 {
+		legacy = legacy[:4096]
+	}
+	return stringPointer(legacy), stringPointer(full)
 }
 
 func stringPointer(value string) *string {

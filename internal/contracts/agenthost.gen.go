@@ -1279,6 +1279,21 @@ func (e EventSchemaVersionV3) Valid() bool {
 	}
 }
 
+// Defines values for EventSchemaVersionV4.
+const (
+	EventSchemaVersionV4N4 EventSchemaVersionV4 = 4
+)
+
+// Valid indicates whether the value is a known member of the EventSchemaVersionV4 enum.
+func (e EventSchemaVersionV4) Valid() bool {
+	switch e {
+	case EventSchemaVersionV4N4:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StreamAgentSessionEventsV2ParamsEventSchemaVersion.
 const (
 	StreamAgentSessionEventsV2ParamsEventSchemaVersionN2 StreamAgentSessionEventsV2ParamsEventSchemaVersion = 2
@@ -1303,6 +1318,21 @@ const (
 func (e StreamAgentSessionEventsV3ParamsEventSchemaVersion) Valid() bool {
 	switch e {
 	case StreamAgentSessionEventsV3ParamsEventSchemaVersionN3:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StreamAgentSessionEventsV4ParamsEventSchemaVersion.
+const (
+	StreamAgentSessionEventsV4ParamsEventSchemaVersionN4 StreamAgentSessionEventsV4ParamsEventSchemaVersion = 4
+)
+
+// Valid indicates whether the value is a known member of the StreamAgentSessionEventsV4ParamsEventSchemaVersion enum.
+func (e StreamAgentSessionEventsV4ParamsEventSchemaVersion) Valid() bool {
+	switch e {
+	case StreamAgentSessionEventsV4ParamsEventSchemaVersionN4:
 		return true
 	default:
 		return false
@@ -1960,6 +1990,9 @@ type EventSchemaVersionV2 int32
 // EventSchemaVersionV3 defines model for EventSchemaVersionV3.
 type EventSchemaVersionV3 int32
 
+// EventSchemaVersionV4 defines model for EventSchemaVersionV4.
+type EventSchemaVersionV4 int32
+
 // EventStreamId defines model for EventStreamId.
 type EventStreamId = openapi_types.UUID
 
@@ -2131,6 +2164,30 @@ type StreamAgentSessionEventsV3Params struct {
 
 // StreamAgentSessionEventsV3ParamsEventSchemaVersion defines parameters for StreamAgentSessionEventsV3.
 type StreamAgentSessionEventsV3ParamsEventSchemaVersion int32
+
+// StreamAgentSessionEventsV4Params defines parameters for StreamAgentSessionEventsV4.
+type StreamAgentSessionEventsV4Params struct {
+	// EventSchemaVersion Explicit negotiation guard. Only integer value 4 is accepted on the v4 event stream.
+	EventSchemaVersion StreamAgentSessionEventsV4ParamsEventSchemaVersion `form:"event_schema_version" json:"event_schema_version"`
+
+	// StreamId Expected process-local stream identifier. Required when `after > 0`
+	// unless `Last-Event-ID` supplies the complete cursor. A mismatch returns
+	// `409 event_stream_changed`.
+	StreamId *EventStreamId `form:"stream_id,omitempty" json:"stream_id,omitempty"`
+
+	// After Unsigned 64-bit sequence after which events are replayed. Defaults to
+	// zero. Values greater than zero require a matching stream ID. Ignored when
+	// `Last-Event-ID` is present.
+	After *EventAfter `form:"after,omitempty" json:"after,omitempty"`
+
+	// LastEventID Complete SSE cursor `<stream_id>:<sequence>`. Sequence is a decimal
+	// unsigned 64-bit integer from 1 through 18446744073709551615 with no
+	// leading zero. The header overrides `stream_id` and `after` query parameters.
+	LastEventID *LastEventId `json:"Last-Event-ID,omitempty"`
+}
+
+// StreamAgentSessionEventsV4ParamsEventSchemaVersion defines parameters for StreamAgentSessionEventsV4.
+type StreamAgentSessionEventsV4ParamsEventSchemaVersion int32
 
 // ResumeAgentSessionJSONRequestBody defines body for ResumeAgentSession for application/json ContentType.
 type ResumeAgentSessionJSONRequestBody = TraceRequest
