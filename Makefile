@@ -1,4 +1,4 @@
-.PHONY: dev test runtime-test runtime-turn-test feat126-eval feat126-fake-readiness lint generate sync-contracts contract-check skills-conformance
+.PHONY: dev test runtime-test runtime-turn-test feat126-eval feat126-fake-readiness lint generate sync-contracts contract-check sync-feat136-contracts feat136-contract-check test-feat136 skills-conformance
 
 YIJIE_SKILLS_REPO ?= ../yijie-skills
 YIJIE_SKILLS_REPO_ABS := $(abspath $(YIJIE_SKILLS_REPO))
@@ -37,6 +37,21 @@ sync-contracts:
 
 contract-check:
 	./scripts/check-contracts.sh
+
+# FEAT-136 safe scoped contract workflow. These targets never inspect archive,
+# checksum-corruption, Zip Slip, or archive-error fixture blobs.
+sync-feat136-contracts:
+	./scripts/sync-feat136-contracts.sh
+
+feat136-contract-check:
+	./scripts/check-feat136-contracts.sh
+
+# Safe FEAT-136 evidence only. Full repository suites include pre-existing
+# archive, permission, symlink and process-fault scenarios outside this gate.
+test-feat136: feat136-contract-check
+	go test -race ./internal/session -run '^TestFEAT136' -count=1
+	go test -race ./internal/app -run '^TestFEAT136' -count=1
+	go test ./internal/app -run '^TestRuntimeCompatibilityProjectionMatchesHostAdapter$$' -count=1
 
 skills-conformance:
 	YIJIE_SKILLS_REPO="$(YIJIE_SKILLS_REPO_ABS)" ./scripts/check-skills-producer.sh --provenance-only

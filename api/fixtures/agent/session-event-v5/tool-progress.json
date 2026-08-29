@@ -1,0 +1,28 @@
+{
+  "schema_version": 5,
+  "event_id": "019fbf59-1000-7000-8000-000000000007",
+  "stream_id": "019fbf59-1000-7000-8000-000000000010",
+  "sequence": 21,
+  "occurred_at": "2026-08-29T08:01:01Z",
+  "task_id": "019fbf59-1000-7000-8000-000000000020",
+  "agent_session_id": "019fbf59-1000-7000-8000-000000000030",
+  "codex_thread_id": "019fbf59-1000-7000-8000-000000000040",
+  "turn_id": "019fbf59-1000-7000-8000-000000000050",
+  "item_id": "tool-known-1",
+  "event_type": "item.tool.progress",
+  "terminal": false,
+  "payload": {
+    "item_type": "mcpToolCall",
+    "status": "in_progress",
+    "identity": {
+      "resolution": "known",
+      "server_name": "workspace",
+      "tool_name": "read_catalog"
+    },
+    "progress_index": 0,
+    "summary": {
+      "text": "loading catalog",
+      "truncated": false
+    }
+  }
+}

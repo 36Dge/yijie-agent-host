@@ -1,0 +1,31 @@
+{
+  "schema_version": 5,
+  "event_id": "019fbf59-1000-7000-8000-000000000009",
+  "stream_id": "019fbf59-1000-7000-8000-000000000010",
+  "sequence": 23,
+  "occurred_at": "2026-08-29T08:01:03Z",
+  "task_id": "019fbf59-1000-7000-8000-000000000020",
+  "agent_session_id": "019fbf59-1000-7000-8000-000000000030",
+  "codex_thread_id": "019fbf59-1000-7000-8000-000000000040",
+  "turn_id": "019fbf59-1000-7000-8000-000000000050",
+  "item_id": "tool-unknown-1",
+  "event_type": "item.completed",
+  "terminal": false,
+  "payload": {
+    "item_type": "mcpToolCall",
+    "status": "failed",
+    "identity": {
+      "resolution": "unknown",
+      "server_name": "unknown",
+      "tool_name": "unknown"
+    },
+    "arguments_summary": {
+      "text": "request metadata unavailable",
+      "truncated": false
+    },
+    "error": {
+      "code": "unknown_tool",
+      "summary": "tool is not registered in the approved projection"
+    }
+  }
+}

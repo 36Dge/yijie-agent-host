@@ -1,0 +1,1073 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.yijie.ai/agent/session-event-v5.schema.json",
+  "title": "AgentSessionEventV5",
+  "description": "Explicitly negotiated v5 Agent Host event. It keeps the named v4 event families, closes generic Item kinds to a stable allowlist, and adds bounded Command and Tool projections. Ordering is monotonic only within stream_id and delivery is at least once.",
+  "x-yijie-max-sse-data-utf8-bytes": 1048576,
+  "x-yijie-projection-limit-policy": {
+    "scope": "inherited_non_command_tool_variants",
+    "mode": "reject_without_truncation",
+    "reasoning_limit_result": "reasoning_finalized_unavailable",
+    "managed_thread_start_result": "http_500_internal_error",
+    "thread_problem_event_type": "warning",
+    "problem_event_type": "error",
+    "problem_code": "limit_exceeded",
+    "will_retry": false,
+    "terminal_status": "failed"
+  },
+  "x-yijie-max-reasoning-items-per-turn": 8,
+  "x-yijie-max-reasoning-utf8-bytes-per-turn": 262144,
+  "x-yijie-command-tool-projection-policy": {
+    "scope": "command_and_tool_variants",
+    "mode": "redact_then_truncate",
+    "takes_precedence_within_scope": true,
+    "sse_measurement": "utf8_bytes_of_compact_json_data_value",
+    "redaction_before_utf8_measurement_and_truncation": true,
+    "command_summary_max_utf8_bytes": 4096,
+    "command_cwd_max_utf8_bytes": 1024,
+    "command_cwd_separator_utf8_bytes": 1,
+    "command_output_delta_max_utf8_bytes": 16384,
+    "command_output_live_aggregate_max_utf8_bytes_per_item": 262144,
+    "command_output_snapshot_max_utf8_bytes": 262144,
+    "command_output_head_max_utf8_bytes": 131072,
+    "command_output_tail_max_utf8_bytes": 131072,
+    "tool_identity_part_max_utf8_bytes": 256,
+    "tool_arguments_summary_max_utf8_bytes": 8192,
+    "tool_progress_summary_max_utf8_bytes": 4096,
+    "tool_progress_max_events_per_item": 32,
+    "tool_progress_max_utf8_bytes_per_item": 65536,
+    "tool_result_summary_max_utf8_bytes": 65536,
+    "error_summary_max_utf8_bytes": 4096,
+    "deduplicate_by": "event_id",
+    "same_content_different_event_ids_are_distinct": true,
+    "completed_snapshot_is_authoritative": true,
+    "tool_declined_status": "reserved_without_current_runtime_producer",
+    "raw_fields_are_forbidden": true
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "stream_id",
+    "sequence",
+    "occurred_at",
+    "task_id",
+    "agent_session_id",
+    "codex_thread_id",
+    "event_type",
+    "terminal",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": { "const": 5 },
+    "event_id": { "type": "string", "format": "uuid" },
+    "stream_id": { "type": "string", "format": "uuid" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "trace_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "request_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "tenant_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "user_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "task_id": { "type": "string", "format": "uuid" },
+    "agent_session_id": { "type": "string", "format": "uuid" },
+    "codex_thread_id": { "type": "string", "format": "uuid" },
+    "turn_id": { "type": "string", "format": "uuid" },
+    "item_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "event_type": { "type": "string" },
+    "terminal": { "type": "boolean" },
+    "payload": { "type": "object" }
+  },
+  "oneOf": [
+    { "$ref": "#/definitions/threadStartedEventV5" },
+    { "$ref": "#/definitions/turnStartedEventV5" },
+    { "$ref": "#/definitions/turnPlanUpdatedEventV5" },
+    { "$ref": "#/definitions/itemStartedEventV5" },
+    { "$ref": "#/definitions/agentMessageDeltaEventV5" },
+    { "$ref": "#/definitions/commandOutputDeltaEventV5" },
+    { "$ref": "#/definitions/toolProgressEventV5" },
+    { "$ref": "#/definitions/reasoningTextDeltaEventV5" },
+    { "$ref": "#/definitions/reasoningTextFinalizedEventV5" },
+    { "$ref": "#/definitions/itemCompletedEventV5" },
+    { "$ref": "#/definitions/turnCompletedEventV5" },
+    { "$ref": "#/definitions/agentErrorEventV5" },
+    { "$ref": "#/definitions/agentWarningEventV5" },
+    { "$ref": "#/definitions/artifactStartedEvent" },
+    { "$ref": "#/definitions/artifactProgressEvent" },
+    { "$ref": "#/definitions/artifactCompletedEvent" },
+    { "$ref": "#/definitions/artifactFailedEvent" }
+  ],
+  "definitions": {
+    "noTurnOrItem": {
+      "type": "object",
+      "not": {
+        "anyOf": [
+          { "type": "object", "properties": { "turn_id": {} }, "required": ["turn_id"] },
+          { "type": "object", "properties": { "item_id": {} }, "required": ["item_id"] }
+        ]
+      }
+    },
+    "turnWithoutItem": {
+      "type": "object",
+      "properties": { "turn_id": {}, "item_id": {} },
+      "required": ["turn_id"],
+      "not": { "type": "object", "properties": { "item_id": {} }, "required": ["item_id"] }
+    },
+    "threadStartedEventV5": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/definitions/noTurnOrItem" },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": { "const": "thread.started" },
+            "terminal": { "const": false },
+            "payload": { "$ref": "#/definitions/threadStartedPayloadV5" }
+          }
+        }
+      ]
+    },
+    "turnStartedEventV5": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/definitions/turnWithoutItem" },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": { "const": "turn.started" },
+            "terminal": { "const": false },
+            "payload": { "$ref": "#/definitions/turnStartedPayload" }
+          }
+        }
+      ]
+    },
+    "turnPlanUpdatedEventV5": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/definitions/turnWithoutItem" },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": { "const": "turn.plan.updated" },
+            "terminal": { "const": false },
+            "payload": { "$ref": "#/definitions/turnPlanUpdatedPayloadV5" }
+          }
+        }
+      ]
+    },
+    "itemStartedEventV5": {
+      "type": "object",
+      "required": ["turn_id", "item_id"],
+      "properties": {
+        "turn_id": {},
+        "item_id": {},
+        "event_type": { "const": "item.started" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/itemStartedPayloadV5" }
+      }
+    },
+    "agentMessageDeltaEventV5": {
+      "type": "object",
+      "required": ["turn_id", "item_id"],
+      "properties": {
+        "turn_id": {},
+        "item_id": {},
+        "event_type": { "const": "item.agent_message.delta" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/agentMessageDeltaPayload" }
+      }
+    },
+    "commandOutputDeltaEventV5": {
+      "type": "object",
+      "required": ["turn_id", "item_id"],
+      "properties": {
+        "turn_id": {},
+        "item_id": {},
+        "event_type": { "const": "item.command_output.delta" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/commandOutputDeltaPayloadV5" }
+      }
+    },
+    "toolProgressEventV5": {
+      "type": "object",
+      "required": ["turn_id", "item_id"],
+      "properties": {
+        "turn_id": {},
+        "item_id": {},
+        "event_type": { "const": "item.tool.progress" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/toolProgressPayloadV5" }
+      }
+    },
+    "reasoningTextDeltaEventV5": {
+      "type": "object",
+      "required": ["turn_id", "item_id"],
+      "properties": {
+        "turn_id": {},
+        "item_id": {},
+        "event_type": { "const": "item.reasoning_text.delta" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/reasoningTextDeltaPayloadV5" }
+      }
+    },
+    "reasoningTextFinalizedEventV5": {
+      "type": "object",
+      "required": ["turn_id", "item_id"],
+      "properties": {
+        "turn_id": {},
+        "item_id": {},
+        "event_type": { "const": "item.reasoning_text.finalized" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/reasoningTextFinalizedPayloadV5" }
+      }
+    },
+    "itemCompletedEventV5": {
+      "type": "object",
+      "required": ["turn_id", "item_id"],
+      "properties": {
+        "turn_id": {},
+        "item_id": {},
+        "event_type": { "const": "item.completed" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/itemCompletedPayloadV5" }
+      }
+    },
+    "turnCompletedEventV5": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/definitions/turnWithoutItem" },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": { "const": "turn.completed" },
+            "terminal": { "const": true },
+            "payload": { "$ref": "#/definitions/turnCompletedPayloadV5" }
+          }
+        }
+      ]
+    },
+    "agentErrorEventV5": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/definitions/turnWithoutItem" },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": { "const": "error" },
+            "terminal": { "const": false },
+            "payload": { "$ref": "#/definitions/agentProblemPayload" }
+          }
+        }
+      ]
+    },
+    "agentWarningEventV5": {
+      "type": "object",
+      "allOf": [
+        { "$ref": "#/definitions/noTurnOrItem" },
+        {
+          "type": "object",
+          "properties": {
+            "event_type": { "const": "warning" },
+            "terminal": { "const": false },
+            "payload": { "$ref": "#/definitions/agentWarningPayloadV5" }
+          }
+        }
+      ]
+    },
+    "artifactStartedEvent": {
+      "type": "object",
+      "required": ["turn_id"],
+      "properties": {
+        "turn_id": {},
+        "event_type": { "const": "item.artifact.started" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/artifactStartedPayload" }
+      }
+    },
+    "artifactProgressEvent": {
+      "type": "object",
+      "required": ["turn_id"],
+      "properties": {
+        "turn_id": {},
+        "event_type": { "const": "item.artifact.progress" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/artifactProgressPayload" }
+      }
+    },
+    "artifactCompletedEvent": {
+      "type": "object",
+      "required": ["turn_id"],
+      "properties": {
+        "turn_id": {},
+        "event_type": { "const": "item.artifact.completed" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/artifactCompletedPayload" }
+      }
+    },
+    "artifactFailedEvent": {
+      "type": "object",
+      "required": ["turn_id"],
+      "properties": {
+        "turn_id": {},
+        "event_type": { "const": "item.artifact.failed" },
+        "terminal": { "const": false },
+        "payload": { "$ref": "#/definitions/artifactFailedPayload" }
+      }
+    },
+    "threadStartedPayloadV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "model_provider"],
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "x-yijie-max-utf8-bytes": 1024
+        },
+        "model_provider": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "x-yijie-max-utf8-bytes": 1024
+        }
+      }
+    },
+    "turnStartedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": { "status": { "const": "in_progress" } }
+    },
+    "turnPlanUpdatedPayloadV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan"],
+      "properties": {
+        "explanation": {
+          "anyOf": [
+            { "type": "string", "maxLength": 16384, "x-yijie-max-utf8-bytes": 65536 },
+            { "type": "null" }
+          ]
+        },
+        "plan": {
+          "type": "array",
+          "maxItems": 128,
+          "items": { "$ref": "#/definitions/turnPlanStepV5" }
+        }
+      }
+    },
+    "turnPlanStepV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["step", "status"],
+      "properties": {
+        "step": {
+          "type": "string",
+          "maxLength": 16384,
+          "x-yijie-max-utf8-bytes": 65536
+        },
+        "status": { "enum": ["pending", "in_progress", "completed"] }
+      }
+    },
+    "turnCompletedPayloadV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["completed", "interrupted", "failed"] },
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "itemStartedPayloadV5": {
+      "oneOf": [
+        { "$ref": "#/definitions/agentMessageLifecyclePayloadV5" },
+        { "$ref": "#/definitions/commandStartedPayloadV5" },
+        { "$ref": "#/definitions/toolStartedPayloadV5" },
+        { "$ref": "#/definitions/genericItemLifecyclePayloadV5" }
+      ]
+    },
+    "itemCompletedPayloadV5": {
+      "oneOf": [
+        { "$ref": "#/definitions/agentMessageLifecyclePayloadV5" },
+        { "$ref": "#/definitions/commandCompletedPayloadV5" },
+        { "$ref": "#/definitions/toolCompletedPayloadV5" },
+        { "$ref": "#/definitions/genericItemLifecyclePayloadV5" }
+      ]
+    },
+    "agentMessageLifecyclePayloadV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_type", "text", "phase"],
+      "properties": {
+        "item_type": { "const": "agentMessage" },
+        "text": { "type": "string", "maxLength": 1048576, "x-yijie-max-utf8-bytes": 1048576 },
+        "phase": {
+          "anyOf": [
+            { "enum": ["commentary", "final_answer"] },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "genericItemLifecyclePayloadV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_type"],
+      "properties": {
+        "item_type": {
+          "enum": [
+            "userMessage",
+            "hookPrompt",
+            "reasoning",
+            "collabAgentToolCall",
+            "subAgentActivity",
+            "webSearch",
+            "imageView",
+            "sleep",
+            "imageGeneration",
+            "enteredReviewMode",
+            "exitedReviewMode",
+            "contextCompaction"
+          ]
+        }
+      }
+    },
+    "truncationReasonV5": {
+      "enum": ["utf8_byte_limit", "upstream_truncated"]
+    },
+    "commandSummaryV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "truncated"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 4096,
+          "x-yijie-max-utf8-bytes": 4096
+        },
+        "truncated": { "type": "boolean" },
+        "truncation_reason": { "$ref": "#/definitions/truncationReasonV5" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "truncated": { "const": true } }, "required": ["truncated"] },
+          "then": { "required": ["truncation_reason"], "properties": { "truncation_reason": {} } },
+          "else": { "type": "object", "properties": { "truncation_reason": false } }
+        }
+      ]
+    },
+    "commandCwdV5": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "workspace_root" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "segments"],
+          "properties": {
+            "kind": { "const": "workspace_relative" },
+            "segments": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 128,
+              "x-yijie-max-total-utf8-bytes": 1024,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "pattern": "^(?!\\.{1,2}$)(?!(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Mm][1-9]|[Ll][Pp][Tt][1-9])(?:\\..*)?$)(?!.*[ .]$)(?!.*[\\u0000-\\u001F\\u007F-\\u009F\\u061C\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069])[^/\\\\:]+$",
+                "x-yijie-max-utf8-bytes": 255
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "redacted" } }
+        }
+      ]
+    },
+    "commandStartedPayloadV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_type", "status", "command_summary", "cwd"],
+      "properties": {
+        "item_type": { "const": "commandExecution" },
+        "status": { "const": "running" },
+        "command_summary": { "$ref": "#/definitions/commandSummaryV5" },
+        "cwd": { "$ref": "#/definitions/commandCwdV5" }
+      }
+    },
+    "commandOutputDeltaPayloadV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["delta", "truncated"],
+      "properties": {
+        "delta": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384,
+          "x-yijie-max-utf8-bytes": 16384
+        },
+        "truncated": { "type": "boolean" },
+        "truncation_reason": { "$ref": "#/definitions/truncationReasonV5" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "truncated": { "const": true } }, "required": ["truncated"] },
+          "then": { "required": ["truncation_reason"], "properties": { "truncation_reason": {} } },
+          "else": { "type": "object", "properties": { "truncation_reason": false } }
+        }
+      ]
+    },
+    "commandOutputSnapshotV5": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["retention", "text", "truncated"],
+          "properties": {
+            "retention": { "const": "complete" },
+            "text": {
+              "type": "string",
+              "maxLength": 262144,
+              "x-yijie-max-utf8-bytes": 262144
+            },
+            "truncated": { "const": false }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["retention", "head", "tail", "truncated", "truncation_reason"],
+          "properties": {
+            "retention": { "const": "head_tail" },
+            "head": {
+              "type": "string",
+              "maxLength": 131072,
+              "x-yijie-max-utf8-bytes": 131072
+            },
+            "tail": {
+              "type": "string",
+              "maxLength": 131072,
+              "x-yijie-max-utf8-bytes": 131072
+            },
+            "truncated": { "const": true },
+            "truncation_reason": { "$ref": "#/definitions/truncationReasonV5" }
+          },
+          "x-yijie-max-total-utf8-bytes": 262144
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["retention", "reason", "truncated"],
+          "properties": {
+            "retention": { "const": "unavailable" },
+            "reason": { "const": "not_available" },
+            "truncated": { "const": false }
+          }
+        }
+      ]
+    },
+    "commandErrorCodeV5": {
+      "enum": [
+        "command_failed",
+        "command_declined",
+        "projection_limit_exceeded",
+        "projection_redaction_failed",
+        "protocol_error"
+      ]
+    },
+    "commandErrorV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "summary"],
+      "properties": {
+        "code": { "$ref": "#/definitions/commandErrorCodeV5" },
+        "summary": {
+          "type": "string",
+          "maxLength": 4096,
+          "x-yijie-max-utf8-bytes": 4096
+        }
+      }
+    },
+    "commandCompletedPayloadV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_type", "status", "command_summary", "cwd", "output"],
+      "properties": {
+        "item_type": { "const": "commandExecution" },
+        "status": { "enum": ["completed", "failed", "declined"] },
+        "command_summary": { "$ref": "#/definitions/commandSummaryV5" },
+        "cwd": { "$ref": "#/definitions/commandCwdV5" },
+        "duration_ms": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "exit_code": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "output": { "$ref": "#/definitions/commandOutputSnapshotV5" },
+        "error": { "$ref": "#/definitions/commandErrorV5" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "completed" } }, "required": ["status"] },
+          "then": { "properties": { "error": false } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "failed" } }, "required": ["status"] },
+          "then": {
+            "required": ["error"],
+            "properties": {
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "enum": ["command_failed", "projection_limit_exceeded", "projection_redaction_failed", "protocol_error"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "const": "declined" } }, "required": ["status"] },
+          "then": {
+            "required": ["error"],
+            "properties": { "error": { "type": "object", "properties": { "code": { "const": "command_declined" } } } }
+          }
+        }
+      ]
+    },
+    "toolIdentityV5": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["resolution", "server_name", "tool_name"],
+          "properties": {
+            "resolution": { "const": "known" },
+            "server_name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "x-yijie-max-utf8-bytes": 256
+            },
+            "tool_name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "x-yijie-max-utf8-bytes": 256
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["resolution", "server_name", "tool_name"],
+          "properties": {
+            "resolution": { "const": "unknown" },
+            "server_name": { "const": "unknown" },
+            "tool_name": { "const": "unknown" }
+          }
+        }
+      ]
+    },
+    "toolArgumentsSummaryV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "truncated"],
+      "properties": {
+        "text": { "type": "string", "maxLength": 8192, "x-yijie-max-utf8-bytes": 8192 },
+        "truncated": { "type": "boolean" },
+        "truncation_reason": { "$ref": "#/definitions/truncationReasonV5" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "truncated": { "const": true } }, "required": ["truncated"] },
+          "then": { "required": ["truncation_reason"], "properties": { "truncation_reason": {} } },
+          "else": { "type": "object", "properties": { "truncation_reason": false } }
+        }
+      ]
+    },
+    "toolProgressSummaryV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "truncated"],
+      "properties": {
+        "text": { "type": "string", "maxLength": 4096, "x-yijie-max-utf8-bytes": 4096 },
+        "truncated": { "type": "boolean" },
+        "truncation_reason": { "$ref": "#/definitions/truncationReasonV5" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "truncated": { "const": true } }, "required": ["truncated"] },
+          "then": { "required": ["truncation_reason"], "properties": { "truncation_reason": {} } },
+          "else": { "type": "object", "properties": { "truncation_reason": false } }
+        }
+      ]
+    },
+    "toolResultSummaryV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "truncated"],
+      "properties": {
+        "text": { "type": "string", "maxLength": 65536, "x-yijie-max-utf8-bytes": 65536 },
+        "truncated": { "type": "boolean" },
+        "truncation_reason": { "$ref": "#/definitions/truncationReasonV5" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "truncated": { "const": true } }, "required": ["truncated"] },
+          "then": { "required": ["truncation_reason"], "properties": { "truncation_reason": {} } },
+          "else": { "type": "object", "properties": { "truncation_reason": false } }
+        }
+      ]
+    },
+    "toolStartedPayloadV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_type", "status", "identity", "arguments_summary"],
+      "properties": {
+        "item_type": { "const": "mcpToolCall" },
+        "status": { "const": "in_progress" },
+        "identity": { "$ref": "#/definitions/toolIdentityV5" },
+        "arguments_summary": { "$ref": "#/definitions/toolArgumentsSummaryV5" }
+      }
+    },
+    "toolProgressPayloadV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_type", "status", "identity", "progress_index", "summary"],
+      "properties": {
+        "item_type": { "const": "mcpToolCall" },
+        "status": { "const": "in_progress" },
+        "identity": { "$ref": "#/definitions/toolIdentityV5" },
+        "progress_index": { "type": "integer", "minimum": 0, "maximum": 31 },
+        "summary": { "$ref": "#/definitions/toolProgressSummaryV5" }
+      }
+    },
+    "toolErrorCodeV5": {
+      "enum": [
+        "tool_failed",
+        "tool_declined",
+        "unknown_tool",
+        "projection_limit_exceeded",
+        "projection_redaction_failed",
+        "protocol_error"
+      ]
+    },
+    "toolErrorV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "summary"],
+      "properties": {
+        "code": { "$ref": "#/definitions/toolErrorCodeV5" },
+        "summary": {
+          "type": "string",
+          "maxLength": 4096,
+          "x-yijie-max-utf8-bytes": 4096
+        }
+      }
+    },
+    "toolCompletedPayloadV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_type", "status", "identity", "arguments_summary"],
+      "properties": {
+        "item_type": { "const": "mcpToolCall" },
+        "status": { "enum": ["completed", "failed", "declined"] },
+        "identity": { "$ref": "#/definitions/toolIdentityV5" },
+        "arguments_summary": { "$ref": "#/definitions/toolArgumentsSummaryV5" },
+        "duration_ms": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "result_summary": { "$ref": "#/definitions/toolResultSummaryV5" },
+        "error": { "$ref": "#/definitions/toolErrorV5" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "completed" } }, "required": ["status"] },
+          "then": { "required": ["result_summary"], "properties": { "result_summary": {}, "error": false } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "failed" } }, "required": ["status"] },
+          "then": {
+            "required": ["error"],
+            "properties": {
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "enum": ["tool_failed", "unknown_tool", "projection_limit_exceeded", "projection_redaction_failed", "protocol_error"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "const": "declined" } }, "required": ["status"] },
+          "then": {
+            "required": ["error"],
+            "properties": {
+              "result_summary": false,
+              "error": { "type": "object", "properties": { "code": { "const": "tool_declined" } } }
+            }
+          }
+        }
+      ]
+    },
+    "agentMessageDeltaPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["delta"],
+      "properties": { "delta": { "type": "string" } }
+    },
+    "reasoningTextDeltaPayloadV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_index", "delta"],
+      "properties": {
+        "content_index": { "type": "integer", "minimum": 0, "maximum": 7 },
+        "delta": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384,
+          "x-yijie-max-utf8-bytes": 16384
+        }
+      }
+    },
+    "reasoningContentPartV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_index", "text"],
+      "properties": {
+        "content_index": { "type": "integer", "minimum": 0, "maximum": 7 },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536,
+          "x-yijie-max-utf8-bytes": 65536
+        }
+      }
+    },
+    "reasoningReasonCodeV5": {
+      "enum": [
+        "reasoning_not_emitted",
+        "turn_interrupted",
+        "stream_gap",
+        "runtime_error",
+        "limit_exceeded",
+        "protocol_error",
+        "host_shutdown"
+      ]
+    },
+    "reasoningTextFinalizedPayloadV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "contents"],
+      "properties": {
+        "status": { "enum": ["complete", "incomplete", "unavailable"] },
+        "contents": {
+          "type": "array",
+          "maxItems": 8,
+          "x-yijie-content-index-rule": "zero-based-contiguous-ascending-unique",
+          "items": { "$ref": "#/definitions/reasoningContentPartV5" }
+        },
+        "reason_code": { "$ref": "#/definitions/reasoningReasonCodeV5" }
+      },
+      "x-yijie-max-total-utf8-bytes": 131072,
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "complete" } }, "required": ["status"] },
+          "then": { "properties": { "contents": { "type": "array", "minItems": 1 }, "reason_code": false } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "incomplete" } }, "required": ["status"] },
+          "then": { "required": ["reason_code"], "properties": { "contents": { "type": "array", "minItems": 1 }, "reason_code": {} } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "unavailable" } }, "required": ["status"] },
+          "then": { "required": ["reason_code"], "properties": { "contents": { "type": "array", "maxItems": 0 }, "reason_code": {} } }
+        }
+      ]
+    },
+    "agentProblemPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message", "will_retry"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "will_retry": { "type": "boolean" }
+      }
+    },
+    "agentWarningPayloadV5": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message", "will_retry"],
+      "properties": {
+        "code": { "type": "string", "maxLength": 256 },
+        "message": {
+          "type": "string",
+          "maxLength": 16384,
+          "x-yijie-max-utf8-bytes": 65536
+        },
+        "will_retry": { "const": false }
+      }
+    },
+    "artifactKind": { "enum": ["image", "video", "file", "report"] },
+    "artifactProvenance": { "enum": ["synthetic", "provider", "tool"] },
+    "artifactStartedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "kind", "provenance", "status", "ordinal"],
+      "properties": {
+        "artifact_id": { "type": "string", "format": "uuid" },
+        "kind": { "$ref": "#/definitions/artifactKind" },
+        "provenance": { "$ref": "#/definitions/artifactProvenance" },
+        "status": { "const": "in_progress" },
+        "ordinal": { "type": "integer", "minimum": 0 },
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^/\\\\]+$" }
+      }
+    },
+    "artifactProgressPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "kind", "provenance", "status", "ordinal"],
+      "properties": {
+        "artifact_id": { "type": "string", "format": "uuid" },
+        "kind": { "$ref": "#/definitions/artifactKind" },
+        "provenance": { "$ref": "#/definitions/artifactProvenance" },
+        "status": { "const": "in_progress" },
+        "ordinal": { "type": "integer", "minimum": 0 },
+        "stage": { "enum": ["generating", "processing", "finalizing"] },
+        "progress_percent": { "type": "number", "minimum": 0, "maximum": 100 }
+      },
+      "anyOf": [
+        { "type": "object", "properties": { "stage": {} }, "required": ["stage"] },
+        { "type": "object", "properties": { "progress_percent": {} }, "required": ["progress_percent"] }
+      ]
+    },
+    "artifactCompletedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_id",
+        "kind",
+        "provenance",
+        "status",
+        "ordinal",
+        "media_type",
+        "size_bytes",
+        "sha256",
+        "content_href"
+      ],
+      "properties": {
+        "artifact_id": { "type": "string", "format": "uuid" },
+        "kind": { "$ref": "#/definitions/artifactKind" },
+        "provenance": { "$ref": "#/definitions/artifactProvenance" },
+        "status": { "const": "ready" },
+        "ordinal": { "type": "integer", "minimum": 0 },
+        "display_name": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^/\\\\]+$" },
+        "media_type": {
+          "enum": [
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "video/mp4",
+            "text/plain",
+            "text/csv",
+            "application/json",
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.yijie.report+json;version=1"
+          ]
+        },
+        "size_bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "content_href": {
+          "type": "string",
+          "pattern": "^/v3/agent-sessions/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/artifacts/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/content$"
+        },
+        "poster_href": {
+          "type": "string",
+          "pattern": "^/v3/agent-sessions/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/artifacts/[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}/poster$"
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "image" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "media_type": { "enum": ["image/png", "image/jpeg", "image/webp"] },
+              "size_bytes": { "type": "integer", "maximum": 20971520 },
+              "poster_href": false
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "video" } }, "required": ["kind"] },
+          "then": {
+            "properties": { "media_type": { "const": "video/mp4" } }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "file" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "media_type": {
+                "enum": [
+                  "text/plain",
+                  "text/csv",
+                  "application/json",
+                  "application/pdf",
+                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ]
+              },
+              "poster_href": false
+            }
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "report" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "media_type": { "const": "application/vnd.yijie.report+json;version=1" },
+              "poster_href": false
+            }
+          }
+        }
+      ]
+    },
+    "artifactFailedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "kind", "provenance", "status", "ordinal", "error_code", "retryable"],
+      "properties": {
+        "artifact_id": { "type": "string", "format": "uuid" },
+        "kind": { "$ref": "#/definitions/artifactKind" },
+        "provenance": { "$ref": "#/definitions/artifactProvenance" },
+        "status": { "const": "failed" },
+        "ordinal": { "type": "integer", "minimum": 0 },
+        "error_code": {
+          "enum": [
+            "generation_failed",
+            "unsupported_provider",
+            "resource_unavailable",
+            "limit_exceeded",
+            "integrity_failed",
+            "protocol_error",
+            "turn_interrupted",
+            "host_shutdown"
+          ]
+        },
+        "retryable": { "type": "boolean" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    }
+  }
+}

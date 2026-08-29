@@ -30,26 +30,27 @@ const (
 )
 
 type Config struct {
-	Environment             string
-	Port                    string
-	HostHome                string
-	ParentPID               int
-	Runtime                 codex.Config
-	RawReasoningV2Enabled   bool
-	FEAT134StreamingEnabled bool
-	TitleV2Enabled          bool
-	CleanupV2Enabled        bool
-	MultimodalV2Enabled     bool
-	ArtifactV3Enabled       bool
-	ArtifactSynthetic       bool
-	ArtifactManifest        string
-	ImageGenerationEnabled  bool
-	InstanceNonce           string
-	FEAT126TestParentPID    int
-	FEAT126TestRunID        string
-	FEAT126TestProfile      string
-	FEAT126ProjectDir       string
-	Skills                  SkillFeatureConfig
+	Environment                    string
+	Port                           string
+	HostHome                       string
+	ParentPID                      int
+	Runtime                        codex.Config
+	RawReasoningV2Enabled          bool
+	FEAT134StreamingEnabled        bool
+	FEAT136CommandToolItemsEnabled bool
+	TitleV2Enabled                 bool
+	CleanupV2Enabled               bool
+	MultimodalV2Enabled            bool
+	ArtifactV3Enabled              bool
+	ArtifactSynthetic              bool
+	ArtifactManifest               string
+	ImageGenerationEnabled         bool
+	InstanceNonce                  string
+	FEAT126TestParentPID           int
+	FEAT126TestRunID               string
+	FEAT126TestProfile             string
+	FEAT126ProjectDir              string
+	Skills                         SkillFeatureConfig
 }
 
 type RuntimeStatusProvider interface {
@@ -224,6 +225,10 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if err != nil {
 		return Config{}, err
 	}
+	feat136CommandToolItems, err := loadFEAT136CommandToolItemsProfile(environment, feat134Streaming)
+	if err != nil {
+		return Config{}, err
+	}
 	if feat134Streaming {
 		runtimeConfig.ManagedReasoningProfile = codex.ManagedReasoningProfileHighRaw
 	}
@@ -249,26 +254,27 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	}
 
 	return Config{
-		Environment:             environment,
-		Port:                    env("YIJIE_AGENT_HOST_PORT", "18080"),
-		HostHome:                hostHome,
-		ParentPID:               parentPID,
-		Runtime:                 runtimeConfig,
-		RawReasoningV2Enabled:   rawV2,
-		FEAT134StreamingEnabled: feat134Streaming,
-		TitleV2Enabled:          titleV2,
-		CleanupV2Enabled:        cleanupV2,
-		MultimodalV2Enabled:     multimodalV2,
-		ArtifactV3Enabled:       artifactV3,
-		ArtifactSynthetic:       syntheticArtifact,
-		ArtifactManifest:        artifactManifest,
-		ImageGenerationEnabled:  imageGeneration,
-		InstanceNonce:           instanceNonce,
-		FEAT126TestParentPID:    testParentPID,
-		FEAT126TestRunID:        fakeProfile.RunID,
-		FEAT126TestProfile:      feat126TestProfileName(fakeProfile),
-		FEAT126ProjectDir:       feat126ProjectDirectory,
-		Skills:                  skillFeature,
+		Environment:                    environment,
+		Port:                           env("YIJIE_AGENT_HOST_PORT", "18080"),
+		HostHome:                       hostHome,
+		ParentPID:                      parentPID,
+		Runtime:                        runtimeConfig,
+		RawReasoningV2Enabled:          rawV2,
+		FEAT134StreamingEnabled:        feat134Streaming,
+		FEAT136CommandToolItemsEnabled: feat136CommandToolItems,
+		TitleV2Enabled:                 titleV2,
+		CleanupV2Enabled:               cleanupV2,
+		MultimodalV2Enabled:            multimodalV2,
+		ArtifactV3Enabled:              artifactV3,
+		ArtifactSynthetic:              syntheticArtifact,
+		ArtifactManifest:               artifactManifest,
+		ImageGenerationEnabled:         imageGeneration,
+		InstanceNonce:                  instanceNonce,
+		FEAT126TestParentPID:           testParentPID,
+		FEAT126TestRunID:               fakeProfile.RunID,
+		FEAT126TestProfile:             feat126TestProfileName(fakeProfile),
+		FEAT126ProjectDir:              feat126ProjectDirectory,
+		Skills:                         skillFeature,
 	}, nil
 }
 
@@ -297,6 +303,22 @@ func loadFEAT134StreamingProfile(environment, hostHome string, runtimeConfig cod
 	}
 	if runtimeConfig.DynamicToolsEnabled {
 		return false, errors.New("FEAT-134 streaming requires experimental Runtime tools to remain disabled")
+	}
+	return true, nil
+}
+
+func loadFEAT136CommandToolItemsProfile(environment string, feat134Streaming bool) (bool, error) {
+	enabled, err := exactBoolEnv("YIJIE_FEAT136_COMMAND_TOOL_ITEMS_ENABLED")
+	if err != nil || !enabled {
+		return false, err
+	}
+	rawEnvironment, environmentSet := os.LookupEnv("YIJIE_ENV")
+	localProfile, profileSet := os.LookupEnv("YIJIE_LOCAL_PROFILE")
+	if !environmentSet || !profileSet || rawEnvironment != "local" || environment != "local" || localProfile != "demo_fast" {
+		return false, errors.New("FEAT-136 Command and Tool items require the exact explicit local demo_fast profile")
+	}
+	if !feat134Streaming {
+		return false, errors.New("FEAT-136 Command and Tool items require FEAT-134 streaming")
 	}
 	return true, nil
 }
@@ -589,6 +611,10 @@ type feat134SessionService interface {
 	SubscribeEventsV4(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)
 }
 
+type feat136SessionService interface {
+	SubscribeEventsV5(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)
+}
+
 func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionService, apiToken string, options ...HandlerOption) http.Handler {
 	handlerOptions := handlerOptions{}
 	for _, option := range options {
@@ -689,6 +715,11 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 		if config.FEAT134StreamingEnabled {
 			if _, ok := sessions.(feat134SessionService); ok {
 				mux.Handle("GET /v4/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.eventsV4)))
+			}
+		}
+		if config.FEAT134StreamingEnabled && config.FEAT136CommandToolItemsEnabled {
+			if _, ok := sessions.(feat136SessionService); ok {
+				mux.Handle("GET /v5/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.eventsV5)))
 			}
 		}
 	}
@@ -894,6 +925,27 @@ func (h *sessionHandler) eventsV4(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("X-Yijie-Event-Schema-Version", "4")
 	h.streamEvents(w, r, service.SubscribeEventsV4)
+}
+
+func (h *sessionHandler) eventsV5(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(feat136SessionService)
+	if !ok {
+		writeSessionError(w, session.ErrSessionNotUsable)
+		return
+	}
+	query := r.URL.Query()
+	for key := range query {
+		if key != "event_schema_version" && key != "stream_id" && key != "after" {
+			writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event query is invalid")
+			return
+		}
+	}
+	if values := query["event_schema_version"]; len(values) != 1 || values[0] != "5" {
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event_schema_version=5 is required")
+		return
+	}
+	w.Header().Set("X-Yijie-Event-Schema-Version", "5")
+	h.streamEvents(w, r, service.SubscribeEventsV5)
 }
 
 func (h *sessionHandler) artifactContent(w http.ResponseWriter, r *http.Request) {

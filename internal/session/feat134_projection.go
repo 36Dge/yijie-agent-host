@@ -86,7 +86,7 @@ func (s *Service) publishV4(record Record, event Event) error {
 		(event.EventType == EventItemStarted || event.EventType == EventItemCompleted) {
 		s.rememberV4AgentPhase(record.AgentSessionID, event.TurnID, event.ItemID, *event.Payload.Phase)
 	}
-	if _, err := s.eventsV4.Publish(event); err != nil {
+	if _, err := s.publishV4Projection(event); err != nil {
 		if errors.Is(err, ErrEventLimitExceeded) {
 			return s.rejectV4Event(record, event)
 		}
@@ -113,7 +113,7 @@ func (s *Service) rejectV4Event(record Record, event Event) error {
 			},
 		}
 		decorateV4ProblemEvent(record, &warning)
-		_, err := s.eventsV4.Publish(warning)
+		_, err := s.publishV4Projection(warning)
 		return err
 	}
 
@@ -135,7 +135,7 @@ func (s *Service) rejectV4Event(record Record, event Event) error {
 		},
 	}
 	decorateV4ProblemEvent(record, &problem)
-	_, err := s.eventsV4.Publish(problem)
+	_, err := s.publishV4Projection(problem)
 	return err
 }
 
@@ -154,7 +154,7 @@ func (s *Service) publishV4SanitizedTerminal(record Record, turnID string) error
 		},
 	}
 	decorateV4ProblemEvent(record, &terminal)
-	_, err := s.eventsV4.Publish(terminal)
+	_, err := s.publishV4Projection(terminal)
 	if err != nil {
 		s.rollbackV4SanitizedTerminal(record.AgentSessionID, turnID)
 	}
@@ -315,7 +315,7 @@ func (s *Service) publishV4ReasoningLimit(record Record, turnID, itemID string) 
 		},
 	}
 	decorateV4ProblemEvent(record, &event)
-	_, err := s.eventsV4.Publish(event)
+	_, err := s.publishV4Projection(event)
 	if err != nil {
 		s.rollbackV4ReasoningLimit(record.AgentSessionID, turnID, itemID)
 	}
@@ -766,7 +766,7 @@ func (s *Service) publishMalformedV4ReasoningFinalized(record Record, turnID str
 			},
 		}
 		decorateV4ProblemEvent(record, &event)
-		if _, err := s.eventsV4.Publish(event); err != nil {
+		if _, err := s.publishV4Projection(event); err != nil {
 			return err
 		}
 	}

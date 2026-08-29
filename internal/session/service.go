@@ -24,6 +24,8 @@ const (
 	EventTurnStarted              = "turn.started"
 	EventItemStarted              = "item.started"
 	EventItemAgentMessageDelta    = "item.agent_message.delta"
+	EventItemCommandOutputDelta   = "item.command_output.delta"
+	EventItemToolProgress         = "item.tool.progress"
 	EventItemCompleted            = "item.completed"
 	EventItemReasoningTextDelta   = "item.reasoning_text.delta"
 	EventItemReasoningFinalized   = "item.reasoning_text.finalized"
@@ -40,7 +42,9 @@ const (
 
 	RuntimeNotificationError                 = "error"
 	RuntimeNotificationItemAgentMessageDelta = "item/agentMessage/delta"
+	RuntimeNotificationCommandOutputDelta    = "item/commandExecution/outputDelta"
 	RuntimeNotificationItemCompleted         = "item/completed"
+	RuntimeNotificationMcpToolProgress       = "item/mcpToolCall/progress"
 	RuntimeNotificationReasoningTextDelta    = "item/reasoning/textDelta"
 	RuntimeNotificationItemStarted           = "item/started"
 	RuntimeNotificationThreadStarted         = "thread/started"
@@ -53,7 +57,9 @@ const (
 var runtimeNotifications = []string{
 	RuntimeNotificationError,
 	RuntimeNotificationItemAgentMessageDelta,
+	RuntimeNotificationCommandOutputDelta,
 	RuntimeNotificationItemCompleted,
+	RuntimeNotificationMcpToolProgress,
 	RuntimeNotificationReasoningTextDelta,
 	RuntimeNotificationItemStarted,
 	RuntimeNotificationThreadStarted,
@@ -137,6 +143,9 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 	if s.eventsV4 != nil {
 		s.eventsV4.DeleteSession(sessionID)
 	}
+	if s.eventsV5 != nil {
+		s.eventsV5.DeleteSession(sessionID)
+	}
 	if s.artifacts != nil {
 		s.artifacts.DeleteSession(sessionID)
 	}
@@ -150,6 +159,7 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 	}
 	s.reasoningMu.Unlock()
 	s.clearV4Session(sessionID)
+	s.clearV5Session(sessionID)
 	return CleanupResult{OperationID: operationID, Outcome: "complete", RuntimeThreadTree: "complete", HostMapping: "complete", HostReplay: "complete"}, nil
 }
 
@@ -194,6 +204,7 @@ type Service struct {
 	eventsV2             *EventHub
 	eventsV3             *EventHub
 	eventsV4             *EventHub
+	eventsV5             *EventHub
 	artifacts            *artifact.Store
 	syntheticArtifacts   bool
 	rawReasoning         bool
@@ -201,6 +212,7 @@ type Service struct {
 	logger               *slog.Logger
 
 	pendingMu       sync.Mutex
+	notificationMu  sync.Mutex
 	pending         map[string][]pendingNotification
 	pendingCount    int
 	syntheticMu     sync.Mutex
@@ -210,6 +222,8 @@ type Service struct {
 	reasoning       map[reasoningTurnKey]*reasoningTurnState
 	v4Mu            sync.Mutex
 	v4Turns         map[v4TurnKey]*v4TurnState
+	v5ItemsMu       sync.Mutex
+	v5Items         map[v5ItemKey]*v5ItemState
 	titleMu         sync.Mutex
 	titleGenerator  TitleGenerator
 	titleOperations map[titleOperationKey]*titleOperation
@@ -241,6 +255,10 @@ func WithV4Events(events *EventHub) ServiceOption {
 	return func(service *Service) { service.eventsV4 = events }
 }
 
+func WithV5Events(events *EventHub) ServiceOption {
+	return func(service *Service) { service.eventsV5 = events }
+}
+
 func WithRawReasoningProjection(enabled bool) ServiceOption {
 	return func(service *Service) { service.rawReasoning = enabled }
 }
@@ -270,6 +288,7 @@ func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Lo
 		syntheticTurns:  make(map[string]*syntheticTerminalBarrier),
 		reasoning:       make(map[reasoningTurnKey]*reasoningTurnState),
 		v4Turns:         make(map[v4TurnKey]*v4TurnState),
+		v5Items:         make(map[v5ItemKey]*v5ItemState),
 		titleOperations: make(map[titleOperationKey]*titleOperation),
 		imageTurns:      make(map[string]*imageTurn),
 	}
@@ -319,6 +338,7 @@ func (s *Service) StartSession(ctx context.Context, input StartSessionInput) (Re
 		_, _ = s.store.MarkFailed(sessionID, "provider_identity_mismatch")
 		return Record{}, fmt.Errorf("%w: thread/start returned an unexpected model provider identity", ErrRuntimeRequest)
 	}
+	s.notificationMu.Lock()
 	record, err = s.store.BindThread(
 		sessionID,
 		thread.ID,
@@ -327,9 +347,11 @@ func (s *Service) StartSession(ctx context.Context, input StartSessionInput) (Re
 		thread.ModelProvider,
 	)
 	if err != nil {
+		s.notificationMu.Unlock()
 		return Record{}, err
 	}
 	s.flushPending(thread.ID)
+	s.notificationMu.Unlock()
 	return record, nil
 }
 
@@ -365,6 +387,7 @@ func (s *Service) ResumeSession(ctx context.Context, sessionID string, trace Tra
 		return Record{}, fmt.Errorf("%w: thread/resume returned an unexpected model provider identity", ErrRuntimeRequest)
 	}
 	activeTurnID, lastTurnID, lastStatus := resumedTurnState(thread.Turns)
+	s.notificationMu.Lock()
 	record, err = s.store.Resume(
 		sessionID,
 		trace,
@@ -374,9 +397,11 @@ func (s *Service) ResumeSession(ctx context.Context, sessionID string, trace Tra
 		lastStatus,
 	)
 	if err != nil {
+		s.notificationMu.Unlock()
 		return Record{}, err
 	}
 	s.flushPending(thread.ID)
+	s.notificationMu.Unlock()
 	return record, nil
 }
 
@@ -531,8 +556,30 @@ func (s *Service) SubscribeEventsV4(
 	return s.eventsV4.Subscribe(sessionID, streamID, after)
 }
 
+func (s *Service) SubscribeEventsV5(
+	sessionID, streamID string,
+	after uint64,
+) (string, []Event, <-chan Event, func(), error) {
+	if s.eventsV5 == nil {
+		return "", nil, nil, nil, ErrSessionNotUsable
+	}
+	if err := requireUUID("agent_session_id", sessionID); err != nil {
+		return "", nil, nil, nil, err
+	}
+	if _, err := s.store.Get(sessionID); err != nil {
+		return "", nil, nil, nil, err
+	}
+	return s.eventsV5.Subscribe(sessionID, streamID, after)
+}
+
 func (s *Service) HandleNotification(method string, params json.RawMessage) {
 	if !supportedNotification(method) {
+		return
+	}
+	// Command deltas and MCP progress are v5-only Runtime notifications. Keep
+	// them completely outside the legacy correlation/pending path when the v5
+	// consumer is disabled so a producer cannot consume shared v1-v4 capacity.
+	if (method == RuntimeNotificationCommandOutputDelta || method == RuntimeNotificationMcpToolProgress) && s.eventsV5 == nil {
 		return
 	}
 	if method == RuntimeNotificationTurnPlanUpdated && s.eventsV4 == nil {
@@ -541,6 +588,8 @@ func (s *Service) HandleNotification(method string, params json.RawMessage) {
 	if method == RuntimeNotificationReasoningTextDelta && !s.rawReasoning {
 		return
 	}
+	s.notificationMu.Lock()
+	defer s.notificationMu.Unlock()
 	threadID, err := notificationThreadID(method, params)
 	if err != nil || threadID == "" || requireUUID("codex_thread_id", threadID) != nil {
 		s.logger.Warn("discarding malformed Codex notification", "method", method)
@@ -555,6 +604,10 @@ func (s *Service) HandleNotification(method string, params json.RawMessage) {
 		return
 	}
 	if err := s.processNotification(method, params); err != nil {
+		if method == RuntimeNotificationCommandOutputDelta || method == RuntimeNotificationMcpToolProgress {
+			s.logger.Warn("failed to map Codex v5 notification", "method", method)
+			return
+		}
 		s.rejectMalformedV4Notification(method, params)
 		s.logger.Warn("failed to map Codex notification", "method", method)
 	}
@@ -702,7 +755,7 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 			}
 			phase = nullableString(notification.Item.Phase)
 		}
-		return s.publish(record, Event{
+		event := Event{
 			TurnID:    notification.TurnID,
 			ItemID:    notification.Item.ID,
 			EventType: eventType,
@@ -712,7 +765,54 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 				V4Text:   v4Text,
 				Phase:    phase,
 			},
-		})
+		}
+		if err := s.publish(record, event); err != nil {
+			return err
+		}
+		if notification.Item.Type == "commandExecution" || notification.Item.Type == "mcpToolCall" {
+			if err := s.publishV5Lifecycle(record, method, params, notification); err != nil {
+				s.logger.Warn("failed to map Codex v5 lifecycle", "method", method)
+			}
+		}
+		return nil
+	case RuntimeNotificationCommandOutputDelta:
+		var notification commandOutputDeltaNotification
+		if err := json.Unmarshal(params, &notification); err != nil {
+			return err
+		}
+		if err := requireUUID("turn_id", notification.TurnID); err != nil {
+			return err
+		}
+		if notification.ItemID == "" || notification.Delta == nil {
+			return errors.New("command output delta notification omitted required content")
+		}
+		record, err := s.store.GetByThread(notification.ThreadID)
+		if err != nil {
+			return err
+		}
+		if err := s.publishV5CommandDelta(record, notification); err != nil {
+			s.logger.Warn("failed to publish Codex v5 Command delta", "method", method)
+		}
+		return nil
+	case RuntimeNotificationMcpToolProgress:
+		var notification toolProgressNotification
+		if err := json.Unmarshal(params, &notification); err != nil {
+			return err
+		}
+		if err := requireUUID("turn_id", notification.TurnID); err != nil {
+			return err
+		}
+		if notification.ItemID == "" || notification.Message == nil {
+			return errors.New("MCP Tool progress notification omitted required content")
+		}
+		record, err := s.store.GetByThread(notification.ThreadID)
+		if err != nil {
+			return err
+		}
+		if err := s.publishV5ToolProgress(record, notification); err != nil {
+			s.logger.Warn("failed to publish Codex v5 Tool progress", "method", method)
+		}
+		return nil
 	case RuntimeNotificationItemAgentMessageDelta:
 		var notification struct {
 			ThreadID string  `json:"threadId"`
@@ -1055,10 +1155,44 @@ type itemNotification struct {
 		Text  *string `json:"text"`
 		Phase *string `json:"phase"`
 		// Runtime Item content is type-specific. Keep it opaque during envelope decoding so
-		// structured user/tool content cannot make an otherwise valid lifecycle malformed;
-		// only completed reasoning Items decode the closed []string raw-reasoning shape.
+		// command/tool fields (and structured user/tool content) cannot make an otherwise
+		// valid legacy lifecycle malformed. Only completed reasoning Items decode the
+		// closed []string raw-reasoning shape. v5 performs its own isolated typed decode.
 		Content json.RawMessage `json:"content"`
 	} `json:"item"`
+}
+
+type v5LifecycleNotification struct {
+	ThreadID string `json:"threadId"`
+	TurnID   string `json:"turnId"`
+	Item     struct {
+		ID               string          `json:"id"`
+		Type             string          `json:"type"`
+		Cwd              *string         `json:"cwd"`
+		Status           *string         `json:"status"`
+		AggregatedOutput *string         `json:"aggregatedOutput"`
+		ExitCode         *int32          `json:"exitCode"`
+		DurationMS       *int64          `json:"durationMs"`
+		Arguments        json.RawMessage `json:"arguments"`
+		Result           json.RawMessage `json:"result"`
+		CommandActions   []struct {
+			Type string `json:"type"`
+		} `json:"commandActions"`
+	} `json:"item"`
+}
+
+type commandOutputDeltaNotification struct {
+	ThreadID string  `json:"threadId"`
+	TurnID   string  `json:"turnId"`
+	ItemID   string  `json:"itemId"`
+	Delta    *string `json:"delta"`
+}
+
+type toolProgressNotification struct {
+	ThreadID string  `json:"threadId"`
+	TurnID   string  `json:"turnId"`
+	ItemID   string  `json:"itemId"`
+	Message  *string `json:"message"`
 }
 
 type planNotification struct {
@@ -1357,7 +1491,9 @@ func (s *Service) flushPending(threadID string) {
 	s.pendingMu.Unlock()
 	for _, notification := range pending {
 		if err := s.processNotification(notification.method, notification.params); err != nil {
-			s.rejectMalformedV4Notification(notification.method, notification.params)
+			if notification.method != RuntimeNotificationCommandOutputDelta && notification.method != RuntimeNotificationMcpToolProgress {
+				s.rejectMalformedV4Notification(notification.method, notification.params)
+			}
 			s.logger.Warn("failed to map buffered Codex notification", "method", notification.method)
 		}
 	}

@@ -1,0 +1,39 @@
+{
+  "schema_version": 5,
+  "event_id": "019fbf59-1000-7000-8000-000000000004",
+  "stream_id": "019fbf59-1000-7000-8000-000000000010",
+  "sequence": 13,
+  "occurred_at": "2026-08-29T08:00:03Z",
+  "task_id": "019fbf59-1000-7000-8000-000000000020",
+  "agent_session_id": "019fbf59-1000-7000-8000-000000000030",
+  "codex_thread_id": "019fbf59-1000-7000-8000-000000000040",
+  "turn_id": "019fbf59-1000-7000-8000-000000000050",
+  "item_id": "command-failed-1",
+  "event_type": "item.completed",
+  "terminal": false,
+  "payload": {
+    "item_type": "commandExecution",
+    "status": "failed",
+    "command_summary": {
+      "text": "Run local JavaScript validation",
+      "truncated": false
+    },
+    "cwd": {
+      "kind": "workspace_relative",
+      "segments": ["examples"]
+    },
+    "duration_ms": 14,
+    "exit_code": 9,
+    "output": {
+      "retention": "head_tail",
+      "head": "unknown option\n",
+      "tail": "usage information omitted\n",
+      "truncated": true,
+      "truncation_reason": "utf8_byte_limit"
+    },
+    "error": {
+      "code": "command_failed",
+      "summary": "command exited with a non-zero status"
+    }
+  }
+}

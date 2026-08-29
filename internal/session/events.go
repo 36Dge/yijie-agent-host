@@ -12,8 +12,11 @@ const (
 	EventSchemaVersionV2 = 2
 	EventSchemaVersionV3 = 3
 	EventSchemaVersionV4 = 4
+	EventSchemaVersionV5 = 5
 
-	maxV4EventDataBytes = 1 << 20
+	maxRetainedEventDataBytes = 1 << 20
+	// Kept for existing v4 conformance tests and downstream package references.
+	maxV4EventDataBytes = maxRetainedEventDataBytes
 )
 
 var (
@@ -24,37 +27,50 @@ var (
 )
 
 type EventPayload struct {
-	Model         string              `json:"model,omitempty"`
-	ModelProvider string              `json:"model_provider,omitempty"`
-	Status        string              `json:"status,omitempty"`
-	ItemType      string              `json:"item_type,omitempty"`
-	Text          *string             `json:"text,omitempty"`
-	V4Text        *string             `json:"-"`
-	Phase         **string            `json:"phase,omitempty"`
-	Delta         *string             `json:"delta,omitempty"`
-	Code          string              `json:"code,omitempty"`
-	Message       *string             `json:"message,omitempty"`
-	V4Message     *string             `json:"-"`
-	WillRetry     *bool               `json:"will_retry,omitempty"`
-	ContentIndex  *int                `json:"content_index,omitempty"`
-	Contents      *[]ReasoningContent `json:"contents,omitempty"`
-	ReasonCode    string              `json:"reason_code,omitempty"`
-	ArtifactID    string              `json:"artifact_id,omitempty"`
-	Kind          string              `json:"kind,omitempty"`
-	Provenance    string              `json:"provenance,omitempty"`
-	Ordinal       *int                `json:"ordinal,omitempty"`
-	DisplayName   string              `json:"display_name,omitempty"`
-	Stage         string              `json:"stage,omitempty"`
-	Progress      *int                `json:"progress_percent,omitempty"`
-	MediaType     string              `json:"media_type,omitempty"`
-	SizeBytes     *int64              `json:"size_bytes,omitempty"`
-	SHA256        string              `json:"sha256,omitempty"`
-	ContentHref   string              `json:"content_href,omitempty"`
-	PosterHref    string              `json:"poster_href,omitempty"`
-	ErrorCode     string              `json:"error_code,omitempty"`
-	Retryable     *bool               `json:"retryable,omitempty"`
-	Explanation   **string            `json:"explanation,omitempty"`
-	Plan          *[]PlanStep         `json:"plan,omitempty"`
+	Model            string              `json:"model,omitempty"`
+	ModelProvider    string              `json:"model_provider,omitempty"`
+	Status           string              `json:"status,omitempty"`
+	ItemType         string              `json:"item_type,omitempty"`
+	Text             *string             `json:"text,omitempty"`
+	V4Text           *string             `json:"-"`
+	Phase            **string            `json:"phase,omitempty"`
+	Delta            *string             `json:"delta,omitempty"`
+	Code             string              `json:"code,omitempty"`
+	Message          *string             `json:"message,omitempty"`
+	V4Message        *string             `json:"-"`
+	WillRetry        *bool               `json:"will_retry,omitempty"`
+	ContentIndex     *int                `json:"content_index,omitempty"`
+	Contents         *[]ReasoningContent `json:"contents,omitempty"`
+	ReasonCode       string              `json:"reason_code,omitempty"`
+	ArtifactID       string              `json:"artifact_id,omitempty"`
+	Kind             string              `json:"kind,omitempty"`
+	Provenance       string              `json:"provenance,omitempty"`
+	Ordinal          *int                `json:"ordinal,omitempty"`
+	DisplayName      string              `json:"display_name,omitempty"`
+	Stage            string              `json:"stage,omitempty"`
+	Progress         *int                `json:"progress_percent,omitempty"`
+	MediaType        string              `json:"media_type,omitempty"`
+	SizeBytes        *int64              `json:"size_bytes,omitempty"`
+	SHA256           string              `json:"sha256,omitempty"`
+	ContentHref      string              `json:"content_href,omitempty"`
+	PosterHref       string              `json:"poster_href,omitempty"`
+	ErrorCode        string              `json:"error_code,omitempty"`
+	Retryable        *bool               `json:"retryable,omitempty"`
+	Explanation      **string            `json:"explanation,omitempty"`
+	Plan             *[]PlanStep         `json:"plan,omitempty"`
+	CommandSummary   *BoundedSummary     `json:"command_summary,omitempty"`
+	CommandCwd       *CommandCwd         `json:"cwd,omitempty"`
+	DurationMS       *int64              `json:"duration_ms,omitempty"`
+	ExitCode         *int32              `json:"exit_code,omitempty"`
+	Output           *CommandOutput      `json:"output,omitempty"`
+	ItemError        *ProjectionError    `json:"error,omitempty"`
+	ToolIdentity     *ToolIdentity       `json:"identity,omitempty"`
+	ArgumentsSummary *BoundedSummary     `json:"arguments_summary,omitempty"`
+	ProgressIndex    *int                `json:"progress_index,omitempty"`
+	Summary          *BoundedSummary     `json:"summary,omitempty"`
+	ResultSummary    *BoundedSummary     `json:"result_summary,omitempty"`
+	Truncated        *bool               `json:"truncated,omitempty"`
+	TruncationReason string              `json:"truncation_reason,omitempty"`
 }
 
 func (payload *EventPayload) UnmarshalJSON(data []byte) error {
@@ -144,7 +160,8 @@ func NewEventHub(capacity, subscriberCapacity int) *EventHub {
 }
 
 func NewEventHubVersion(schemaVersion, capacity, subscriberCapacity int) *EventHub {
-	if schemaVersion != EventSchemaVersionV2 && schemaVersion != EventSchemaVersionV3 && schemaVersion != EventSchemaVersionV4 {
+	if schemaVersion != EventSchemaVersionV2 && schemaVersion != EventSchemaVersionV3 &&
+		schemaVersion != EventSchemaVersionV4 && schemaVersion != EventSchemaVersionV5 {
 		schemaVersion = EventSchemaVersion
 	}
 	if capacity < 1 {
@@ -177,15 +194,24 @@ func (h *EventHub) Publish(event Event) (Event, error) {
 	event.StreamID = stream.id
 	event.Sequence = stream.next + 1
 	event.OccurredAt = time.Now().UTC()
-	if h.schemaVersion == EventSchemaVersionV4 {
-		if validateErr := validateV4RetainedEvent(event); validateErr != nil {
+	if h.schemaVersion == EventSchemaVersionV4 || h.schemaVersion == EventSchemaVersionV5 {
+		var validateErr error
+		if h.schemaVersion == EventSchemaVersionV5 {
+			if fitErr := fitV5RetainedEvent(&event); fitErr != nil {
+				return Event{}, fitErr
+			}
+			validateErr = validateV5RetainedEvent(event)
+		} else {
+			validateErr = validateV4RetainedEvent(event)
+		}
+		if validateErr != nil {
 			return Event{}, validateErr
 		}
 		encoded, marshalErr := json.Marshal(event)
 		if marshalErr != nil {
 			return Event{}, marshalErr
 		}
-		if len(encoded) > maxV4EventDataBytes {
+		if len(encoded) > maxRetainedEventDataBytes {
 			return Event{}, ErrEventLimitExceeded
 		}
 	}

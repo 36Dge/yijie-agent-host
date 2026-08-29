@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Yijie Agent Host Local API
-  version: 0.6.0
+  version: 0.7.0
   description: |
     Local loopback HTTP and Server-Sent Events contract for the Yijie Desktop
     Agent Host sidecar. The Host is a thin adapter over the pinned Codex Runtime;
@@ -22,7 +22,7 @@ info:
     This document is authoritative for HTTP paths, authentication, request and
     response envelopes, status codes, headers, and SSE framing. The JSON value
     carried by each SSE `data` line is governed by the explicitly negotiated
-    AgentSessionEvent v1, v2, v3, or v4 JSON Schema, not by a duplicate OpenAPI schema.
+    AgentSessionEvent v1, v2, v3, v4, or v5 JSON Schema, not by a duplicate OpenAPI schema.
   contact:
     name: Yijie Agent Host owners
 servers:
@@ -1029,6 +1029,116 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /v5/agent-sessions/{agent_session_id}/events:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+    get:
+      operationId: streamAgentSessionEventsV5
+      summary: Replay and stream explicitly negotiated Agent session events v5
+      description: |
+        Opens the v5 Server-Sent Events stream. The required
+        `event_schema_version=5` query parameter prevents accidental v5 output to
+        an older consumer. V5 keeps the named v4 event families, closes generic
+        Item kinds to an explicit stable allowlist, and adds bounded Command and
+        generic MCP Tool projections. V1-v4 paths and schemas remain unchanged.
+        Command and Tool lifecycle metadata is carried by the authoritative Item
+        lifecycle events; live incremental content uses
+        `item.command_output.delta` and `item.tool.progress`.
+
+        Consumers deduplicate at-least-once delivery only by `event_id`. Equal
+        output text in distinct events is valid and must not be content-deduped.
+        Item completion remains non-terminal for the Turn; only `turn.completed`
+        is the authoritative Turn terminal. The pinned Runtime schema defines MCP
+        Tool in-progress, completed, and failed states; this contract does not
+        assert a registered product Tool producer. A declined Tool status is
+        reserved for Yijie conformance and must not be inferred by the Host.
+
+        All Command and Tool fields are allowlisted and bounded. Before a future
+        Host may emit v5, its mapper must redact the allowed text fields and pass
+        conformance; the schema alone cannot identify a secret inside free text.
+        The compact JSON `data` value is measured as serialized UTF-8 and remains
+        limited to 1 MiB. A missing Runtime Command aggregate maps to the explicit
+        `output.retention=unavailable` branch, never fabricated empty output. A
+        Runtime MCP `is_error` result maps to failed plus a safe `result_summary`
+        and normalized `tool_failed` error. Raw commands, canonical paths, process
+        metadata, MCP arguments/results, secrets, and Runtime wire payloads are
+        never exposed. Approval, FileChange, Diff, experimental/unknown generic
+        Items, and Artifact-merging capabilities are not added by v5.
+
+        The authoritative resume query is `after`; `after_sequence` is not an
+        alias and must be rejected as an unknown parameter. `Last-Event-ID`
+        overrides `stream_id` and `after`. A stream change starts a new ordering
+        domain and does not imply replay from an earlier Host process.
+      tags: [Events]
+      externalDocs:
+        description: Authoritative AgentSessionEventV5 JSON Schema
+        url: https://contracts.yijie.ai/agent/session-event-v5.schema.json
+      parameters:
+        - $ref: "#/components/parameters/EventSchemaVersionV5"
+        - $ref: "#/components/parameters/EventStreamId"
+        - $ref: "#/components/parameters/EventAfter"
+        - $ref: "#/components/parameters/LastEventId"
+      responses:
+        "200":
+          description: Retained v5 events were replayed and the connection is subscribed for live v5 events.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+            X-Accel-Buffering:
+              description: Disables reverse-proxy response buffering.
+              required: true
+              schema:
+                type: string
+                enum: ["no"]
+            X-Yijie-Event-Stream-ID:
+              description: Actual process-local stream identifier used by every returned SSE event ID.
+              required: true
+              schema:
+                type: string
+                format: uuid
+            X-Yijie-Event-Schema-Version:
+              description: Confirms that every returned data event uses AgentSessionEventV5.
+              required: true
+              schema:
+                type: integer
+                enum: [5]
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: UTF-8 SSE frames whose compact data values validate as AgentSessionEventV5 and do not exceed 1 MiB.
+                x-yijie-event-data-schema: ../../jsonschema/agent/session-event-v5.schema.json
+        "400":
+          description: "`invalid_request` or `invalid_event_cursor`: schema negotiation, identifier, or cursor is invalid."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          description: "`event_stream_changed` or `event_replay_unavailable`: the requested v5 cursor cannot be resumed safely."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "`streaming_unsupported` or `internal_error`: the v5 stream cannot be served safely."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/content:
     parameters:
       - $ref: "#/components/parameters/AgentSessionId"
@@ -1517,6 +1627,15 @@ components:
         type: integer
         format: int32
         enum: [4]
+    EventSchemaVersionV5:
+      name: event_schema_version
+      in: query
+      required: true
+      description: Explicit negotiation guard. Only integer value 5 is accepted on the v5 event stream.
+      schema:
+        type: integer
+        format: int32
+        enum: [5]
     ByteRange:
       name: Range
       in: header

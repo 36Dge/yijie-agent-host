@@ -10,13 +10,14 @@ Agent Host Runtime Baseline 2 已完成真实 thread/turn 的只读最小垂直�
 - Host 管理 Runtime 与专用 `CODEX_HOME`，只向子进程注入显式配置的 MiniMax Key；
 - MiniMax 中国站 `https://api.minimaxi.com/v1`、Responses API、`MiniMax-M3`；
 - 支持 `thread/start`、`thread/resume`、`turn/start` 和 `turn/interrupt`；
-- 将要求的 8 类 Runtime 通知映射为稳定、脱敏、可关联的 SSE 事件；
+- 将受支持的 Runtime 通知映射为稳定、脱敏、可关联的 SSE 事件；
 - HTTP/SSE 接口以 `yijie-contracts` 的 Agent Host OpenAPI 为权威源，Host 固定契约快照并直接使用生成 DTO；
 - 使用 bbolt 持久化 `task_id → agent_session_id → codex_thread_id → turn_id`，不持久化消息正文；
 - 每进程事件流有独立 `stream_id` 和单调 `sequence`，支持有界进程内重放；
 - 会话 HTTP API 使用 Host 自动生成的本机 bearer token；Runtime 固定 `read-only`、`approvalPolicy=never`。
 - FEAT-128 提供默认关闭的 v3 Artifact SSE、encrypted staging、content/poster/ACK/range 与 strict-local synthetic producer；另有默认关闭的 MiniMax `image-01` 中国区文生图/单张人物参考生图 provider projection。
-- FEAT-129 提供精确 `local + demo_fast` 下的本地 Skill 查询、扫描、原子安装、启停和卸载，精确消费 Contracts 0.5.1 / Manifest v2 与 `yijie-skills@0.3.0` 的 38 项目录，并只将当前 catalog 中 receipt 有效的具体 Skill 目录通过固定 Runtime Skills API 重放；HTTP 边界仍校验 owner-only bearer 与 `plugin.read`/`plugin.manage`。
+- FEAT-129 提供精确 `local + demo_fast` 下的本地 Skill 查询、扫描、原子安装、启停和卸载，继续精确消费 Manifest v2 与 `yijie-skills@0.3.0` 的 38 项目录，并只将当前 catalog 中 receipt 有效的具体 Skill 目录通过固定 Runtime Skills API 重放；HTTP 边界仍校验 owner-only bearer 与 `plugin.read`/`plugin.manage`。
+- FEAT-134/136 提供默认关闭、显式协商的 v4/v5 SSE。v5 在 v4 稳定投影之上增加有界 Command 与 Tool Item：Command 只发布分类摘要、结构化工作区 cwd 和脱敏输出；Tool 只做通用稳定投影，当前没有新增 producer。
 
 完整范围和证据见 [`docs/runtime-baseline-2.md`](docs/runtime-baseline-2.md)。Baseline 1 的产物与生命周期基线仍见 [`docs/runtime-baseline-1.md`](docs/runtime-baseline-1.md)。
 
@@ -57,6 +58,8 @@ POST /v1/agent-sessions/{agent_session_id}/turns
 POST /v1/agent-sessions/{agent_session_id}/turns/{turn_id}/interrupt
 GET  /v1/agent-sessions/{agent_session_id}/events
 GET  /v3/agent-sessions/{agent_session_id}/events?event_schema_version=3
+GET  /v4/agent-sessions/{agent_session_id}/events?event_schema_version=4
+GET  /v5/agent-sessions/{agent_session_id}/events?event_schema_version=5
 GET|HEAD /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/content
 GET|HEAD /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/poster
 POST /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/ack
@@ -106,24 +109,40 @@ PNG/JPEG 人物参考生图；普通看图/分析不会调用。Key 继续使用
 
 未配置 Runtime 时 Host 仍可启动用于诊断：`/healthz` 返回 `200`，`/readyz` 返回 `503`，会话路由不注册。
 
+v5 Command/Tool 投影只在下列精确、相互依赖的本地配置下注册；缺少任一项时保持关闭：
+
+```bash
+export YIJIE_ENV=local
+export YIJIE_LOCAL_PROFILE=demo_fast
+export YIJIE_FEAT134_STREAMING_ENABLED=true
+export YIJIE_FEAT136_COMMAND_TOOL_ITEMS_ENABLED=true
+```
+
+该门禁不改变 Runtime pin，不开启 dynamic tools 或 experimental API，也不放宽固定的
+`sandbox=read-only` / `approvalPolicy=never`。客户端仍须在 v5 route 上显式协商
+`event_schema_version=5`；关闭 FEAT-136 后 v1-v4 行为不变。
+
 ## 验证
 
 ```bash
-YIJIE_CONTRACTS_REF=164b14f609537d727a52326832da04430aecc4ab make sync-contracts # 从不可变 0.5.1 commit 同步并重新生成 DTO
-make contract-check # 校验契约版本、快照哈希、相邻源和生成物，无网络依赖
-make skills-conformance # 重建并验证 yijie-skills@0.3.0 的 38 项双渠道包
-make lint           # gofmt、go vet 和 shell 语法
-make test           # 契约同步检查、race 单测和故障测试；不依赖真实 Runtime
-make runtime-test  # 固定产物握手、thread 与真实 38 Skill Runtime 生命周期；不请求模型
-make runtime-turn-test # 显式真实测试，最多 2 次短 MiniMax 请求，不在 CI
+make feat136-contract-check # 校验 v0.7.0 exact pin、普通快照与生成物
+go test -race ./internal/session -run '^TestFEAT136' -count=1
+go test -race ./internal/app -run '^TestFEAT136' -count=1
+make lint                   # gofmt、go vet 和 shell 语法
 ```
 
-`api/contracts.lock` 固定当前消费的 Contracts `0.5.1` 完整 commit（尚无 tag、未发布）、
+`api/contracts.lock` 固定当前消费的 Contracts `0.7.0` 完整 commit
+`3c3000a6fbe2f08ab2131a463a1691e867d661b1`（该 commit 当前没有 v0.7.0 tag，不能描述为已发布）、
 `oapi-codegen` identity/version，以及 OpenAPI、Runtime 兼容清单、Agent session
-event v1/v2/v3、ReportDocumentV1 与 Skill Bundle Manifest v1/v2 JSON Schema 的 SHA-256，并精确快照 v2 38 项目录及正常包、摘要损坏包和 Zip Slip 包。`api/skills.lock` 另行固定 `yijie-skills@0.3.0` commit、源码树、双渠道 Manifest 与 38 个归档清单摘要。同步脚本拒绝 dirty source，并从已锁定 commit 的 Git
-对象读取源文件；不得手改 `api/` 快照或 `internal/contracts/agenthost.gen.go`。测试会
-验证 ref provenance、generator、digest 与生成漂移。Manifest v1 只保留兼容与恶意 fixture 回归，产品主路径是 v2；
+event v1-v5、ReportDocumentV1 与 Skill Bundle Manifest v1/v2 JSON Schema 的 SHA-256。FEAT-136
+的 scoped checker 只读取普通 OpenAPI/schema/v4-v5 JSON fixture；既有 archive、checksum、
+Zip Slip 和 archive-error fixture 不进入本次证据，只比较不可变 Git tree object ID 并保留既有
+reviewed digest。`api/skills.lock` 另行固定 `yijie-skills@0.3.0` commit、源码树、双渠道 Manifest
+与 38 个归档清单摘要。不得手改 `api/` 快照或 `internal/contracts/agenthost.gen.go`。Manifest v1 只保留兼容与既有回归，产品主路径是 v2；
 v3 S3 已实现但默认关闭，并由 schema、auth/range/integrity/ACK/TTL/restart/synthetic conformance tests 约束。
 这不代表真实 provider 的付费验证或端到端 Desktop UI 已完成。
 
-`make runtime-turn-test` 默认从 `.local/secrets/minimax-api-key` 读取 Key，也可使用上述环境变量；脚本和测试不会输出 Key。它验证一次正常完成、Runtime 重启后的 `thread/resume`，以及一次 `turn/interrupt`。
+历史复合门禁 `make sync-contracts`、`make contract-check`、`make test` 与 Runtime 集成脚本会覆盖
+归档、权限、进程故障或真实模型路径，不属于 FEAT-136 的安全定向证据。本批不运行这些命令，也不把
+未执行项记录为通过。真实只读 Command D4 必须在 Host→Desktop conformance 完成并获得单独付费调用
+授权后执行；Tool D4 继续等待真实 producer 与 Owner 决策。

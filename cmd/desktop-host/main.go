@@ -63,11 +63,16 @@ func run(logger *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		serviceOptions := make([]session.ServiceOption, 0, 5)
+		serviceOptions := make([]session.ServiceOption, 0, 6)
 		if config.FEAT134StreamingEnabled {
 			serviceOptions = append(serviceOptions,
 				session.WithV4Events(session.NewEventHubVersion(session.EventSchemaVersionV4, 512, 64)),
 				session.WithFixedReasoningEffort("high"),
+			)
+		}
+		if config.FEAT134StreamingEnabled && config.FEAT136CommandToolItemsEnabled {
+			serviceOptions = append(serviceOptions,
+				session.WithV5Events(session.NewEventHubVersion(session.EventSchemaVersionV5, 512, 64)),
 			)
 		}
 		if config.FEAT134StreamingEnabled || config.RawReasoningV2Enabled {

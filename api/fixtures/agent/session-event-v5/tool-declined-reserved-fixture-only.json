@@ -1,0 +1,31 @@
+{
+  "schema_version": 5,
+  "event_id": "019fbf59-1000-7000-8000-00000000000a",
+  "stream_id": "019fbf59-1000-7000-8000-000000000010",
+  "sequence": 24,
+  "occurred_at": "2026-08-29T08:01:04Z",
+  "task_id": "019fbf59-1000-7000-8000-000000000020",
+  "agent_session_id": "019fbf59-1000-7000-8000-000000000030",
+  "codex_thread_id": "019fbf59-1000-7000-8000-000000000040",
+  "turn_id": "019fbf59-1000-7000-8000-000000000050",
+  "item_id": "tool-declined-reserved-1",
+  "event_type": "item.completed",
+  "terminal": false,
+  "payload": {
+    "item_type": "mcpToolCall",
+    "status": "declined",
+    "identity": {
+      "resolution": "known",
+      "server_name": "fixture_registry",
+      "tool_name": "reserved_decline_case"
+    },
+    "arguments_summary": {
+      "text": "fixture-only lifecycle metadata",
+      "truncated": false
+    },
+    "error": {
+      "code": "tool_declined",
+      "summary": "reserved schema status with no current Runtime producer"
+    }
+  }
+}
