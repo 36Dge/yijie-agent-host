@@ -124,12 +124,12 @@ Baseline 2 对断线和退出的处理是撤销 readiness、失败所有等待�
 - 只支持 `codex-cli 0.144.6`、`aarch64-apple-darwin` 和 stdio；默认 stable API/`experimentalApi=false`，仅 FEAT-128 图片 exact-local 开关启用时为注册单一 `generate_image` 使用 `experimentalApi=true`；
 - Host 通过绝对 binary/manifest/`CODEX_HOME` 路径消费产物，不使用 URL 连接本地 Runtime；
 - `codex app-server` 参数固定为 `--listen stdio:// --strict-config`；该版本顶层 CLI 不公开 `--session-source`；
-- Runtime 只接受 manifest 固定的单一 FEAT-126 日志安全 patch；canonical `yijie-codex/codex-rs` 仍不得直接修改；
+- Runtime 只接受 manifest 固定的 FEAT-126 日志安全 patch → Owner 授权 FEAT-136 early sandbox-denial lifecycle patch 的精确顺序；canonical `yijie-codex/codex-rs` 仍不得直接修改；
 - 模型认证固定为 MiniMax 中国站按量付费 API Key，endpoint 为 `https://api.minimaxi.com/v1`，模型为 `MiniMax-M3`，wire API 为 Responses；
 - Key 由 Host 显式从环境或 owner-only 文件读取，只以 `MINIMAX_API_KEY` 注入 Runtime；
 - Runtime Home 与 Host Home 独立；Host Home 使用 bbolt 持久化映射，并保存本机 HTTP bearer token；
 - Baseline 2 只支持 read-only/never，不接审批或 MCP；FEAT-128 图片工具是默认关闭且参数封闭的唯一 experimental 例外；
-- 真实模型门禁最多 2 次短请求，人工显式执行，不进入 CI。
+- 真实模型门禁必须人工显式授权并遵守任务级额度，不进入 CI；FEAT-136 fresh Command D4 的当前额度最多 5 次短请求。
 
 ## 必须先确认的决策
 
@@ -146,7 +146,7 @@ Baseline 2 对断线和退出的处理是撤销 readiness、失败所有等待�
 make lint          # gofmt 检查、go vet 和 shell 语法
 make test          # race 单元测试、transport 和故障覆盖
 make runtime-test  # 固定产物握手和 provider/thread 配置，不调用模型
-make runtime-turn-test # 人工显式 MiniMax 垂直切片，最多 2 次短请求
+make runtime-turn-test # 人工显式 MiniMax 垂直切片，须遵守任务级授权；FEAT-136 fresh Command D4 最多 5 次
 make sync-contracts # 从相邻 yijie-contracts 同步固定快照并生成 DTO
 make contract-check # 校验快照、版本、哈希及生成物；make test 会先执行
 make skills-conformance # 重建并验证 yijie-skills@0.3.0 的 38 项双渠道包

@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 contracts_repo="${YIJIE_CONTRACTS_REPO:-$repo_root/../yijie-contracts}"
-required_commit="3c3000a6fbe2f08ab2131a463a1691e867d661b1"
+required_commit="87f94c9aa6d4848cb67aa8a1265bd21474edb0bb"
 required_version="0.7.0"
 legacy_fixture_baseline_commit="3832a6c5e99b2a6365f193280fdb887c8fdbc2de"
 lock_file="$repo_root/api/contracts.lock"

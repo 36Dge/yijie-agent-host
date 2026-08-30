@@ -205,6 +205,91 @@ func TestFEAT136CommandProjectionLifecycleRedactionAndOutputs(t *testing.T) {
 	}
 }
 
+func TestFEAT136CommandFailedNonzeroLifecycleProjection(t *testing.T) {
+	harness := newFEAT136ProjectionHarness(t)
+	const (
+		itemID           = "command-failed-nonzero"
+		processID        = "process-feat136-failed"
+		aggregatedOutput = "safe nonzero exit output"
+		exitCode         = int32(128)
+		durationMS       = int64(37)
+	)
+
+	// Runtime owns the lifecycle and keeps one item/process identity across both
+	// snapshots. The Host correlates the safe projection by item_id and must not
+	// expose the Runtime processId on the v5 wire.
+	startedItem := map[string]any{
+		"id": itemID, "type": "commandExecution", "status": "inProgress",
+		"processId": processID, "cwd": harness.record.Cwd,
+		"command": feat136RawCommandCanary, "commandActions": []any{map[string]any{"type": "read"}},
+	}
+	completedItem := map[string]any{
+		"id": itemID, "type": "commandExecution", "status": "failed",
+		"processId": processID, "cwd": harness.record.Cwd,
+		"command": feat136RawCommandCanary, "commandActions": []any{map[string]any{"type": "read"}},
+		"aggregatedOutput": aggregatedOutput, "exitCode": exitCode, "durationMs": durationMS,
+	}
+	if startedItem["id"] != completedItem["id"] || startedItem["processId"] != completedItem["processId"] {
+		t.Fatalf("Runtime fixture changed item/process identity: started=%+v completed=%+v", startedItem, completedItem)
+	}
+	harness.service.HandleNotification(RuntimeNotificationItemStarted, rawJSON(t, map[string]any{
+		"threadId": testThreadID, "turnId": testTurnID, "item": startedItem,
+	}))
+	harness.service.HandleNotification(RuntimeNotificationItemCompleted, rawJSON(t, map[string]any{
+		"threadId": testThreadID, "turnId": testTurnID, "item": completedItem,
+	}))
+
+	replay := feat136V5Replay(t, harness.service)
+	if len(replay) != 2 || replay[0].EventType != EventItemStarted || replay[1].EventType != EventItemCompleted {
+		t.Fatalf("failed Command lifecycle emitted an unexpected event sequence: %+v", replay)
+	}
+	started, completed := replay[0], replay[1]
+	for _, event := range replay {
+		if event.TaskID != harness.record.TaskID || event.AgentSessionID != harness.record.AgentSessionID ||
+			event.CodexThreadID != harness.record.CodexThreadID || event.TurnID != testTurnID || event.ItemID != itemID {
+			t.Fatalf("failed Command lifecycle changed common identity: %+v", event)
+		}
+	}
+	if started.EventID == completed.EventID || started.StreamID != completed.StreamID {
+		t.Fatalf("failed Command lifecycle lost event or stream identity: started=%+v completed=%+v", started, completed)
+	}
+	if started.Payload.ItemType != "commandExecution" || started.Payload.Status != "running" ||
+		completed.Payload.ItemType != "commandExecution" || completed.Payload.Status != "failed" {
+		t.Fatalf("failed Command lifecycle status projection is invalid: %+v", replay)
+	}
+	if started.Payload.CommandSummary == nil || completed.Payload.CommandSummary == nil ||
+		started.Payload.CommandSummary.Text != completed.Payload.CommandSummary.Text ||
+		started.Payload.CommandCwd == nil || completed.Payload.CommandCwd == nil ||
+		started.Payload.CommandCwd.Kind != completed.Payload.CommandCwd.Kind ||
+		!equalFEAT136Strings(started.Payload.CommandCwd.Segments, completed.Payload.CommandCwd.Segments) {
+		t.Fatalf("failed Command completed snapshot changed its safe display identity: %+v", replay)
+	}
+	if completed.Payload.ExitCode == nil || *completed.Payload.ExitCode != exitCode ||
+		completed.Payload.DurationMS == nil || *completed.Payload.DurationMS != durationMS {
+		t.Fatalf("failed Command omitted nonzero exit or duration: %+v", completed.Payload)
+	}
+	if completed.Payload.Output == nil || completed.Payload.Output.Retention != "complete" ||
+		completed.Payload.Output.Text == nil || *completed.Payload.Output.Text != aggregatedOutput ||
+		completed.Payload.Output.Truncated {
+		t.Fatalf("failed Command omitted authoritative aggregate output: %+v", completed.Payload.Output)
+	}
+	if completed.Payload.ItemError == nil || completed.Payload.ItemError.Code != "command_failed" ||
+		completed.Payload.ItemError.Summary != "命令执行失败" {
+		t.Fatalf("failed Command omitted its stable error: %+v", completed.Payload.ItemError)
+	}
+	validateFEAT136Events(t, compileAgentSessionEventV5Contract(t), replay)
+
+	encoded, err := json.Marshal(replay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{processID, feat136RawCommandCanary} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Fatalf("failed Command projection leaked forbidden Runtime detail %q", forbidden)
+		}
+	}
+}
+
 func TestFEAT136CommandProjectionUTF8AndLiveCaps(t *testing.T) {
 	t.Run("one delta is truncated on a valid UTF-8 boundary", func(t *testing.T) {
 		harness := newFEAT136ProjectionHarness(t)

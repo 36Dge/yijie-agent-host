@@ -16,23 +16,26 @@ import (
 )
 
 const (
-	BaselineName               = "Runtime Baseline 0"
-	ExpectedSchemaVersion      = 1
-	ExpectedUpstreamURL        = "https://github.com/openai/codex.git"
-	ExpectedUpstreamTag        = "rust-v0.144.6"
-	ExpectedUpstreamCommit     = "5d1fbf26c43abc65a203928b2e31561cb039e06d"
-	ExpectedRuntimeVersion     = "0.144.6"
-	ExpectedReportedVersion    = "codex-cli 0.144.6"
-	ExpectedRustToolchain      = "1.95.0"
-	ExpectedTarget             = "aarch64-apple-darwin"
-	ExpectedTransport          = "stdio"
-	ExpectedRuntimeSHA256      = "98910475280a2a8abc10a1c104d4072358121aee33de5fee3dda75418ccf84c1"
-	ExpectedRuntimeSize        = int64(355765224)
-	ExpectedRuntimePatchPath   = ".yijie/patches/0001-feat-126-filter-persistent-diagnostics.patch"
-	ExpectedRuntimePatchSHA256 = "6b337a02caf064c6819fab5c7367a485004c85cce0d42acb06fa6d5003e599a0"
-	ExpectedSchemaTreeSHA256   = "82ee9de771cf1d41bac16d87380f1121e7794107aa3aa526ad702d5d1bf7afe1"
-	ExpectedResolvedLockSHA256 = "5cc77d7dfcc2828d3d389daf5824998c445c01e1d30367b04885813242d53f11"
-	ExpectedUpstreamLockSHA256 = "175793a40a3147db1fee08fd9db0acc59312c344b3513dd7ee316f5446d8119e"
+	BaselineName                  = "Runtime Baseline 0"
+	ExpectedSchemaVersion         = 1
+	ExpectedUpstreamURL           = "https://github.com/openai/codex.git"
+	ExpectedUpstreamTag           = "rust-v0.144.6"
+	ExpectedUpstreamCommit        = "5d1fbf26c43abc65a203928b2e31561cb039e06d"
+	ExpectedRuntimeVersion        = "0.144.6"
+	ExpectedReportedVersion       = "codex-cli 0.144.6"
+	ExpectedRustToolchain         = "1.95.0"
+	ExpectedTarget                = "aarch64-apple-darwin"
+	ExpectedTransport             = "stdio"
+	ExpectedRuntimeSHA256         = "4efe16d2848680752cf9aacf4c17741ab2eeb7415894a66c2bb03652b00a322d"
+	ExpectedRuntimeSize           = int64(355676760)
+	ExpectedRuntimeManifestSHA256 = "1cfa2e0a139b2213f4d29b1efeed71d4810110ac865f0bcbd931ff33b0062c1b"
+	ExpectedRuntimePatch1Path     = ".yijie/patches/0001-feat-126-filter-persistent-diagnostics.patch"
+	ExpectedRuntimePatch1SHA256   = "6b337a02caf064c6819fab5c7367a485004c85cce0d42acb06fa6d5003e599a0"
+	ExpectedRuntimePatch2Path     = ".yijie/patches/0002-feat-136-unified-exec-pre-emitter-command-lifecycle.patch"
+	ExpectedRuntimePatch2SHA256   = "43de168e1443f4b9ca60d7f61e3de2daf20e1cfea14d2e196d28ba417bf3e06d"
+	ExpectedSchemaTreeSHA256      = "82ee9de771cf1d41bac16d87380f1121e7794107aa3aa526ad702d5d1bf7afe1"
+	ExpectedResolvedLockSHA256    = "5cc77d7dfcc2828d3d389daf5824998c445c01e1d30367b04885813242d53f11"
+	ExpectedUpstreamLockSHA256    = "175793a40a3147db1fee08fd9db0acc59312c344b3513dd7ee316f5446d8119e"
 )
 
 type Manifest struct {
@@ -84,13 +87,15 @@ type ManifestBuildLock struct {
 }
 
 type artifactPolicy struct {
-	runtimeSHA256 string
-	runtimeSize   int64
+	runtimeSHA256  string
+	runtimeSize    int64
+	manifestSHA256 string
 }
 
 var runtimeBaseline0Policy = artifactPolicy{
-	runtimeSHA256: ExpectedRuntimeSHA256,
-	runtimeSize:   ExpectedRuntimeSize,
+	runtimeSHA256:  ExpectedRuntimeSHA256,
+	runtimeSize:    ExpectedRuntimeSize,
+	manifestSHA256: ExpectedRuntimeManifestSHA256,
 }
 
 type ArtifactInfo struct {
@@ -124,6 +129,13 @@ func verifyArtifactWithPolicy(
 	manifest, err := readManifest(manifestPath)
 	if err != nil {
 		return ArtifactInfo{}, err
+	}
+	manifestSHA256, err := fileSHA256(manifestPath)
+	if err != nil {
+		return ArtifactInfo{}, fmt.Errorf("hash runtime manifest: %w", err)
+	}
+	if manifestSHA256 != policy.manifestSHA256 {
+		return ArtifactInfo{}, errors.New("runtime manifest SHA-256 does not match pinned artifact")
 	}
 	if err := validateManifest(manifest, policy); err != nil {
 		return ArtifactInfo{}, err
@@ -163,11 +175,6 @@ func verifyArtifactWithPolicy(
 	if strings.TrimSpace(string(output)) != ExpectedReportedVersion {
 		return ArtifactInfo{}, errors.New("runtime reported version does not match baseline")
 	}
-	manifestSHA256, err := fileSHA256(manifestPath)
-	if err != nil {
-		return ArtifactInfo{}, fmt.Errorf("hash runtime manifest: %w", err)
-	}
-
 	return ArtifactInfo{
 		RuntimeVersion:  manifest.Runtime.Version,
 		UpstreamTag:     manifest.Upstream.Tag,
@@ -250,11 +257,15 @@ func validateManifest(manifest Manifest, policy artifactPolicy) error {
 		return errors.New("app-server schema file count does not match baseline")
 	case manifest.AppServer.SchemaTreeSHA256 != ExpectedSchemaTreeSHA256:
 		return errors.New("app-server schema tree SHA-256 does not match baseline")
-	case len(manifest.Patches) != 1:
+	case len(manifest.Patches) != 2:
 		return errors.New("runtime patch count does not match reviewed overlay")
-	case manifest.Patches[0].Path != ExpectedRuntimePatchPath:
+	case manifest.Patches[0].Path != ExpectedRuntimePatch1Path:
 		return errors.New("runtime patch path does not match reviewed overlay")
-	case manifest.Patches[0].SHA256 != ExpectedRuntimePatchSHA256:
+	case manifest.Patches[0].SHA256 != ExpectedRuntimePatch1SHA256:
+		return errors.New("runtime patch SHA-256 does not match reviewed overlay")
+	case manifest.Patches[1].Path != ExpectedRuntimePatch2Path:
+		return errors.New("runtime patch path does not match reviewed overlay")
+	case manifest.Patches[1].SHA256 != ExpectedRuntimePatch2SHA256:
 		return errors.New("runtime patch SHA-256 does not match reviewed overlay")
 	case manifest.BuildLock.SchemaVersion != 1:
 		return errors.New("runtime build lock schema version does not match baseline")

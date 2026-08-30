@@ -308,6 +308,29 @@ func TestVerifyArtifactAcceptsPinnedBaseline(t *testing.T) {
 	}
 }
 
+func TestVerifyArtifactRejectsManifestByteDrift(t *testing.T) {
+	config := newRuntimeFixture(t)
+	file, err := os.OpenFile(config.ManifestPath, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifyArtifactWithPolicy(
+		context.Background(),
+		config.BinaryPath,
+		config.ManifestPath,
+		5*time.Second,
+		*config.testArtifactPolicy,
+	); err == nil {
+		t.Fatal("expected byte-drifted runtime manifest to fail")
+	}
+}
+
 func TestVerifyArtifactRejectsVersionMismatch(t *testing.T) {
 	t.Setenv("YIJIE_FAKE_MODE", "bad_version")
 	config := newRuntimeFixture(t)
@@ -362,21 +385,45 @@ func TestVerifyArtifactRejectsUnexpectedRuntimePatchAuthority(t *testing.T) {
 		mutate func(*Manifest)
 	}{
 		{
-			name: "path",
+			name: "first path",
 			mutate: func(manifest *Manifest) {
 				manifest.Patches[0].Path = ".yijie/patches/unreviewed.patch"
 			},
 		},
 		{
-			name: "digest",
+			name: "first digest",
 			mutate: func(manifest *Manifest) {
 				manifest.Patches[0].SHA256 = strings.Repeat("0", 64)
 			},
 		},
 		{
-			name: "count",
+			name: "missing second",
 			mutate: func(manifest *Manifest) {
-				manifest.Patches = nil
+				manifest.Patches = manifest.Patches[:1]
+			},
+		},
+		{
+			name: "extra",
+			mutate: func(manifest *Manifest) {
+				manifest.Patches = append(manifest.Patches, manifest.Patches[1])
+			},
+		},
+		{
+			name: "reordered",
+			mutate: func(manifest *Manifest) {
+				manifest.Patches[0], manifest.Patches[1] = manifest.Patches[1], manifest.Patches[0]
+			},
+		},
+		{
+			name: "second path",
+			mutate: func(manifest *Manifest) {
+				manifest.Patches[1].Path = ".yijie/patches/unreviewed.patch"
+			},
+		},
+		{
+			name: "second digest",
+			mutate: func(manifest *Manifest) {
+				manifest.Patches[1].SHA256 = strings.Repeat("0", 64)
 			},
 		},
 	}
@@ -395,6 +442,11 @@ func TestVerifyArtifactRejectsUnexpectedRuntimePatchAuthority(t *testing.T) {
 			if err := os.WriteFile(config.ManifestPath, manifestBytes, 0o600); err != nil {
 				t.Fatal(err)
 			}
+			manifestDigest, err := fileSHA256(config.ManifestPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			config.testArtifactPolicy.manifestSHA256 = manifestDigest
 			if _, err := verifyArtifactWithPolicy(
 				context.Background(),
 				config.BinaryPath,
@@ -905,10 +957,16 @@ func newRuntimeFixture(t *testing.T) Config {
 			SchemaTreeSHA256: ExpectedSchemaTreeSHA256,
 			Transport:        ExpectedTransport,
 		},
-		Patches: []ManifestPatch{{
-			Path:   ExpectedRuntimePatchPath,
-			SHA256: ExpectedRuntimePatchSHA256,
-		}},
+		Patches: []ManifestPatch{
+			{
+				Path:   ExpectedRuntimePatch1Path,
+				SHA256: ExpectedRuntimePatch1SHA256,
+			},
+			{
+				Path:   ExpectedRuntimePatch2Path,
+				SHA256: ExpectedRuntimePatch2SHA256,
+			},
+		},
 		BuildLock: ManifestBuildLock{
 			FromVersion:            "0.0.0",
 			NormalizedPackageCount: 132,
@@ -927,6 +985,10 @@ func newRuntimeFixture(t *testing.T) Config {
 	if err := os.WriteFile(manifestPath, manifestBytes, 0o600); err != nil {
 		t.Fatalf("write fake runtime manifest: %v", err)
 	}
+	manifestDigest, err := fileSHA256(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	codexHome := filepath.Join(tempDir, "codex-home")
 	if err := os.Mkdir(codexHome, 0o700); err != nil {
 		t.Fatalf("create fake CODEX_HOME: %v", err)
@@ -940,8 +1002,9 @@ func newRuntimeFixture(t *testing.T) Config {
 	config.RequestTimeout = 5 * time.Second
 	config.ShutdownTimeout = 5 * time.Second
 	config.testArtifactPolicy = &artifactPolicy{
-		runtimeSHA256: digest,
-		runtimeSize:   info.Size(),
+		runtimeSHA256:  digest,
+		runtimeSize:    info.Size(),
+		manifestSHA256: manifestDigest,
 	}
 	return config
 }

@@ -16,7 +16,7 @@ The authoritative sources live in the sibling `yijie-contracts` repository.
 Run `YIJIE_CONTRACTS_REF=<full-contracts-commit> make sync-contracts` from a checkout whose managed contract targets are clean and with a clean sibling `yijie-contracts`. The lock now records the exact FEAT-136 Contracts 0.7.0 commit; it remains an untagged candidate and must not be described as published. The legacy sync reads contract sources from that Git object, not from floating worktree files, and rejects fixture-set drift outside the allowlist. Run `make skills-conformance` against the clean sibling producer fixed by `skills.lock`. A `contracts-vX.Y.Z` tag is used only after an approved supported release exists. Normal Host CI runs `make contract-check` without requiring network access. Do not edit snapshot or generated files by hand.
 
 FEAT-136 uses a narrower safety-scoped path for Contracts `0.7.0` commit
-`3c3000a6fbe2f08ab2131a463a1691e867d661b1`:
+`87f94c9aa6d4848cb67aa8a1265bd21474edb0bb`:
 
 ```bash
 make sync-feat136-contracts

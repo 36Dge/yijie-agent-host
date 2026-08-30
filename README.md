@@ -118,7 +118,8 @@ export YIJIE_FEAT134_STREAMING_ENABLED=true
 export YIJIE_FEAT136_COMMAND_TOOL_ITEMS_ENABLED=true
 ```
 
-该门禁不改变 Runtime pin，不开启 dynamic tools 或 experimental API，也不放宽固定的
+该门禁本身不动态改变 Runtime pin；Host 仅接受已审查的 FEAT-126 → FEAT-136 两 patch
+Runtime artifact。它不开启 dynamic tools 或 experimental API，也不放宽固定的
 `sandbox=read-only` / `approvalPolicy=never`。客户端仍须在 v5 route 上显式协商
 `event_schema_version=5`；关闭 FEAT-136 后 v1-v4 行为不变。
 
@@ -132,7 +133,7 @@ make lint                   # gofmt、go vet 和 shell 语法
 ```
 
 `api/contracts.lock` 固定当前消费的 Contracts `0.7.0` 完整 commit
-`3c3000a6fbe2f08ab2131a463a1691e867d661b1`（该 commit 当前没有 v0.7.0 tag，不能描述为已发布）、
+`87f94c9aa6d4848cb67aa8a1265bd21474edb0bb`（该 commit 当前没有 v0.7.0 tag，不能描述为已发布）、
 `oapi-codegen` identity/version，以及 OpenAPI、Runtime 兼容清单、Agent session
 event v1-v5、ReportDocumentV1 与 Skill Bundle Manifest v1/v2 JSON Schema 的 SHA-256。FEAT-136
 的 scoped checker 只读取普通 OpenAPI/schema/v4-v5 JSON fixture；既有 archive、checksum、
