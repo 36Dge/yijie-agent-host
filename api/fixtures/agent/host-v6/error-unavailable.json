@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "approval_unavailable",
+    "message": "approval authority is unavailable"
+  }
+}

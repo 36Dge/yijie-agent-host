@@ -14,6 +14,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -50,6 +52,7 @@ type Config struct {
 	FakeResponses           FakeResponsesConfig
 	ManagedReasoningProfile ManagedReasoningProfile
 	DynamicToolsEnabled     bool
+	CommandApprovalEnabled  bool
 
 	// testArtifactPolicy is intentionally package-private. Production always
 	// uses the exact Runtime Baseline 0 artifact policy.
@@ -118,6 +121,9 @@ func (c Config) validate() error {
 	if c.DynamicToolsEnabled && !c.MiniMax.Enabled {
 		return errors.New("Runtime dynamic tools require the MiniMax provider")
 	}
+	if c.CommandApprovalEnabled && (!c.MiniMax.Enabled || c.FakeResponses.Enabled || c.DynamicToolsEnabled) {
+		return errors.New("Runtime command approvals require the exact stable MiniMax profile without dynamic tools")
+	}
 	return nil
 }
 
@@ -166,11 +172,13 @@ type Manager struct {
 	exitDone chan struct{}
 	stderr   *tailBuffer
 
-	notificationHandler NotificationHandler
-	dynamicToolHandler  DynamicToolHandler
-	deleteWaiters       map[string]chan struct{}
-	titleCollectors     map[string]*titleCollector
-	pendingTitleStarts  int
+	notificationHandler    NotificationHandler
+	dynamicToolHandler     DynamicToolHandler
+	commandApprovalHandler CommandApprovalHandler
+	runtimeGeneration      string
+	deleteWaiters          map[string]chan struct{}
+	titleCollectors        map[string]*titleCollector
+	pendingTitleStarts     int
 }
 
 func NewManager(config Config, logger *slog.Logger) *Manager {
@@ -185,8 +193,9 @@ func NewManager(config Config, logger *slog.Logger) *Manager {
 			Transport:       ExpectedTransport,
 			ExperimentalAPI: config.DynamicToolsEnabled,
 		},
-		deleteWaiters:   make(map[string]chan struct{}),
-		titleCollectors: make(map[string]*titleCollector),
+		runtimeGeneration: uuid.NewString(),
+		deleteWaiters:     make(map[string]chan struct{}),
+		titleCollectors:   make(map[string]*titleCollector),
 	}
 }
 
@@ -215,10 +224,15 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 	m.mu.Lock()
 	dynamicToolHandler := m.dynamicToolHandler
+	commandApprovalHandler := m.commandApprovalHandler
 	m.mu.Unlock()
 	if m.config.DynamicToolsEnabled && dynamicToolHandler == nil {
 		m.fail("runtime_config_invalid")
 		return errors.New("Runtime dynamic tool handler is not configured")
+	}
+	if m.config.CommandApprovalEnabled && commandApprovalHandler == nil {
+		m.fail("runtime_config_invalid")
+		return errors.New("Runtime command approval handler is not configured")
 	}
 	if m.config.MiniMax.Enabled {
 		if err := prepareMiniMaxCodexHome(m.config.CodexHome, m.config.ManagedReasoningProfile); err != nil {
@@ -445,7 +459,12 @@ func (m *Manager) waitForExit(cmd *exec.Cmd) {
 	}
 	m.status.Ready = false
 	exitDone := m.exitDone
+	approvalHandler := m.commandApprovalHandler
+	generation := m.runtimeGeneration
 	m.mu.Unlock()
+	if approvalHandler != nil && generation != "" {
+		approvalHandler.HandleCommandApprovalGenerationClosed(generation)
+	}
 	if exitDone != nil {
 		close(exitDone)
 	}
@@ -467,7 +486,12 @@ func (m *Manager) handleClientFailure(err error) {
 			m.status.FailureCode = "protocol_failure"
 		}
 	}
+	approvalHandler := m.commandApprovalHandler
+	generation := m.runtimeGeneration
 	m.mu.Unlock()
+	if approvalHandler != nil && generation != "" {
+		approvalHandler.HandleCommandApprovalGenerationClosed(generation)
+	}
 	if state != StateStopping && state != StateStopped && process != nil && process.Process != nil {
 		_ = process.Process.Kill()
 	}
@@ -475,6 +499,32 @@ func (m *Manager) handleClientFailure(err error) {
 
 func (m *Manager) handleNotification(method string, params json.RawMessage) {
 	m.logger.Debug("Codex Runtime notification", "method", method)
+	if method == RuntimeNotificationServerRequestResolved {
+		fields, err := decodeUniqueJSONObject(params, map[string]struct{}{"requestId": {}, "threadId": {}})
+		if err != nil || len(fields) != 2 {
+			m.logger.Warn("discarding malformed Runtime request resolution", "failure_code", "approval_resolution_invalid")
+			return
+		}
+		requestIDKey, err := requestIDKey(fields["requestId"])
+		var threadID string
+		if err != nil || json.Unmarshal(fields["threadId"], &threadID) != nil || threadID == "" {
+			m.logger.Warn("discarding malformed Runtime request resolution", "failure_code", "approval_resolution_invalid")
+			return
+		}
+		m.mu.Lock()
+		handler := m.commandApprovalHandler
+		generation := m.runtimeGeneration
+		enabled := m.config.CommandApprovalEnabled
+		m.mu.Unlock()
+		if enabled && handler != nil && generation != "" {
+			handler.HandleCommandApprovalResolved(CommandApprovalResolved{
+				RuntimeGeneration: generation,
+				RequestIDKey:      requestIDKey,
+				ThreadID:          threadID,
+			})
+		}
+		return
+	}
 	m.mu.Lock()
 	if method == "thread/started" {
 		var notification struct {

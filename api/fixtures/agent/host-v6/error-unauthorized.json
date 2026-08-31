@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "unauthorized",
+    "message": "valid Agent Host bearer token required"
+  }
+}

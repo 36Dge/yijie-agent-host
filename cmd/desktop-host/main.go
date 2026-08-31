@@ -63,7 +63,7 @@ func run(logger *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		serviceOptions := make([]session.ServiceOption, 0, 6)
+		serviceOptions := make([]session.ServiceOption, 0, 7)
 		if config.FEAT134StreamingEnabled {
 			serviceOptions = append(serviceOptions,
 				session.WithV4Events(session.NewEventHubVersion(session.EventSchemaVersionV4, 512, 64)),
@@ -73,6 +73,14 @@ func run(logger *slog.Logger) error {
 		if config.FEAT134StreamingEnabled && config.FEAT136CommandToolItemsEnabled {
 			serviceOptions = append(serviceOptions,
 				session.WithV5Events(session.NewEventHubVersion(session.EventSchemaVersionV5, 512, 64)),
+			)
+		}
+		if config.FEAT134StreamingEnabled && config.FEAT136CommandToolItemsEnabled && config.FEAT137CommandApprovalEnabled {
+			serviceOptions = append(serviceOptions,
+				session.WithV6Approvals(
+					session.NewEventHubVersion(session.EventSchemaVersionV6, 512, 64),
+					config.Runtime.RequestTimeout,
+				),
 			)
 		}
 		if config.FEAT134StreamingEnabled || config.RawReasoningV2Enabled {
@@ -113,6 +121,11 @@ func run(logger *slog.Logger) error {
 		)
 		if config.ImageGenerationEnabled {
 			if err := runtime.SetDynamicToolHandler(sessionService.HandleDynamicToolCall); err != nil {
+				return err
+			}
+		}
+		if config.FEAT137CommandApprovalEnabled {
+			if err := runtime.SetCommandApprovalHandler(sessionService); err != nil {
 				return err
 			}
 		}

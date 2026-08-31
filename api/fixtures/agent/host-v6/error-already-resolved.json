@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "approval_already_resolved",
+    "message": "approval request was already resolved"
+  }
+}

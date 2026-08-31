@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "approval_version_mismatch",
+    "message": "approval schema version does not match"
+  }
+}

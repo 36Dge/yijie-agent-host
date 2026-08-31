@@ -1,0 +1,10 @@
+{
+  "schema_version": 6,
+  "approval_request_id": "66666666-6666-4666-8666-666666666666",
+  "decision_id": "88888888-8888-4888-8888-888888888888",
+  "stream_id": "55555555-5555-4555-8555-555555555555",
+  "revision": 2,
+  "decision": "cancel_current_turn",
+  "outcome": "cancelled_current_turn",
+  "resolved_at": "2026-08-30T12:00:30Z"
+}

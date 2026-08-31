@@ -1,0 +1,7 @@
+{
+  "schema_version": 6,
+  "decision_id": "77777777-7777-4777-8777-777777777777",
+  "expected_stream_id": "55555555-5555-4555-8555-555555555555",
+  "expected_revision": 1,
+  "decision": "accept_once"
+}

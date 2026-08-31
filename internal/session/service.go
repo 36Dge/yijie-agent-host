@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
@@ -35,6 +36,8 @@ const (
 	EventItemArtifactFailed       = "item.artifact.failed"
 	EventTurnPlanUpdated          = "turn.plan.updated"
 	EventTurnCompleted            = "turn.completed"
+	EventApprovalRequested        = "approval.requested"
+	EventApprovalResolved         = "approval.resolved"
 	EventError                    = "error"
 	EventWarning                  = "warning"
 	maxPendingNotifications       = 256
@@ -131,6 +134,7 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 	if err := s.store.DeleteSessionWithReceipt(operationID, sessionID); err != nil {
 		return incompleteCleanup(operationID, "host_mapping_cleanup_failed", "complete", "incomplete", "not_attempted"), nil
 	}
+	s.clearApprovalSession(sessionID)
 	if s.events != nil {
 		s.events.DeleteSession(sessionID)
 	}
@@ -145,6 +149,9 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 	}
 	if s.eventsV5 != nil {
 		s.eventsV5.DeleteSession(sessionID)
+	}
+	if s.eventsV6 != nil {
+		s.eventsV6.DeleteSession(sessionID)
 	}
 	if s.artifacts != nil {
 		s.artifacts.DeleteSession(sessionID)
@@ -205,6 +212,7 @@ type Service struct {
 	eventsV3             *EventHub
 	eventsV4             *EventHub
 	eventsV5             *EventHub
+	eventsV6             *EventHub
 	artifacts            *artifact.Store
 	syntheticArtifacts   bool
 	rawReasoning         bool
@@ -230,6 +238,7 @@ type Service struct {
 	imageGenerator  imagegen.Generator
 	imageMu         sync.Mutex
 	imageTurns      map[string]*imageTurn
+	approvals       *approvalAuthority
 }
 
 type ServiceOption func(*Service)
@@ -257,6 +266,13 @@ func WithV4Events(events *EventHub) ServiceOption {
 
 func WithV5Events(events *EventHub) ServiceOption {
 	return func(service *Service) { service.eventsV5 = events }
+}
+
+func WithV6Approvals(events *EventHub, acknowledgementTimeout time.Duration) ServiceOption {
+	return func(service *Service) {
+		service.eventsV6 = events
+		service.approvals = newApprovalAuthority(acknowledgementTimeout)
+	}
 }
 
 func WithRawReasoningProjection(enabled bool) ServiceOption {
@@ -572,6 +588,22 @@ func (s *Service) SubscribeEventsV5(
 	return s.eventsV5.Subscribe(sessionID, streamID, after)
 }
 
+func (s *Service) SubscribeEventsV6(
+	sessionID, streamID string,
+	after uint64,
+) (string, []Event, <-chan Event, func(), error) {
+	if s.eventsV6 == nil || s.approvals == nil {
+		return "", nil, nil, nil, ErrSessionNotUsable
+	}
+	if err := requireUUID("agent_session_id", sessionID); err != nil {
+		return "", nil, nil, nil, err
+	}
+	if _, err := s.store.Get(sessionID); err != nil {
+		return "", nil, nil, nil, err
+	}
+	return s.eventsV6.Subscribe(sessionID, streamID, after)
+}
+
 func (s *Service) HandleNotification(method string, params json.RawMessage) {
 	if !supportedNotification(method) {
 		return
@@ -579,7 +611,8 @@ func (s *Service) HandleNotification(method string, params json.RawMessage) {
 	// Command deltas and MCP progress are v5-only Runtime notifications. Keep
 	// them completely outside the legacy correlation/pending path when the v5
 	// consumer is disabled so a producer cannot consume shared v1-v4 capacity.
-	if (method == RuntimeNotificationCommandOutputDelta || method == RuntimeNotificationMcpToolProgress) && s.eventsV5 == nil {
+	if (method == RuntimeNotificationCommandOutputDelta || method == RuntimeNotificationMcpToolProgress) &&
+		s.eventsV5 == nil && s.eventsV6 == nil {
 		return
 	}
 	if method == RuntimeNotificationTurnPlanUpdated && s.eventsV4 == nil {
@@ -725,6 +758,9 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		record, err := s.store.GetByThread(notification.ThreadID)
 		if err != nil {
 			return err
+		}
+		if method == RuntimeNotificationItemCompleted {
+			s.resolveApprovalForItem(record, notification.TurnID, notification.Item.ID)
 		}
 		eventType := EventItemStarted
 		var text *string
@@ -896,6 +932,7 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		if err != nil {
 			return err
 		}
+		s.resolveApprovalForTurn(record, notification.Turn.ID)
 		if s.v4SanitizedTerminalPublished(record.AgentSessionID, notification.Turn.ID) {
 			s.clearImageTurn(notification.ThreadID)
 			s.abortSyntheticTerminalBarrier(record.AgentSessionID)

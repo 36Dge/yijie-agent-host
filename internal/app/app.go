@@ -9,12 +9,14 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
@@ -38,6 +40,7 @@ type Config struct {
 	RawReasoningV2Enabled          bool
 	FEAT134StreamingEnabled        bool
 	FEAT136CommandToolItemsEnabled bool
+	FEAT137CommandApprovalEnabled  bool
 	TitleV2Enabled                 bool
 	CleanupV2Enabled               bool
 	MultimodalV2Enabled            bool
@@ -229,6 +232,13 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if err != nil {
 		return Config{}, err
 	}
+	feat137CommandApproval, err := loadFEAT137CommandApprovalProfile(
+		environment, hostHome, feat134Streaming, feat136CommandToolItems, runtimeConfig,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	runtimeConfig.CommandApprovalEnabled = feat137CommandApproval
 	if feat134Streaming {
 		runtimeConfig.ManagedReasoningProfile = codex.ManagedReasoningProfileHighRaw
 	}
@@ -262,6 +272,7 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		RawReasoningV2Enabled:          rawV2,
 		FEAT134StreamingEnabled:        feat134Streaming,
 		FEAT136CommandToolItemsEnabled: feat136CommandToolItems,
+		FEAT137CommandApprovalEnabled:  feat137CommandApproval,
 		TitleV2Enabled:                 titleV2,
 		CleanupV2Enabled:               cleanupV2,
 		MultimodalV2Enabled:            multimodalV2,
@@ -319,6 +330,30 @@ func loadFEAT136CommandToolItemsProfile(environment string, feat134Streaming boo
 	}
 	if !feat134Streaming {
 		return false, errors.New("FEAT-136 Command and Tool items require FEAT-134 streaming")
+	}
+	return true, nil
+}
+
+func loadFEAT137CommandApprovalProfile(
+	environment, hostHome string,
+	feat134Streaming, feat136CommandToolItems bool,
+	runtimeConfig codex.Config,
+) (bool, error) {
+	enabled, err := exactBoolEnv("YIJIE_FEAT137_COMMAND_APPROVAL_ENABLED")
+	if err != nil || !enabled {
+		return false, err
+	}
+	rawEnvironment, environmentSet := os.LookupEnv("YIJIE_ENV")
+	localProfile, profileSet := os.LookupEnv("YIJIE_LOCAL_PROFILE")
+	if !environmentSet || !profileSet || rawEnvironment != "local" || environment != "local" || localProfile != "demo_fast" {
+		return false, errors.New("FEAT-137 Command approval requires the exact explicit local demo_fast profile")
+	}
+	if !feat134Streaming || !feat136CommandToolItems {
+		return false, errors.New("FEAT-137 Command approval requires FEAT-134 streaming and FEAT-136 Command items")
+	}
+	if !canonicalAbsolutePath(hostHome) || !runtimeConfig.MiniMax.Enabled || runtimeConfig.FakeResponses.Enabled ||
+		runtimeConfig.DynamicToolsEnabled {
+		return false, errors.New("FEAT-137 Command approval requires the stable read-only managed Runtime profile")
 	}
 	return true, nil
 }
@@ -615,6 +650,12 @@ type feat136SessionService interface {
 	SubscribeEventsV5(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)
 }
 
+type feat137SessionService interface {
+	SubscribeEventsV6(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)
+	PendingApprovals(string) (session.PendingApprovalSnapshot, error)
+	DecideApproval(context.Context, string, string, session.ApprovalDecisionInput) (session.ApprovalDecisionResult, error)
+}
+
 func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionService, apiToken string, options ...HandlerOption) http.Handler {
 	handlerOptions := handlerOptions{}
 	for _, option := range options {
@@ -720,6 +761,14 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 		if config.FEAT134StreamingEnabled && config.FEAT136CommandToolItemsEnabled {
 			if _, ok := sessions.(feat136SessionService); ok {
 				mux.Handle("GET /v5/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.eventsV5)))
+			}
+		}
+		if config.Environment == "local" && config.FEAT134StreamingEnabled && config.FEAT136CommandToolItemsEnabled &&
+			config.FEAT137CommandApprovalEnabled && config.Runtime.CommandApprovalEnabled {
+			if _, ok := sessions.(feat137SessionService); ok {
+				mux.Handle("GET /v6/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.eventsV6)))
+				mux.Handle("GET /v6/agent-sessions/{agent_session_id}/approvals/pending", handler.authorize(http.HandlerFunc(handler.pendingApprovalsV6)))
+				mux.Handle("POST /v6/agent-sessions/{agent_session_id}/approvals/{approval_request_id}/decision", handler.authorize(http.HandlerFunc(handler.decideApprovalV6)))
 			}
 		}
 	}
@@ -946,6 +995,395 @@ func (h *sessionHandler) eventsV5(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("X-Yijie-Event-Schema-Version", "5")
 	h.streamEvents(w, r, service.SubscribeEventsV5)
+}
+
+func (h *sessionHandler) eventsV6(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidRequest, "request parameters are invalid")
+		return
+	}
+	service, ok := h.service.(feat137SessionService)
+	if !ok {
+		writeSessionError(w, session.ErrSessionNotUsable)
+		return
+	}
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event query is invalid")
+		return
+	}
+	for key, values := range query {
+		if key != "event_schema_version" && key != "stream_id" && key != "after" {
+			writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event query is invalid")
+			return
+		}
+		if len(values) != 1 {
+			writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event query is invalid")
+			return
+		}
+	}
+	if values := query["event_schema_version"]; len(values) != 1 || values[0] != "6" {
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event_schema_version=6 is required")
+		return
+	}
+	sessionID, valid := normalizeUUIDV6(r.PathValue("agent_session_id"))
+	if !valid {
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidRequest, "request parameters are invalid")
+		return
+	}
+	lastEventIDs := r.Header.Values("Last-Event-ID")
+	if len(lastEventIDs) > 1 {
+		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event cursor is invalid")
+		return
+	}
+	lastEventID := ""
+	if len(lastEventIDs) == 1 {
+		streamID, sequence, found := strings.Cut(lastEventIDs[0], ":")
+		normalized, valid := normalizeUUIDV6(streamID)
+		if !found || !valid || sequence == "" {
+			writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event cursor is invalid")
+			return
+		}
+		lastEventID = normalized + ":" + sequence
+	} else {
+		if values, present := query["stream_id"]; present {
+			normalized, valid := normalizeUUIDV6(values[0])
+			if !valid {
+				writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event cursor is invalid")
+				return
+			}
+			query.Set("stream_id", normalized)
+		}
+		if values, present := query["after"]; present && values[0] == "" {
+			writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event cursor is invalid")
+			return
+		}
+	}
+	normalizedRequest := r.Clone(r.Context())
+	normalizedRequest.SetPathValue("agent_session_id", sessionID)
+	normalizedRequest.URL.RawQuery = query.Encode()
+	if lastEventID != "" {
+		normalizedRequest.Header.Set("Last-Event-ID", lastEventID)
+	}
+	w.Header().Set("X-Yijie-Event-Schema-Version", "6")
+	h.streamEvents(w, normalizedRequest, service.SubscribeEventsV6)
+}
+
+func (h *sessionHandler) pendingApprovalsV6(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeApprovalError(w, session.ApprovalErrorInvalidRequest)
+		return
+	}
+	service, ok := h.service.(feat137SessionService)
+	if !ok {
+		writeApprovalError(w, session.ApprovalErrorUnavailable)
+		return
+	}
+	if r.URL.RawQuery != "" {
+		writeApprovalError(w, session.ApprovalErrorInvalidRequest)
+		return
+	}
+	sessionIDPath, valid := normalizeUUIDV6(r.PathValue("agent_session_id"))
+	if !valid {
+		writeApprovalError(w, session.ApprovalErrorInvalidRequest)
+		return
+	}
+	snapshot, err := service.PendingApprovals(sessionIDPath)
+	if err != nil {
+		writePendingApprovalServiceError(w, err)
+		return
+	}
+	if !validPendingApprovalSnapshotV6(sessionIDPath, snapshot) {
+		writeApprovalError(w, session.ApprovalErrorInternal)
+		return
+	}
+	streamID, err := uuid.Parse(snapshot.StreamID)
+	if err != nil {
+		writeApprovalError(w, session.ApprovalErrorInternal)
+		return
+	}
+	pending := make([]agenthostcontract.PendingApprovalV6, 0, len(snapshot.Pending))
+	for _, item := range snapshot.Pending {
+		approvalID, approvalErr := uuid.Parse(item.ApprovalRequestID)
+		taskID, taskErr := uuid.Parse(item.TaskID)
+		sessionID, sessionErr := uuid.Parse(item.AgentSessionID)
+		threadID, threadErr := uuid.Parse(item.CodexThreadID)
+		turnID, turnErr := uuid.Parse(item.TurnID)
+		if approvalErr != nil || taskErr != nil || sessionErr != nil || threadErr != nil || turnErr != nil {
+			writeApprovalError(w, session.ApprovalErrorInternal)
+			return
+		}
+		pending = append(pending, agenthostcontract.PendingApprovalV6{
+			ApprovalRequestId: approvalID, Revision: agenthostcontract.PendingApprovalV6Revision(item.Revision),
+			TaskId: taskID, AgentSessionId: sessionID, CodexThreadId: threadID, TurnId: turnID,
+			ItemId: item.ItemID, ActionId: agenthostcontract.PendingApprovalV6ActionId(item.ActionID),
+			WorkspaceScope: agenthostcontract.PendingApprovalV6WorkspaceScope(item.WorkspaceScope),
+			Decisions: agenthostcontract.ApprovalDecisionSetV6{
+				Primary:   agenthostcontract.ApprovalDecisionSetV6PrimaryAcceptOnce,
+				Secondary: agenthostcontract.ApprovalDecisionSetV6SecondaryCancelCurrentTurn,
+			},
+			RequestedAt: item.RequestedAt, ExpiresAt: item.ExpiresAt,
+			TtlSeconds: agenthostcontract.PendingApprovalV6TtlSeconds(item.TTLSeconds),
+		})
+	}
+	writeJSON(w, http.StatusOK, agenthostcontract.PendingApprovalSnapshotV6{
+		SchemaVersion: agenthostcontract.PendingApprovalSnapshotV6SchemaVersion(snapshot.SchemaVersion),
+		StreamId:      streamID, SnapshotAt: snapshot.SnapshotAt, Pending: pending,
+	})
+}
+
+func (h *sessionHandler) decideApprovalV6(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(feat137SessionService)
+	if !ok {
+		writeApprovalError(w, session.ApprovalErrorUnavailable)
+		return
+	}
+	if r.URL.RawQuery != "" {
+		writeApprovalError(w, session.ApprovalErrorInvalidRequest)
+		return
+	}
+	sessionIDPath, validSessionID := normalizeUUIDV6(r.PathValue("agent_session_id"))
+	approvalIDPath, validApprovalID := normalizeUUIDV6(r.PathValue("approval_request_id"))
+	if !validSessionID || !validApprovalID {
+		writeApprovalError(w, session.ApprovalErrorInvalidRequest)
+		return
+	}
+	request, versionMismatch, err := decodeApprovalDecisionV6Request(w, r)
+	if err != nil {
+		writeApprovalError(w, session.ApprovalErrorInvalidRequest)
+		return
+	}
+	if versionMismatch {
+		writeApprovalError(w, session.ApprovalErrorVersionMismatch)
+		return
+	}
+	input := session.ApprovalDecisionInput{
+		SchemaVersion: int(request.SchemaVersion), DecisionID: request.DecisionId.String(),
+		ExpectedStreamID: request.ExpectedStreamId.String(), ExpectedRevision: int64(request.ExpectedRevision),
+		Decision: string(request.Decision),
+	}
+	result, err := service.DecideApproval(
+		r.Context(), sessionIDPath, approvalIDPath, input,
+	)
+	if err != nil {
+		writeApprovalServiceError(w, err)
+		return
+	}
+	if !validApprovalDecisionResultV6(approvalIDPath, input, result) {
+		writeApprovalError(w, session.ApprovalErrorInternal)
+		return
+	}
+	approvalID, approvalErr := uuid.Parse(result.ApprovalRequestID)
+	decisionID, decisionErr := uuid.Parse(result.DecisionID)
+	streamID, streamErr := uuid.Parse(result.StreamID)
+	if approvalErr != nil || decisionErr != nil || streamErr != nil {
+		writeApprovalError(w, session.ApprovalErrorInternal)
+		return
+	}
+	writeJSON(w, http.StatusOK, agenthostcontract.ApprovalDecisionV6Response{
+		SchemaVersion:     agenthostcontract.ApprovalDecisionV6ResponseSchemaVersion(result.SchemaVersion),
+		ApprovalRequestId: approvalID, DecisionId: decisionID, StreamId: streamID,
+		Revision:   agenthostcontract.ApprovalDecisionV6ResponseRevision(result.Revision),
+		Decision:   agenthostcontract.ApprovalDecisionNameV6(result.Decision),
+		Outcome:    agenthostcontract.ApprovalDecisionV6ResponseOutcome(result.Outcome),
+		ResolvedAt: result.ResolvedAt,
+	})
+}
+
+func decodeApprovalDecisionV6Request(
+	w http.ResponseWriter,
+	r *http.Request,
+) (agenthostcontract.ApprovalDecisionV6Request, bool, error) {
+	contentTypes := r.Header.Values("Content-Type")
+	if len(contentTypes) != 1 {
+		return agenthostcontract.ApprovalDecisionV6Request{}, false, errors.New("exactly one Content-Type is required")
+	}
+	mediaType, _, err := mime.ParseMediaType(contentTypes[0])
+	if err != nil || mediaType != "application/json" {
+		return agenthostcontract.ApprovalDecisionV6Request{}, false, errors.New("Content-Type must be application/json")
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	decoder := json.NewDecoder(r.Body)
+	opening, err := decoder.Token()
+	if err != nil || opening != json.Delim('{') {
+		return agenthostcontract.ApprovalDecisionV6Request{}, false, errors.New("approval decision must be an object")
+	}
+	allowed := map[string]struct{}{
+		"schema_version": {}, "decision_id": {}, "expected_stream_id": {},
+		"expected_revision": {}, "decision": {},
+	}
+	fields := make(map[string]json.RawMessage, len(allowed))
+	for decoder.More() {
+		token, tokenErr := decoder.Token()
+		name, ok := token.(string)
+		if tokenErr != nil || !ok {
+			return agenthostcontract.ApprovalDecisionV6Request{}, false, errors.New("approval decision has an invalid field")
+		}
+		if _, known := allowed[name]; !known {
+			return agenthostcontract.ApprovalDecisionV6Request{}, false, errors.New("approval decision has an unknown field")
+		}
+		if _, duplicate := fields[name]; duplicate {
+			return agenthostcontract.ApprovalDecisionV6Request{}, false, errors.New("approval decision has a duplicate field")
+		}
+		var raw json.RawMessage
+		if err := decoder.Decode(&raw); err != nil {
+			return agenthostcontract.ApprovalDecisionV6Request{}, false, err
+		}
+		fields[name] = append(json.RawMessage(nil), raw...)
+	}
+	closing, err := decoder.Token()
+	if err != nil || closing != json.Delim('}') {
+		return agenthostcontract.ApprovalDecisionV6Request{}, false, errors.New("approval decision object is not closed")
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return agenthostcontract.ApprovalDecisionV6Request{}, false, errors.New("approval decision has trailing content")
+	}
+	if len(fields) != len(allowed) {
+		return agenthostcontract.ApprovalDecisionV6Request{}, false, errors.New("approval decision omitted a required field")
+	}
+
+	var schemaVersion int
+	if json.Unmarshal(fields["schema_version"], &schemaVersion) != nil {
+		return agenthostcontract.ApprovalDecisionV6Request{}, false, errors.New("approval schema version is invalid")
+	}
+	if schemaVersion != int(agenthostcontract.ApprovalDecisionV6RequestSchemaVersionN6) {
+		return agenthostcontract.ApprovalDecisionV6Request{}, true, nil
+	}
+	var decisionIDText, streamIDText, decisionText string
+	var expectedRevision int64
+	if json.Unmarshal(fields["decision_id"], &decisionIDText) != nil ||
+		json.Unmarshal(fields["expected_stream_id"], &streamIDText) != nil ||
+		json.Unmarshal(fields["expected_revision"], &expectedRevision) != nil ||
+		json.Unmarshal(fields["decision"], &decisionText) != nil {
+		return agenthostcontract.ApprovalDecisionV6Request{}, false, errors.New("approval decision field is invalid")
+	}
+	decisionIDText, validDecisionID := normalizeUUIDV6(decisionIDText)
+	streamIDText, validStreamID := normalizeUUIDV6(streamIDText)
+	if !validDecisionID || !validStreamID {
+		return agenthostcontract.ApprovalDecisionV6Request{}, false, errors.New("approval decision UUID is invalid")
+	}
+	decisionID, _ := uuid.Parse(decisionIDText)
+	streamID, _ := uuid.Parse(streamIDText)
+	request := agenthostcontract.ApprovalDecisionV6Request{
+		SchemaVersion:    agenthostcontract.ApprovalDecisionV6RequestSchemaVersion(schemaVersion),
+		DecisionId:       decisionID,
+		ExpectedStreamId: streamID,
+		ExpectedRevision: agenthostcontract.ApprovalDecisionV6RequestExpectedRevision(expectedRevision),
+		Decision:         agenthostcontract.ApprovalDecisionNameV6(decisionText),
+	}
+	if !request.ExpectedRevision.Valid() || !request.Decision.Valid() {
+		return agenthostcontract.ApprovalDecisionV6Request{}, false, errors.New("approval decision enum is invalid")
+	}
+	return request, false, nil
+}
+
+func normalizeUUIDV6(value string) (string, bool) {
+	parsed, err := uuid.Parse(value)
+	if err != nil || parsed == uuid.Nil || len(value) != 36 || !strings.EqualFold(parsed.String(), value) {
+		return "", false
+	}
+	return parsed.String(), true
+}
+
+func validPendingApprovalSnapshotV6(sessionID string, snapshot session.PendingApprovalSnapshot) bool {
+	if snapshot.SchemaVersion != 6 || !isCanonicalUUID(snapshot.StreamID) || snapshot.SnapshotAt.IsZero() ||
+		len(snapshot.Pending) > 1 {
+		return false
+	}
+	for _, pending := range snapshot.Pending {
+		if !isCanonicalUUID(pending.ApprovalRequestID) || !isCanonicalUUID(pending.TaskID) ||
+			!isCanonicalUUID(pending.AgentSessionID) || pending.AgentSessionID != sessionID ||
+			!isCanonicalUUID(pending.CodexThreadID) || !isCanonicalUUID(pending.TurnID) ||
+			pending.Revision != 1 || pending.ItemID == "" || utf8.RuneCountInString(pending.ItemID) > 256 ||
+			len(pending.ItemID) > 1024 || pending.ActionID != "git_repository_check" ||
+			pending.WorkspaceScope != "current_workspace" || pending.TTLSeconds != 120 ||
+			pending.RequestedAt.IsZero() || pending.ExpiresAt.Sub(pending.RequestedAt) != 120*time.Second ||
+			snapshot.SnapshotAt.Before(pending.RequestedAt) || !snapshot.SnapshotAt.Before(pending.ExpiresAt) {
+			return false
+		}
+	}
+	return true
+}
+
+func validApprovalDecisionResultV6(
+	approvalID string,
+	input session.ApprovalDecisionInput,
+	result session.ApprovalDecisionResult,
+) bool {
+	if result.SchemaVersion != 6 || result.ApprovalRequestID != approvalID || result.DecisionID != input.DecisionID ||
+		result.StreamID != input.ExpectedStreamID || result.Revision != 2 || result.Decision != input.Decision ||
+		!isCanonicalUUID(result.ApprovalRequestID) || !isCanonicalUUID(result.DecisionID) ||
+		!isCanonicalUUID(result.StreamID) || result.ResolvedAt.IsZero() {
+		return false
+	}
+	return (result.Decision == "accept_once" && result.Outcome == "accepted_once") ||
+		(result.Decision == "cancel_current_turn" && result.Outcome == "cancelled_current_turn")
+}
+
+func writeApprovalServiceError(w http.ResponseWriter, err error) {
+	if errors.Is(err, session.ErrNotFound) {
+		writeApprovalError(w, "session_not_found")
+		return
+	}
+	var approvalErr *session.ApprovalError
+	if errors.As(err, &approvalErr) {
+		writeApprovalError(w, approvalErr.Code)
+		return
+	}
+	writeApprovalError(w, session.ApprovalErrorInternal)
+}
+
+func writePendingApprovalServiceError(w http.ResponseWriter, err error) {
+	if errors.Is(err, session.ErrNotFound) {
+		writeApprovalError(w, "session_not_found")
+		return
+	}
+	var approvalErr *session.ApprovalError
+	if errors.As(err, &approvalErr) {
+		switch approvalErr.Code {
+		case session.ApprovalErrorInvalidRequest:
+			writeApprovalError(w, session.ApprovalErrorInvalidRequest)
+		case session.ApprovalErrorInternal:
+			writeApprovalError(w, session.ApprovalErrorInternal)
+		default:
+			// The frozen pending-snapshot surface has no 503 response. Any
+			// unavailable internal authority therefore remains a closed 500
+			// instead of widening the immutable v6 HTTP contract.
+			writeApprovalError(w, session.ApprovalErrorInternal)
+		}
+		return
+	}
+	writeApprovalError(w, session.ApprovalErrorInternal)
+}
+
+func writeApprovalError(w http.ResponseWriter, code string) {
+	status := http.StatusInternalServerError
+	message := "approval processing failed"
+	switch code {
+	case session.ApprovalErrorInvalidRequest:
+		status, message = http.StatusBadRequest, "approval request is invalid"
+	case session.ApprovalErrorVersionMismatch:
+		status, message = http.StatusBadRequest, "approval schema version does not match"
+	case "session_not_found":
+		status, message = http.StatusNotFound, "agent session was not found"
+	case session.ApprovalErrorNotFound:
+		status, message = http.StatusNotFound, "approval request was not found"
+	case session.ApprovalErrorStale:
+		status, message = http.StatusConflict, "approval request is stale"
+	case session.ApprovalErrorExpired:
+		status, message = http.StatusConflict, "approval request expired"
+	case session.ApprovalErrorAlreadyResolved:
+		status, message = http.StatusConflict, "approval request was already resolved"
+	case session.ApprovalErrorDecisionConflict:
+		status, message = http.StatusConflict, "approval decision conflicts with the existing decision"
+	case session.ApprovalErrorUnavailable:
+		status, message = http.StatusServiceUnavailable, "approval authority is unavailable"
+	case session.ApprovalErrorInternal:
+		status, message = http.StatusInternalServerError, "approval processing failed"
+	default:
+		code = session.ApprovalErrorInternal
+	}
+	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
 }
 
 func (h *sessionHandler) artifactContent(w http.ResponseWriter, r *http.Request) {

@@ -22,7 +22,7 @@ info:
     This document is authoritative for HTTP paths, authentication, request and
     response envelopes, status codes, headers, and SSE framing. The JSON value
     carried by each SSE `data` line is governed by the explicitly negotiated
-    AgentSessionEvent v1, v2, v3, v4, or v5 JSON Schema, not by a duplicate OpenAPI schema.
+    AgentSessionEvent v1, v2, v3, v4, v5, or v6 JSON Schema, not by a duplicate OpenAPI schema.
   contact:
     name: Yijie Agent Host owners
 servers:
@@ -43,6 +43,8 @@ tags:
     description: Text turn lifecycle operations for one Agent session.
   - name: Events
     description: Process-local, bounded SSE replay and live delivery.
+  - name: Approvals
+    description: Owner-only FEAT-137 v6 pending snapshot and one-shot local Command decisions.
   - name: Artifacts
     description: Owner-only v3 structured-artifact content, poster, and commit acknowledgement.
   - name: Skills
@@ -1139,6 +1141,197 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /v6/agent-sessions/{agent_session_id}/events:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+    get:
+      operationId: streamAgentSessionEventsV6
+      summary: Replay and stream explicitly negotiated Agent session events v6
+      description: |
+        Opens the v6 Server-Sent Events stream. The required
+        `event_schema_version=6` query parameter prevents accidental v6 output to
+        an older consumer. V6 preserves every v5 event family and adds only the
+        closed FEAT-137 `approval.requested` and `approval.resolved` lifecycle.
+        V1-v5 paths, schemas, event unions, and semantics remain unchanged.
+
+        Approval events bind the Host-minted opaque `approval_request_id` to the
+        enclosing task/session/thread/turn/item identity. They expose only the
+        fixed `git_repository_check` action, `current_workspace` scope, exact
+        `accept_once` then `cancel_current_turn` decisions, timestamps, revision,
+        and stable resolution. Runtime RequestId/approvalId, command, cwd, reason,
+        permissions, amendments, availableDecisions, and raw Runtime wire are
+        forbidden. Approval events alone are not action authority: after a normal
+        reconnect the Desktop must read the owner-only pending snapshot before
+        enabling a decision.
+
+        Pending lifetime is exactly 120 seconds measured from Host receive time.
+        TTL winning the first-writer-wins race maps once to the same Runtime
+        reverse request as decision `cancel` and emits `expired`. If Runtime,
+        Item, or Turn cleanup wins first, Host emits `resolved_elsewhere` and does
+        not respond again. At-least-once SSE delivery is deduplicated only by
+        `event_id`; only `turn.completed` is terminal for the Turn.
+      tags: [Events]
+      externalDocs:
+        description: Authoritative AgentSessionEventV6 JSON Schema
+        url: https://contracts.yijie.ai/agent/session-event-v6.schema.json
+      parameters:
+        - $ref: "#/components/parameters/EventSchemaVersionV6"
+        - $ref: "#/components/parameters/EventStreamId"
+        - $ref: "#/components/parameters/EventAfter"
+        - $ref: "#/components/parameters/LastEventId"
+      responses:
+        "200":
+          description: Retained v6 events were replayed and the connection is subscribed for live v6 events.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+            X-Accel-Buffering:
+              description: Disables reverse-proxy response buffering.
+              required: true
+              schema:
+                type: string
+                enum: ["no"]
+            X-Yijie-Event-Stream-ID:
+              description: Actual process-local stream identifier used by every returned SSE event ID.
+              required: true
+              schema:
+                type: string
+                format: uuid
+            X-Yijie-Event-Schema-Version:
+              description: Confirms that every returned data event uses AgentSessionEventV6.
+              required: true
+              schema:
+                type: integer
+                enum: [6]
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: UTF-8 SSE frames whose compact data values validate as AgentSessionEventV6 and do not exceed 1 MiB.
+                x-yijie-event-data-schema: ../../jsonschema/agent/session-event-v6.schema.json
+        "400":
+          description: "`invalid_request` or `invalid_event_cursor`: schema negotiation, identifier, or cursor is invalid."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SessionNotFound"
+        "409":
+          description: "`event_stream_changed` or `event_replay_unavailable`: the requested v6 cursor cannot be resumed safely."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "`streaming_unsupported` or `internal_error`: the v6 stream cannot be served safely."
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v6/agent-sessions/{agent_session_id}/approvals/pending:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+    get:
+      operationId: getPendingAgentApprovalsV6
+      summary: Read the current Host-authoritative pending approval snapshot
+      description: |
+        Returns the process-local, memory-only pending FEAT-137 approval snapshot.
+        The Desktop must read this snapshot after reconnect before enabling an
+        approval action. An empty array is authoritative for the current Host
+        `stream_id`; SQLCipher or replayed SSE history cannot restore a clickable
+        approval. A pending row is revision 1 and its requested/expires timestamps
+        are exactly 120 seconds apart; `snapshot_at` must be inside that live
+        interval. The response never contains Runtime identity, startedAtMs,
+        command/actions, cwd, environment identity, reason, network context,
+        permission, amendment, secret, or raw wire fields.
+      tags: [Approvals]
+      responses:
+        "200":
+          description: Current memory-only pending approval snapshot.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingApprovalSnapshotV6"
+        "400":
+          $ref: "#/components/responses/ApprovalBadRequestV6"
+        "401":
+          $ref: "#/components/responses/ApprovalUnauthorizedV6"
+        "404":
+          $ref: "#/components/responses/ApprovalSessionNotFoundV6"
+        "500":
+          $ref: "#/components/responses/ApprovalInternalErrorV6"
+  /v6/agent-sessions/{agent_session_id}/approvals/{approval_request_id}/decision:
+    parameters:
+      - $ref: "#/components/parameters/AgentSessionId"
+      - $ref: "#/components/parameters/ApprovalRequestIdV6"
+    post:
+      operationId: decideAgentApprovalV6
+      summary: Submit one closed decision to the current pending approval
+      description: |
+        Submits exactly one `accept_once` or `cancel_current_turn` decision for a
+        Host-authoritative pending approval. `expected_stream_id` and
+        `expected_revision` fail closed across Host restart, replay, expiry, and
+        stale UI. The first valid writer wins. While the content-free resolved
+        record remains in the bounded 128-record session audit, repeating the same
+        `decision_id` and identical body returns the identical original 200
+        response; reusing it with different content returns
+        `approval_decision_conflict`. After eviction, retry returns
+        `approval_not_found` and can never reopen authority. The Desktop does not
+        automatically retry an unknown transport result and first reconciles
+        through the pending snapshot.
+
+        `accept_once` maps only to Runtime decision `accept` under the existing
+        read-only sandbox. `cancel_current_turn`, including Host TTL expiry, maps
+        only to Runtime decision `cancel`; malformed, decline, session approval,
+        policy/network amendment, permission expansion, and unsandboxed retry are
+        not representable. HTTP 200 is returned only after Host observes the
+        stable Runtime `serverRequest/resolved` notification for the exact
+        Runtime generation, RequestId, and thread; otherwise it returns a closed
+        error and Desktop reconciles by snapshot.
+      tags: [Approvals]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalDecisionV6Request"
+      responses:
+        "200":
+          description: The decision was accepted or an identical idempotent response was returned.
+          headers:
+            Cache-Control:
+              $ref: "#/components/headers/NoStore"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalDecisionV6Response"
+        "400":
+          $ref: "#/components/responses/ApprovalBadRequestV6"
+        "401":
+          $ref: "#/components/responses/ApprovalUnauthorizedV6"
+        "404":
+          $ref: "#/components/responses/ApprovalNotFoundV6"
+        "409":
+          $ref: "#/components/responses/ApprovalConflictV6"
+        "500":
+          $ref: "#/components/responses/ApprovalInternalErrorV6"
+        "503":
+          $ref: "#/components/responses/ApprovalUnavailableV6"
   /v3/agent-sessions/{agent_session_id}/artifacts/{artifact_id}/content:
     parameters:
       - $ref: "#/components/parameters/AgentSessionId"
@@ -1636,6 +1829,23 @@ components:
         type: integer
         format: int32
         enum: [5]
+    EventSchemaVersionV6:
+      name: event_schema_version
+      in: query
+      required: true
+      description: Explicit negotiation guard. Only integer value 6 is accepted on the v6 event stream.
+      schema:
+        type: integer
+        format: int32
+        enum: [6]
+    ApprovalRequestIdV6:
+      name: approval_request_id
+      in: path
+      required: true
+      description: Host-minted opaque approval UUID; never a Runtime RequestId or Runtime approvalId.
+      schema:
+        type: string
+        format: uuid
     ByteRange:
       name: Range
       in: header
@@ -1717,6 +1927,80 @@ components:
             error:
               code: internal_error
               message: Agent Host operation failed
+    ApprovalBadRequestV6:
+      description: "`invalid_approval_request` or `approval_version_mismatch`: the closed v6 request, identifier, or schema version is invalid."
+      x-yijie-error-codes: [invalid_approval_request, approval_version_mismatch]
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApprovalBadRequestErrorResponseV6"
+    ApprovalUnauthorizedV6:
+      description: "`unauthorized`: a valid owner-only local Agent Host bearer token is required."
+      x-yijie-error-codes: [unauthorized]
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApprovalUnauthorizedErrorResponseV6"
+    ApprovalSessionNotFoundV6:
+      description: "`session_not_found`: the scoped Agent session does not exist."
+      x-yijie-error-codes: [session_not_found]
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApprovalSessionNotFoundErrorResponseV6"
+    ApprovalNotFoundV6:
+      description: "`session_not_found` or `approval_not_found`: the scoped session or opaque approval does not exist."
+      x-yijie-error-codes: [session_not_found, approval_not_found]
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApprovalNotFoundErrorResponseV6"
+    ApprovalConflictV6:
+      description: "The pending authority rejected a stale, expired, duplicate, already-resolved, or conflicting decision."
+      x-yijie-error-codes:
+        - approval_stale
+        - approval_expired
+        - approval_already_resolved
+        - approval_decision_conflict
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApprovalConflictErrorResponseV6"
+    ApprovalUnavailableV6:
+      description: "`approval_unavailable`: Runtime or Host pending authority cannot safely accept a decision. The Desktop reconciles by snapshot and does not automatically retry."
+      x-yijie-error-codes: [approval_unavailable]
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApprovalUnavailableErrorResponseV6"
+    ApprovalInternalErrorV6:
+      description: "`internal_error`: approval processing failed without exposing Runtime wire, command, cwd, reason, path, or secret."
+      x-yijie-error-codes: [internal_error]
+      headers:
+        Cache-Control:
+          $ref: "#/components/headers/NoStore"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApprovalInternalErrorResponseV6"
     SkillBadRequest:
       description: "`invalid_request`: the operation ID, Skill ID, version, digest, catalog revision, or closed request body is invalid."
       x-yijie-error-codes: [invalid_request]
@@ -2922,6 +3206,361 @@ components:
         updated_at:
           type: string
           format: date-time
+    ApprovalDecisionNameV6:
+      type: string
+      enum: [accept_once, cancel_current_turn]
+    ApprovalDecisionSetV6:
+      type: object
+      additionalProperties: false
+      required: [primary, secondary]
+      properties:
+        primary:
+          type: string
+          enum: [accept_once]
+        secondary:
+          type: string
+          enum: [cancel_current_turn]
+      description: Fixed presentation order. `accept_once` is primary and `cancel_current_turn` is secondary; no Runtime-provided decision widens this set.
+    PendingApprovalV6:
+      type: object
+      additionalProperties: false
+      required:
+        - approval_request_id
+        - revision
+        - task_id
+        - agent_session_id
+        - codex_thread_id
+        - turn_id
+        - item_id
+        - action_id
+        - workspace_scope
+        - decisions
+        - requested_at
+        - expires_at
+        - ttl_seconds
+      properties:
+        approval_request_id:
+          type: string
+          format: uuid
+          description: Host-minted opaque identity; never the Runtime RequestId or nullable Runtime approvalId.
+        revision:
+          type: integer
+          format: int64
+          enum: [1]
+        task_id:
+          type: string
+          format: uuid
+        agent_session_id:
+          type: string
+          format: uuid
+        codex_thread_id:
+          type: string
+          format: uuid
+        turn_id:
+          type: string
+          format: uuid
+        item_id:
+          type: string
+          minLength: 1
+          maxLength: 256
+        action_id:
+          type: string
+          enum: [git_repository_check]
+        workspace_scope:
+          type: string
+          enum: [current_workspace]
+        decisions:
+          $ref: "#/components/schemas/ApprovalDecisionSetV6"
+        requested_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        ttl_seconds:
+          type: integer
+          enum: [120]
+    PendingApprovalSnapshotV6:
+      type: object
+      additionalProperties: false
+      x-yijie-approval-snapshot-invariants:
+        snapshot_at_field: snapshot_at
+        pending_field: pending
+        requested_at_field: requested_at
+        expires_at_field: expires_at
+        ttl_seconds: 120
+      required: [schema_version, stream_id, snapshot_at, pending]
+      properties:
+        schema_version:
+          type: integer
+          enum: [6]
+        stream_id:
+          type: string
+          format: uuid
+          description: Current Host process event-stream identity; a Host restart produces a different value.
+        snapshot_at:
+          type: string
+          format: date-time
+        pending:
+          type: array
+          maxItems: 1
+          items:
+            $ref: "#/components/schemas/PendingApprovalV6"
+          description: Memory-only action authority. Empty means no approval is actionable in this Host generation.
+    ApprovalDecisionV6Request:
+      type: object
+      additionalProperties: false
+      x-yijie-idempotency-policy:
+        scope: agent_session
+        canonical_fingerprint_fields:
+          approval_request_id: path_approval_request_id
+          schema_version: schema_version
+          expected_stream_id: expected_stream_id
+          expected_revision: expected_revision
+          decision: decision
+        same_id_same_fingerprint: identical_original_200_while_resolved_audit_retained
+        same_id_different_fingerprint: approval_decision_conflict
+        new_id_after_resolution: approval_already_resolved
+        retry_after_audit_eviction: approval_not_found
+      required: [schema_version, decision_id, expected_stream_id, expected_revision, decision]
+      properties:
+        schema_version:
+          type: integer
+          enum: [6]
+        decision_id:
+          type: string
+          format: uuid
+          description: Desktop-minted idempotency identity for this single decision attempt.
+        expected_stream_id:
+          type: string
+          format: uuid
+          description: Must equal the Host generation that produced the pending snapshot.
+        expected_revision:
+          type: integer
+          format: int64
+          enum: [1]
+        decision:
+          $ref: "#/components/schemas/ApprovalDecisionNameV6"
+    ApprovalDecisionV6Response:
+      type: object
+      additionalProperties: false
+      x-yijie-correlation-policy:
+        approval_request_id: equals_path_approval_request_id
+        decision_id: equals_request_decision_id
+        stream_id: equals_request_expected_stream_id
+        revision: equals_request_expected_revision_plus_one
+        decision: equals_request_decision
+        outcome: accept_once_to_accepted_once_cancel_current_turn_to_cancelled_current_turn
+        http_200_after: runtime_server_request_resolved_same_key_observed
+      required:
+        - schema_version
+        - approval_request_id
+        - decision_id
+        - stream_id
+        - revision
+        - decision
+        - outcome
+        - resolved_at
+      properties:
+        schema_version:
+          type: integer
+          enum: [6]
+        approval_request_id:
+          type: string
+          format: uuid
+        decision_id:
+          type: string
+          format: uuid
+        stream_id:
+          type: string
+          format: uuid
+        revision:
+          type: integer
+          format: int64
+          enum: [2]
+        decision:
+          $ref: "#/components/schemas/ApprovalDecisionNameV6"
+        outcome:
+          type: string
+          enum: [accepted_once, cancelled_current_turn]
+        resolved_at:
+          type: string
+          format: date-time
+      oneOf:
+        - required: [decision, outcome]
+          properties:
+            decision:
+              type: string
+              enum: [accept_once]
+            outcome:
+              type: string
+              enum: [accepted_once]
+        - required: [decision, outcome]
+          properties:
+            decision:
+              type: string
+              enum: [cancel_current_turn]
+            outcome:
+              type: string
+              enum: [cancelled_current_turn]
+    ApprovalBadRequestErrorResponseV6:
+      oneOf:
+        - $ref: "#/components/schemas/ApprovalInvalidRequestErrorV6"
+        - $ref: "#/components/schemas/ApprovalVersionMismatchErrorV6"
+    ApprovalUnauthorizedErrorResponseV6:
+      $ref: "#/components/schemas/ApprovalUnauthorizedErrorV6"
+    ApprovalSessionNotFoundErrorResponseV6:
+      $ref: "#/components/schemas/ApprovalSessionNotFoundErrorV6"
+    ApprovalNotFoundErrorResponseV6:
+      oneOf:
+        - $ref: "#/components/schemas/ApprovalSessionNotFoundErrorV6"
+        - $ref: "#/components/schemas/ApprovalNotFoundErrorV6"
+    ApprovalConflictErrorResponseV6:
+      oneOf:
+        - $ref: "#/components/schemas/ApprovalStaleErrorV6"
+        - $ref: "#/components/schemas/ApprovalExpiredErrorV6"
+        - $ref: "#/components/schemas/ApprovalAlreadyResolvedErrorV6"
+        - $ref: "#/components/schemas/ApprovalDecisionConflictErrorV6"
+    ApprovalUnavailableErrorResponseV6:
+      $ref: "#/components/schemas/ApprovalUnavailableErrorV6"
+    ApprovalInternalErrorResponseV6:
+      $ref: "#/components/schemas/ApprovalInternalErrorV6"
+    ApprovalUnauthorizedErrorV6:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [unauthorized]
+            message:
+              type: string
+              enum: [valid Agent Host bearer token required]
+    ApprovalInvalidRequestErrorV6:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [invalid_approval_request] }
+            message: { type: string, enum: [approval request is invalid] }
+    ApprovalVersionMismatchErrorV6:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [approval_version_mismatch] }
+            message: { type: string, enum: [approval schema version does not match] }
+    ApprovalSessionNotFoundErrorV6:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [session_not_found] }
+            message: { type: string, enum: [agent session was not found] }
+    ApprovalNotFoundErrorV6:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [approval_not_found] }
+            message: { type: string, enum: [approval request was not found] }
+    ApprovalStaleErrorV6:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [approval_stale] }
+            message: { type: string, enum: [approval request is stale] }
+    ApprovalExpiredErrorV6:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [approval_expired] }
+            message: { type: string, enum: [approval request expired] }
+    ApprovalAlreadyResolvedErrorV6:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [approval_already_resolved] }
+            message: { type: string, enum: [approval request was already resolved] }
+    ApprovalDecisionConflictErrorV6:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [approval_decision_conflict] }
+            message: { type: string, enum: [approval decision conflicts with the existing decision] }
+    ApprovalUnavailableErrorV6:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [approval_unavailable] }
+            message: { type: string, enum: [approval authority is unavailable] }
+    ApprovalInternalErrorV6:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [internal_error] }
+            message: { type: string, enum: [approval processing failed] }
     UuidOrEmpty:
       description: A UUID when bound, otherwise the empty string.
       type: string

@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "approval_expired",
+    "message": "approval request expired"
+  }
+}

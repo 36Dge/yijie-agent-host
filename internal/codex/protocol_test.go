@@ -13,11 +13,13 @@ func TestClientHandlesDynamicReverseRequestWithoutBlockingReader(t *testing.T) {
 	clientInput, runtimeReads := io.Pipe()
 	clientOutput, runtimeWrites := io.Pipe()
 	client := NewClient(runtimeReads, clientOutput, 1<<20, 8, nil, nil)
-	client.setServerRequestHandler(func(_ context.Context, method string, params json.RawMessage) (any, *RPCError) {
-		if method != RuntimeMethodDynamicToolCall || !json.Valid(params) {
-			t.Fatalf("unexpected reverse request: method=%q params=%s", method, params)
+	client.setServerRequestHandler(func(_ context.Context, request serverRequest) serverRequestResult {
+		if request.method != RuntimeMethodDynamicToolCall || !request.exactEnvelope || !json.Valid(request.params) {
+			t.Fatalf("unexpected reverse request: method=%q", request.method)
 		}
-		return map[string]any{"contentItems": []any{map[string]any{"type": "inputText", "text": "published"}}, "success": true}, nil
+		return serverRequestResult{respond: true, value: map[string]any{
+			"contentItems": []any{map[string]any{"type": "inputText", "text": "published"}}, "success": true,
+		}}
 	})
 	client.Start()
 	t.Cleanup(func() {

@@ -2,6 +2,7 @@ package codex
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -31,6 +32,8 @@ type wireMessage struct {
 	Params json.RawMessage `json:"params,omitempty"`
 	Result json.RawMessage `json:"result,omitempty"`
 	Error  *RPCError       `json:"error,omitempty"`
+
+	exactServerRequestEnvelope bool
 }
 
 type pendingResponse struct {
@@ -43,7 +46,22 @@ type outboundMessage struct {
 	done    chan error
 }
 
-type serverRequestHandler func(context.Context, string, json.RawMessage) (any, *RPCError)
+type serverRequest struct {
+	id            json.RawMessage
+	idKey         string
+	method        string
+	params        json.RawMessage
+	exactEnvelope bool
+}
+
+type serverRequestResult struct {
+	value             any
+	rpcError          *RPCError
+	respond           bool
+	onResponseWritten func(error)
+}
+
+type serverRequestHandler func(context.Context, serverRequest) serverRequestResult
 
 type Client struct {
 	stdin           io.WriteCloser
@@ -244,6 +262,7 @@ func (c *Client) readLoop() {
 			c.fail(fmt.Errorf("decode app-server message: %w", err))
 			return
 		}
+		message.exactServerRequestEnvelope = exactServerRequestEnvelope(line)
 		if err := c.handleMessage(message); err != nil {
 			c.fail(err)
 			return
@@ -265,12 +284,18 @@ func (c *Client) handleMessage(message wireMessage) error {
 			}
 			return nil
 		}
-		if _, err := requestIDKey(message.ID); err != nil {
+		key, err := requestIDKey(message.ID)
+		if err != nil {
 			return err
 		}
-		id := append(json.RawMessage(nil), message.ID...)
-		params := append(json.RawMessage(nil), message.Params...)
-		go c.handleServerRequest(id, message.Method, params)
+		request := serverRequest{
+			id:            append(json.RawMessage(nil), message.ID...),
+			idKey:         key,
+			method:        message.Method,
+			params:        append(json.RawMessage(nil), message.Params...),
+			exactEnvelope: message.exactServerRequestEnvelope,
+		}
+		go c.handleServerRequest(request)
 		return nil
 	}
 	if !hasID {
@@ -302,15 +327,66 @@ func (c *Client) handleMessage(message wireMessage) error {
 	return nil
 }
 
-func (c *Client) handleServerRequest(id json.RawMessage, method string, params json.RawMessage) {
+func (c *Client) handleServerRequest(request serverRequest) {
 	if c.onServerRequest == nil {
-		_ = c.respondServerRequest(id, nil, &RPCError{
+		_ = c.respondServerRequest(request.id, nil, &RPCError{
 			Code: methodNotFoundCode, Message: "Method not supported by Yijie Agent Host Runtime Baseline 2",
 		})
 		return
 	}
-	result, rpcError := c.onServerRequest(c.requestContext, method, params)
-	_ = c.respondServerRequest(id, result, rpcError)
+	result := c.onServerRequest(c.requestContext, request)
+	if !result.respond {
+		return
+	}
+	writeErr := c.respondServerRequest(request.id, result.value, result.rpcError)
+	if result.onResponseWritten != nil {
+		result.onResponseWritten(writeErr)
+	}
+}
+
+func exactServerRequestEnvelope(raw []byte) bool {
+	fields, err := decodeUniqueJSONObject(raw, map[string]struct{}{
+		"id": {}, "method": {}, "params": {},
+	})
+	return err == nil && len(fields) == 3
+}
+
+func decodeUniqueJSONObject(raw []byte, allowed map[string]struct{}) (map[string]json.RawMessage, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	opening, err := decoder.Token()
+	if err != nil || opening != json.Delim('{') {
+		return nil, errors.New("JSON value must be an object")
+	}
+	fields := make(map[string]json.RawMessage, len(allowed))
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return nil, err
+		}
+		name, ok := token.(string)
+		if !ok {
+			return nil, errors.New("JSON object key must be a string")
+		}
+		if _, permitted := allowed[name]; !permitted {
+			return nil, errors.New("JSON object contains an unknown field")
+		}
+		if _, duplicate := fields[name]; duplicate {
+			return nil, errors.New("JSON object contains a duplicate field")
+		}
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			return nil, err
+		}
+		fields[name] = append(json.RawMessage(nil), value...)
+	}
+	closing, err := decoder.Token()
+	if err != nil || closing != json.Delim('}') {
+		return nil, errors.New("JSON object is not closed")
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return nil, errors.New("JSON value has trailing content")
+	}
+	return fields, nil
 }
 
 func (c *Client) respondServerRequest(id json.RawMessage, result any, rpcError *RPCError) error {

@@ -6,6 +6,7 @@ package agenthostcontract
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/oapi-codegen/runtime"
@@ -154,6 +155,522 @@ func (e AgentSessionState) Valid() bool {
 	case AgentSessionStateIdle:
 		return true
 	case AgentSessionStateStarting:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalAlreadyResolvedErrorV6ErrorCode.
+const (
+	ApprovalAlreadyResolved ApprovalAlreadyResolvedErrorV6ErrorCode = "approval_already_resolved"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalAlreadyResolvedErrorV6ErrorCode enum.
+func (e ApprovalAlreadyResolvedErrorV6ErrorCode) Valid() bool {
+	switch e {
+	case ApprovalAlreadyResolved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalAlreadyResolvedErrorV6ErrorMessage.
+const (
+	ApprovalRequestWasAlreadyResolved ApprovalAlreadyResolvedErrorV6ErrorMessage = "approval request was already resolved"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalAlreadyResolvedErrorV6ErrorMessage enum.
+func (e ApprovalAlreadyResolvedErrorV6ErrorMessage) Valid() bool {
+	switch e {
+	case ApprovalRequestWasAlreadyResolved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalDecisionConflictErrorV6ErrorCode.
+const (
+	ApprovalDecisionConflict ApprovalDecisionConflictErrorV6ErrorCode = "approval_decision_conflict"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecisionConflictErrorV6ErrorCode enum.
+func (e ApprovalDecisionConflictErrorV6ErrorCode) Valid() bool {
+	switch e {
+	case ApprovalDecisionConflict:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalDecisionConflictErrorV6ErrorMessage.
+const (
+	ApprovalDecisionConflictsWithTheExistingDecision ApprovalDecisionConflictErrorV6ErrorMessage = "approval decision conflicts with the existing decision"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecisionConflictErrorV6ErrorMessage enum.
+func (e ApprovalDecisionConflictErrorV6ErrorMessage) Valid() bool {
+	switch e {
+	case ApprovalDecisionConflictsWithTheExistingDecision:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalDecisionNameV6.
+const (
+	ApprovalDecisionNameV6AcceptOnce        ApprovalDecisionNameV6 = "accept_once"
+	ApprovalDecisionNameV6CancelCurrentTurn ApprovalDecisionNameV6 = "cancel_current_turn"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecisionNameV6 enum.
+func (e ApprovalDecisionNameV6) Valid() bool {
+	switch e {
+	case ApprovalDecisionNameV6AcceptOnce:
+		return true
+	case ApprovalDecisionNameV6CancelCurrentTurn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalDecisionSetV6Primary.
+const (
+	ApprovalDecisionSetV6PrimaryAcceptOnce ApprovalDecisionSetV6Primary = "accept_once"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecisionSetV6Primary enum.
+func (e ApprovalDecisionSetV6Primary) Valid() bool {
+	switch e {
+	case ApprovalDecisionSetV6PrimaryAcceptOnce:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalDecisionSetV6Secondary.
+const (
+	ApprovalDecisionSetV6SecondaryCancelCurrentTurn ApprovalDecisionSetV6Secondary = "cancel_current_turn"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecisionSetV6Secondary enum.
+func (e ApprovalDecisionSetV6Secondary) Valid() bool {
+	switch e {
+	case ApprovalDecisionSetV6SecondaryCancelCurrentTurn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalDecisionV6RequestExpectedRevision.
+const (
+	ApprovalDecisionV6RequestExpectedRevisionN1 ApprovalDecisionV6RequestExpectedRevision = 1
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecisionV6RequestExpectedRevision enum.
+func (e ApprovalDecisionV6RequestExpectedRevision) Valid() bool {
+	switch e {
+	case ApprovalDecisionV6RequestExpectedRevisionN1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalDecisionV6RequestSchemaVersion.
+const (
+	ApprovalDecisionV6RequestSchemaVersionN6 ApprovalDecisionV6RequestSchemaVersion = 6
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecisionV6RequestSchemaVersion enum.
+func (e ApprovalDecisionV6RequestSchemaVersion) Valid() bool {
+	switch e {
+	case ApprovalDecisionV6RequestSchemaVersionN6:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalDecisionV6ResponseOutcome.
+const (
+	ApprovalDecisionV6ResponseOutcomeAcceptedOnce         ApprovalDecisionV6ResponseOutcome = "accepted_once"
+	ApprovalDecisionV6ResponseOutcomeCancelledCurrentTurn ApprovalDecisionV6ResponseOutcome = "cancelled_current_turn"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecisionV6ResponseOutcome enum.
+func (e ApprovalDecisionV6ResponseOutcome) Valid() bool {
+	switch e {
+	case ApprovalDecisionV6ResponseOutcomeAcceptedOnce:
+		return true
+	case ApprovalDecisionV6ResponseOutcomeCancelledCurrentTurn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalDecisionV6ResponseRevision.
+const (
+	ApprovalDecisionV6ResponseRevisionN2 ApprovalDecisionV6ResponseRevision = 2
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecisionV6ResponseRevision enum.
+func (e ApprovalDecisionV6ResponseRevision) Valid() bool {
+	switch e {
+	case ApprovalDecisionV6ResponseRevisionN2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalDecisionV6ResponseSchemaVersion.
+const (
+	ApprovalDecisionV6ResponseSchemaVersionN6 ApprovalDecisionV6ResponseSchemaVersion = 6
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecisionV6ResponseSchemaVersion enum.
+func (e ApprovalDecisionV6ResponseSchemaVersion) Valid() bool {
+	switch e {
+	case ApprovalDecisionV6ResponseSchemaVersionN6:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalDecisionV6Response0Decision.
+const (
+	AcceptOnce ApprovalDecisionV6Response0Decision = "accept_once"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecisionV6Response0Decision enum.
+func (e ApprovalDecisionV6Response0Decision) Valid() bool {
+	switch e {
+	case AcceptOnce:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalDecisionV6Response0Outcome.
+const (
+	ApprovalDecisionV6Response0OutcomeAcceptedOnce ApprovalDecisionV6Response0Outcome = "accepted_once"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecisionV6Response0Outcome enum.
+func (e ApprovalDecisionV6Response0Outcome) Valid() bool {
+	switch e {
+	case ApprovalDecisionV6Response0OutcomeAcceptedOnce:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalDecisionV6Response1Decision.
+const (
+	ApprovalDecisionV6Response1DecisionCancelCurrentTurn ApprovalDecisionV6Response1Decision = "cancel_current_turn"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecisionV6Response1Decision enum.
+func (e ApprovalDecisionV6Response1Decision) Valid() bool {
+	switch e {
+	case ApprovalDecisionV6Response1DecisionCancelCurrentTurn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalDecisionV6Response1Outcome.
+const (
+	CancelledCurrentTurn ApprovalDecisionV6Response1Outcome = "cancelled_current_turn"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalDecisionV6Response1Outcome enum.
+func (e ApprovalDecisionV6Response1Outcome) Valid() bool {
+	switch e {
+	case CancelledCurrentTurn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalExpiredErrorV6ErrorCode.
+const (
+	ApprovalExpired ApprovalExpiredErrorV6ErrorCode = "approval_expired"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalExpiredErrorV6ErrorCode enum.
+func (e ApprovalExpiredErrorV6ErrorCode) Valid() bool {
+	switch e {
+	case ApprovalExpired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalExpiredErrorV6ErrorMessage.
+const (
+	ApprovalRequestExpired ApprovalExpiredErrorV6ErrorMessage = "approval request expired"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalExpiredErrorV6ErrorMessage enum.
+func (e ApprovalExpiredErrorV6ErrorMessage) Valid() bool {
+	switch e {
+	case ApprovalRequestExpired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalInternalErrorV6ErrorCode.
+const (
+	ApprovalInternalErrorV6ErrorCodeInternalError ApprovalInternalErrorV6ErrorCode = "internal_error"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalInternalErrorV6ErrorCode enum.
+func (e ApprovalInternalErrorV6ErrorCode) Valid() bool {
+	switch e {
+	case ApprovalInternalErrorV6ErrorCodeInternalError:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalInternalErrorV6ErrorMessage.
+const (
+	ApprovalProcessingFailed ApprovalInternalErrorV6ErrorMessage = "approval processing failed"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalInternalErrorV6ErrorMessage enum.
+func (e ApprovalInternalErrorV6ErrorMessage) Valid() bool {
+	switch e {
+	case ApprovalProcessingFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalInvalidRequestErrorV6ErrorCode.
+const (
+	InvalidApprovalRequest ApprovalInvalidRequestErrorV6ErrorCode = "invalid_approval_request"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalInvalidRequestErrorV6ErrorCode enum.
+func (e ApprovalInvalidRequestErrorV6ErrorCode) Valid() bool {
+	switch e {
+	case InvalidApprovalRequest:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalInvalidRequestErrorV6ErrorMessage.
+const (
+	ApprovalRequestIsInvalid ApprovalInvalidRequestErrorV6ErrorMessage = "approval request is invalid"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalInvalidRequestErrorV6ErrorMessage enum.
+func (e ApprovalInvalidRequestErrorV6ErrorMessage) Valid() bool {
+	switch e {
+	case ApprovalRequestIsInvalid:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalNotFoundErrorV6ErrorCode.
+const (
+	ApprovalNotFound ApprovalNotFoundErrorV6ErrorCode = "approval_not_found"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalNotFoundErrorV6ErrorCode enum.
+func (e ApprovalNotFoundErrorV6ErrorCode) Valid() bool {
+	switch e {
+	case ApprovalNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalNotFoundErrorV6ErrorMessage.
+const (
+	ApprovalRequestWasNotFound ApprovalNotFoundErrorV6ErrorMessage = "approval request was not found"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalNotFoundErrorV6ErrorMessage enum.
+func (e ApprovalNotFoundErrorV6ErrorMessage) Valid() bool {
+	switch e {
+	case ApprovalRequestWasNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalSessionNotFoundErrorV6ErrorCode.
+const (
+	ApprovalSessionNotFoundErrorV6ErrorCodeSessionNotFound ApprovalSessionNotFoundErrorV6ErrorCode = "session_not_found"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalSessionNotFoundErrorV6ErrorCode enum.
+func (e ApprovalSessionNotFoundErrorV6ErrorCode) Valid() bool {
+	switch e {
+	case ApprovalSessionNotFoundErrorV6ErrorCodeSessionNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalSessionNotFoundErrorV6ErrorMessage.
+const (
+	AgentSessionWasNotFound ApprovalSessionNotFoundErrorV6ErrorMessage = "agent session was not found"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalSessionNotFoundErrorV6ErrorMessage enum.
+func (e ApprovalSessionNotFoundErrorV6ErrorMessage) Valid() bool {
+	switch e {
+	case AgentSessionWasNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalStaleErrorV6ErrorCode.
+const (
+	ApprovalStale ApprovalStaleErrorV6ErrorCode = "approval_stale"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalStaleErrorV6ErrorCode enum.
+func (e ApprovalStaleErrorV6ErrorCode) Valid() bool {
+	switch e {
+	case ApprovalStale:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalStaleErrorV6ErrorMessage.
+const (
+	ApprovalRequestIsStale ApprovalStaleErrorV6ErrorMessage = "approval request is stale"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalStaleErrorV6ErrorMessage enum.
+func (e ApprovalStaleErrorV6ErrorMessage) Valid() bool {
+	switch e {
+	case ApprovalRequestIsStale:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalUnauthorizedErrorV6ErrorCode.
+const (
+	ApprovalUnauthorizedErrorV6ErrorCodeUnauthorized ApprovalUnauthorizedErrorV6ErrorCode = "unauthorized"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalUnauthorizedErrorV6ErrorCode enum.
+func (e ApprovalUnauthorizedErrorV6ErrorCode) Valid() bool {
+	switch e {
+	case ApprovalUnauthorizedErrorV6ErrorCodeUnauthorized:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalUnauthorizedErrorV6ErrorMessage.
+const (
+	ValidAgentHostBearerTokenRequired ApprovalUnauthorizedErrorV6ErrorMessage = "valid Agent Host bearer token required"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalUnauthorizedErrorV6ErrorMessage enum.
+func (e ApprovalUnauthorizedErrorV6ErrorMessage) Valid() bool {
+	switch e {
+	case ValidAgentHostBearerTokenRequired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalUnavailableErrorV6ErrorCode.
+const (
+	ApprovalUnavailable ApprovalUnavailableErrorV6ErrorCode = "approval_unavailable"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalUnavailableErrorV6ErrorCode enum.
+func (e ApprovalUnavailableErrorV6ErrorCode) Valid() bool {
+	switch e {
+	case ApprovalUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalUnavailableErrorV6ErrorMessage.
+const (
+	ApprovalAuthorityIsUnavailable ApprovalUnavailableErrorV6ErrorMessage = "approval authority is unavailable"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalUnavailableErrorV6ErrorMessage enum.
+func (e ApprovalUnavailableErrorV6ErrorMessage) Valid() bool {
+	switch e {
+	case ApprovalAuthorityIsUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalVersionMismatchErrorV6ErrorCode.
+const (
+	ApprovalVersionMismatch ApprovalVersionMismatchErrorV6ErrorCode = "approval_version_mismatch"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalVersionMismatchErrorV6ErrorCode enum.
+func (e ApprovalVersionMismatchErrorV6ErrorCode) Valid() bool {
+	switch e {
+	case ApprovalVersionMismatch:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ApprovalVersionMismatchErrorV6ErrorMessage.
+const (
+	ApprovalSchemaVersionDoesNotMatch ApprovalVersionMismatchErrorV6ErrorMessage = "approval schema version does not match"
+)
+
+// Valid indicates whether the value is a known member of the ApprovalVersionMismatchErrorV6ErrorMessage enum.
+func (e ApprovalVersionMismatchErrorV6ErrorMessage) Valid() bool {
+	switch e {
+	case ApprovalSchemaVersionDoesNotMatch:
 		return true
 	default:
 		return false
@@ -664,6 +1181,81 @@ const (
 func (e NotReadyResponseStatus) Valid() bool {
 	switch e {
 	case NotReady:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PendingApprovalSnapshotV6SchemaVersion.
+const (
+	PendingApprovalSnapshotV6SchemaVersionN6 PendingApprovalSnapshotV6SchemaVersion = 6
+)
+
+// Valid indicates whether the value is a known member of the PendingApprovalSnapshotV6SchemaVersion enum.
+func (e PendingApprovalSnapshotV6SchemaVersion) Valid() bool {
+	switch e {
+	case PendingApprovalSnapshotV6SchemaVersionN6:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PendingApprovalV6ActionId.
+const (
+	GitRepositoryCheck PendingApprovalV6ActionId = "git_repository_check"
+)
+
+// Valid indicates whether the value is a known member of the PendingApprovalV6ActionId enum.
+func (e PendingApprovalV6ActionId) Valid() bool {
+	switch e {
+	case GitRepositoryCheck:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PendingApprovalV6Revision.
+const (
+	PendingApprovalV6RevisionN1 PendingApprovalV6Revision = 1
+)
+
+// Valid indicates whether the value is a known member of the PendingApprovalV6Revision enum.
+func (e PendingApprovalV6Revision) Valid() bool {
+	switch e {
+	case PendingApprovalV6RevisionN1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PendingApprovalV6TtlSeconds.
+const (
+	N120 PendingApprovalV6TtlSeconds = 120
+)
+
+// Valid indicates whether the value is a known member of the PendingApprovalV6TtlSeconds enum.
+func (e PendingApprovalV6TtlSeconds) Valid() bool {
+	switch e {
+	case N120:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PendingApprovalV6WorkspaceScope.
+const (
+	CurrentWorkspace PendingApprovalV6WorkspaceScope = "current_workspace"
+)
+
+// Valid indicates whether the value is a known member of the PendingApprovalV6WorkspaceScope enum.
+func (e PendingApprovalV6WorkspaceScope) Valid() bool {
+	switch e {
+	case CurrentWorkspace:
 		return true
 	default:
 		return false
@@ -1309,15 +1901,30 @@ func (e EventSchemaVersionV5) Valid() bool {
 	}
 }
 
+// Defines values for EventSchemaVersionV6.
+const (
+	EventSchemaVersionV6N6 EventSchemaVersionV6 = 6
+)
+
+// Valid indicates whether the value is a known member of the EventSchemaVersionV6 enum.
+func (e EventSchemaVersionV6) Valid() bool {
+	switch e {
+	case EventSchemaVersionV6N6:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StreamAgentSessionEventsV2ParamsEventSchemaVersion.
 const (
-	StreamAgentSessionEventsV2ParamsEventSchemaVersionN2 StreamAgentSessionEventsV2ParamsEventSchemaVersion = 2
+	N2 StreamAgentSessionEventsV2ParamsEventSchemaVersion = 2
 )
 
 // Valid indicates whether the value is a known member of the StreamAgentSessionEventsV2ParamsEventSchemaVersion enum.
 func (e StreamAgentSessionEventsV2ParamsEventSchemaVersion) Valid() bool {
 	switch e {
-	case StreamAgentSessionEventsV2ParamsEventSchemaVersionN2:
+	case N2:
 		return true
 	default:
 		return false
@@ -1363,6 +1970,21 @@ const (
 func (e StreamAgentSessionEventsV5ParamsEventSchemaVersion) Valid() bool {
 	switch e {
 	case StreamAgentSessionEventsV5ParamsEventSchemaVersionN5:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StreamAgentSessionEventsV6ParamsEventSchemaVersion.
+const (
+	N6 StreamAgentSessionEventsV6ParamsEventSchemaVersion = 6
+)
+
+// Valid indicates whether the value is a known member of the StreamAgentSessionEventsV6ParamsEventSchemaVersion enum.
+func (e StreamAgentSessionEventsV6ParamsEventSchemaVersion) Valid() bool {
+	switch e {
+	case N6:
 		return true
 	default:
 		return false
@@ -1418,6 +2040,267 @@ type AgentSessionModelProvider string
 
 // AgentSessionState defines model for AgentSession.State.
 type AgentSessionState string
+
+// ApprovalAlreadyResolvedErrorV6 defines model for ApprovalAlreadyResolvedErrorV6.
+type ApprovalAlreadyResolvedErrorV6 struct {
+	Error struct {
+		Code    ApprovalAlreadyResolvedErrorV6ErrorCode    `json:"code"`
+		Message ApprovalAlreadyResolvedErrorV6ErrorMessage `json:"message"`
+	} `json:"error"`
+}
+
+// ApprovalAlreadyResolvedErrorV6ErrorCode defines model for ApprovalAlreadyResolvedErrorV6.Error.Code.
+type ApprovalAlreadyResolvedErrorV6ErrorCode string
+
+// ApprovalAlreadyResolvedErrorV6ErrorMessage defines model for ApprovalAlreadyResolvedErrorV6.Error.Message.
+type ApprovalAlreadyResolvedErrorV6ErrorMessage string
+
+// ApprovalBadRequestErrorResponseV6 defines model for ApprovalBadRequestErrorResponseV6.
+type ApprovalBadRequestErrorResponseV6 struct {
+	union json.RawMessage
+}
+
+// ApprovalConflictErrorResponseV6 defines model for ApprovalConflictErrorResponseV6.
+type ApprovalConflictErrorResponseV6 struct {
+	union json.RawMessage
+}
+
+// ApprovalDecisionConflictErrorV6 defines model for ApprovalDecisionConflictErrorV6.
+type ApprovalDecisionConflictErrorV6 struct {
+	Error struct {
+		Code    ApprovalDecisionConflictErrorV6ErrorCode    `json:"code"`
+		Message ApprovalDecisionConflictErrorV6ErrorMessage `json:"message"`
+	} `json:"error"`
+}
+
+// ApprovalDecisionConflictErrorV6ErrorCode defines model for ApprovalDecisionConflictErrorV6.Error.Code.
+type ApprovalDecisionConflictErrorV6ErrorCode string
+
+// ApprovalDecisionConflictErrorV6ErrorMessage defines model for ApprovalDecisionConflictErrorV6.Error.Message.
+type ApprovalDecisionConflictErrorV6ErrorMessage string
+
+// ApprovalDecisionNameV6 defines model for ApprovalDecisionNameV6.
+type ApprovalDecisionNameV6 string
+
+// ApprovalDecisionSetV6 Fixed presentation order. `accept_once` is primary and `cancel_current_turn` is secondary; no Runtime-provided decision widens this set.
+type ApprovalDecisionSetV6 struct {
+	Primary   ApprovalDecisionSetV6Primary   `json:"primary"`
+	Secondary ApprovalDecisionSetV6Secondary `json:"secondary"`
+}
+
+// ApprovalDecisionSetV6Primary defines model for ApprovalDecisionSetV6.Primary.
+type ApprovalDecisionSetV6Primary string
+
+// ApprovalDecisionSetV6Secondary defines model for ApprovalDecisionSetV6.Secondary.
+type ApprovalDecisionSetV6Secondary string
+
+// ApprovalDecisionV6Request defines model for ApprovalDecisionV6Request.
+type ApprovalDecisionV6Request struct {
+	Decision ApprovalDecisionNameV6 `json:"decision"`
+
+	// DecisionId Desktop-minted idempotency identity for this single decision attempt.
+	DecisionId       openapi_types.UUID                        `json:"decision_id"`
+	ExpectedRevision ApprovalDecisionV6RequestExpectedRevision `json:"expected_revision"`
+
+	// ExpectedStreamId Must equal the Host generation that produced the pending snapshot.
+	ExpectedStreamId openapi_types.UUID                     `json:"expected_stream_id"`
+	SchemaVersion    ApprovalDecisionV6RequestSchemaVersion `json:"schema_version"`
+}
+
+// ApprovalDecisionV6RequestExpectedRevision defines model for ApprovalDecisionV6Request.ExpectedRevision.
+type ApprovalDecisionV6RequestExpectedRevision int64
+
+// ApprovalDecisionV6RequestSchemaVersion defines model for ApprovalDecisionV6Request.SchemaVersion.
+type ApprovalDecisionV6RequestSchemaVersion int
+
+// ApprovalDecisionV6Response defines model for ApprovalDecisionV6Response.
+type ApprovalDecisionV6Response struct {
+	ApprovalRequestId openapi_types.UUID                      `json:"approval_request_id"`
+	Decision          ApprovalDecisionNameV6                  `json:"decision"`
+	DecisionId        openapi_types.UUID                      `json:"decision_id"`
+	Outcome           ApprovalDecisionV6ResponseOutcome       `json:"outcome"`
+	ResolvedAt        time.Time                               `json:"resolved_at"`
+	Revision          ApprovalDecisionV6ResponseRevision      `json:"revision"`
+	SchemaVersion     ApprovalDecisionV6ResponseSchemaVersion `json:"schema_version"`
+	StreamId          openapi_types.UUID                      `json:"stream_id"`
+	union             json.RawMessage
+}
+
+// ApprovalDecisionV6ResponseOutcome defines model for ApprovalDecisionV6Response.Outcome.
+type ApprovalDecisionV6ResponseOutcome string
+
+// ApprovalDecisionV6ResponseRevision defines model for ApprovalDecisionV6Response.Revision.
+type ApprovalDecisionV6ResponseRevision int64
+
+// ApprovalDecisionV6ResponseSchemaVersion defines model for ApprovalDecisionV6Response.SchemaVersion.
+type ApprovalDecisionV6ResponseSchemaVersion int
+
+// ApprovalDecisionV6Response0 defines model for .
+type ApprovalDecisionV6Response0 struct {
+	Decision ApprovalDecisionV6Response0Decision `json:"decision"`
+	Outcome  ApprovalDecisionV6Response0Outcome  `json:"outcome"`
+}
+
+// ApprovalDecisionV6Response0Decision defines model for ApprovalDecisionV6Response.0.Decision.
+type ApprovalDecisionV6Response0Decision string
+
+// ApprovalDecisionV6Response0Outcome defines model for ApprovalDecisionV6Response.0.Outcome.
+type ApprovalDecisionV6Response0Outcome string
+
+// ApprovalDecisionV6Response1 defines model for .
+type ApprovalDecisionV6Response1 struct {
+	Decision ApprovalDecisionV6Response1Decision `json:"decision"`
+	Outcome  ApprovalDecisionV6Response1Outcome  `json:"outcome"`
+}
+
+// ApprovalDecisionV6Response1Decision defines model for ApprovalDecisionV6Response.1.Decision.
+type ApprovalDecisionV6Response1Decision string
+
+// ApprovalDecisionV6Response1Outcome defines model for ApprovalDecisionV6Response.1.Outcome.
+type ApprovalDecisionV6Response1Outcome string
+
+// ApprovalExpiredErrorV6 defines model for ApprovalExpiredErrorV6.
+type ApprovalExpiredErrorV6 struct {
+	Error struct {
+		Code    ApprovalExpiredErrorV6ErrorCode    `json:"code"`
+		Message ApprovalExpiredErrorV6ErrorMessage `json:"message"`
+	} `json:"error"`
+}
+
+// ApprovalExpiredErrorV6ErrorCode defines model for ApprovalExpiredErrorV6.Error.Code.
+type ApprovalExpiredErrorV6ErrorCode string
+
+// ApprovalExpiredErrorV6ErrorMessage defines model for ApprovalExpiredErrorV6.Error.Message.
+type ApprovalExpiredErrorV6ErrorMessage string
+
+// ApprovalInternalErrorResponseV6 defines model for ApprovalInternalErrorResponseV6.
+type ApprovalInternalErrorResponseV6 = ApprovalInternalErrorV6
+
+// ApprovalInternalErrorV6 defines model for ApprovalInternalErrorV6.
+type ApprovalInternalErrorV6 struct {
+	Error struct {
+		Code    ApprovalInternalErrorV6ErrorCode    `json:"code"`
+		Message ApprovalInternalErrorV6ErrorMessage `json:"message"`
+	} `json:"error"`
+}
+
+// ApprovalInternalErrorV6ErrorCode defines model for ApprovalInternalErrorV6.Error.Code.
+type ApprovalInternalErrorV6ErrorCode string
+
+// ApprovalInternalErrorV6ErrorMessage defines model for ApprovalInternalErrorV6.Error.Message.
+type ApprovalInternalErrorV6ErrorMessage string
+
+// ApprovalInvalidRequestErrorV6 defines model for ApprovalInvalidRequestErrorV6.
+type ApprovalInvalidRequestErrorV6 struct {
+	Error struct {
+		Code    ApprovalInvalidRequestErrorV6ErrorCode    `json:"code"`
+		Message ApprovalInvalidRequestErrorV6ErrorMessage `json:"message"`
+	} `json:"error"`
+}
+
+// ApprovalInvalidRequestErrorV6ErrorCode defines model for ApprovalInvalidRequestErrorV6.Error.Code.
+type ApprovalInvalidRequestErrorV6ErrorCode string
+
+// ApprovalInvalidRequestErrorV6ErrorMessage defines model for ApprovalInvalidRequestErrorV6.Error.Message.
+type ApprovalInvalidRequestErrorV6ErrorMessage string
+
+// ApprovalNotFoundErrorResponseV6 defines model for ApprovalNotFoundErrorResponseV6.
+type ApprovalNotFoundErrorResponseV6 struct {
+	union json.RawMessage
+}
+
+// ApprovalNotFoundErrorV6 defines model for ApprovalNotFoundErrorV6.
+type ApprovalNotFoundErrorV6 struct {
+	Error struct {
+		Code    ApprovalNotFoundErrorV6ErrorCode    `json:"code"`
+		Message ApprovalNotFoundErrorV6ErrorMessage `json:"message"`
+	} `json:"error"`
+}
+
+// ApprovalNotFoundErrorV6ErrorCode defines model for ApprovalNotFoundErrorV6.Error.Code.
+type ApprovalNotFoundErrorV6ErrorCode string
+
+// ApprovalNotFoundErrorV6ErrorMessage defines model for ApprovalNotFoundErrorV6.Error.Message.
+type ApprovalNotFoundErrorV6ErrorMessage string
+
+// ApprovalSessionNotFoundErrorResponseV6 defines model for ApprovalSessionNotFoundErrorResponseV6.
+type ApprovalSessionNotFoundErrorResponseV6 = ApprovalSessionNotFoundErrorV6
+
+// ApprovalSessionNotFoundErrorV6 defines model for ApprovalSessionNotFoundErrorV6.
+type ApprovalSessionNotFoundErrorV6 struct {
+	Error struct {
+		Code    ApprovalSessionNotFoundErrorV6ErrorCode    `json:"code"`
+		Message ApprovalSessionNotFoundErrorV6ErrorMessage `json:"message"`
+	} `json:"error"`
+}
+
+// ApprovalSessionNotFoundErrorV6ErrorCode defines model for ApprovalSessionNotFoundErrorV6.Error.Code.
+type ApprovalSessionNotFoundErrorV6ErrorCode string
+
+// ApprovalSessionNotFoundErrorV6ErrorMessage defines model for ApprovalSessionNotFoundErrorV6.Error.Message.
+type ApprovalSessionNotFoundErrorV6ErrorMessage string
+
+// ApprovalStaleErrorV6 defines model for ApprovalStaleErrorV6.
+type ApprovalStaleErrorV6 struct {
+	Error struct {
+		Code    ApprovalStaleErrorV6ErrorCode    `json:"code"`
+		Message ApprovalStaleErrorV6ErrorMessage `json:"message"`
+	} `json:"error"`
+}
+
+// ApprovalStaleErrorV6ErrorCode defines model for ApprovalStaleErrorV6.Error.Code.
+type ApprovalStaleErrorV6ErrorCode string
+
+// ApprovalStaleErrorV6ErrorMessage defines model for ApprovalStaleErrorV6.Error.Message.
+type ApprovalStaleErrorV6ErrorMessage string
+
+// ApprovalUnauthorizedErrorResponseV6 defines model for ApprovalUnauthorizedErrorResponseV6.
+type ApprovalUnauthorizedErrorResponseV6 = ApprovalUnauthorizedErrorV6
+
+// ApprovalUnauthorizedErrorV6 defines model for ApprovalUnauthorizedErrorV6.
+type ApprovalUnauthorizedErrorV6 struct {
+	Error struct {
+		Code    ApprovalUnauthorizedErrorV6ErrorCode    `json:"code"`
+		Message ApprovalUnauthorizedErrorV6ErrorMessage `json:"message"`
+	} `json:"error"`
+}
+
+// ApprovalUnauthorizedErrorV6ErrorCode defines model for ApprovalUnauthorizedErrorV6.Error.Code.
+type ApprovalUnauthorizedErrorV6ErrorCode string
+
+// ApprovalUnauthorizedErrorV6ErrorMessage defines model for ApprovalUnauthorizedErrorV6.Error.Message.
+type ApprovalUnauthorizedErrorV6ErrorMessage string
+
+// ApprovalUnavailableErrorResponseV6 defines model for ApprovalUnavailableErrorResponseV6.
+type ApprovalUnavailableErrorResponseV6 = ApprovalUnavailableErrorV6
+
+// ApprovalUnavailableErrorV6 defines model for ApprovalUnavailableErrorV6.
+type ApprovalUnavailableErrorV6 struct {
+	Error struct {
+		Code    ApprovalUnavailableErrorV6ErrorCode    `json:"code"`
+		Message ApprovalUnavailableErrorV6ErrorMessage `json:"message"`
+	} `json:"error"`
+}
+
+// ApprovalUnavailableErrorV6ErrorCode defines model for ApprovalUnavailableErrorV6.Error.Code.
+type ApprovalUnavailableErrorV6ErrorCode string
+
+// ApprovalUnavailableErrorV6ErrorMessage defines model for ApprovalUnavailableErrorV6.Error.Message.
+type ApprovalUnavailableErrorV6ErrorMessage string
+
+// ApprovalVersionMismatchErrorV6 defines model for ApprovalVersionMismatchErrorV6.
+type ApprovalVersionMismatchErrorV6 struct {
+	Error struct {
+		Code    ApprovalVersionMismatchErrorV6ErrorCode    `json:"code"`
+		Message ApprovalVersionMismatchErrorV6ErrorMessage `json:"message"`
+	} `json:"error"`
+}
+
+// ApprovalVersionMismatchErrorV6ErrorCode defines model for ApprovalVersionMismatchErrorV6.Error.Code.
+type ApprovalVersionMismatchErrorV6ErrorCode string
+
+// ApprovalVersionMismatchErrorV6ErrorMessage defines model for ApprovalVersionMismatchErrorV6.Error.Message.
+type ApprovalVersionMismatchErrorV6ErrorMessage string
 
 // ArtifactAcknowledgementV3Request defines model for ArtifactAcknowledgementV3Request.
 type ArtifactAcknowledgementV3Request struct {
@@ -1642,6 +2525,53 @@ type NotReadyResponse struct {
 
 // NotReadyResponseStatus defines model for NotReadyResponse.Status.
 type NotReadyResponseStatus string
+
+// PendingApprovalSnapshotV6 defines model for PendingApprovalSnapshotV6.
+type PendingApprovalSnapshotV6 struct {
+	// Pending Memory-only action authority. Empty means no approval is actionable in this Host generation.
+	Pending       []PendingApprovalV6                    `json:"pending"`
+	SchemaVersion PendingApprovalSnapshotV6SchemaVersion `json:"schema_version"`
+	SnapshotAt    time.Time                              `json:"snapshot_at"`
+
+	// StreamId Current Host process event-stream identity; a Host restart produces a different value.
+	StreamId openapi_types.UUID `json:"stream_id"`
+}
+
+// PendingApprovalSnapshotV6SchemaVersion defines model for PendingApprovalSnapshotV6.SchemaVersion.
+type PendingApprovalSnapshotV6SchemaVersion int
+
+// PendingApprovalV6 defines model for PendingApprovalV6.
+type PendingApprovalV6 struct {
+	ActionId       PendingApprovalV6ActionId `json:"action_id"`
+	AgentSessionId openapi_types.UUID        `json:"agent_session_id"`
+
+	// ApprovalRequestId Host-minted opaque identity; never the Runtime RequestId or nullable Runtime approvalId.
+	ApprovalRequestId openapi_types.UUID `json:"approval_request_id"`
+	CodexThreadId     openapi_types.UUID `json:"codex_thread_id"`
+
+	// Decisions Fixed presentation order. `accept_once` is primary and `cancel_current_turn` is secondary; no Runtime-provided decision widens this set.
+	Decisions      ApprovalDecisionSetV6           `json:"decisions"`
+	ExpiresAt      time.Time                       `json:"expires_at"`
+	ItemId         string                          `json:"item_id"`
+	RequestedAt    time.Time                       `json:"requested_at"`
+	Revision       PendingApprovalV6Revision       `json:"revision"`
+	TaskId         openapi_types.UUID              `json:"task_id"`
+	TtlSeconds     PendingApprovalV6TtlSeconds     `json:"ttl_seconds"`
+	TurnId         openapi_types.UUID              `json:"turn_id"`
+	WorkspaceScope PendingApprovalV6WorkspaceScope `json:"workspace_scope"`
+}
+
+// PendingApprovalV6ActionId defines model for PendingApprovalV6.ActionId.
+type PendingApprovalV6ActionId string
+
+// PendingApprovalV6Revision defines model for PendingApprovalV6.Revision.
+type PendingApprovalV6Revision int64
+
+// PendingApprovalV6TtlSeconds defines model for PendingApprovalV6.TtlSeconds.
+type PendingApprovalV6TtlSeconds int
+
+// PendingApprovalV6WorkspaceScope defines model for PendingApprovalV6.WorkspaceScope.
+type PendingApprovalV6WorkspaceScope string
 
 // ReadyResponse defines model for ReadyResponse.
 type ReadyResponse struct {
@@ -2005,6 +2935,9 @@ type UuidOrEmpty = string
 // AgentSessionId defines model for AgentSessionId.
 type AgentSessionId = openapi_types.UUID
 
+// ApprovalRequestIdV6 defines model for ApprovalRequestIdV6.
+type ApprovalRequestIdV6 = openapi_types.UUID
+
 // ArtifactId defines model for ArtifactId.
 type ArtifactId = openapi_types.UUID
 
@@ -2026,6 +2959,9 @@ type EventSchemaVersionV4 int32
 // EventSchemaVersionV5 defines model for EventSchemaVersionV5.
 type EventSchemaVersionV5 int32
 
+// EventSchemaVersionV6 defines model for EventSchemaVersionV6.
+type EventSchemaVersionV6 int32
+
 // EventStreamId defines model for EventStreamId.
 type EventStreamId = openapi_types.UUID
 
@@ -2040,6 +2976,24 @@ type TaskId = openapi_types.UUID
 
 // TurnId defines model for TurnId.
 type TurnId = openapi_types.UUID
+
+// ApprovalBadRequestV6 defines model for ApprovalBadRequestV6.
+type ApprovalBadRequestV6 = ApprovalBadRequestErrorResponseV6
+
+// ApprovalConflictV6 defines model for ApprovalConflictV6.
+type ApprovalConflictV6 = ApprovalConflictErrorResponseV6
+
+// ApprovalNotFoundV6 defines model for ApprovalNotFoundV6.
+type ApprovalNotFoundV6 = ApprovalNotFoundErrorResponseV6
+
+// ApprovalSessionNotFoundV6 defines model for ApprovalSessionNotFoundV6.
+type ApprovalSessionNotFoundV6 = ApprovalSessionNotFoundErrorResponseV6
+
+// ApprovalUnauthorizedV6 defines model for ApprovalUnauthorizedV6.
+type ApprovalUnauthorizedV6 = ApprovalUnauthorizedErrorResponseV6
+
+// ApprovalUnavailableV6 defines model for ApprovalUnavailableV6.
+type ApprovalUnavailableV6 = ApprovalUnavailableErrorResponseV6
 
 // ArtifactBadRequest Content-free v3 artifact failure. It never contains a path, URL, token, digest, provider payload, or artifact bytes.
 type ArtifactBadRequest = ArtifactErrorResponseV3
@@ -2246,6 +3200,30 @@ type StreamAgentSessionEventsV5Params struct {
 // StreamAgentSessionEventsV5ParamsEventSchemaVersion defines parameters for StreamAgentSessionEventsV5.
 type StreamAgentSessionEventsV5ParamsEventSchemaVersion int32
 
+// StreamAgentSessionEventsV6Params defines parameters for StreamAgentSessionEventsV6.
+type StreamAgentSessionEventsV6Params struct {
+	// EventSchemaVersion Explicit negotiation guard. Only integer value 6 is accepted on the v6 event stream.
+	EventSchemaVersion StreamAgentSessionEventsV6ParamsEventSchemaVersion `form:"event_schema_version" json:"event_schema_version"`
+
+	// StreamId Expected process-local stream identifier. Required when `after > 0`
+	// unless `Last-Event-ID` supplies the complete cursor. A mismatch returns
+	// `409 event_stream_changed`.
+	StreamId *EventStreamId `form:"stream_id,omitempty" json:"stream_id,omitempty"`
+
+	// After Unsigned 64-bit sequence after which events are replayed. Defaults to
+	// zero. Values greater than zero require a matching stream ID. Ignored when
+	// `Last-Event-ID` is present.
+	After *EventAfter `form:"after,omitempty" json:"after,omitempty"`
+
+	// LastEventID Complete SSE cursor `<stream_id>:<sequence>`. Sequence is a decimal
+	// unsigned 64-bit integer from 1 through 18446744073709551615 with no
+	// leading zero. The header overrides `stream_id` and `after` query parameters.
+	LastEventID *LastEventId `json:"Last-Event-ID,omitempty"`
+}
+
+// StreamAgentSessionEventsV6ParamsEventSchemaVersion defines parameters for StreamAgentSessionEventsV6.
+type StreamAgentSessionEventsV6ParamsEventSchemaVersion int32
+
 // ResumeAgentSessionJSONRequestBody defines body for ResumeAgentSession for application/json ContentType.
 type ResumeAgentSessionJSONRequestBody = TraceRequest
 
@@ -2281,6 +3259,426 @@ type StartAgentTurnV2JSONRequestBody = StartTurnV2Request
 
 // AcknowledgeAgentArtifactV3JSONRequestBody defines body for AcknowledgeAgentArtifactV3 for application/json ContentType.
 type AcknowledgeAgentArtifactV3JSONRequestBody = ArtifactAcknowledgementV3Request
+
+// DecideAgentApprovalV6JSONRequestBody defines body for DecideAgentApprovalV6 for application/json ContentType.
+type DecideAgentApprovalV6JSONRequestBody = ApprovalDecisionV6Request
+
+// AsApprovalInvalidRequestErrorV6 returns the union data inside the ApprovalBadRequestErrorResponseV6 as a ApprovalInvalidRequestErrorV6
+func (t ApprovalBadRequestErrorResponseV6) AsApprovalInvalidRequestErrorV6() (ApprovalInvalidRequestErrorV6, error) {
+	var body ApprovalInvalidRequestErrorV6
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromApprovalInvalidRequestErrorV6 overwrites any union data inside the ApprovalBadRequestErrorResponseV6 as the provided ApprovalInvalidRequestErrorV6
+func (t *ApprovalBadRequestErrorResponseV6) FromApprovalInvalidRequestErrorV6(v ApprovalInvalidRequestErrorV6) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeApprovalInvalidRequestErrorV6 performs a merge with any union data inside the ApprovalBadRequestErrorResponseV6, using the provided ApprovalInvalidRequestErrorV6
+func (t *ApprovalBadRequestErrorResponseV6) MergeApprovalInvalidRequestErrorV6(v ApprovalInvalidRequestErrorV6) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsApprovalVersionMismatchErrorV6 returns the union data inside the ApprovalBadRequestErrorResponseV6 as a ApprovalVersionMismatchErrorV6
+func (t ApprovalBadRequestErrorResponseV6) AsApprovalVersionMismatchErrorV6() (ApprovalVersionMismatchErrorV6, error) {
+	var body ApprovalVersionMismatchErrorV6
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromApprovalVersionMismatchErrorV6 overwrites any union data inside the ApprovalBadRequestErrorResponseV6 as the provided ApprovalVersionMismatchErrorV6
+func (t *ApprovalBadRequestErrorResponseV6) FromApprovalVersionMismatchErrorV6(v ApprovalVersionMismatchErrorV6) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeApprovalVersionMismatchErrorV6 performs a merge with any union data inside the ApprovalBadRequestErrorResponseV6, using the provided ApprovalVersionMismatchErrorV6
+func (t *ApprovalBadRequestErrorResponseV6) MergeApprovalVersionMismatchErrorV6(v ApprovalVersionMismatchErrorV6) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t ApprovalBadRequestErrorResponseV6) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *ApprovalBadRequestErrorResponseV6) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsApprovalStaleErrorV6 returns the union data inside the ApprovalConflictErrorResponseV6 as a ApprovalStaleErrorV6
+func (t ApprovalConflictErrorResponseV6) AsApprovalStaleErrorV6() (ApprovalStaleErrorV6, error) {
+	var body ApprovalStaleErrorV6
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromApprovalStaleErrorV6 overwrites any union data inside the ApprovalConflictErrorResponseV6 as the provided ApprovalStaleErrorV6
+func (t *ApprovalConflictErrorResponseV6) FromApprovalStaleErrorV6(v ApprovalStaleErrorV6) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeApprovalStaleErrorV6 performs a merge with any union data inside the ApprovalConflictErrorResponseV6, using the provided ApprovalStaleErrorV6
+func (t *ApprovalConflictErrorResponseV6) MergeApprovalStaleErrorV6(v ApprovalStaleErrorV6) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsApprovalExpiredErrorV6 returns the union data inside the ApprovalConflictErrorResponseV6 as a ApprovalExpiredErrorV6
+func (t ApprovalConflictErrorResponseV6) AsApprovalExpiredErrorV6() (ApprovalExpiredErrorV6, error) {
+	var body ApprovalExpiredErrorV6
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromApprovalExpiredErrorV6 overwrites any union data inside the ApprovalConflictErrorResponseV6 as the provided ApprovalExpiredErrorV6
+func (t *ApprovalConflictErrorResponseV6) FromApprovalExpiredErrorV6(v ApprovalExpiredErrorV6) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeApprovalExpiredErrorV6 performs a merge with any union data inside the ApprovalConflictErrorResponseV6, using the provided ApprovalExpiredErrorV6
+func (t *ApprovalConflictErrorResponseV6) MergeApprovalExpiredErrorV6(v ApprovalExpiredErrorV6) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsApprovalAlreadyResolvedErrorV6 returns the union data inside the ApprovalConflictErrorResponseV6 as a ApprovalAlreadyResolvedErrorV6
+func (t ApprovalConflictErrorResponseV6) AsApprovalAlreadyResolvedErrorV6() (ApprovalAlreadyResolvedErrorV6, error) {
+	var body ApprovalAlreadyResolvedErrorV6
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromApprovalAlreadyResolvedErrorV6 overwrites any union data inside the ApprovalConflictErrorResponseV6 as the provided ApprovalAlreadyResolvedErrorV6
+func (t *ApprovalConflictErrorResponseV6) FromApprovalAlreadyResolvedErrorV6(v ApprovalAlreadyResolvedErrorV6) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeApprovalAlreadyResolvedErrorV6 performs a merge with any union data inside the ApprovalConflictErrorResponseV6, using the provided ApprovalAlreadyResolvedErrorV6
+func (t *ApprovalConflictErrorResponseV6) MergeApprovalAlreadyResolvedErrorV6(v ApprovalAlreadyResolvedErrorV6) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsApprovalDecisionConflictErrorV6 returns the union data inside the ApprovalConflictErrorResponseV6 as a ApprovalDecisionConflictErrorV6
+func (t ApprovalConflictErrorResponseV6) AsApprovalDecisionConflictErrorV6() (ApprovalDecisionConflictErrorV6, error) {
+	var body ApprovalDecisionConflictErrorV6
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromApprovalDecisionConflictErrorV6 overwrites any union data inside the ApprovalConflictErrorResponseV6 as the provided ApprovalDecisionConflictErrorV6
+func (t *ApprovalConflictErrorResponseV6) FromApprovalDecisionConflictErrorV6(v ApprovalDecisionConflictErrorV6) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeApprovalDecisionConflictErrorV6 performs a merge with any union data inside the ApprovalConflictErrorResponseV6, using the provided ApprovalDecisionConflictErrorV6
+func (t *ApprovalConflictErrorResponseV6) MergeApprovalDecisionConflictErrorV6(v ApprovalDecisionConflictErrorV6) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t ApprovalConflictErrorResponseV6) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *ApprovalConflictErrorResponseV6) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsApprovalDecisionV6Response0 returns the union data inside the ApprovalDecisionV6Response as a ApprovalDecisionV6Response0
+func (t ApprovalDecisionV6Response) AsApprovalDecisionV6Response0() (ApprovalDecisionV6Response0, error) {
+	var body ApprovalDecisionV6Response0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromApprovalDecisionV6Response0 overwrites any union data inside the ApprovalDecisionV6Response as the provided ApprovalDecisionV6Response0
+func (t *ApprovalDecisionV6Response) FromApprovalDecisionV6Response0(v ApprovalDecisionV6Response0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeApprovalDecisionV6Response0 performs a merge with any union data inside the ApprovalDecisionV6Response, using the provided ApprovalDecisionV6Response0
+func (t *ApprovalDecisionV6Response) MergeApprovalDecisionV6Response0(v ApprovalDecisionV6Response0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsApprovalDecisionV6Response1 returns the union data inside the ApprovalDecisionV6Response as a ApprovalDecisionV6Response1
+func (t ApprovalDecisionV6Response) AsApprovalDecisionV6Response1() (ApprovalDecisionV6Response1, error) {
+	var body ApprovalDecisionV6Response1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromApprovalDecisionV6Response1 overwrites any union data inside the ApprovalDecisionV6Response as the provided ApprovalDecisionV6Response1
+func (t *ApprovalDecisionV6Response) FromApprovalDecisionV6Response1(v ApprovalDecisionV6Response1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeApprovalDecisionV6Response1 performs a merge with any union data inside the ApprovalDecisionV6Response, using the provided ApprovalDecisionV6Response1
+func (t *ApprovalDecisionV6Response) MergeApprovalDecisionV6Response1(v ApprovalDecisionV6Response1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t ApprovalDecisionV6Response) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	object["approval_request_id"], err = json.Marshal(t.ApprovalRequestId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'approval_request_id': %w", err)
+	}
+
+	object["decision"], err = json.Marshal(t.Decision)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'decision': %w", err)
+	}
+
+	object["decision_id"], err = json.Marshal(t.DecisionId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'decision_id': %w", err)
+	}
+
+	object["outcome"], err = json.Marshal(t.Outcome)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'outcome': %w", err)
+	}
+
+	object["resolved_at"], err = json.Marshal(t.ResolvedAt)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'resolved_at': %w", err)
+	}
+
+	object["revision"], err = json.Marshal(t.Revision)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'revision': %w", err)
+	}
+
+	object["schema_version"], err = json.Marshal(t.SchemaVersion)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'schema_version': %w", err)
+	}
+
+	object["stream_id"], err = json.Marshal(t.StreamId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'stream_id': %w", err)
+	}
+
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *ApprovalDecisionV6Response) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["approval_request_id"]; found {
+		err = json.Unmarshal(raw, &t.ApprovalRequestId)
+		if err != nil {
+			return fmt.Errorf("error reading 'approval_request_id': %w", err)
+		}
+	}
+
+	if raw, found := object["decision"]; found {
+		err = json.Unmarshal(raw, &t.Decision)
+		if err != nil {
+			return fmt.Errorf("error reading 'decision': %w", err)
+		}
+	}
+
+	if raw, found := object["decision_id"]; found {
+		err = json.Unmarshal(raw, &t.DecisionId)
+		if err != nil {
+			return fmt.Errorf("error reading 'decision_id': %w", err)
+		}
+	}
+
+	if raw, found := object["outcome"]; found {
+		err = json.Unmarshal(raw, &t.Outcome)
+		if err != nil {
+			return fmt.Errorf("error reading 'outcome': %w", err)
+		}
+	}
+
+	if raw, found := object["resolved_at"]; found {
+		err = json.Unmarshal(raw, &t.ResolvedAt)
+		if err != nil {
+			return fmt.Errorf("error reading 'resolved_at': %w", err)
+		}
+	}
+
+	if raw, found := object["revision"]; found {
+		err = json.Unmarshal(raw, &t.Revision)
+		if err != nil {
+			return fmt.Errorf("error reading 'revision': %w", err)
+		}
+	}
+
+	if raw, found := object["schema_version"]; found {
+		err = json.Unmarshal(raw, &t.SchemaVersion)
+		if err != nil {
+			return fmt.Errorf("error reading 'schema_version': %w", err)
+		}
+	}
+
+	if raw, found := object["stream_id"]; found {
+		err = json.Unmarshal(raw, &t.StreamId)
+		if err != nil {
+			return fmt.Errorf("error reading 'stream_id': %w", err)
+		}
+	}
+
+	return err
+}
+
+// AsApprovalSessionNotFoundErrorV6 returns the union data inside the ApprovalNotFoundErrorResponseV6 as a ApprovalSessionNotFoundErrorV6
+func (t ApprovalNotFoundErrorResponseV6) AsApprovalSessionNotFoundErrorV6() (ApprovalSessionNotFoundErrorV6, error) {
+	var body ApprovalSessionNotFoundErrorV6
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromApprovalSessionNotFoundErrorV6 overwrites any union data inside the ApprovalNotFoundErrorResponseV6 as the provided ApprovalSessionNotFoundErrorV6
+func (t *ApprovalNotFoundErrorResponseV6) FromApprovalSessionNotFoundErrorV6(v ApprovalSessionNotFoundErrorV6) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeApprovalSessionNotFoundErrorV6 performs a merge with any union data inside the ApprovalNotFoundErrorResponseV6, using the provided ApprovalSessionNotFoundErrorV6
+func (t *ApprovalNotFoundErrorResponseV6) MergeApprovalSessionNotFoundErrorV6(v ApprovalSessionNotFoundErrorV6) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsApprovalNotFoundErrorV6 returns the union data inside the ApprovalNotFoundErrorResponseV6 as a ApprovalNotFoundErrorV6
+func (t ApprovalNotFoundErrorResponseV6) AsApprovalNotFoundErrorV6() (ApprovalNotFoundErrorV6, error) {
+	var body ApprovalNotFoundErrorV6
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromApprovalNotFoundErrorV6 overwrites any union data inside the ApprovalNotFoundErrorResponseV6 as the provided ApprovalNotFoundErrorV6
+func (t *ApprovalNotFoundErrorResponseV6) FromApprovalNotFoundErrorV6(v ApprovalNotFoundErrorV6) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeApprovalNotFoundErrorV6 performs a merge with any union data inside the ApprovalNotFoundErrorResponseV6, using the provided ApprovalNotFoundErrorV6
+func (t *ApprovalNotFoundErrorResponseV6) MergeApprovalNotFoundErrorV6(v ApprovalNotFoundErrorV6) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t ApprovalNotFoundErrorResponseV6) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *ApprovalNotFoundErrorResponseV6) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // AsStartTurnV2TextBlock returns the union data inside the StartTurnV2ContentBlock as a StartTurnV2TextBlock
 func (t StartTurnV2ContentBlock) AsStartTurnV2TextBlock() (StartTurnV2TextBlock, error) {

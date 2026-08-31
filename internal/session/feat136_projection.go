@@ -92,10 +92,10 @@ func (s *Service) publishV4Projection(event Event) (Event, error) {
 	if err != nil {
 		return Event{}, err
 	}
-	if s.eventsV5 == nil || !isV5InheritedEvent(event) {
+	if (s.eventsV5 == nil && s.eventsV6 == nil) || !isV5InheritedEvent(event) {
 		return published, nil
 	}
-	if _, v5Err := s.eventsV5.Publish(event); v5Err != nil {
+	if v5Err := s.publishV5Projection(event); v5Err != nil {
 		s.logger.Warn("discarding invalid inherited v5 projection", "event_type", event.EventType)
 		return published, nil
 	}
@@ -103,6 +103,20 @@ func (s *Service) publishV4Projection(event Event) (Event, error) {
 		s.clearV5Turn(event.AgentSessionID, event.TurnID)
 	}
 	return published, nil
+}
+
+func (s *Service) publishV5Projection(event Event) error {
+	if s.eventsV5 != nil {
+		if _, err := s.eventsV5.Publish(event); err != nil {
+			return err
+		}
+	}
+	if s.eventsV6 != nil {
+		if _, err := s.eventsV6.Publish(event); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func isV5InheritedEvent(event Event) bool {
@@ -135,7 +149,7 @@ func (s *Service) publishV5Lifecycle(
 	raw json.RawMessage,
 	envelope itemNotification,
 ) error {
-	if s.eventsV5 == nil {
+	if s.eventsV5 == nil && s.eventsV6 == nil {
 		return nil
 	}
 	// A terminal Turn is the final authority. Late lifecycle notifications must
@@ -167,7 +181,7 @@ func (s *Service) publishV5Lifecycle(
 			return s.publishV5ProtocolFailureLocked(record, method, key, envelope.Item.Type, nil)
 		}
 		s.v5Items[key] = created
-		if _, err := s.eventsV5.Publish(event); err != nil {
+		if err := s.publishV5Projection(event); err != nil {
 			delete(s.v5Items, key)
 			return err
 		}
@@ -183,7 +197,7 @@ func (s *Service) publishV5Lifecycle(
 			return s.publishV5ProtocolFailureLocked(record, method, key, envelope.Item.Type, nil)
 		}
 		s.v5Items[key] = recovered
-		if _, err := s.eventsV5.Publish(started); err != nil {
+		if err := s.publishV5Projection(started); err != nil {
 			delete(s.v5Items, key)
 			return err
 		}
@@ -195,7 +209,7 @@ func (s *Service) publishV5Lifecycle(
 	if state.kind != notification.Item.Type {
 		event := newV5ProtocolCompleted(record, notification.TurnID, notification.Item.ID, state)
 		state.sealed = true
-		if _, err := s.eventsV5.Publish(event); err != nil {
+		if err := s.publishV5Projection(event); err != nil {
 			state.sealed = false
 			return err
 		}
@@ -206,7 +220,7 @@ func (s *Service) publishV5Lifecycle(
 		event = newV5ProtocolCompleted(record, notification.TurnID, notification.Item.ID, state)
 	}
 	state.sealed = true
-	if _, err := s.eventsV5.Publish(event); err != nil {
+	if err := s.publishV5Projection(event); err != nil {
 		state.sealed = false
 		return err
 	}
@@ -227,7 +241,7 @@ func (s *Service) publishV5ProtocolFailureLocked(
 		}
 		started := fallbackV5StartedEvent(record, key.turnID, key.itemID, state)
 		s.v5Items[key] = state
-		if _, err := s.eventsV5.Publish(started); err != nil {
+		if err := s.publishV5Projection(started); err != nil {
 			delete(s.v5Items, key)
 			return err
 		}
@@ -239,7 +253,7 @@ func (s *Service) publishV5ProtocolFailureLocked(
 	}
 	completed := newV5ProtocolCompleted(record, key.turnID, key.itemID, state)
 	state.sealed = true
-	if _, err := s.eventsV5.Publish(completed); err != nil {
+	if err := s.publishV5Projection(completed); err != nil {
 		state.sealed = false
 		return err
 	}
@@ -455,7 +469,7 @@ func newV5ToolCompleted(record Record, notification v5LifecycleNotification, sta
 }
 
 func (s *Service) publishV5CommandDelta(record Record, notification commandOutputDeltaNotification) error {
-	if s.eventsV5 == nil || notification.Delta == nil {
+	if (s.eventsV5 == nil && s.eventsV6 == nil) || notification.Delta == nil {
 		return nil
 	}
 	if record.ActiveTurnID == "" || record.ActiveTurnID != notification.TurnID {
@@ -482,7 +496,7 @@ func (s *Service) publishV5CommandDelta(record Record, notification commandOutpu
 			TruncationReason: v5TruncationReasonUTF8ByteLimit,
 		}
 		event := decoratedV5ItemEvent(record, notification.TurnID, notification.ItemID, EventItemCommandOutputDelta, payload)
-		if _, err := s.eventsV5.Publish(event); err != nil {
+		if err := s.publishV5Projection(event); err != nil {
 			return err
 		}
 		state.liveBytes += len(v5CommandLiveTruncationMarker)
@@ -515,7 +529,7 @@ func (s *Service) publishV5CommandDelta(record Record, notification commandOutpu
 		payload.TruncationReason = v5TruncationReasonUTF8ByteLimit
 	}
 	event := decoratedV5ItemEvent(record, notification.TurnID, notification.ItemID, EventItemCommandOutputDelta, payload)
-	if _, err := s.eventsV5.Publish(event); err != nil {
+	if err := s.publishV5Projection(event); err != nil {
 		return err
 	}
 	state.liveBytes += len(retained)
@@ -523,7 +537,7 @@ func (s *Service) publishV5CommandDelta(record Record, notification commandOutpu
 }
 
 func (s *Service) publishV5ToolProgress(record Record, notification toolProgressNotification) error {
-	if s.eventsV5 == nil {
+	if s.eventsV5 == nil && s.eventsV6 == nil {
 		return nil
 	}
 	if record.ActiveTurnID == "" || record.ActiveTurnID != notification.TurnID {
@@ -549,7 +563,7 @@ func (s *Service) publishV5ToolProgress(record Record, notification toolProgress
 		Summary:       &summary,
 	}
 	event := decoratedV5ItemEvent(record, notification.TurnID, notification.ItemID, EventItemToolProgress, payload)
-	if _, err := s.eventsV5.Publish(event); err != nil {
+	if err := s.publishV5Projection(event); err != nil {
 		return err
 	}
 	state.progressCount++

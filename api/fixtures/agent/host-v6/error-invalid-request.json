@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "invalid_approval_request",
+    "message": "approval request is invalid"
+  }
+}

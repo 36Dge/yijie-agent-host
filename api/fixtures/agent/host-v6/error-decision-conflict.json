@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "approval_decision_conflict",
+    "message": "approval decision conflicts with the existing decision"
+  }
+}

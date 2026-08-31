@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "approval_stale",
+    "message": "approval request is stale"
+  }
+}

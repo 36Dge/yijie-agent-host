@@ -16,17 +16,22 @@ const (
 	maxTurnV2InputCount  = 16
 	maxImageDataURLBytes = 13981039
 
-	RuntimeMethodThreadResume        = "thread/resume"
-	RuntimeMethodThreadStart         = "thread/start"
-	RuntimeMethodThreadDelete        = "thread/delete"
-	RuntimeNotificationThreadDeleted = "thread/deleted"
-	RuntimeMethodTurnInterrupt       = "turn/interrupt"
-	RuntimeMethodTurnStart           = "turn/start"
-	RuntimeMethodDynamicToolCall     = "item/tool/call"
-	DynamicToolGenerateImage         = "generate_image"
-	SessionApprovalPolicy            = "never"
-	SessionSandbox                   = "read-only"
+	RuntimeMethodThreadResume                = "thread/resume"
+	RuntimeMethodThreadStart                 = "thread/start"
+	RuntimeMethodThreadDelete                = "thread/delete"
+	RuntimeNotificationThreadDeleted         = "thread/deleted"
+	RuntimeMethodTurnInterrupt               = "turn/interrupt"
+	RuntimeMethodTurnStart                   = "turn/start"
+	RuntimeMethodDynamicToolCall             = "item/tool/call"
+	RuntimeMethodCommandApproval             = "item/commandExecution/requestApproval"
+	RuntimeNotificationServerRequestResolved = "serverRequest/resolved"
+	DynamicToolGenerateImage                 = "generate_image"
+	SessionApprovalPolicy                    = "never"
+	SessionApprovalPolicyOnRequest           = "on-request"
+	SessionSandbox                           = "read-only"
 )
+
+const feat137ManagedInstructions = "Runtime Baseline 2 is read-only for workspace and operating-system actions. Only when required, request approval for exactly one command: git rev-parse --is-inside-work-tree in the current workspace. Do not run or request any other command, network access, file change, additional permission, policy amendment, shell wrapper, pipe, redirect, environment assignment, or unsandboxed execution."
 
 var sessionRuntimeMethods = []string{
 	RuntimeMethodThreadResume,
@@ -59,6 +64,49 @@ type DynamicToolResult struct {
 }
 
 type DynamicToolHandler func(context.Context, DynamicToolCall) DynamicToolResult
+
+type CommandApprovalRequest struct {
+	RuntimeGeneration string
+	RequestIDKey      string
+	ThreadID          string
+	TurnID            string
+	ItemID            string
+	StartedAtMS       int64
+	Command           string
+	CommandActions    []CommandApprovalAction
+	Cwd               string
+	EnvironmentID     *string
+}
+
+type CommandApprovalAction struct {
+	Type    string
+	Command string
+}
+
+type CommandApprovalResult struct {
+	Respond  bool
+	Decision string
+}
+
+type CommandApprovalResolved struct {
+	RuntimeGeneration string
+	RequestIDKey      string
+	ThreadID          string
+}
+
+type CommandApprovalResponseWriteResult struct {
+	RuntimeGeneration string
+	RequestIDKey      string
+	ThreadID          string
+	Succeeded         bool
+}
+
+type CommandApprovalHandler interface {
+	HandleCommandApproval(context.Context, CommandApprovalRequest) CommandApprovalResult
+	HandleCommandApprovalResponseWritten(CommandApprovalResponseWriteResult)
+	HandleCommandApprovalResolved(CommandApprovalResolved)
+	HandleCommandApprovalGenerationClosed(string)
+}
 
 type dynamicToolSpec struct {
 	Name        string         `json:"name"`
@@ -158,6 +206,29 @@ type turnStartResponse struct {
 	Turn turnWire `json:"turn"`
 }
 
+type readOnlySandboxPolicy struct {
+	Type          string `json:"type"`
+	NetworkAccess bool   `json:"networkAccess"`
+}
+
+func (m *Manager) sessionApprovalPolicy() string {
+	if m.config.CommandApprovalEnabled {
+		return SessionApprovalPolicyOnRequest
+	}
+	return SessionApprovalPolicy
+}
+
+func (m *Manager) sessionDeveloperInstructions() string {
+	if m.config.CommandApprovalEnabled {
+		return feat137ManagedInstructions
+	}
+	return "Runtime Baseline 2 is read-only for workspace and operating-system actions. Do not modify files or request elevated permissions."
+}
+
+func sessionTurnSandboxPolicy() readOnlySandboxPolicy {
+	return readOnlySandboxPolicy{Type: "readOnly", NetworkAccess: false}
+}
+
 func (m *Manager) SetNotificationHandler(handler NotificationHandler) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -181,9 +252,27 @@ func (m *Manager) SetDynamicToolHandler(handler DynamicToolHandler) error {
 	return nil
 }
 
-func (m *Manager) handleServerRequest(ctx context.Context, method string, raw json.RawMessage) (any, *RPCError) {
-	if method != RuntimeMethodDynamicToolCall || !m.config.DynamicToolsEnabled {
-		return nil, &RPCError{Code: methodNotFoundCode, Message: "Method not supported by Yijie Agent Host Runtime Baseline 2"}
+func (m *Manager) SetCommandApprovalHandler(handler CommandApprovalHandler) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.started {
+		return errors.New("command approval handler must be set before Runtime startup")
+	}
+	if m.config.CommandApprovalEnabled && handler == nil {
+		return errors.New("command approval handler is required when Runtime command approvals are enabled")
+	}
+	m.commandApprovalHandler = handler
+	return nil
+}
+
+func (m *Manager) handleServerRequest(ctx context.Context, request serverRequest) serverRequestResult {
+	if request.method == RuntimeMethodCommandApproval && m.config.CommandApprovalEnabled {
+		return m.handleCommandApprovalRequest(ctx, request)
+	}
+	if request.method != RuntimeMethodDynamicToolCall || !m.config.DynamicToolsEnabled {
+		return serverRequestResult{respond: true, rpcError: &RPCError{
+			Code: methodNotFoundCode, Message: "Method not supported by Yijie Agent Host Runtime Baseline 2",
+		}}
 	}
 	var params struct {
 		ThreadID  string          `json:"threadId"`
@@ -193,26 +282,160 @@ func (m *Manager) handleServerRequest(ctx context.Context, method string, raw js
 		Tool      string          `json:"tool"`
 		Arguments json.RawMessage `json:"arguments"`
 	}
-	decoder := json.NewDecoder(strings.NewReader(string(raw)))
+	decoder := json.NewDecoder(strings.NewReader(string(request.params)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&params); err != nil || params.ThreadID == "" || params.TurnID == "" ||
 		params.CallID == "" || params.Tool != DynamicToolGenerateImage || params.Namespace != nil || len(params.Arguments) == 0 {
-		return nil, &RPCError{Code: -32602, Message: "Invalid dynamic tool call"}
+		return serverRequestResult{respond: true, rpcError: &RPCError{Code: -32602, Message: "Invalid dynamic tool call"}}
 	}
 	m.mu.Lock()
 	handler := m.dynamicToolHandler
 	m.mu.Unlock()
 	if handler == nil {
-		return nil, &RPCError{Code: -32603, Message: "Dynamic tool unavailable"}
+		return serverRequestResult{respond: true, rpcError: &RPCError{Code: -32603, Message: "Dynamic tool unavailable"}}
 	}
 	result := handler(ctx, DynamicToolCall{
 		ThreadID: params.ThreadID, TurnID: params.TurnID, CallID: params.CallID,
 		Tool: params.Tool, Arguments: append(json.RawMessage(nil), params.Arguments...),
 	})
-	return struct {
+	return serverRequestResult{respond: true, value: struct {
 		ContentItems []map[string]string `json:"contentItems"`
 		Success      bool                `json:"success"`
-	}{ContentItems: []map[string]string{{"type": "inputText", "text": result.Text}}, Success: result.Success}, nil
+	}{ContentItems: []map[string]string{{"type": "inputText", "text": result.Text}}, Success: result.Success}}
+}
+
+func (m *Manager) handleCommandApprovalRequest(ctx context.Context, request serverRequest) serverRequestResult {
+	cancel := serverRequestResult{respond: true, value: struct {
+		Decision string `json:"decision"`
+	}{Decision: "cancel"}}
+	if !request.exactEnvelope {
+		return cancel
+	}
+	m.mu.Lock()
+	handler := m.commandApprovalHandler
+	generation := m.runtimeGeneration
+	m.mu.Unlock()
+	if handler == nil || generation == "" {
+		return cancel
+	}
+	params, err := decodeCommandApprovalParams(request.params)
+	if err != nil {
+		// The typed Runtime request identity becomes authoritative after the
+		// exact outer envelope is accepted, before params eligibility. Notify the
+		// Host authority so a malformed replay cannot receive a second response
+		// or leave an existing same-key pending request actionable. The mapper
+		// still forces Cancel for a newly rejected request and never trusts an
+		// invalid payload to select a wider response.
+		result := handler.HandleCommandApproval(ctx, CommandApprovalRequest{
+			RuntimeGeneration: generation,
+			RequestIDKey:      request.idKey,
+		})
+		if !result.Respond {
+			return serverRequestResult{}
+		}
+		cancel.onResponseWritten = commandApprovalResponseWriteCallback(
+			handler, generation, request.idKey, "",
+		)
+		return cancel
+	}
+	result := handler.HandleCommandApproval(ctx, CommandApprovalRequest{
+		RuntimeGeneration: generation,
+		RequestIDKey:      request.idKey,
+		ThreadID:          params.ThreadID,
+		TurnID:            params.TurnID,
+		ItemID:            params.ItemID,
+		StartedAtMS:       params.StartedAtMS,
+		Command:           params.Command,
+		CommandActions:    params.CommandActions,
+		Cwd:               params.Cwd,
+		EnvironmentID:     params.EnvironmentID,
+	})
+	if !result.Respond {
+		return serverRequestResult{}
+	}
+	if result.Decision != "accept" && result.Decision != "cancel" {
+		return serverRequestResult{respond: true, rpcError: &RPCError{Code: -32603, Message: "Command approval unavailable"}}
+	}
+	return serverRequestResult{respond: true, value: struct {
+		Decision string `json:"decision"`
+	}{Decision: result.Decision}, onResponseWritten: commandApprovalResponseWriteCallback(
+		handler, generation, request.idKey, params.ThreadID,
+	)}
+}
+
+func commandApprovalResponseWriteCallback(
+	handler CommandApprovalHandler,
+	generation, requestIDKey, threadID string,
+) func(error) {
+	return func(err error) {
+		handler.HandleCommandApprovalResponseWritten(CommandApprovalResponseWriteResult{
+			RuntimeGeneration: generation,
+			RequestIDKey:      requestIDKey,
+			ThreadID:          threadID,
+			Succeeded:         err == nil,
+		})
+	}
+}
+
+type commandApprovalParams struct {
+	ThreadID       string
+	TurnID         string
+	ItemID         string
+	StartedAtMS    int64
+	Command        string
+	CommandActions []CommandApprovalAction
+	Cwd            string
+	EnvironmentID  *string
+}
+
+func decodeCommandApprovalParams(raw json.RawMessage) (commandApprovalParams, error) {
+	allowed := map[string]struct{}{
+		"threadId": {}, "turnId": {}, "itemId": {}, "startedAtMs": {}, "command": {},
+		"commandActions": {}, "cwd": {}, "approvalId": {}, "environmentId": {}, "availableDecisions": {},
+	}
+	fields, err := decodeUniqueJSONObject(raw, allowed)
+	if err != nil {
+		return commandApprovalParams{}, err
+	}
+	for _, required := range []string{"threadId", "turnId", "itemId", "startedAtMs", "command", "commandActions", "cwd"} {
+		if _, ok := fields[required]; !ok {
+			return commandApprovalParams{}, errors.New("command approval request omitted a required field")
+		}
+	}
+	var params commandApprovalParams
+	if json.Unmarshal(fields["threadId"], &params.ThreadID) != nil || params.ThreadID == "" ||
+		json.Unmarshal(fields["turnId"], &params.TurnID) != nil || params.TurnID == "" ||
+		json.Unmarshal(fields["itemId"], &params.ItemID) != nil || params.ItemID == "" ||
+		json.Unmarshal(fields["startedAtMs"], &params.StartedAtMS) != nil ||
+		json.Unmarshal(fields["command"], &params.Command) != nil || params.Command == "" ||
+		json.Unmarshal(fields["cwd"], &params.Cwd) != nil || params.Cwd == "" {
+		return commandApprovalParams{}, errors.New("command approval request has an invalid required field")
+	}
+	if approvalID, ok := fields["approvalId"]; ok && string(approvalID) != "null" {
+		return commandApprovalParams{}, errors.New("command approvalId must be absent or null")
+	}
+	if environmentID, ok := fields["environmentId"]; ok && string(environmentID) != "null" {
+		var value string
+		if json.Unmarshal(environmentID, &value) != nil || value == "" {
+			return commandApprovalParams{}, errors.New("command environmentId is invalid")
+		}
+		params.EnvironmentID = &value
+	}
+	var actions []json.RawMessage
+	if json.Unmarshal(fields["commandActions"], &actions) != nil || len(actions) != 1 {
+		return commandApprovalParams{}, errors.New("command approval requires one action")
+	}
+	actionFields, err := decodeUniqueJSONObject(actions[0], map[string]struct{}{"type": {}, "command": {}})
+	if err != nil || len(actionFields) != 2 {
+		return commandApprovalParams{}, errors.New("command approval action is invalid")
+	}
+	var action CommandApprovalAction
+	if json.Unmarshal(actionFields["type"], &action.Type) != nil ||
+		json.Unmarshal(actionFields["command"], &action.Command) != nil || action.Type == "" || action.Command == "" {
+		return commandApprovalParams{}, errors.New("command approval action is invalid")
+	}
+	params.CommandActions = []CommandApprovalAction{action}
+	return params, nil
 }
 
 func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, error) {
@@ -235,9 +458,9 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		Model:                 MiniMaxModel,
 		ModelProvider:         MiniMaxProviderID,
 		Cwd:                   cwd,
-		ApprovalPolicy:        SessionApprovalPolicy,
+		ApprovalPolicy:        m.sessionApprovalPolicy(),
 		Sandbox:               SessionSandbox,
-		DeveloperInstructions: "Runtime Baseline 2 is read-only for workspace and operating-system actions. Do not modify files or request elevated permissions.",
+		DeveloperInstructions: m.sessionDeveloperInstructions(),
 		Ephemeral:             false,
 	}
 	if m.config.DynamicToolsEnabled {
@@ -258,10 +481,23 @@ func (m *Manager) ResumeThread(ctx context.Context, threadID string) (ThreadInfo
 	if threadID == "" {
 		return ThreadInfo{}, errors.New("Codex thread id is required")
 	}
+	type resumeParams struct {
+		ThreadID              string  `json:"threadId"`
+		ApprovalPolicy        *string `json:"approvalPolicy,omitempty"`
+		Sandbox               *string `json:"sandbox,omitempty"`
+		DeveloperInstructions *string `json:"developerInstructions,omitempty"`
+	}
+	params := resumeParams{ThreadID: threadID}
+	if m.config.CommandApprovalEnabled {
+		approvalPolicy := m.sessionApprovalPolicy()
+		sandbox := SessionSandbox
+		developerInstructions := m.sessionDeveloperInstructions()
+		params.ApprovalPolicy = &approvalPolicy
+		params.Sandbox = &sandbox
+		params.DeveloperInstructions = &developerInstructions
+	}
 	var response threadResponse
-	if err := m.request(ctx, RuntimeMethodThreadResume, struct {
-		ThreadID string `json:"threadId"`
-	}{ThreadID: threadID}, &response); err != nil {
+	if err := m.request(ctx, RuntimeMethodThreadResume, params, &response); err != nil {
 		return ThreadInfo{}, err
 	}
 	thread, err := validateThreadResponse(response)
@@ -296,9 +532,11 @@ func (m *Manager) StartTurn(
 		return TurnInfo{}, errors.New("reasoning effort must be none or high")
 	}
 	params := struct {
-		ThreadID string `json:"threadId"`
-		Input    []any  `json:"input"`
-		Effort   string `json:"effort"`
+		ThreadID       string                 `json:"threadId"`
+		Input          []any                  `json:"input"`
+		Effort         string                 `json:"effort"`
+		ApprovalPolicy *string                `json:"approvalPolicy,omitempty"`
+		SandboxPolicy  *readOnlySandboxPolicy `json:"sandboxPolicy,omitempty"`
 	}{
 		ThreadID: threadID,
 		Input: []any{map[string]any{
@@ -306,6 +544,12 @@ func (m *Manager) StartTurn(
 			"text": input,
 		}},
 		Effort: reasoningEffort,
+	}
+	if m.config.CommandApprovalEnabled {
+		approvalPolicy := m.sessionApprovalPolicy()
+		sandboxPolicy := sessionTurnSandboxPolicy()
+		params.ApprovalPolicy = &approvalPolicy
+		params.SandboxPolicy = &sandboxPolicy
 	}
 	var response turnStartResponse
 	if err := m.request(ctx, RuntimeMethodTurnStart, params, &response); err != nil {
@@ -344,13 +588,19 @@ func (m *Manager) StartTurnV2(
 		wireInputs = append(wireInputs, wire)
 	}
 	params := struct {
-		ThreadID string `json:"threadId"`
-		Input    []any  `json:"input"`
-		Effort   string `json:"effort"`
+		ThreadID       string                 `json:"threadId"`
+		Input          []any                  `json:"input"`
+		Effort         string                 `json:"effort"`
+		ApprovalPolicy *string                `json:"approvalPolicy,omitempty"`
+		SandboxPolicy  *readOnlySandboxPolicy `json:"sandboxPolicy,omitempty"`
 	}{
-		ThreadID: threadID,
-		Input:    wireInputs,
-		Effort:   reasoningEffort,
+		ThreadID: threadID, Input: wireInputs, Effort: reasoningEffort,
+	}
+	if m.config.CommandApprovalEnabled {
+		approvalPolicy := m.sessionApprovalPolicy()
+		sandboxPolicy := sessionTurnSandboxPolicy()
+		params.ApprovalPolicy = &approvalPolicy
+		params.SandboxPolicy = &sandboxPolicy
 	}
 	var response turnStartResponse
 	if err := m.request(ctx, RuntimeMethodTurnStart, params, &response); err != nil {

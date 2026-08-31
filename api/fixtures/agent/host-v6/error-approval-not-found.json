@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "approval_not_found",
+    "message": "approval request was not found"
+  }
+}

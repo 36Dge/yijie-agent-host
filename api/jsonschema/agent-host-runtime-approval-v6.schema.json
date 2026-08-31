@@ -1,0 +1,543 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.yijie.ai/compatibility/agent-host-runtime-approval-v6.schema.json",
+  "title": "AgentHostRuntimeApprovalCompatibilityV6",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "projection_id",
+    "contracts_version",
+    "status",
+    "runtime",
+    "activation",
+    "reverse_request",
+    "runtime_response",
+    "lifecycle"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "projection_id": { "const": "agent-host-runtime-approval-v6" },
+    "contracts_version": { "const": "0.7.0" },
+    "status": { "const": "source_first_not_implemented" },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "activation": { "$ref": "#/$defs/activation" },
+    "reverse_request": { "$ref": "#/$defs/reverseRequest" },
+    "runtime_response": { "$ref": "#/$defs/runtimeResponse" },
+    "lifecycle": { "$ref": "#/$defs/lifecycle" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "repository_commit",
+        "upstream_tag",
+        "upstream_commit",
+        "version",
+        "transport",
+        "experimental_api",
+        "schema_file_count",
+        "schema_tree_sha256",
+        "schema_artifacts"
+      ],
+      "properties": {
+        "repository": { "const": "https://github.com/36Dge/yijie-codex.git" },
+        "repository_commit": { "const": "b2b20e2fc4a0c94834f34d8cc459e488a1b56277" },
+        "upstream_tag": { "const": "rust-v0.144.6" },
+        "upstream_commit": { "const": "5d1fbf26c43abc65a203928b2e31561cb039e06d" },
+        "version": { "const": "0.144.6" },
+        "transport": { "const": "stdio" },
+        "experimental_api": { "const": false },
+        "schema_file_count": { "const": 267 },
+        "schema_tree_sha256": {
+          "const": "82ee9de771cf1d41bac16d87380f1121e7794107aa3aa526ad702d5d1bf7afe1"
+        },
+        "schema_artifacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ServerRequest.json",
+            "CommandExecutionRequestApprovalParams.json",
+            "CommandExecutionRequestApprovalResponse.json",
+            "ServerNotification.json"
+          ],
+          "properties": {
+            "ServerRequest.json": {
+              "const": "58dde2ece68714cf5349428fcef0d413ecac58dc6dda8d47ef2d7d6aa9884337"
+            },
+            "CommandExecutionRequestApprovalParams.json": {
+              "const": "9a4a32a860c0b40b2e77b116677d9188510e67a5d437d802f01cad2ad8c9678e"
+            },
+            "CommandExecutionRequestApprovalResponse.json": {
+              "const": "db8384b633b9cee62f152328c5053ebaaa90299e0e686451c13de75fc01bafbd"
+            },
+            "ServerNotification.json": {
+              "const": "cf64e0f4a26e0e6c34f242d6c96f9151eb90484fc37d0bf206cd4b0bff1f3d58"
+            }
+          }
+        }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exposure",
+        "profile",
+        "feature_gate",
+        "approval_policy",
+        "fallback_approval_policy",
+        "sandbox",
+        "experimental_api"
+      ],
+      "properties": {
+        "exposure": { "const": "local" },
+        "profile": { "const": "demo_fast" },
+        "feature_gate": { "const": "FEAT-137" },
+        "approval_policy": { "const": "on-request" },
+        "fallback_approval_policy": { "const": "never" },
+        "sandbox": { "const": "read-only" },
+        "experimental_api": { "const": false }
+      }
+    },
+    "reverseRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "jsonrpc_version_member",
+        "outer_request_id",
+        "stable_required_params",
+        "wire_shape",
+        "identity_binding",
+        "correlation",
+        "eligibility"
+      ],
+      "properties": {
+        "method": { "const": "item/commandExecution/requestApproval" },
+        "jsonrpc_version_member": { "const": "absent" },
+        "outer_request_id": { "$ref": "#/$defs/outerRequestId" },
+        "stable_required_params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["item_id", "started_at_ms", "thread_id", "turn_id"],
+          "properties": {
+            "item_id": { "const": "itemId" },
+            "started_at_ms": { "const": "startedAtMs" },
+            "thread_id": { "const": "threadId" },
+            "turn_id": { "const": "turnId" }
+          }
+        },
+        "wire_shape": { "$ref": "#/$defs/wireShape" },
+        "identity_binding": { "$ref": "#/$defs/identityBinding" },
+        "correlation": { "$ref": "#/$defs/correlation" },
+        "eligibility": { "$ref": "#/$defs/eligibility" }
+      }
+    },
+    "wireShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outer_required_fields",
+        "outer_additional_properties",
+        "params_required_fields",
+        "params_optional_fields",
+        "params_additional_properties"
+      ],
+      "properties": {
+        "outer_required_fields": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["request_id", "method", "params"],
+          "properties": {
+            "request_id": { "const": "id" },
+            "method": { "const": "method" },
+            "params": { "const": "params" }
+          }
+        },
+        "outer_additional_properties": { "const": "forbidden" },
+        "params_required_fields": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "thread_id",
+            "turn_id",
+            "item_id",
+            "started_at_ms",
+            "command",
+            "command_actions",
+            "cwd"
+          ],
+          "properties": {
+            "thread_id": { "const": "threadId" },
+            "turn_id": { "const": "turnId" },
+            "item_id": { "const": "itemId" },
+            "started_at_ms": { "const": "startedAtMs" },
+            "command": { "const": "command" },
+            "command_actions": { "const": "commandActions" },
+            "cwd": { "const": "cwd" }
+          }
+        },
+        "params_optional_fields": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["approval_id", "environment_id", "available_decisions"],
+          "properties": {
+            "approval_id": { "const": "approvalId" },
+            "environment_id": { "const": "environmentId" },
+            "available_decisions": { "const": "availableDecisions" }
+          }
+        },
+        "params_additional_properties": { "const": "forbidden" }
+      }
+    },
+    "identityBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "thread_id",
+        "turn_id",
+        "item_id",
+        "validation_order",
+        "mismatch_behavior"
+      ],
+      "properties": {
+        "thread_id": { "const": "equals_host_session_runtime_thread_id" },
+        "turn_id": { "const": "equals_host_active_turn_id" },
+        "item_id": { "const": "equals_host_expected_command_item_id" },
+        "validation_order": {
+          "const": "before_pending_projection_and_replay_fingerprint"
+        },
+        "mismatch_behavior": { "const": "cancel_once_without_desktop_projection" }
+      }
+    },
+    "outerRequestId": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["wire_types", "runtime_generator", "scope", "exposed_to_yijie_surfaces"],
+      "properties": {
+        "wire_types": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runtime_generated", "schema_alternate"],
+          "properties": {
+            "runtime_generated": { "const": "integer" },
+            "schema_alternate": { "const": "string" }
+          }
+        },
+        "runtime_generator": { "const": "integer_monotonic_from_zero_per_runtime_process" },
+        "scope": { "const": "runtime_process_generation" },
+        "exposed_to_yijie_surfaces": { "const": false }
+      }
+    },
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "replay_key_fields",
+        "replay_key_extraction_order",
+        "same_key_replay",
+        "same_key_payload_conflict",
+        "replay_payload_equivalence",
+        "request_id_reuse_across_runtime_generations",
+        "runtime_identity_storage"
+      ],
+      "properties": {
+        "replay_key_fields": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runtime_generation", "request_id"],
+          "properties": {
+            "runtime_generation": { "const": "runtime_generation" },
+            "request_id": { "const": "request_id" }
+          }
+        },
+        "replay_key_extraction_order": {
+          "const": "after_exact_outer_shape_before_params_eligibility"
+        },
+        "same_key_replay": {
+          "const": "reuse_approval_request_id_revision_requested_at_and_expires_at"
+        },
+        "same_key_payload_conflict": {
+          "const": "cancel_original_once_resolve_existing_pending_elsewhere_without_new_requested_projection"
+        },
+        "replay_payload_equivalence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "canonical_fields",
+            "ignored_fields",
+            "comparison",
+            "equivalent_same_key",
+            "different_same_key"
+          ],
+          "properties": {
+            "version": { "const": 1 },
+            "canonical_fields": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "command",
+                "command_actions",
+                "cwd",
+                "environment_id",
+                "approval_id",
+                "started_at_ms",
+                "thread_id",
+                "turn_id",
+                "item_id"
+              ],
+              "properties": {
+                "thread_id": { "const": "exact_host_bound_runtime_thread_identity" },
+                "turn_id": { "const": "exact_host_active_turn_identity" },
+                "item_id": { "const": "exact_host_expected_command_item_identity" },
+                "command": { "const": "exact_command_string" },
+                "command_actions": { "const": "exact_single_unknown_command_action" },
+                "cwd": { "const": "canonical_host_workspace_identity" },
+                "environment_id": {
+                  "const": "normalize_absent_null_or_exact_host_local_to_host_local_identity"
+                },
+                "approval_id": { "const": "normalize_absent_or_null_to_none" },
+                "started_at_ms": { "const": "exact_integer_value" }
+              }
+            },
+            "ignored_fields": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["available_decisions"],
+              "properties": {
+                "available_decisions": { "const": "availableDecisions" }
+              }
+            },
+            "comparison": { "const": "exact_canonical_object" },
+            "equivalent_same_key": {
+              "const": "reuse_pending_authority_without_ttl_reset"
+            },
+            "different_same_key": {
+              "const": "cancel_original_once_resolve_existing_pending_elsewhere_without_new_requested_projection"
+            }
+          }
+        },
+        "request_id_reuse_across_runtime_generations": { "const": "distinct_request" },
+        "runtime_identity_storage": { "const": "host_pending_memory_only" }
+      }
+    },
+    "eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "command_actions",
+        "approval_id",
+        "cwd",
+        "environment_id",
+        "must_be_absent",
+        "ignored_if_present",
+        "started_at_ms",
+        "ineligible_request"
+      ],
+      "properties": {
+        "command": { "const": "git rev-parse --is-inside-work-tree" },
+        "command_actions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["exact_count", "type", "command", "additional_properties"],
+          "properties": {
+            "exact_count": { "const": 1 },
+            "type": { "const": "unknown" },
+            "command": { "const": "git rev-parse --is-inside-work-tree" },
+            "additional_properties": { "const": "forbidden" }
+          }
+        },
+        "approval_id": { "const": "absent_or_null" },
+        "cwd": { "const": "canonical_equal_to_host_known_workspace_root" },
+        "environment_id": { "const": "absent_null_or_exact_host_known_local_environment" },
+        "must_be_absent": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reason",
+            "network_approval_context",
+            "additional_permissions",
+            "proposed_execpolicy_amendment",
+            "proposed_network_policy_amendments"
+          ],
+          "properties": {
+            "reason": { "const": "reason" },
+            "network_approval_context": { "const": "networkApprovalContext" },
+            "additional_permissions": { "const": "additionalPermissions" },
+            "proposed_execpolicy_amendment": { "const": "proposedExecpolicyAmendment" },
+            "proposed_network_policy_amendments": {
+              "const": "proposedNetworkPolicyAmendments"
+            }
+          }
+        },
+        "ignored_if_present": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["available_decisions"],
+          "properties": {
+            "available_decisions": { "const": "availableDecisions" }
+          }
+        },
+        "started_at_ms": { "const": "required_integer_non_authoritative_for_ttl" },
+        "ineligible_request": { "const": "cancel_once_without_desktop_projection" }
+      }
+    },
+    "runtimeResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accept_once",
+        "cancel_current_turn",
+        "ttl_expired",
+        "forbidden_runtime_decisions",
+        "malformed_response_fallback",
+        "max_responses_per_request"
+      ],
+      "properties": {
+        "accept_once": { "$ref": "#/$defs/acceptResponse" },
+        "cancel_current_turn": { "$ref": "#/$defs/cancelResponse" },
+        "ttl_expired": { "$ref": "#/$defs/cancelResponse" },
+        "forbidden_runtime_decisions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "accept_for_session",
+            "accept_with_execpolicy_amendment",
+            "apply_network_policy_amendment",
+            "decline"
+          ],
+          "properties": {
+            "accept_for_session": { "const": "acceptForSession" },
+            "accept_with_execpolicy_amendment": {
+              "const": "acceptWithExecpolicyAmendment"
+            },
+            "apply_network_policy_amendment": { "const": "applyNetworkPolicyAmendment" },
+            "decline": { "const": "decline" }
+          }
+        },
+        "malformed_response_fallback": { "const": "forbidden" },
+        "max_responses_per_request": { "const": 1 }
+      }
+    },
+    "acceptResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision"],
+      "properties": { "decision": { "const": "accept" } }
+    },
+    "cancelResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision"],
+      "properties": { "decision": { "const": "cancel" } }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ttl_seconds",
+        "ttl_clock",
+        "runtime_started_at_ms_is_ttl_authority",
+        "race_policy",
+        "race_participants",
+        "ttl_winner",
+        "authority_cleanup_winner",
+        "decision_ack_authority",
+        "resolution_acknowledgement",
+        "terminal_authority",
+        "max_pending_per_session",
+        "pending_overflow",
+        "automatic_decision_retry"
+      ],
+      "properties": {
+        "ttl_seconds": { "const": 120 },
+        "ttl_clock": { "const": "host_monotonic_receive_time" },
+        "runtime_started_at_ms_is_ttl_authority": { "const": false },
+        "race_policy": { "const": "first_writer_wins" },
+        "race_participants": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "user_decision",
+            "ttl",
+            "server_request_resolved",
+            "item_terminal",
+            "turn_terminal"
+          ],
+          "properties": {
+            "user_decision": { "const": "user_decision" },
+            "ttl": { "const": "ttl" },
+            "server_request_resolved": { "const": "server_request_resolved" },
+            "item_terminal": { "const": "item_terminal" },
+            "turn_terminal": { "const": "turn_terminal" }
+          }
+        },
+        "ttl_winner": { "const": "send_cancel_once_then_resolve_expired" },
+        "authority_cleanup_winner": {
+          "const": "resolve_elsewhere_without_runtime_response"
+        },
+        "decision_ack_authority": { "const": "serverRequest/resolved" },
+        "resolution_acknowledgement": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "method",
+            "required_params",
+            "correlation",
+            "matching_notification",
+            "mismatch_behavior",
+            "duplicate_behavior",
+            "timeout_behavior"
+          ],
+          "properties": {
+            "method": { "const": "serverRequest/resolved" },
+            "required_params": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["request_id", "thread_id"],
+              "properties": {
+                "request_id": { "const": "requestId" },
+                "thread_id": { "const": "threadId" }
+              }
+            },
+            "correlation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["runtime_generation", "request_id", "thread_id"],
+              "properties": {
+                "runtime_generation": { "const": "same_runtime_process_generation" },
+                "request_id": { "const": "exact_json_type_and_value" },
+                "thread_id": { "const": "exact_runtime_thread_id" }
+              }
+            },
+            "matching_notification": {
+              "const": "permit_one_decision_http_200_transition"
+            },
+            "mismatch_behavior": {
+              "const": "does_not_acknowledge_or_emit_http_200"
+            },
+            "duplicate_behavior": { "const": "idempotent_no_second_transition" },
+            "timeout_behavior": {
+              "const": "approval_unavailable_without_http_200_then_snapshot_reconcile"
+            }
+          }
+        },
+        "terminal_authority": { "const": "runtime_item_and_turn_terminal" },
+        "max_pending_per_session": { "const": 1 },
+        "pending_overflow": {
+          "const": "cancel_new_request_once_without_desktop_projection"
+        },
+        "automatic_decision_retry": { "const": false }
+      }
+    }
+  }
+}
