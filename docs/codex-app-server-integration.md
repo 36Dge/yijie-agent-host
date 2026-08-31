@@ -8,19 +8,20 @@ Agent Host Runtime Baseline 2 继承 Baseline 1 的固定兼容边界，只兼�
 | --- | --- |
 | 上游 tag | `rust-v0.144.6` |
 | 上游 commit | `5d1fbf26c43abc65a203928b2e31561cb039e06d` |
-| Runtime repository commit | `b2b20e2fc4a0c94834f34d8cc459e488a1b56277` |
+| Runtime repository commit | `acf2da55d8a53175343aaf112e03368dfef9922a` |
 | Runtime 版本 | `codex-cli 0.144.6` |
 | 发布目标 | `aarch64-apple-darwin` |
-| binary size | `355676760` bytes |
-| binary SHA-256 | `4efe16d2848680752cf9aacf4c17741ab2eeb7415894a66c2bb03652b00a322d` |
-| manifest SHA-256 | `1cfa2e0a139b2213f4d29b1efeed71d4810110ac865f0bcbd931ff33b0062c1b` |
-| Schema tree SHA-256 | `82ee9de771cf1d41bac16d87380f1121e7794107aa3aa526ad702d5d1bf7afe1` |
+| binary size | `356082232` bytes |
+| binary SHA-256 | `84bb0445a15f99354ddd38ccb407b9b0d3d28522accece3fa9755918ab6978e3` |
+| manifest SHA-256 | `e62d8210f5abcad7ff0fc1b4d068c7fe4da59501c6fa6b12f18dc4a1f939c6aa` |
+| Schema tree SHA-256 | `d82a33f683e554c10dd056a0101c26fd24477928e3f98ee3d9ef250b97395228` |
 | transport | JSONL over stdio |
 | API surface | stable，`experimentalApi=false` |
 | Yijie Runtime patch 1 | `0001-feat-126-filter-persistent-diagnostics.patch` / `6b337a02caf064c6819fab5c7367a485004c85cce0d42acb06fa6d5003e599a0` |
 | Yijie Runtime patch 2 | `0002-feat-136-unified-exec-pre-emitter-command-lifecycle.patch` / `43de168e1443f4b9ca60d7f61e3de2daf20e1cfea14d2e196d28ba417bf3e06d` |
+| Yijie Runtime patch 3 | `0003-feat-137-stable-sandbox-provenance.patch` / `af7196f609fbbe722f69e7913d2aeb2f38bfc5f4cbed4bfb32c9e6f844a9910c` |
 
-Host 不接受“同版本号但不同哈希”的二进制，也不把随附 manifest 当作可自行声明的新信任根。启动前先校验 manifest 文件本身的精确 SHA-256，再依次把其中的 binary、两 patch 的严格顺序、Schema tree 和 build-lock 摘要与编译时固定值比较，随后校验实际二进制文件名、大小、SHA-256，以及 `codex --version` 的精确输出。
+Host 不接受“同版本号但不同哈希”的二进制，也不把随附 manifest 当作可自行声明的新信任根。启动前先校验 manifest 文件本身的精确 SHA-256，再依次把其中的 binary、三 patch 的严格顺序、Schema tree 和 build-lock 摘要与编译时固定值比较，随后校验实际二进制文件名、大小、SHA-256，以及 `codex --version` 的精确输出。
 
 ## 进程与握手
 
@@ -67,7 +68,10 @@ Host 验证响应包含 `userAgent`、`codexHome`、`platformFamily` 和 `platfo
 - 单条消息默认上限 16 MiB，Host 写队列默认 64 条；两者均可显式配置；
 - Host 请求 ID 使用 int64，并接受 Runtime 返回的 int64/string ID；
 - 响应按 ID 路由到等待请求，通知按 method 接收；未知通知不会导致连接退出；
-- Runtime 发起的反向请求必须有明确处理器。Baseline 1 尚未接审批、attestation 或动态工具，因此统一返回 JSON-RPC `-32601`，禁止悬挂或默认放行；
+- Runtime 发起的反向请求必须有明确处理器。默认仍返回 JSON-RPC `-32601`；仅 exact
+  local/demo_fast FEAT-134/136/137 gate 组合承接 stable Command approval。其 closed decoder
+  要求 `sandboxPermissions` 为 Runtime 三值 enum 之一，并且只有 `use_default` 可形成 pending；
+  `require_escalated`、`with_additional_permissions`、缺失或未知值全部 fail closed；
 - malformed JSON、超大消息、stdout EOF、写失败或子进程异常退出都会使 readiness 立即失效；
 - Host 关闭时先停止 readiness，再关闭 Runtime stdin，等待进程退出，超时后终止子进程。
 

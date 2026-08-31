@@ -1897,6 +1897,11 @@ func runtimeStatusView(status codex.Status) agenthostcontract.RuntimeStatus {
 	}
 	if status.FailureCode != "" {
 		value := agenthostcontract.RuntimeStatusFailureCode(status.FailureCode)
+		if !value.Valid() {
+			// Internal lifecycle details are logged by the Runtime adapter. Never
+			// project an unknown string outside the frozen closed status enum.
+			value = agenthostcontract.ProtocolFailure
+		}
 		view.FailureCode = &value
 	}
 	if status.ModelProvider != "" {

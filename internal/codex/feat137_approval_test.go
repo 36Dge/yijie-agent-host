@@ -15,6 +15,7 @@ const feat137CanonicalApprovalParams = `{
 	"threadId":"thread-137",
 	"turnId":"turn-137",
 	"itemId":"item-137",
+	"sandboxPermissions":"use_default",
 	"startedAtMs":137000,
 	"command":"/bin/zsh -lc 'git rev-parse --is-inside-work-tree'",
 	"commandActions":[{"type":"unknown","command":"git rev-parse --is-inside-work-tree"}],
@@ -65,7 +66,8 @@ func TestFEAT137PinnedRuntimeCommandApprovalWireFixture(t *testing.T) {
 	}
 	if wire.Method != RuntimeMethodCommandApproval || requestKey != "n:7" ||
 		params.ThreadID != "thread-137" || params.TurnID != "turn-137" || params.ItemID != "item-137" ||
-		params.StartedAtMS != 137000 || params.Command != "/bin/zsh -lc 'git rev-parse --is-inside-work-tree'" ||
+		params.SandboxPermissions != "use_default" || params.StartedAtMS != 137000 ||
+		params.Command != "/bin/zsh -lc 'git rev-parse --is-inside-work-tree'" ||
 		params.Cwd != "/workspace" || params.EnvironmentID == nil || *params.EnvironmentID != "local" ||
 		len(params.CommandActions) != 1 || params.CommandActions[0] != (CommandApprovalAction{
 		Type: "unknown", Command: "git rev-parse --is-inside-work-tree",
@@ -82,10 +84,10 @@ func TestFEAT137PinnedRuntimeCommandApprovalWireFixture(t *testing.T) {
 	}
 }
 
-func TestFEAT137RuntimeApprovalV2ContractMatchesAdapter(t *testing.T) {
-	encoded, err := os.ReadFile("../../api/compatibility/agent-host-runtime-approval-v6-v2.json")
+func TestFEAT137RuntimeApprovalV3ContractMatchesAdapter(t *testing.T) {
+	encoded, err := os.ReadFile("../../api/compatibility/agent-host-runtime-approval-v6-v3.json")
 	if err != nil {
-		t.Fatalf("read Runtime approval v2 compatibility contract: %v", err)
+		t.Fatalf("read Runtime approval v3 compatibility contract: %v", err)
 	}
 	var authority struct {
 		SchemaVersion int    `json:"schema_version"`
@@ -116,9 +118,17 @@ func TestFEAT137RuntimeApprovalV2ContractMatchesAdapter(t *testing.T) {
 				} `json:"load_time_examples"`
 			} `json:"producer"`
 		} `json:"activation"`
+		Runtime struct {
+			RepositoryCommit string `json:"repository_commit"`
+			SchemaTreeSHA256 string `json:"schema_tree_sha256"`
+		} `json:"runtime"`
 		ReverseRequest struct {
 			Method      string `json:"method"`
 			Eligibility struct {
+				SandboxPermissions struct {
+					RuntimeEnum   []string `json:"runtime_enum"`
+					EligibleValue string   `json:"eligible_value"`
+				} `json:"sandbox_permissions"`
 				Reason struct {
 					Forms             string `json:"forms"`
 					MaxUTF8Bytes      int    `json:"max_utf8_bytes"`
@@ -132,18 +142,20 @@ func TestFEAT137RuntimeApprovalV2ContractMatchesAdapter(t *testing.T) {
 		} `json:"reverse_request"`
 	}
 	if err := json.Unmarshal(encoded, &authority); err != nil {
-		t.Fatalf("decode Runtime approval v2 compatibility contract: %v", err)
+		t.Fatalf("decode Runtime approval v3 compatibility contract: %v", err)
 	}
 	producer := authority.Activation.Producer
 	reason := authority.ReverseRequest.Eligibility.Reason
-	if authority.SchemaVersion != 2 || authority.ProjectionID != "agent-host-runtime-approval-v6-v2" ||
+	if authority.SchemaVersion != 3 || authority.ProjectionID != "agent-host-runtime-approval-v6-v3" ||
 		authority.Activation.Exposure != "local" || authority.Activation.Profile != "demo_fast" ||
 		strings.Join(authority.Activation.RequiredFeatureGates, ",") != "FEAT-134,FEAT-136,FEAT-137" ||
 		authority.Activation.ApprovalPolicy != SessionApprovalPolicyOnRequest ||
 		authority.Activation.FallbackPolicy != SessionApprovalPolicy ||
 		authority.Activation.Sandbox != SessionSandbox || authority.Activation.ExperimentalAPI ||
+		authority.Runtime.RepositoryCommit != "acf2da55d8a53175343aaf112e03368dfef9922a" ||
+		authority.Runtime.SchemaTreeSHA256 != ExpectedSchemaTreeSHA256 ||
 		authority.ReverseRequest.Method != RuntimeMethodCommandApproval {
-		t.Fatalf("Runtime approval v2 activation drifted from the Host adapter: %+v", authority)
+		t.Fatalf("Runtime approval v3 activation drifted from the Host adapter: %+v", authority)
 	}
 	if producer.Mechanism != "managed_execpolicy_prompt_rule" ||
 		strings.Join(producer.RulePattern, "\x00") != "git\x00rev-parse\x00--is-inside-work-tree" ||
@@ -160,7 +172,7 @@ func TestFEAT137RuntimeApprovalV2ContractMatchesAdapter(t *testing.T) {
 		strings.Join(producer.LoadTimeExamples.NotMatch[0], "\x00") != "git\x00status" ||
 		strings.Join(producer.LoadTimeExamples.NotMatch[1], "\x00") != "git\x00show\x00HEAD" ||
 		producer.LoadTimeExamples.Authority != "validation_only_not_runtime_exactness" {
-		t.Fatalf("managed Runtime Prompt authority drifted from the v2 contract: %+v", producer)
+		t.Fatalf("managed Runtime Prompt authority drifted from the v3 contract: %+v", producer)
 	}
 	if managedFEAT137ExecPolicy != managedFEAT137RuleMarker+`prefix_rule(
     pattern=["git", "rev-parse", "--is-inside-work-tree"],
@@ -177,6 +189,12 @@ func TestFEAT137RuntimeApprovalV2ContractMatchesAdapter(t *testing.T) {
 		reason.ReplayFingerprint != "excluded" || reason.Exposed ||
 		len(authority.ReverseRequest.Eligibility.MustBeAbsent) != 4 {
 		t.Fatalf("Runtime reason/redaction authority drifted from the closed decoder: %+v", reason)
+	}
+	sandbox := authority.ReverseRequest.Eligibility.SandboxPermissions
+	if strings.Join(sandbox.RuntimeEnum, ",") !=
+		"use_default,require_escalated,with_additional_permissions" ||
+		sandbox.EligibleValue != "use_default" {
+		t.Fatalf("Runtime sandbox provenance authority drifted from the closed decoder: %+v", sandbox)
 	}
 }
 
@@ -349,7 +367,8 @@ func TestFEAT137CommandApprovalReportsResponseAfterTransportWrite(t *testing.T) 
 	}
 	select {
 	case request := <-handler.requests:
-		if request.RequestIDKey != "n:7" || request.ThreadID != "thread-137" {
+		if request.RequestIDKey != "n:7" || request.ThreadID != "thread-137" ||
+			request.SandboxPermissions != "use_default" {
 			t.Fatalf("unexpected approval request before response write: %+v", request)
 		}
 	case err := <-fatal:
@@ -392,7 +411,8 @@ func TestFEAT137CommandApprovalParamsClosedDecoder(t *testing.T) {
 		t.Fatalf("decode canonical params: %v", err)
 	}
 	if params.ThreadID != "thread-137" || params.TurnID != "turn-137" || params.ItemID != "item-137" ||
-		params.StartedAtMS != 137000 || params.Command != "/bin/zsh -lc 'git rev-parse --is-inside-work-tree'" ||
+		params.SandboxPermissions != "use_default" || params.StartedAtMS != 137000 ||
+		params.Command != "/bin/zsh -lc 'git rev-parse --is-inside-work-tree'" ||
 		params.Cwd != "/workspace" || params.EnvironmentID == nil || *params.EnvironmentID != "local" ||
 		len(params.CommandActions) != 1 || params.CommandActions[0] != (CommandApprovalAction{
 		Type: "unknown", Command: "git rev-parse --is-inside-work-tree",
@@ -405,6 +425,18 @@ func TestFEAT137CommandApprovalParamsClosedDecoder(t *testing.T) {
 	}
 	if bytes.Contains(mapped, []byte(feat137CanonicalReason)) {
 		t.Fatal("validated Runtime reason escaped the closed decoder")
+	}
+	for _, value := range []string{"use_default", "require_escalated", "with_additional_permissions"} {
+		raw := strings.Replace(
+			feat137CanonicalApprovalParams,
+			`"sandboxPermissions":"use_default"`,
+			`"sandboxPermissions":"`+value+`"`,
+			1,
+		)
+		decoded, err := decodeCommandApprovalParams(json.RawMessage(raw))
+		if err != nil || decoded.SandboxPermissions != value {
+			t.Fatalf("closed Runtime sandbox provenance %q was not preserved: params=%+v err=%v", value, decoded, err)
+		}
 	}
 	for name, raw := range map[string]string{
 		"absent": strings.Replace(feat137CanonicalApprovalParams, "\n\t"+feat137CanonicalReasonMember+",", "", 1),
@@ -443,6 +475,8 @@ func TestFEAT137CommandApprovalParamsClosedDecoder(t *testing.T) {
 		{name: "oversized multibyte reason", raw: strings.Replace(feat137CanonicalApprovalParams, feat137CanonicalReasonMember, `"reason":"`+strings.Repeat("界", 171)+`"`, 1)},
 		{name: "reason with nul", raw: strings.Replace(feat137CanonicalApprovalParams, feat137CanonicalReasonMember, `"reason":"\u0000"`, 1)},
 		{name: "missing started time", raw: strings.Replace(feat137CanonicalApprovalParams, `"startedAtMs":137000,`, "", 1)},
+		{name: "missing sandbox provenance", raw: strings.Replace(feat137CanonicalApprovalParams, `"sandboxPermissions":"use_default",`, "", 1)},
+		{name: "unknown sandbox provenance", raw: strings.Replace(feat137CanonicalApprovalParams, `"sandboxPermissions":"use_default"`, `"sandboxPermissions":"unknown"`, 1)},
 		{name: "fractional started time", raw: strings.Replace(feat137CanonicalApprovalParams, `137000`, `137000.5`, 1)},
 		{name: "non-null approval id", raw: strings.Replace(feat137CanonicalApprovalParams, `"approvalId":null`, `"approvalId":"approval"`, 1)},
 		{name: "empty environment", raw: strings.Replace(feat137CanonicalApprovalParams, `"environmentId":"local"`, `"environmentId":""`, 1)},

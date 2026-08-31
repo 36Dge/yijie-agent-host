@@ -33,6 +33,7 @@ const (
 	approvalRuntimeCommand      = "git rev-parse --is-inside-work-tree"
 	approvalRuntimeShellWrapper = "/bin/zsh -lc 'git rev-parse --is-inside-work-tree'"
 	approvalRuntimeEnvironment  = "local"
+	approvalRuntimeSandbox      = "use_default"
 	approvalPhasePending        = "pending"
 	approvalPhaseCommitted      = "response_committed_wait_ack"
 	approvalPhaseTTLCommitted   = "ttl_cancel_committed_wait_ack"
@@ -370,6 +371,7 @@ func (s *Service) validateCommandApprovalRequest(request codex.CommandApprovalRe
 	if action.Type != "unknown" ||
 		action.Command != approvalRuntimeCommand ||
 		!validApprovalRuntimeShellWrapper(request.Command, action.Command) ||
+		request.SandboxPermissions != approvalRuntimeSandbox ||
 		request.EnvironmentID == nil || *request.EnvironmentID != approvalRuntimeEnvironment {
 		return Record{}, "", false
 	}
@@ -891,13 +893,14 @@ func (pending *approvalPending) public() PendingApproval {
 func approvalRequestFingerprint(request codex.CommandApprovalRequest, canonicalCwd string) string {
 	environment := approvalRuntimeEnvironment
 	canonical := struct {
-		ItemID, ThreadID, TurnID, Command, ActionType, ActionCommand, Cwd, Environment string
-		StartedAtMS                                                                    int64
+		ItemID, ThreadID, TurnID, Command, ActionType, ActionCommand, Cwd, Environment, SandboxPermissions string
+		StartedAtMS                                                                                        int64
 	}{
 		ItemID: request.ItemID, ThreadID: request.ThreadID, TurnID: request.TurnID,
 		Command: request.CommandActions[0].Command, ActionType: request.CommandActions[0].Type,
 		ActionCommand: request.CommandActions[0].Command, Cwd: canonicalCwd,
-		Environment: environment, StartedAtMS: request.StartedAtMS,
+		Environment: environment, SandboxPermissions: request.SandboxPermissions,
+		StartedAtMS: request.StartedAtMS,
 	}
 	encoded, _ := json.Marshal(canonical)
 	sum := sha256.Sum256(encoded)

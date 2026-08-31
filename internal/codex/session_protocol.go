@@ -68,16 +68,17 @@ type DynamicToolResult struct {
 type DynamicToolHandler func(context.Context, DynamicToolCall) DynamicToolResult
 
 type CommandApprovalRequest struct {
-	RuntimeGeneration string
-	RequestIDKey      string
-	ThreadID          string
-	TurnID            string
-	ItemID            string
-	StartedAtMS       int64
-	Command           string
-	CommandActions    []CommandApprovalAction
-	Cwd               string
-	EnvironmentID     *string
+	RuntimeGeneration  string
+	RequestIDKey       string
+	ThreadID           string
+	TurnID             string
+	ItemID             string
+	StartedAtMS        int64
+	SandboxPermissions string
+	Command            string
+	CommandActions     []CommandApprovalAction
+	Cwd                string
+	EnvironmentID      *string
 }
 
 type CommandApprovalAction struct {
@@ -341,16 +342,17 @@ func (m *Manager) handleCommandApprovalRequest(ctx context.Context, request serv
 		return cancel
 	}
 	result := handler.HandleCommandApproval(ctx, CommandApprovalRequest{
-		RuntimeGeneration: generation,
-		RequestIDKey:      request.idKey,
-		ThreadID:          params.ThreadID,
-		TurnID:            params.TurnID,
-		ItemID:            params.ItemID,
-		StartedAtMS:       params.StartedAtMS,
-		Command:           params.Command,
-		CommandActions:    params.CommandActions,
-		Cwd:               params.Cwd,
-		EnvironmentID:     params.EnvironmentID,
+		RuntimeGeneration:  generation,
+		RequestIDKey:       request.idKey,
+		ThreadID:           params.ThreadID,
+		TurnID:             params.TurnID,
+		ItemID:             params.ItemID,
+		StartedAtMS:        params.StartedAtMS,
+		SandboxPermissions: params.SandboxPermissions,
+		Command:            params.Command,
+		CommandActions:     params.CommandActions,
+		Cwd:                params.Cwd,
+		EnvironmentID:      params.EnvironmentID,
 	})
 	if !result.Respond {
 		return serverRequestResult{}
@@ -380,27 +382,28 @@ func commandApprovalResponseWriteCallback(
 }
 
 type commandApprovalParams struct {
-	ThreadID       string
-	TurnID         string
-	ItemID         string
-	StartedAtMS    int64
-	Command        string
-	CommandActions []CommandApprovalAction
-	Cwd            string
-	EnvironmentID  *string
+	ThreadID           string
+	TurnID             string
+	ItemID             string
+	StartedAtMS        int64
+	SandboxPermissions string
+	Command            string
+	CommandActions     []CommandApprovalAction
+	Cwd                string
+	EnvironmentID      *string
 }
 
 func decodeCommandApprovalParams(raw json.RawMessage) (commandApprovalParams, error) {
 	allowed := map[string]struct{}{
 		"threadId": {}, "turnId": {}, "itemId": {}, "startedAtMs": {}, "command": {},
 		"commandActions": {}, "cwd": {}, "approvalId": {}, "environmentId": {}, "reason": {},
-		"availableDecisions": {},
+		"availableDecisions": {}, "sandboxPermissions": {},
 	}
 	fields, err := decodeUniqueJSONObject(raw, allowed)
 	if err != nil {
 		return commandApprovalParams{}, err
 	}
-	for _, required := range []string{"threadId", "turnId", "itemId", "startedAtMs", "command", "commandActions", "cwd"} {
+	for _, required := range []string{"threadId", "turnId", "itemId", "startedAtMs", "sandboxPermissions", "command", "commandActions", "cwd"} {
 		if _, ok := fields[required]; !ok {
 			return commandApprovalParams{}, errors.New("command approval request omitted a required field")
 		}
@@ -410,6 +413,8 @@ func decodeCommandApprovalParams(raw json.RawMessage) (commandApprovalParams, er
 		json.Unmarshal(fields["turnId"], &params.TurnID) != nil || params.TurnID == "" ||
 		json.Unmarshal(fields["itemId"], &params.ItemID) != nil || params.ItemID == "" ||
 		json.Unmarshal(fields["startedAtMs"], &params.StartedAtMS) != nil ||
+		json.Unmarshal(fields["sandboxPermissions"], &params.SandboxPermissions) != nil ||
+		!validCommandApprovalSandboxPermissions(params.SandboxPermissions) ||
 		json.Unmarshal(fields["command"], &params.Command) != nil || params.Command == "" ||
 		json.Unmarshal(fields["cwd"], &params.Cwd) != nil || params.Cwd == "" {
 		return commandApprovalParams{}, errors.New("command approval request has an invalid required field")
@@ -449,6 +454,15 @@ func decodeCommandApprovalParams(raw json.RawMessage) (commandApprovalParams, er
 	}
 	params.CommandActions = []CommandApprovalAction{action}
 	return params, nil
+}
+
+func validCommandApprovalSandboxPermissions(value string) bool {
+	switch value {
+	case "use_default", "require_escalated", "with_additional_permissions":
+		return true
+	default:
+		return false
+	}
 }
 
 func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, error) {

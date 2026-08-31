@@ -22,7 +22,7 @@ func TestPinnedRuntimeIntegration(t *testing.T) {
 	config := DefaultConfig()
 	config.BinaryPath = binaryPath
 	config.ManifestPath = manifestPath
-	config.CodexHome = t.TempDir()
+	config.CodexHome = integrationPrivateTempDir(t)
 	config.StartupTimeout = 20 * time.Second
 	config.RequestTimeout = 10 * time.Second
 	config.ShutdownTimeout = 10 * time.Second
@@ -55,7 +55,7 @@ func TestPinnedRuntimeIntegration(t *testing.T) {
 
 func TestPinnedRuntimeMiniMaxConfigurationIntegration(t *testing.T) {
 	binaryPath, manifestPath := integrationArtifactPaths(t)
-	config := integrationConfig(binaryPath, manifestPath, t.TempDir(), "baseline2-placeholder-key")
+	config := integrationConfig(binaryPath, manifestPath, integrationPrivateTempDir(t), "baseline2-placeholder-key")
 	manager := NewManager(config, nil)
 	notifications := newIntegrationNotifications()
 	if err := manager.SetNotificationHandler(notifications.handle); err != nil {
@@ -87,7 +87,7 @@ func TestPinnedRuntimeMiniMaxTurnIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	binaryPath, manifestPath := integrationArtifactPaths(t)
-	codexHome := t.TempDir()
+	codexHome := integrationPrivateTempDir(t)
 	workspace := t.TempDir()
 
 	firstNotifications := newIntegrationNotifications()
@@ -198,6 +198,19 @@ func integrationConfig(binaryPath, manifestPath, codexHome, key string) Config {
 	config.ShutdownTimeout = 10 * time.Second
 	config.MiniMax = MiniMaxConfig{Enabled: true, APIKey: key}
 	return config
+}
+
+func integrationPrivateTempDir(t *testing.T) string {
+	t.Helper()
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatalf("secure integration CODEX_HOME: %v", err)
+	}
+	canonical, err := filepath.EvalSymlinks(directory)
+	if err != nil {
+		t.Fatalf("resolve integration CODEX_HOME: %v", err)
+	}
+	return canonical
 }
 
 func shutdownIntegrationManager(t *testing.T, manager *Manager, timeout time.Duration) {

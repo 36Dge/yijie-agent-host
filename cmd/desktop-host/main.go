@@ -171,9 +171,7 @@ func run(logger *slog.Logger) error {
 	if skillService != nil {
 		go skillService.Run(runtimeCtx)
 	}
-	runtimeStarted := make(chan struct{})
 	go func() {
-		defer close(runtimeStarted)
 		if err := runtime.Start(runtimeCtx); err != nil {
 			logger.Error("Codex Runtime unavailable", "failure_code", runtime.Snapshot().FailureCode)
 		}
@@ -210,20 +208,59 @@ func run(logger *slog.Logger) error {
 		}
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), config.Runtime.ShutdownTimeout)
-	defer cancel()
+	shutdownErr := shutdownHost(server, runtime, cancelRuntime, config.Runtime.ShutdownTimeout)
+	return errors.Join(serveErr, shutdownErr)
+}
+
+type httpShutdowner interface {
+	Shutdown(context.Context) error
+}
+
+type runtimeShutdowner interface {
+	Shutdown(context.Context) error
+}
+
+// shutdownHost first closes HTTP ingress, then asks Runtime to stop through its
+// normal stdin lifecycle. The bounded calls control responsiveness only. If a
+// deadline expires, Host stays alive and repeats the same graceful wait without
+// a deadline so the Runtime lease cannot be released by Host process exit while
+// the child is still running.
+func shutdownHost(
+	server httpShutdowner,
+	runtime runtimeShutdowner,
+	cancelRuntime context.CancelFunc,
+	timeout time.Duration,
+) error {
+	var shutdownErrors []error
+
+	httpCtx, cancelHTTP := context.WithTimeout(context.Background(), timeout)
+	httpErr := server.Shutdown(httpCtx)
+	cancelHTTP()
+	if httpErr != nil && !isShutdownDeadline(httpErr) {
+		shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown HTTP server: %w", httpErr))
+	}
+
 	cancelRuntime()
-	select {
-	case <-runtimeStarted:
-	case <-shutdownCtx.Done():
+	runtimeCtx, cancelBoundedRuntime := context.WithTimeout(context.Background(), timeout)
+	runtimeErr := runtime.Shutdown(runtimeCtx)
+	cancelBoundedRuntime()
+	if isShutdownDeadline(runtimeErr) {
+		runtimeErr = runtime.Shutdown(context.Background())
 	}
-	if err := runtime.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
-		return fmt.Errorf("shutdown Codex Runtime: %w", err)
+	if runtimeErr != nil {
+		shutdownErrors = append(shutdownErrors, fmt.Errorf("shutdown Codex Runtime: %w", runtimeErr))
 	}
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown HTTP server: %w", err)
+
+	if httpErr != nil {
+		if err := server.Shutdown(context.Background()); err != nil {
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("finish HTTP server shutdown: %w", err))
+		}
 	}
-	return serveErr
+	return errors.Join(shutdownErrors...)
+}
+
+func isShutdownDeadline(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
 }
 
 func watchParent(ctx context.Context, expectedPID int, interval time.Duration, parentPID func() int) <-chan struct{} {

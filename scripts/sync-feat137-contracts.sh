@@ -3,9 +3,10 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 contracts_repo="${YIJIE_CONTRACTS_REPO:-$repo_root/../yijie-contracts}"
-required_commit="0acf2a39a505a4ef9fb8757b29cb53efe9e9846f"
-required_parent="2e490dea4444ea1e33c2df1a5267b2bff5bfb8e6"
-required_tree="4f14d1fb2bb6a9fe8b1bb0fe104112a81229c69e"
+required_commit="aeccf5d561bd4259389cdb325bae84ce3e0dea86"
+required_parent="0acf2a39a505a4ef9fb8757b29cb53efe9e9846f"
+required_tree="7a864645bf552a8b7457b6338a30f6626ce15d3a"
+legacy_equal_commit="2e490dea4444ea1e33c2df1a5267b2bff5bfb8e6"
 requested_ref="${YIJIE_CONTRACTS_REF:-$required_commit}"
 required_version="0.7.0"
 legacy_fixture_baseline_commit="3832a6c5e99b2a6365f193280fdb887c8fdbc2de"
@@ -39,8 +40,10 @@ managed_targets=(
   api/compatibility/agent-host-runtime-v1.json
   api/compatibility/agent-host-runtime-approval-v6.json
   api/compatibility/agent-host-runtime-approval-v6-v2.json
+  api/compatibility/agent-host-runtime-approval-v6-v3.json
   api/jsonschema/agent-host-runtime-approval-v6.schema.json
   api/jsonschema/agent-host-runtime-approval-v6-v2.schema.json
+  api/jsonschema/agent-host-runtime-approval-v6-v3.schema.json
   api/jsonschema/agent-session-event.schema.json
   api/jsonschema/agent-session-event-v2.schema.json
   api/jsonschema/agent-session-event-v3.schema.json
@@ -121,7 +124,7 @@ legacy_equal_paths=(
   tests/fixtures/agent/session-event-v5
 )
 for source_path in "${legacy_equal_paths[@]}"; do
-  git -C "$contracts_repo" diff --quiet "$required_parent" "$contracts_commit" -- "$source_path" ||
+  git -C "$contracts_repo" diff --quiet "$legacy_equal_commit" "$contracts_commit" -- "$source_path" ||
     fail "FEAT-137 legacy source differs from the frozen v0.7.0 parent: $source_path"
 done
 
@@ -130,8 +133,10 @@ source_paths=(
   compatibility/agent-host-runtime-v1.json
   compatibility/agent-host-runtime-approval-v6.json
   compatibility/agent-host-runtime-approval-v6-v2.json
+  compatibility/agent-host-runtime-approval-v6-v3.json
   jsonschema/compatibility/agent-host-runtime-approval-v6.schema.json
   jsonschema/compatibility/agent-host-runtime-approval-v6-v2.schema.json
+  jsonschema/compatibility/agent-host-runtime-approval-v6-v3.schema.json
   jsonschema/agent/session-event.schema.json
   jsonschema/agent/session-event-v2.schema.json
   jsonschema/agent/session-event-v3.schema.json
@@ -147,8 +152,10 @@ snapshot_paths=(
   api/compatibility/agent-host-runtime-v1.json
   api/compatibility/agent-host-runtime-approval-v6.json
   api/compatibility/agent-host-runtime-approval-v6-v2.json
+  api/compatibility/agent-host-runtime-approval-v6-v3.json
   api/jsonschema/agent-host-runtime-approval-v6.schema.json
   api/jsonschema/agent-host-runtime-approval-v6-v2.schema.json
+  api/jsonschema/agent-host-runtime-approval-v6-v3.schema.json
   api/jsonschema/agent-session-event.schema.json
   api/jsonschema/agent-session-event-v2.schema.json
   api/jsonschema/agent-session-event-v3.schema.json
@@ -251,6 +258,10 @@ approval_v2_compatibility_version="$(awk -F '"' '/^[[:space:]]*"contracts_versio
   "$repo_root/api/compatibility/agent-host-runtime-approval-v6-v2.json")"
 [ "$approval_v2_compatibility_version" = "$required_version" ] ||
   fail "FEAT-137 Runtime approval v2 compatibility version is $approval_v2_compatibility_version, expected $required_version."
+approval_v3_compatibility_version="$(awk -F '"' '/^[[:space:]]*"contracts_version"[[:space:]]*:/ { print $4; exit }' \
+  "$repo_root/api/compatibility/agent-host-runtime-approval-v6-v3.json")"
+[ "$approval_v3_compatibility_version" = "$required_version" ] ||
+  fail "FEAT-137 Runtime approval v3 compatibility version is $approval_v3_compatibility_version, expected $required_version."
 
 copy_fixture_set() {
   local source_prefix="$1"
@@ -309,9 +320,10 @@ temporary_lock="$temporary_dir/contracts.lock"
   printf 'CONTRACTS_AUTHORITY_TREE=%s\n' "$required_tree"
   printf 'CONTRACTS_GENERATOR=%s\n' "$generator"
   printf 'CONTRACTS_GENERATOR_VERSION=%s\n' "$generator_version"
-  printf 'FEAT137_SCOPED_SYNC_VERSION=2\n'
-  printf 'FEAT137_SCOPED_SOURCES=ordinary-openapi-runtime-v1-approval-v6-v1-v2-schema-session-event-v1-v6-host-v6-json\n'
-  printf 'FEAT137_BASELINE_COMMIT=%s\n' "$required_parent"
+  printf 'FEAT137_SCOPED_SYNC_VERSION=3\n'
+  printf 'FEAT137_SCOPED_SOURCES=ordinary-openapi-runtime-v1-approval-v6-v1-v2-v3-schema-session-event-v1-v6-host-v6-json\n'
+  printf 'FEAT137_BASELINE_COMMIT=%s\n' "$legacy_equal_commit"
+  printf 'FEAT137_STABLE_PROVENANCE_BASELINE_COMMIT=%s\n' "$required_parent"
   printf 'FEAT137_LEGACY_EQUALITY=runtime-v1-session-event-v1-v5\n'
   printf 'EXCLUDED_FIXTURE_POLICY=git-object-id-only-preserve-existing-snapshot-digests\n'
   printf 'EXCLUDED_FIXTURE_BASELINE_COMMIT=%s\n' "$legacy_fixture_baseline_commit"
@@ -321,10 +333,14 @@ temporary_lock="$temporary_dir/contracts.lock"
     "$(sha256_file "$repo_root/api/compatibility/agent-host-runtime-approval-v6.json")"
   printf 'RUNTIME_APPROVAL_V6_V2_COMPATIBILITY_SHA256=%s\n' \
     "$(sha256_file "$repo_root/api/compatibility/agent-host-runtime-approval-v6-v2.json")"
+  printf 'RUNTIME_APPROVAL_V6_V3_COMPATIBILITY_SHA256=%s\n' \
+    "$(sha256_file "$repo_root/api/compatibility/agent-host-runtime-approval-v6-v3.json")"
   printf 'RUNTIME_APPROVAL_V6_SCHEMA_SHA256=%s\n' \
     "$(sha256_file "$repo_root/api/jsonschema/agent-host-runtime-approval-v6.schema.json")"
   printf 'RUNTIME_APPROVAL_V6_V2_SCHEMA_SHA256=%s\n' \
     "$(sha256_file "$repo_root/api/jsonschema/agent-host-runtime-approval-v6-v2.schema.json")"
+  printf 'RUNTIME_APPROVAL_V6_V3_SCHEMA_SHA256=%s\n' \
+    "$(sha256_file "$repo_root/api/jsonschema/agent-host-runtime-approval-v6-v3.schema.json")"
   printf 'AGENT_SESSION_EVENT_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event.schema.json")"
   printf 'AGENT_SESSION_EVENT_V2_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event-v2.schema.json")"
   printf 'AGENT_SESSION_EVENT_V3_SCHEMA_SHA256=%s\n' "$(sha256_file "$repo_root/api/jsonschema/agent-session-event-v3.schema.json")"
@@ -367,5 +383,5 @@ temporary_lock="$temporary_dir/contracts.lock"
 cp "$temporary_lock" "$lock_file"
 
 echo "Synchronized FEAT-137 ordinary Contracts snapshots from $required_commit (v$required_version)."
-echo "Legacy Runtime v1 and event v1-v5 sources equal $required_parent."
+echo "Legacy Runtime v1 and event v1-v5 sources equal $legacy_equal_commit."
 echo "Excluded archive/checksum/Zip-Slip/archive-error fixtures were not read; only immutable Git tree IDs were resolved."

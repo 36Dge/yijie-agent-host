@@ -6,10 +6,96 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+type feat137HTTPShutdownRecorder struct {
+	events chan<- string
+}
+
+func (recorder feat137HTTPShutdownRecorder) Shutdown(context.Context) error {
+	recorder.events <- "http-ingress-stopped"
+	return nil
+}
+
+type feat137DelayedRuntimeShutdown struct {
+	mu      sync.Mutex
+	calls   int
+	events  chan<- string
+	release <-chan struct{}
+}
+
+func (runtime *feat137DelayedRuntimeShutdown) Shutdown(ctx context.Context) error {
+	runtime.mu.Lock()
+	runtime.calls++
+	call := runtime.calls
+	runtime.mu.Unlock()
+	if call == 1 {
+		runtime.events <- "runtime-bounded"
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	runtime.events <- "runtime-continued"
+	<-runtime.release
+	runtime.events <- "runtime-normal-exit"
+	return nil
+}
+
+func TestFEAT137HostStopsIngressThenWaitsPastRuntimeDeadline(t *testing.T) {
+	events := make(chan string, 8)
+	release := make(chan struct{})
+	runtime := &feat137DelayedRuntimeShutdown{events: events, release: release}
+	result := make(chan error, 1)
+	go func() {
+		result <- shutdownHost(
+			feat137HTTPShutdownRecorder{events: events},
+			runtime,
+			func() { events <- "runtime-context-cancelled" },
+			20*time.Millisecond,
+		)
+	}()
+
+	for _, want := range []string{
+		"http-ingress-stopped",
+		"runtime-context-cancelled",
+		"runtime-bounded",
+		"runtime-continued",
+	} {
+		select {
+		case got := <-events:
+			if got != want {
+				t.Fatalf("shutdown ordering drifted: got %q want %q", got, want)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for shutdown phase %q", want)
+		}
+	}
+	select {
+	case err := <-result:
+		t.Fatalf("Host returned after bounded Runtime deadline: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case got := <-events:
+		if got != "runtime-normal-exit" {
+			t.Fatalf("unexpected final Runtime phase: %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("normal Runtime exit was not observed")
+	}
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("graceful Host shutdown failed: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Host did not return after normal Runtime exit")
+	}
+}
 
 func TestFEAT126ProcessFailureLoggingIsContentFree(t *testing.T) {
 	var output bytes.Buffer

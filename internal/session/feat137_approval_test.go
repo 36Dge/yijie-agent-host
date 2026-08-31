@@ -44,19 +44,25 @@ type feat137DecisionCompletion struct {
 	err    error
 }
 
-func TestFEAT137RuntimeApprovalV2EligibilityMatchesSessionAuthority(t *testing.T) {
+func TestFEAT137RuntimeApprovalV3EligibilityMatchesSessionAuthority(t *testing.T) {
 	_, sourceFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("locate FEAT-137 session authority test")
 	}
 	encoded, err := os.ReadFile(filepath.Clean(filepath.Join(
-		filepath.Dir(sourceFile), "..", "..", "api", "compatibility", "agent-host-runtime-approval-v6-v2.json",
+		filepath.Dir(sourceFile), "..", "..", "api", "compatibility", "agent-host-runtime-approval-v6-v3.json",
 	)))
 	if err != nil {
-		t.Fatalf("read Runtime approval v2 compatibility contract: %v", err)
+		t.Fatalf("read Runtime approval v3 compatibility contract: %v", err)
 	}
 	var authority struct {
 		ReverseRequest struct {
+			Correlation struct {
+				ReplayPayloadEquivalence struct {
+					Version         int               `json:"version"`
+					CanonicalFields map[string]string `json:"canonical_fields"`
+				} `json:"replay_payload_equivalence"`
+			} `json:"correlation"`
 			Eligibility struct {
 				Command struct {
 					Wire              string `json:"wire"`
@@ -71,9 +77,16 @@ func TestFEAT137RuntimeApprovalV2EligibilityMatchesSessionAuthority(t *testing.T
 					Command              string `json:"command"`
 					AdditionalProperties string `json:"additional_properties"`
 				} `json:"command_actions"`
-				ApprovalID    string `json:"approval_id"`
-				Cwd           string `json:"cwd"`
-				EnvironmentID string `json:"environment_id"`
+				ApprovalID         string `json:"approval_id"`
+				Cwd                string `json:"cwd"`
+				EnvironmentID      string `json:"environment_id"`
+				SandboxPermissions struct {
+					RuntimeEnum      []string `json:"runtime_enum"`
+					EligibleValue    string   `json:"eligible_value"`
+					IneligibleValues []string `json:"ineligible_values"`
+					Handling         string   `json:"handling"`
+					Exposed          bool     `json:"exposed_to_yijie_surfaces"`
+				} `json:"sandbox_permissions"`
 			} `json:"eligibility"`
 		} `json:"reverse_request"`
 		Lifecycle struct {
@@ -85,7 +98,7 @@ func TestFEAT137RuntimeApprovalV2EligibilityMatchesSessionAuthority(t *testing.T
 		} `json:"lifecycle"`
 	}
 	if err := json.Unmarshal(encoded, &authority); err != nil {
-		t.Fatalf("decode Runtime approval v2 compatibility contract: %v", err)
+		t.Fatalf("decode Runtime approval v3 compatibility contract: %v", err)
 	}
 	eligibility := authority.ReverseRequest.Eligibility
 	if eligibility.Command.Wire != approvalRuntimeShellWrapper ||
@@ -100,13 +113,35 @@ func TestFEAT137RuntimeApprovalV2EligibilityMatchesSessionAuthority(t *testing.T
 		eligibility.ApprovalID != "absent_or_null" ||
 		eligibility.Cwd != "canonical_equal_to_host_known_workspace_root" ||
 		eligibility.EnvironmentID != "exact_local" {
-		t.Fatalf("Host session admission drifted from the v2 eligibility authority: %+v", eligibility)
+		t.Fatalf("Host session admission drifted from the v3 eligibility authority: %+v", eligibility)
+	}
+	sandbox := eligibility.SandboxPermissions
+	if strings.Join(sandbox.RuntimeEnum, ",") !=
+		"use_default,require_escalated,with_additional_permissions" ||
+		sandbox.EligibleValue != approvalRuntimeSandbox ||
+		strings.Join(sandbox.IneligibleValues, ",") !=
+			"require_escalated,with_additional_permissions" ||
+		sandbox.Handling != "validate_before_pending_projection_and_retain_in_host_authority" ||
+		sandbox.Exposed {
+		t.Fatalf("Host sandbox provenance admission drifted from the v3 authority: %+v", sandbox)
+	}
+	replay := authority.ReverseRequest.Correlation.ReplayPayloadEquivalence
+	if replay.Version != 3 ||
+		replay.CanonicalFields["sandbox_permissions"] != "exact_use_default_runtime_provenance" {
+		t.Fatalf("Host replay fingerprint drifted from the v3 authority: %+v", replay)
+	}
+	harness := newFEAT137ApprovalHarness(t)
+	drifted := harness.request
+	drifted.SandboxPermissions = "require_escalated"
+	if approvalRequestFingerprint(harness.request, harness.record.Cwd) ==
+		approvalRequestFingerprint(drifted, harness.record.Cwd) {
+		t.Fatal("sandbox provenance was omitted from the Host replay fingerprint")
 	}
 	if authority.Lifecycle.TTLSeconds != approvalTTLSeconds ||
 		authority.Lifecycle.TTLClock != "host_monotonic_receive_time" ||
 		authority.Lifecycle.RuntimeStartedAtIsAuthority ||
 		authority.Lifecycle.MaxPendingPerSession != 1 || authority.Lifecycle.AutomaticDecisionRetry {
-		t.Fatalf("Host approval lifecycle drifted from the v2 authority: %+v", authority.Lifecycle)
+		t.Fatalf("Host approval lifecycle drifted from the v3 authority: %+v", authority.Lifecycle)
 	}
 }
 
@@ -822,13 +857,21 @@ func TestFEAT137InvalidRequestsAndCanonicalUUIDsFailClosed(t *testing.T) {
 		"foreign shell wrapper": func(request *codex.CommandApprovalRequest) {
 			request.Command = "/bin/bash -lc 'git rev-parse --is-inside-work-tree'"
 		},
-		"extra shell token":    func(request *codex.CommandApprovalRequest) { request.Command = approvalRuntimeShellWrapper + " extra" },
-		"wrong action":         func(request *codex.CommandApprovalRequest) { request.CommandActions[0].Type = "read" },
-		"wrong action command": func(request *codex.CommandApprovalRequest) { request.CommandActions[0].Command = "git status" },
-		"wrong cwd":            func(request *codex.CommandApprovalRequest) { request.Cwd = t.TempDir() },
-		"missing environment":  func(request *codex.CommandApprovalRequest) { request.EnvironmentID = nil },
-		"foreign environment":  func(request *codex.CommandApprovalRequest) { request.EnvironmentID = &remote },
-		"legacy environment":   func(request *codex.CommandApprovalRequest) { request.EnvironmentID = &legacyHostLocal },
+		"extra shell token":          func(request *codex.CommandApprovalRequest) { request.Command = approvalRuntimeShellWrapper + " extra" },
+		"wrong action":               func(request *codex.CommandApprovalRequest) { request.CommandActions[0].Type = "read" },
+		"wrong action command":       func(request *codex.CommandApprovalRequest) { request.CommandActions[0].Command = "git status" },
+		"wrong cwd":                  func(request *codex.CommandApprovalRequest) { request.Cwd = t.TempDir() },
+		"missing sandbox provenance": func(request *codex.CommandApprovalRequest) { request.SandboxPermissions = "" },
+		"escalated sandbox provenance": func(request *codex.CommandApprovalRequest) {
+			request.SandboxPermissions = "require_escalated"
+		},
+		"additional sandbox provenance": func(request *codex.CommandApprovalRequest) {
+			request.SandboxPermissions = "with_additional_permissions"
+		},
+		"unknown sandbox provenance": func(request *codex.CommandApprovalRequest) { request.SandboxPermissions = "unknown" },
+		"missing environment":        func(request *codex.CommandApprovalRequest) { request.EnvironmentID = nil },
+		"foreign environment":        func(request *codex.CommandApprovalRequest) { request.EnvironmentID = &remote },
+		"legacy environment":         func(request *codex.CommandApprovalRequest) { request.EnvironmentID = &legacyHostLocal },
 	} {
 		t.Run(name, func(t *testing.T) {
 			harness := newFEAT137ApprovalHarness(t)
@@ -996,13 +1039,14 @@ func newFEAT137ApprovalHarness(t *testing.T) *feat137ApprovalHarness {
 	}
 	environment := approvalRuntimeEnvironment
 	request := codex.CommandApprovalRequest{
-		RuntimeGeneration: feat137GenerationCanary,
-		RequestIDKey:      feat137RequestIDCanary,
-		ThreadID:          testThreadID,
-		TurnID:            testTurnID,
-		ItemID:            feat137ItemID,
-		StartedAtMS:       1723456789000,
-		Command:           approvalRuntimeShellWrapper,
+		RuntimeGeneration:  feat137GenerationCanary,
+		RequestIDKey:       feat137RequestIDCanary,
+		ThreadID:           testThreadID,
+		TurnID:             testTurnID,
+		ItemID:             feat137ItemID,
+		StartedAtMS:        1723456789000,
+		SandboxPermissions: approvalRuntimeSandbox,
+		Command:            approvalRuntimeShellWrapper,
 		CommandActions: []codex.CommandApprovalAction{{
 			Type: "unknown", Command: approvalRuntimeCommand,
 		}},

@@ -72,7 +72,7 @@ test-feat137: feat137-contract-check
 	go test -race ./internal/codex -run '^TestFEAT137' -count=1
 	go test -race ./internal/session -run '^TestFEAT137' -count=1
 	go test -race ./internal/app -run '^TestFEAT137' -count=1
-	go test ./cmd/desktop-host -run '^$$' -count=1
+	go test -race ./cmd/desktop-host -run '^TestFEAT137' -count=1
 
 skills-conformance:
 	YIJIE_SKILLS_REPO="$(YIJIE_SKILLS_REPO_ABS)" ./scripts/check-skills-producer.sh --provenance-only

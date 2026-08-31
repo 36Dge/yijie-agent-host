@@ -10,11 +10,9 @@ import (
 )
 
 func TestPrepareMiniMaxCodexHomeWritesSecretFreeManagedConfig(t *testing.T) {
-	home := t.TempDir()
-	if err := os.Chmod(home, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileDefault, false); err != nil {
+	home := canonicalOwnedTempDir(t)
+	authority := acquireTestCodexHomeAuthority(t, home)
+	if err := prepareMiniMaxCodexHome(authority, ManagedReasoningProfileDefault); err != nil {
 		t.Fatal(err)
 	}
 	config, err := os.ReadFile(filepath.Join(home, "config.toml"))
@@ -59,7 +57,7 @@ func TestPrepareMiniMaxCodexHomeWritesSecretFreeManagedConfig(t *testing.T) {
 			t.Fatalf("managed file %s is accessible to group/other: %o", name, info.Mode().Perm())
 		}
 	}
-	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileDefault, false); err != nil {
+	if err := prepareMiniMaxCodexHome(authority, ManagedReasoningProfileDefault); err != nil {
 		t.Fatalf("managed config should be idempotent: %v", err)
 	}
 	if _, err := os.Lstat(filepath.Join(home, managedRulesDirectory)); !errors.Is(err, os.ErrNotExist) {
@@ -68,8 +66,9 @@ func TestPrepareMiniMaxCodexHomeWritesSecretFreeManagedConfig(t *testing.T) {
 }
 
 func TestPrepareMiniMaxCodexHomeWritesHighRawManagedProfile(t *testing.T) {
-	home := t.TempDir()
-	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileHighRaw, false); err != nil {
+	home := canonicalOwnedTempDir(t)
+	authority := acquireTestCodexHomeAuthority(t, home)
+	if err := prepareMiniMaxCodexHome(authority, ManagedReasoningProfileHighRaw); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(filepath.Join(home, "config.toml"))
@@ -92,11 +91,12 @@ func TestPrepareMiniMaxCodexHomeWritesHighRawManagedProfile(t *testing.T) {
 }
 
 func TestPrepareMiniMaxCodexHomeRefusesUnmanagedConfig(t *testing.T) {
-	home := t.TempDir()
+	home := canonicalOwnedTempDir(t)
 	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("model = \"other\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileDefault, false); err == nil {
+	authority := acquireTestCodexHomeAuthority(t, home)
+	if err := prepareMiniMaxCodexHome(authority, ManagedReasoningProfileDefault); err == nil {
 		t.Fatal("expected unmanaged config to be preserved")
 	}
 	config, err := os.ReadFile(filepath.Join(home, "config.toml"))
@@ -109,9 +109,17 @@ func TestPrepareMiniMaxCodexHomeRefusesUnmanagedConfig(t *testing.T) {
 }
 
 func TestPrepareMiniMaxCodexHomeOwnsExactFEAT137ExecPolicyLifecycle(t *testing.T) {
-	home := t.TempDir()
-	rulesPath := filepath.Join(home, managedRulesDirectory, managedDefaultRulesFile)
-	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileHighRaw, true); err != nil {
+	home := canonicalOwnedTempDir(t)
+	authority := acquireTestCodexHomeAuthority(t, home)
+	rulesPath := filepath.Join(home, managedRulesDirectory, managedFEAT137RulesFile)
+	if err := prepareMiniMaxCodexHome(authority, ManagedReasoningProfileHighRaw); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := authority.preflightFEAT137ExecPolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := authority.applyFEAT137ExecPolicy(true, plan); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(rulesPath)
@@ -133,35 +141,55 @@ func TestPrepareMiniMaxCodexHomeOwnsExactFEAT137ExecPolicyLifecycle(t *testing.T
 		t.Fatalf("managed FEAT-137 rule authority is not owner-only: dir=%o file=%o",
 			rulesInfo.Mode().Perm(), ruleInfo.Mode().Perm())
 	}
-	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileHighRaw, true); err != nil {
+	plan, err = authority.preflightFEAT137ExecPolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := authority.applyFEAT137ExecPolicy(true, plan); err != nil {
 		t.Fatalf("managed FEAT-137 exec policy should be idempotent: %v", err)
 	}
-	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileHighRaw, false); err != nil {
+	plan, err = authority.preflightFEAT137ExecPolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := authority.applyFEAT137ExecPolicy(false, plan); err != nil {
 		t.Fatalf("disable managed FEAT-137 exec policy: %v", err)
 	}
 	if _, err := os.Lstat(rulesPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("gate-off retained the FEAT-137 exec policy: %v", err)
 	}
-	if _, err := os.Lstat(filepath.Dir(rulesPath)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("gate-off retained the managed rules directory: %v", err)
+	rulesDirectoryInfo, err := os.Lstat(filepath.Dir(rulesPath))
+	if err != nil || !rulesDirectoryInfo.IsDir() || rulesDirectoryInfo.Mode().Perm() != 0o700 {
+		t.Fatalf("gate-off did not retain only an inert owner-only rules directory: info=%v err=%v", rulesDirectoryInfo, err)
+	}
+	entries, err := os.ReadDir(filepath.Dir(rulesPath))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("gate-off rules directory is not inert: entries=%v err=%v", entries, err)
 	}
 }
 
 func TestPrepareMiniMaxCodexHomeRefusesForeignExecPolicyAuthority(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
 		t.Run(map[bool]string{false: "gate off", true: "gate on"}[enabled], func(t *testing.T) {
-			home := t.TempDir()
+			home := canonicalOwnedTempDir(t)
 			rulesDirectory := filepath.Join(home, managedRulesDirectory)
 			if err := os.Mkdir(rulesDirectory, 0o700); err != nil {
 				t.Fatal(err)
 			}
-			rulesPath := filepath.Join(rulesDirectory, managedDefaultRulesFile)
+			rulesPath := filepath.Join(rulesDirectory, managedFEAT137RulesFile)
 			foreign := []byte(`prefix_rule(pattern=["git"], decision="allow")` + "\n")
 			if err := os.WriteFile(rulesPath, foreign, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileHighRaw, enabled); err == nil {
+			authority, err := acquireManagedCodexHomeAuthority(home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := authority.preflightFEAT137ExecPolicy(); err == nil {
 				t.Fatal("unmanaged Runtime exec policy was accepted")
+			}
+			if err := authority.Close(); err == nil {
+				t.Fatal("foreign Runtime exec policy cleanup did not fail closed")
 			}
 			content, err := os.ReadFile(rulesPath)
 			if err != nil {
@@ -175,18 +203,13 @@ func TestPrepareMiniMaxCodexHomeRefusesForeignExecPolicyAuthority(t *testing.T) 
 }
 
 func TestPrepareFakeResponsesCodexHomeUsesFrozenKeylessLoopbackConfig(t *testing.T) {
-	home, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(home, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	home := canonicalOwnedTempDir(t)
+	authority := acquireTestCodexHomeAuthority(t, home)
 	config := FakeResponsesConfig{
 		Enabled: true, BaseURL: FEAT126FakeBaseURL,
 		RunID: "123e4567-e89b-42d3-a456-426614174000", FixtureID: FEAT126FakeFixtureID,
 	}
-	if err := prepareFakeResponsesCodexHome(home, config); err != nil {
+	if err := prepareFakeResponsesCodexHome(authority, config); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(filepath.Join(home, "config.toml"))
@@ -230,11 +253,7 @@ func TestPrepareFakeResponsesCodexHomeDoesNotRepairDirectoryAuthority(t *testing
 	if err := os.Chmod(home, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	config := FakeResponsesConfig{
-		Enabled: true, BaseURL: FEAT126FakeBaseURL,
-		RunID: "123e4567-e89b-42d3-a456-426614174000", FixtureID: FEAT126FakeFixtureID,
-	}
-	if err := prepareFakeResponsesCodexHome(home, config); err == nil {
+	if _, err := acquireManagedCodexHomeAuthority(home); err == nil {
 		t.Fatal("FEAT-126 provider repaired and accepted an unsafe CODEX_HOME")
 	}
 	info, err := os.Lstat(home)
@@ -244,6 +263,33 @@ func TestPrepareFakeResponsesCodexHomeDoesNotRepairDirectoryAuthority(t *testing
 	if info.Mode().Perm() != 0o755 {
 		t.Fatalf("FEAT-126 CODEX_HOME permissions changed to %o", info.Mode().Perm())
 	}
+}
+
+func canonicalOwnedTempDir(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(root, "managed-codex-home")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return home
+}
+
+func acquireTestCodexHomeAuthority(t *testing.T, home string) *managedCodexHomeAuthority {
+	t.Helper()
+	authority, err := acquireManagedCodexHomeAuthority(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := authority.Close(); err != nil {
+			t.Errorf("close managed CODEX_HOME authority: %v", err)
+		}
+	})
+	return authority
 }
 
 func TestMiniMaxConfigValidation(t *testing.T) {

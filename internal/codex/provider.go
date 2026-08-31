@@ -1,7 +1,6 @@
 package codex
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,8 +25,6 @@ const (
 	managedConfigMarker      = "# Managed by yijie-agent-host Runtime Baseline 2.\n"
 	managedFEAT137RuleMarker = "# Managed by yijie-agent-host FEAT-137 command approval.\n"
 	managedModelCatalogName  = "minimax-m3-model-catalog.json"
-	managedRulesDirectory    = "rules"
-	managedDefaultRulesFile  = "default.rules"
 )
 
 const managedFEAT137ExecPolicy = managedFEAT137RuleMarker + `prefix_rule(
@@ -126,25 +123,57 @@ func (c MiniMaxConfig) validate() error {
 }
 
 func prepareMiniMaxCodexHome(
-	codexHome string,
+	authority *managedCodexHomeAuthority,
 	profile ManagedReasoningProfile,
-	commandApprovalEnabled bool,
 ) error {
 	if err := profile.validate(true, false); err != nil {
 		return err
 	}
-	if err := os.Chmod(codexHome, 0o700); err != nil {
-		return fmt.Errorf("protect managed CODEX_HOME: %w", err)
+	if authority == nil {
+		return errors.New("managed CODEX_HOME authority is required")
 	}
-	catalogPath := filepath.Join(codexHome, managedModelCatalogName)
 	catalog, err := miniMaxModelCatalog()
 	if err != nil {
 		return err
 	}
-	if err := writeManagedFile(catalogPath, catalog, false); err != nil {
+	config, err := miniMaxManagedConfig(authority.path, profile)
+	if err != nil {
+		return err
+	}
+	defaultConfig, err := miniMaxManagedConfig(authority.path, ManagedReasoningProfileDefault)
+	if err != nil {
+		return err
+	}
+	highRawConfig, err := miniMaxManagedConfig(authority.path, ManagedReasoningProfileHighRaw)
+	if err != nil {
+		return err
+	}
+	catalogPlan, err := authority.preflightManagedFile(managedModelCatalogName, catalog, catalog)
+	if err != nil {
+		return fmt.Errorf("preflight MiniMax model catalog: %w", err)
+	}
+	configPlan, err := authority.preflightManagedFile("config.toml", config, defaultConfig, highRawConfig)
+	if err != nil {
+		return fmt.Errorf("preflight managed CODEX_HOME config: %w", err)
+	}
+	if err := authority.applyManagedFile(catalogPlan); err != nil {
 		return fmt.Errorf("write MiniMax model catalog: %w", err)
 	}
+	if err := authority.applyManagedFile(configPlan); err != nil {
+		return fmt.Errorf("write managed CODEX_HOME config: %w", err)
+	}
+	return nil
+}
 
+func currentUserOwns(info os.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && stat.Uid == uint32(os.Geteuid())
+}
+
+func miniMaxManagedConfig(codexHome string, profile ManagedReasoningProfile) ([]byte, error) {
+	if err := profile.validate(true, false); err != nil {
+		return nil, err
+	}
 	reasoningLines := []string{
 		"model_reasoning_effort = \"none\"",
 		"model_reasoning_summary = \"none\"",
@@ -163,7 +192,7 @@ func prepareMiniMaxCodexHome(
 	}
 	configLines = append(configLines, reasoningLines...)
 	configLines = append(configLines,
-		"model_catalog_json = "+strconv.Quote(catalogPath),
+		"model_catalog_json = "+strconv.Quote(filepath.Join(codexHome, managedModelCatalogName)),
 		"",
 		"[model_providers.minimax]",
 		"name = \"MiniMax\"",
@@ -174,114 +203,20 @@ func prepareMiniMaxCodexHome(
 		"supports_websockets = false",
 		"",
 	)
-	config := managedConfigMarker + strings.Join(configLines, "\n")
-	if err := writeManagedFile(filepath.Join(codexHome, "config.toml"), []byte(config), true); err != nil {
-		return fmt.Errorf("write managed CODEX_HOME config: %w", err)
-	}
-	if err := reconcileManagedFEAT137ExecPolicy(codexHome, commandApprovalEnabled); err != nil {
-		return err
-	}
-	return nil
+	return []byte(managedConfigMarker + strings.Join(configLines, "\n")), nil
 }
 
-// reconcileManagedFEAT137ExecPolicy makes the exact FEAT-137 safe prompt rule
-// share the same Host-owned CODEX_HOME lifecycle as the managed provider
-// config. Runtime loads every *.rules file under this directory, so an
-// unmanaged or additional rule is an authority expansion and must fail closed.
-// The gate-off path removes only the file carrying this feature's exact marker.
-func reconcileManagedFEAT137ExecPolicy(codexHome string, enabled bool) error {
-	rulesDirectory := filepath.Join(codexHome, managedRulesDirectory)
-	rulesPath := filepath.Join(rulesDirectory, managedDefaultRulesFile)
-	info, err := os.Lstat(rulesDirectory)
-	if errors.Is(err, os.ErrNotExist) {
-		if !enabled {
-			return nil
-		}
-		if err := os.Mkdir(rulesDirectory, 0o700); err != nil {
-			return fmt.Errorf("create managed Runtime rules directory: %w", err)
-		}
-		info, err = os.Lstat(rulesDirectory)
-	}
-	if err != nil {
-		return fmt.Errorf("inspect managed Runtime rules directory: %w", err)
-	}
-	if !currentUserOwns(info) || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
-		return errors.New("managed Runtime rules directory must be an owner-only non-symlink directory")
-	}
-	entries, err := os.ReadDir(rulesDirectory)
-	if err != nil {
-		return fmt.Errorf("read managed Runtime rules directory: %w", err)
-	}
-	for _, entry := range entries {
-		if entry.Name() != managedDefaultRulesFile {
-			return errors.New("managed Runtime rules directory contains an unexpected entry")
-		}
-	}
-
-	ruleInfo, err := os.Lstat(rulesPath)
-	if errors.Is(err, os.ErrNotExist) {
-		if !enabled {
-			if len(entries) == 0 {
-				_ = os.Remove(rulesDirectory)
-			}
-			return nil
-		}
-		if err := writeManagedFile(rulesPath, []byte(managedFEAT137ExecPolicy), false); err != nil {
-			return fmt.Errorf("write managed FEAT-137 Runtime exec policy: %w", err)
-		}
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("inspect managed FEAT-137 Runtime exec policy: %w", err)
-	}
-	if !currentUserOwns(ruleInfo) || !ruleInfo.Mode().IsRegular() ||
-		ruleInfo.Mode()&os.ModeSymlink != 0 || ruleInfo.Mode().Perm() != 0o600 {
-		return errors.New("managed FEAT-137 Runtime exec policy must be an owner-only regular file")
-	}
-	if ruleInfo.Size() > 4096 {
-		return errors.New("managed FEAT-137 Runtime exec policy exceeds its closed size limit")
-	}
-	existing, err := os.ReadFile(rulesPath)
-	if err != nil {
-		return fmt.Errorf("read managed FEAT-137 Runtime exec policy: %w", err)
-	}
-	if !bytes.HasPrefix(existing, []byte(managedFEAT137RuleMarker)) {
-		return errors.New("refusing to replace unmanaged Runtime exec policy")
-	}
-	if enabled {
-		if !bytes.Equal(existing, []byte(managedFEAT137ExecPolicy)) {
-			return errors.New("managed FEAT-137 Runtime exec policy drifted")
-		}
-		return nil
-	}
-	if err := os.Remove(rulesPath); err != nil {
-		return fmt.Errorf("remove disabled FEAT-137 Runtime exec policy: %w", err)
-	}
-	if err := os.Remove(rulesDirectory); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove empty managed Runtime rules directory: %w", err)
-	}
-	return nil
-}
-
-func currentUserOwns(info os.FileInfo) bool {
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	return ok && stat.Uid == uint32(os.Geteuid())
-}
-
-func prepareFakeResponsesCodexHome(codexHome string, fake FakeResponsesConfig) error {
+func prepareFakeResponsesCodexHome(authority *managedCodexHomeAuthority, fake FakeResponsesConfig) error {
 	if err := fake.validate(); err != nil {
 		return err
 	}
-	if err := validateFEAT126CodexHome(codexHome); err != nil {
-		return err
+	if authority == nil {
+		return errors.New("managed CODEX_HOME authority is required")
 	}
-	catalogPath := filepath.Join(codexHome, managedModelCatalogName)
+	catalogPath := filepath.Join(authority.path, managedModelCatalogName)
 	catalog, err := miniMaxModelCatalog()
 	if err != nil {
 		return err
-	}
-	if err := writeManagedFile(catalogPath, catalog, false); err != nil {
-		return fmt.Errorf("write FEAT-126 model catalog: %w", err)
 	}
 
 	config := managedConfigMarker + strings.Join([]string{
@@ -307,7 +242,18 @@ func prepareFakeResponsesCodexHome(codexHome string, fake FakeResponsesConfig) e
 		"http_headers = { " + strconv.Quote(feat126RunIDHeader) + " = " + strconv.Quote(fake.RunID) + ", " + strconv.Quote(feat126FixtureIDHeader) + " = " + strconv.Quote(fake.FixtureID) + " }",
 		"",
 	}, "\n")
-	if err := writeManagedFile(filepath.Join(codexHome, "config.toml"), []byte(config), true); err != nil {
+	catalogPlan, err := authority.preflightManagedFile(managedModelCatalogName, catalog, catalog)
+	if err != nil {
+		return fmt.Errorf("preflight FEAT-126 model catalog: %w", err)
+	}
+	configPlan, err := authority.preflightManagedFile("config.toml", []byte(config), []byte(config))
+	if err != nil {
+		return fmt.Errorf("preflight managed FEAT-126 CODEX_HOME config: %w", err)
+	}
+	if err := authority.applyManagedFile(catalogPlan); err != nil {
+		return fmt.Errorf("write FEAT-126 model catalog: %w", err)
+	}
+	if err := authority.applyManagedFile(configPlan); err != nil {
 		return fmt.Errorf("write managed FEAT-126 CODEX_HOME config: %w", err)
 	}
 	return nil
@@ -355,41 +301,4 @@ func miniMaxModelCatalog() ([]byte, error) {
 		return nil, fmt.Errorf("encode MiniMax model catalog: %w", err)
 	}
 	return append(content, '\n'), nil
-}
-
-func writeManagedFile(path string, content []byte, allowManagedReplacement bool) error {
-	existing, err := os.ReadFile(path)
-	if err == nil {
-		if bytes.Equal(existing, content) {
-			return nil
-		}
-		if !allowManagedReplacement || !bytes.HasPrefix(existing, []byte(managedConfigMarker)) {
-			return fmt.Errorf("refusing to overwrite unmanaged file %s", filepath.Base(path))
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-
-	temp, err := os.CreateTemp(filepath.Dir(path), ".yijie-managed-*")
-	if err != nil {
-		return err
-	}
-	tempPath := temp.Name()
-	defer os.Remove(tempPath)
-	if err := temp.Chmod(0o600); err != nil {
-		_ = temp.Close()
-		return err
-	}
-	if _, err := temp.Write(content); err != nil {
-		_ = temp.Close()
-		return err
-	}
-	if err := temp.Sync(); err != nil {
-		_ = temp.Close()
-		return err
-	}
-	if err := temp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tempPath, path)
 }

@@ -3,9 +3,10 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 contracts_repo="${YIJIE_CONTRACTS_REPO:-$repo_root/../yijie-contracts}"
-required_commit="0acf2a39a505a4ef9fb8757b29cb53efe9e9846f"
-required_parent="2e490dea4444ea1e33c2df1a5267b2bff5bfb8e6"
-required_tree="4f14d1fb2bb6a9fe8b1bb0fe104112a81229c69e"
+required_commit="aeccf5d561bd4259389cdb325bae84ce3e0dea86"
+required_parent="0acf2a39a505a4ef9fb8757b29cb53efe9e9846f"
+required_tree="7a864645bf552a8b7457b6338a30f6626ce15d3a"
+legacy_equal_commit="2e490dea4444ea1e33c2df1a5267b2bff5bfb8e6"
 required_version="0.7.0"
 legacy_fixture_baseline_commit="3832a6c5e99b2a6365f193280fdb887c8fdbc2de"
 lock_file="$repo_root/api/contracts.lock"
@@ -46,11 +47,13 @@ lock_value() {
 [ "$(lock_value CONTRACTS_AUTHORITY_TREE)" = "$required_tree" ] || fail "Contracts authority tree pin drifted."
 [ "$(lock_value CONTRACTS_GENERATOR)" = "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen" ] ||
   fail "FEAT-137 generator identity drifted."
-[ "$(lock_value FEAT137_SCOPED_SYNC_VERSION)" = "2" ] || fail "FEAT-137 scoped sync version is invalid."
+[ "$(lock_value FEAT137_SCOPED_SYNC_VERSION)" = "3" ] || fail "FEAT-137 scoped sync version is invalid."
 [ "$(lock_value FEAT137_SCOPED_SOURCES)" = \
-  "ordinary-openapi-runtime-v1-approval-v6-v1-v2-schema-session-event-v1-v6-host-v6-json" ] ||
+  "ordinary-openapi-runtime-v1-approval-v6-v1-v2-v3-schema-session-event-v1-v6-host-v6-json" ] ||
   fail "FEAT-137 scoped source declaration drifted."
-[ "$(lock_value FEAT137_BASELINE_COMMIT)" = "$required_parent" ] || fail "FEAT-137 baseline commit drifted."
+[ "$(lock_value FEAT137_BASELINE_COMMIT)" = "$legacy_equal_commit" ] || fail "FEAT-137 baseline commit drifted."
+[ "$(lock_value FEAT137_STABLE_PROVENANCE_BASELINE_COMMIT)" = "$required_parent" ] ||
+  fail "FEAT-137 stable provenance baseline commit drifted."
 [ "$(lock_value FEAT137_LEGACY_EQUALITY)" = "runtime-v1-session-event-v1-v5" ] ||
   fail "FEAT-137 legacy equality declaration drifted."
 [ "$(lock_value EXCLUDED_FIXTURE_POLICY)" = "git-object-id-only-preserve-existing-snapshot-digests" ] ||
@@ -67,8 +70,10 @@ source_paths=(
   compatibility/agent-host-runtime-v1.json
   compatibility/agent-host-runtime-approval-v6.json
   compatibility/agent-host-runtime-approval-v6-v2.json
+  compatibility/agent-host-runtime-approval-v6-v3.json
   jsonschema/compatibility/agent-host-runtime-approval-v6.schema.json
   jsonschema/compatibility/agent-host-runtime-approval-v6-v2.schema.json
+  jsonschema/compatibility/agent-host-runtime-approval-v6-v3.schema.json
   jsonschema/agent/session-event.schema.json
   jsonschema/agent/session-event-v2.schema.json
   jsonschema/agent/session-event-v3.schema.json
@@ -84,8 +89,10 @@ snapshot_paths=(
   api/compatibility/agent-host-runtime-v1.json
   api/compatibility/agent-host-runtime-approval-v6.json
   api/compatibility/agent-host-runtime-approval-v6-v2.json
+  api/compatibility/agent-host-runtime-approval-v6-v3.json
   api/jsonschema/agent-host-runtime-approval-v6.schema.json
   api/jsonschema/agent-host-runtime-approval-v6-v2.schema.json
+  api/jsonschema/agent-host-runtime-approval-v6-v3.schema.json
   api/jsonschema/agent-session-event.schema.json
   api/jsonschema/agent-session-event-v2.schema.json
   api/jsonschema/agent-session-event-v3.schema.json
@@ -101,8 +108,10 @@ digest_keys=(
   RUNTIME_COMPATIBILITY_SHA256
   RUNTIME_APPROVAL_V6_COMPATIBILITY_SHA256
   RUNTIME_APPROVAL_V6_V2_COMPATIBILITY_SHA256
+  RUNTIME_APPROVAL_V6_V3_COMPATIBILITY_SHA256
   RUNTIME_APPROVAL_V6_SCHEMA_SHA256
   RUNTIME_APPROVAL_V6_V2_SCHEMA_SHA256
+  RUNTIME_APPROVAL_V6_V3_SCHEMA_SHA256
   AGENT_SESSION_EVENT_SCHEMA_SHA256
   AGENT_SESSION_EVENT_V2_SCHEMA_SHA256
   AGENT_SESSION_EVENT_V3_SCHEMA_SHA256
@@ -229,7 +238,7 @@ for index in "${!source_paths[@]}"; do
 done
 
 for source_path in "${legacy_equal_paths[@]}"; do
-  git -C "$contracts_repo" diff --quiet "$required_parent" "$required_commit" -- "$source_path" ||
+  git -C "$contracts_repo" diff --quiet "$legacy_equal_commit" "$required_commit" -- "$source_path" ||
     fail "FEAT-137 legacy source differs from the frozen v0.7.0 parent: $source_path"
 done
 
@@ -246,6 +255,9 @@ git -C "$contracts_repo" show "$required_commit:package.json" >"$source_package"
 [ "$(awk -F '"' '/^[[:space:]]*"contracts_version"[[:space:]]*:/ { print $4; exit }' \
   "$repo_root/api/compatibility/agent-host-runtime-approval-v6-v2.json")" = "$required_version" ] ||
   fail "Runtime approval v2 projection version differs from v$required_version."
+[ "$(awk -F '"' '/^[[:space:]]*"contracts_version"[[:space:]]*:/ { print $4; exit }' \
+  "$repo_root/api/compatibility/agent-host-runtime-approval-v6-v3.json")" = "$required_version" ] ||
+  fail "Runtime approval v3 projection version differs from v$required_version."
 
 verify_fixture_set() {
   local source_prefix="$1"
@@ -313,5 +325,5 @@ cmp "$generated" "$repo_root/internal/contracts/agenthost.gen.go" >/dev/null ||
   fail "Generated Agent Host DTOs differ; run make generate."
 
 echo "Verified FEAT-137 Contracts v$required_version at $required_commit."
-echo "Legacy Runtime v1 and event v1-v5 sources equal $required_parent."
+echo "Legacy Runtime v1 and event v1-v5 sources equal $legacy_equal_commit."
 echo "Excluded archive/checksum/Zip-Slip/archive-error fixtures were not read; only immutable Git tree IDs were compared."

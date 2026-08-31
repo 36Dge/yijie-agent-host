@@ -49,7 +49,9 @@ func TestRuntimeHelperProcess(t *testing.T) {
 	}
 
 	mode := os.Getenv("YIJIE_FAKE_MODE")
-	if mode == "baseline2" || mode == "title" || mode == "multimodal" || mode == "dynamic_tool" {
+	if mode == "baseline2" || mode == "title" || mode == "multimodal" || mode == "dynamic_tool" ||
+		mode == "feat137_authority" || mode == "feat137_bad_home" || mode == "feat137_init_wait_for_close" ||
+		mode == "feat137_slow_normal_exit" {
 		expectedKey := "test-minimax-key"
 		if mode == "title" {
 			expectedKey = "synthetic-test-key"
@@ -97,8 +99,18 @@ func TestRuntimeHelperProcess(t *testing.T) {
 				fmt.Println(strings.Repeat("x", 4096))
 				continue
 			}
+			if mode == "init_wait_for_close" || mode == "feat137_init_wait_for_close" {
+				if resultFile := os.Getenv("YIJIE_FAKE_RESULT_FILE"); resultFile != "" {
+					_ = os.WriteFile(resultFile, []byte("initialize_received"), 0o600)
+				}
+				// The Host's normal CloseInput path produces EOF and lets this
+				// helper exit without a signal, kill, or injected process fault.
+				for scanner.Scan() {
+				}
+				return
+			}
 			codexHome := os.Getenv("CODEX_HOME")
-			if mode == "bad_home" {
+			if mode == "bad_home" || mode == "feat137_bad_home" {
 				codexHome = filepath.Dir(codexHome)
 			}
 			_ = encoder.Encode(map[string]any{
@@ -122,12 +134,20 @@ func TestRuntimeHelperProcess(t *testing.T) {
 				})
 			}
 		case "thread/start":
-			if mode != "baseline2" && mode != "title" && mode != "feat126_fake" && mode != "multimodal" && mode != "dynamic_tool" {
+			if mode != "baseline2" && mode != "title" && mode != "feat126_fake" && mode != "multimodal" &&
+				mode != "dynamic_tool" && mode != "feat137_authority" {
 				os.Exit(29)
 			}
+			wantApprovalPolicy := "never"
+			if mode == "feat137_authority" {
+				wantApprovalPolicy = SessionApprovalPolicyOnRequest
+			}
 			if message.Params["model"] != MiniMaxModel || message.Params["modelProvider"] != MiniMaxProviderID ||
-				message.Params["approvalPolicy"] != "never" || message.Params["sandbox"] != "read-only" {
+				message.Params["approvalPolicy"] != wantApprovalPolicy || message.Params["sandbox"] != "read-only" {
 				os.Exit(30)
+			}
+			if mode == "feat137_authority" && message.Params["developerInstructions"] != feat137ManagedInstructions {
+				os.Exit(38)
 			}
 			if mode == "dynamic_tool" {
 				tools, ok := message.Params["dynamicTools"].([]any)
@@ -288,6 +308,12 @@ func TestRuntimeHelperProcess(t *testing.T) {
 	if err := scanner.Err(); err != nil {
 		os.Exit(26)
 	}
+	if mode == "feat137_slow_normal_exit" {
+		// Model an ordinary bounded cleanup delay after stdin EOF. This is used
+		// to prove a caller timeout never kills the process or releases its lease
+		// before waitForExit observes normal process completion.
+		time.Sleep(250 * time.Millisecond)
+	}
 	os.Exit(0)
 }
 
@@ -405,7 +431,7 @@ func TestVerifyArtifactRejectsUnexpectedRuntimePatchAuthority(t *testing.T) {
 		{
 			name: "extra",
 			mutate: func(manifest *Manifest) {
-				manifest.Patches = append(manifest.Patches, manifest.Patches[1])
+				manifest.Patches = append(manifest.Patches, manifest.Patches[2])
 			},
 		},
 		{
@@ -424,6 +450,18 @@ func TestVerifyArtifactRejectsUnexpectedRuntimePatchAuthority(t *testing.T) {
 			name: "second digest",
 			mutate: func(manifest *Manifest) {
 				manifest.Patches[1].SHA256 = strings.Repeat("0", 64)
+			},
+		},
+		{
+			name: "third path",
+			mutate: func(manifest *Manifest) {
+				manifest.Patches[2].Path = ".yijie/patches/unreviewed.patch"
+			},
+		},
+		{
+			name: "third digest",
+			mutate: func(manifest *Manifest) {
+				manifest.Patches[2].SHA256 = strings.Repeat("0", 64)
 			},
 		},
 	}
@@ -621,7 +659,7 @@ func TestRuntimeEvidenceRequiresCanonicalRFC4122UUIDv4RunAndNonce(t *testing.T) 
 
 func TestManagerPropagatesStartupCancellation(t *testing.T) {
 	resultFile := filepath.Join(t.TempDir(), "initialize-marker")
-	t.Setenv("YIJIE_FAKE_MODE", "timeout")
+	t.Setenv("YIJIE_FAKE_MODE", "init_wait_for_close")
 	t.Setenv("YIJIE_FAKE_RESULT_FILE", resultFile)
 	config := newRuntimeFixture(t)
 	config.StartupTimeout = 5 * time.Second
@@ -912,7 +950,10 @@ func TestTailBufferIsBounded(t *testing.T) {
 
 func newRuntimeFixture(t *testing.T) Config {
 	t.Helper()
-	tempDir := t.TempDir()
+	tempDir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve physical Runtime fixture directory: %v", err)
+	}
 	binaryPath := filepath.Join(tempDir, "codex")
 	testBinary, err := os.Executable()
 	if err != nil {
@@ -965,6 +1006,10 @@ func newRuntimeFixture(t *testing.T) Config {
 			{
 				Path:   ExpectedRuntimePatch2Path,
 				SHA256: ExpectedRuntimePatch2SHA256,
+			},
+			{
+				Path:   ExpectedRuntimePatch3Path,
+				SHA256: ExpectedRuntimePatch3SHA256,
 			},
 		},
 		BuildLock: ManifestBuildLock{

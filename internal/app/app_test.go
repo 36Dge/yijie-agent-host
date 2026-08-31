@@ -158,6 +158,26 @@ func TestStatusIsSanitized(t *testing.T) {
 	}
 }
 
+func TestFEAT137RuntimeStatusProjectionNeverLeaksInternalFailureCode(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		code string
+		want agenthostcontract.RuntimeStatusFailureCode
+	}{
+		{name: "provider authority and cleanup", code: "provider_config_failed", want: agenthostcontract.ProviderConfigFailed},
+		{name: "unknown internal detail", code: "internal_authority_detail", want: agenthostcontract.ProtocolFailure},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			view := runtimeStatusView(codex.Status{
+				State: codex.StateFailed, Transport: codex.ExpectedTransport, FailureCode: test.code,
+			})
+			if view.FailureCode == nil || *view.FailureCode != test.want || !view.FailureCode.Valid() {
+				t.Fatalf("Runtime failure projection escaped the closed enum: got=%v want=%q", view.FailureCode, test.want)
+			}
+		})
+	}
+}
+
 func TestRuntimeCompatibilityProjectionMatchesHostAdapter(t *testing.T) {
 	encoded, err := os.ReadFile(contractFilePath(t, "compatibility", "agent-host-runtime-v1.json"))
 	if err != nil {

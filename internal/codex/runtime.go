@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -57,6 +56,13 @@ type Config struct {
 	// testArtifactPolicy is intentionally package-private. Production always
 	// uses the exact Runtime Baseline 0 artifact policy.
 	testArtifactPolicy *artifactPolicy
+	// testBeforeArtifactVerification exposes a deterministic cancellation
+	// boundary without starting a process. Production never sets it.
+	testBeforeArtifactVerification func(context.Context) error
+	// These two additional safe test boundaries prove Shutdown linearization
+	// around CODEX_HOME mutation and process start. Production never sets them.
+	testAfterCodexHomeAuthorityAcquired func(context.Context) error
+	testBeforeProcessStart              func(context.Context) error
 }
 
 func DefaultConfig() Config {
@@ -86,12 +92,8 @@ func (c Config) validate() error {
 			return err
 		}
 	} else {
-		home, err := os.Stat(c.CodexHome)
-		if err != nil {
-			return fmt.Errorf("stat CODEX_HOME: %w", err)
-		}
-		if !home.IsDir() {
-			return errors.New("CODEX_HOME is not a directory")
+		if err := validateManagedCodexHome(c.CodexHome); err != nil {
+			return err
 		}
 	}
 	if c.StartupTimeout <= 0 || c.RequestTimeout <= 0 || c.ShutdownTimeout <= 0 {
@@ -128,20 +130,8 @@ func (c Config) validate() error {
 }
 
 func validateFEAT126CodexHome(path string) error {
-	if filepath.Clean(path) != path {
-		return errors.New("FEAT-126 CODEX_HOME must be canonical")
-	}
-	info, err := os.Lstat(path)
-	if err != nil {
-		return fmt.Errorf("inspect FEAT-126 CODEX_HOME: %w", err)
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Uid != uint32(os.Geteuid()) || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
-		return errors.New("FEAT-126 CODEX_HOME must be an owner-only non-symlink directory")
-	}
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil || resolved != path {
-		return errors.New("FEAT-126 CODEX_HOME must be canonical")
+	if err := validateManagedCodexHome(path); err != nil {
+		return fmt.Errorf("FEAT-126 CODEX_HOME authority: %w", err)
 	}
 	return nil
 }
@@ -171,6 +161,12 @@ type Manager struct {
 	client   *Client
 	exitDone chan struct{}
 	stderr   *tailBuffer
+
+	startDone             chan struct{}
+	startupCancel         context.CancelFunc
+	shutdownRequested     bool
+	codexHomeAuthority    *managedCodexHomeAuthority
+	authorityCleanupError error
 
 	notificationHandler    NotificationHandler
 	dynamicToolHandler     DynamicToolHandler
@@ -205,14 +201,31 @@ func (m *Manager) Snapshot() Status {
 	return m.status
 }
 
-func (m *Manager) Start(ctx context.Context) error {
+func (m *Manager) Start(ctx context.Context) (returnErr error) {
+	lifecycleCtx, lifecycleCancel := context.WithCancel(ctx)
 	m.mu.Lock()
 	if m.started {
 		m.mu.Unlock()
+		lifecycleCancel()
 		return errors.New("runtime manager may only be started once")
 	}
+	if m.shutdownRequested {
+		m.mu.Unlock()
+		lifecycleCancel()
+		return errors.New("runtime shutdown was requested before startup")
+	}
 	m.started = true
+	m.startDone = make(chan struct{})
+	m.startupCancel = lifecycleCancel
+	startDone := m.startDone
 	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		m.startupCancel = nil
+		close(startDone)
+		m.mu.Unlock()
+		lifecycleCancel()
+	}()
 
 	if !m.config.Configured() {
 		m.fail("runtime_not_configured")
@@ -234,34 +247,23 @@ func (m *Manager) Start(ctx context.Context) error {
 		m.fail("runtime_config_invalid")
 		return errors.New("Runtime command approval handler is not configured")
 	}
-	if m.config.MiniMax.Enabled {
-		if err := prepareMiniMaxCodexHome(
-			m.config.CodexHome,
-			m.config.ManagedReasoningProfile,
-			m.config.CommandApprovalEnabled,
-		); err != nil {
-			m.fail("provider_config_failed")
-			return err
-		}
-		m.mu.Lock()
-		m.status.ModelProvider = MiniMaxProviderID
-		m.status.Model = MiniMaxModel
-		m.mu.Unlock()
+	if err := m.startupBoundaryError(lifecycleCtx); err != nil {
+		m.fail("startup_cancelled")
+		return err
 	}
-	if m.config.FakeResponses.Enabled {
-		if err := prepareFakeResponsesCodexHome(m.config.CodexHome, m.config.FakeResponses); err != nil {
-			m.fail("provider_config_failed")
-			return err
-		}
-		m.mu.Lock()
-		m.status.ModelProvider = MiniMaxProviderID
-		m.status.Model = MiniMaxModel
-		m.mu.Unlock()
-	}
-
-	startupCtx, cancel := context.WithTimeout(ctx, m.config.StartupTimeout)
+	startupCtx, cancel := context.WithTimeout(lifecycleCtx, m.config.StartupTimeout)
 	defer cancel()
 	m.setState(StateVerifying)
+	if hook := m.config.testBeforeArtifactVerification; hook != nil {
+		if err := hook(startupCtx); err != nil {
+			m.fail("startup_cancelled")
+			return err
+		}
+	}
+	if err := m.startupBoundaryError(startupCtx); err != nil {
+		m.fail("startup_cancelled")
+		return err
+	}
 	var artifact ArtifactInfo
 	var err error
 	if m.config.testArtifactPolicy == nil {
@@ -282,22 +284,113 @@ func (m *Manager) Start(ctx context.Context) error {
 		return err
 	}
 	m.setArtifact(artifact)
-	if err := startupCtx.Err(); err != nil {
+	if err := m.startupBoundaryError(startupCtx); err != nil {
 		m.fail("startup_cancelled")
 		return err
 	}
 
-	m.setState(StateStarting)
-	stdin, stdout, cmd, stderr, err := m.startProcess()
+	authority, err := acquireManagedCodexHomeAuthority(m.config.CodexHome)
 	if err != nil {
-		m.fail("runtime_start_failed")
+		m.fail("provider_config_failed")
 		return err
 	}
 	m.mu.Lock()
+	if m.shutdownRequested || startupCtx.Err() != nil {
+		m.mu.Unlock()
+		releaseErr := authority.releaseWithoutCleanup()
+		m.fail("startup_cancelled")
+		return errors.Join(m.startupBoundaryError(startupCtx), releaseErr)
+	}
+	m.codexHomeAuthority = authority
+	m.authorityCleanupError = nil
+	m.mu.Unlock()
+	processOwnsAuthority := false
+	cleanupAuthority := false
+	defer func() {
+		if processOwnsAuthority {
+			return
+		}
+		if cleanupErr := m.releaseManagedCodexHomeAuthority(cleanupAuthority); cleanupErr != nil {
+			m.fail("provider_config_failed")
+			returnErr = errors.Join(returnErr, fmt.Errorf("cleanup managed CODEX_HOME: %w", cleanupErr))
+		}
+	}()
+
+	if hook := m.config.testAfterCodexHomeAuthorityAcquired; hook != nil {
+		if err := hook(startupCtx); err != nil {
+			m.fail("startup_cancelled")
+			return err
+		}
+	}
+	if err := m.startupBoundaryError(startupCtx); err != nil {
+		m.fail("startup_cancelled")
+		return err
+	}
+
+	var providerErr error
+	m.mu.Lock()
+	if m.shutdownRequested || startupCtx.Err() != nil {
+		m.mu.Unlock()
+		m.fail("startup_cancelled")
+		return m.startupBoundaryError(startupCtx)
+	}
+	cleanupAuthority = true
+	rulePlan, providerErr := authority.preflightFEAT137ExecPolicy()
+	if providerErr == nil && m.config.MiniMax.Enabled {
+		providerErr = prepareMiniMaxCodexHome(authority, m.config.ManagedReasoningProfile)
+		if providerErr == nil {
+			m.status.ModelProvider = MiniMaxProviderID
+			m.status.Model = MiniMaxModel
+		}
+	}
+	if providerErr == nil && m.config.FakeResponses.Enabled {
+		providerErr = prepareFakeResponsesCodexHome(authority, m.config.FakeResponses)
+		if providerErr == nil {
+			m.status.ModelProvider = MiniMaxProviderID
+			m.status.Model = MiniMaxModel
+		}
+	}
+	if providerErr == nil {
+		providerErr = authority.applyFEAT137ExecPolicy(m.config.CommandApprovalEnabled, rulePlan)
+	}
+	m.mu.Unlock()
+	if providerErr != nil {
+		m.fail("provider_config_failed")
+		return providerErr
+	}
+
+	if hook := m.config.testBeforeProcessStart; hook != nil {
+		if err := hook(startupCtx); err != nil {
+			m.fail("startup_cancelled")
+			return err
+		}
+	}
+	if err := m.startupBoundaryError(startupCtx); err != nil {
+		m.fail("startup_cancelled")
+		return err
+	}
+
+	m.mu.Lock()
+	if m.shutdownRequested || startupCtx.Err() != nil {
+		m.mu.Unlock()
+		m.fail("startup_cancelled")
+		return m.startupBoundaryError(startupCtx)
+	}
+	m.status.State = StateStarting
+	m.status.Ready = false
+	stdin, stdout, cmd, stderr, err := m.startProcess()
+	if err != nil {
+		m.status.State = StateFailed
+		m.status.Ready = false
+		m.status.FailureCode = "runtime_start_failed"
+		m.mu.Unlock()
+		return err
+	}
 	m.cmd = cmd
 	m.stderr = stderr
 	m.exitDone = make(chan struct{})
 	m.mu.Unlock()
+	processOwnsAuthority = true
 
 	client := NewClient(
 		stdin,
@@ -326,16 +419,16 @@ func (m *Manager) Start(ctx context.Context) error {
 		},
 		Capabilities: initializeCapabilities{ExperimentalAPI: m.config.DynamicToolsEnabled},
 	}, &initialized); err != nil {
-		m.abortStartup("initialize_failed")
-		return fmt.Errorf("initialize app-server: %w", err)
+		abortErr := m.abortStartup("initialize_failed")
+		return errors.Join(fmt.Errorf("initialize app-server: %w", err), abortErr)
 	}
 	if err := m.validateInitializeResponse(initialized); err != nil {
-		m.abortStartup("initialize_response_invalid")
-		return err
+		abortErr := m.abortStartup("initialize_response_invalid")
+		return errors.Join(err, abortErr)
 	}
 	if err := client.Notify(requestCtx, "initialized", struct{}{}); err != nil {
-		m.abortStartup("initialized_notification_failed")
-		return fmt.Errorf("notify app-server initialized: %w", err)
+		abortErr := m.abortStartup("initialized_notification_failed")
+		return errors.Join(fmt.Errorf("notify app-server initialized: %w", err), abortErr)
 	}
 
 	m.mu.Lock()
@@ -387,37 +480,87 @@ func (m *Manager) RuntimeEvidence(runID, nonce, profile string) (RuntimeEvidence
 
 func (m *Manager) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
+	m.shutdownRequested = true
+	startDone := m.startDone
+	startupCancel := m.startupCancel
+	started := m.started
+	if !started {
+		m.status.State = StateStopped
+		m.status.Ready = false
+		m.status.FailureCode = ""
+	}
+	m.mu.Unlock()
+	if startupCancel != nil {
+		startupCancel()
+	}
+	if started && startDone != nil {
+		select {
+		case <-startDone:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	m.mu.Lock()
 	state := m.status.State
-	if state == StateNotConfigured || state == StateStopped {
+	if state == StateNotConfigured {
 		m.mu.Unlock()
 		return nil
 	}
-	m.status.State = StateStopping
-	m.status.Ready = false
+	if state == StateStopped {
+		cleanupErr := m.authorityCleanupError
+		m.mu.Unlock()
+		return cleanupErr
+	}
 	client := m.client
 	process := m.cmd
 	exitDone := m.exitDone
+	alreadyExited := false
+	if exitDone != nil {
+		select {
+		case <-exitDone:
+			alreadyExited = true
+		default:
+		}
+	}
+	if alreadyExited {
+		cleanupErr := m.authorityCleanupError
+		if cleanupErr == nil {
+			m.status.State = StateStopped
+			m.status.Ready = false
+			m.status.FailureCode = ""
+		}
+		m.mu.Unlock()
+		return cleanupErr
+	}
+	m.status.State = StateStopping
+	m.status.Ready = false
 	m.mu.Unlock()
 
 	if client != nil {
 		_ = client.CloseInput()
 	}
 	if process == nil || exitDone == nil {
-		m.setState(StateStopped)
-		return nil
+		cleanupErr := m.releaseManagedCodexHomeAuthority(true)
+		if cleanupErr != nil {
+			m.fail("provider_config_failed")
+			return cleanupErr
+		}
+		m.mu.Lock()
+		m.status.State = StateStopped
+		m.status.Ready = false
+		m.status.FailureCode = ""
+		m.mu.Unlock()
+		return m.managedCodexHomeCleanupError()
 	}
 
 	select {
 	case <-exitDone:
-		return nil
+		return m.managedCodexHomeCleanupError()
 	case <-ctx.Done():
-		if process.Process != nil {
-			_ = process.Process.Kill()
-		}
-		select {
-		case <-exitDone:
-		case <-time.After(time.Second):
-		}
+		// Keep the lease and exact Runtime rule until waitForExit observes a
+		// real process exit. A timeout must not strong-kill Runtime or expose a
+		// gate-off Host to a still-running session reloader.
 		return ctx.Err()
 	}
 }
@@ -452,9 +595,13 @@ func (m *Manager) startProcess() (io.WriteCloser, io.ReadCloser, *exec.Cmd, *tai
 
 func (m *Manager) waitForExit(cmd *exec.Cmd) {
 	err := cmd.Wait()
+	cleanupErr := m.releaseManagedCodexHomeAuthority(true)
 	m.mu.Lock()
 	state := m.status.State
-	if state == StateStopping {
+	if cleanupErr != nil {
+		m.status.State = StateFailed
+		m.status.FailureCode = "provider_config_failed"
+	} else if state == StateStopping {
 		m.status.State = StateStopped
 		m.status.FailureCode = ""
 	} else if state != StateFailed {
@@ -466,6 +613,9 @@ func (m *Manager) waitForExit(cmd *exec.Cmd) {
 	approvalHandler := m.commandApprovalHandler
 	generation := m.runtimeGeneration
 	m.mu.Unlock()
+	if cleanupErr != nil {
+		m.logger.Warn("managed CODEX_HOME cleanup failed", "failure_code", "provider_config_failed", "detail", "authority_cleanup")
+	}
 	if approvalHandler != nil && generation != "" {
 		approvalHandler.HandleCommandApprovalGenerationClosed(generation)
 	}
@@ -480,7 +630,7 @@ func (m *Manager) waitForExit(cmd *exec.Cmd) {
 func (m *Manager) handleClientFailure(err error) {
 	m.mu.Lock()
 	state := m.status.State
-	process := m.cmd
+	client := m.client
 	if state != StateStopping && state != StateStopped && state != StateFailed {
 		m.status.State = StateFailed
 		m.status.Ready = false
@@ -496,8 +646,8 @@ func (m *Manager) handleClientFailure(err error) {
 	if approvalHandler != nil && generation != "" {
 		approvalHandler.HandleCommandApprovalGenerationClosed(generation)
 	}
-	if state != StateStopping && state != StateStopped && process != nil && process.Process != nil {
-		_ = process.Process.Kill()
+	if state != StateStopping && state != StateStopped && client != nil {
+		_ = client.CloseInput()
 	}
 }
 
@@ -596,18 +746,72 @@ func (m *Manager) validateInitializeResponse(response initializeResponse) error 
 	return nil
 }
 
-func (m *Manager) abortStartup(code string) {
+func (m *Manager) abortStartup(code string) error {
 	m.mu.Lock()
 	if m.status.State != StateFailed {
 		m.status.State = StateFailed
 		m.status.Ready = false
 		m.status.FailureCode = code
 	}
-	process := m.cmd
+	client := m.client
+	exitDone := m.exitDone
 	m.mu.Unlock()
-	if process != nil && process.Process != nil {
-		_ = process.Process.Kill()
+	if client != nil {
+		_ = client.CloseInput()
 	}
+	if exitDone == nil {
+		return nil
+	}
+	timer := time.NewTimer(m.config.ShutdownTimeout)
+	defer timer.Stop()
+	select {
+	case <-exitDone:
+		return m.managedCodexHomeCleanupError()
+	case <-timer.C:
+		return errors.New("Runtime did not exit normally after startup failure; managed CODEX_HOME lease retained")
+	}
+}
+
+func (m *Manager) releaseManagedCodexHomeAuthority(cleanup bool) error {
+	m.mu.Lock()
+	authority := m.codexHomeAuthority
+	m.codexHomeAuthority = nil
+	m.mu.Unlock()
+	if authority == nil {
+		return m.managedCodexHomeCleanupError()
+	}
+	var err error
+	if cleanup {
+		err = authority.Close()
+	} else {
+		err = authority.releaseWithoutCleanup()
+	}
+	m.mu.Lock()
+	if err != nil && m.authorityCleanupError == nil {
+		m.authorityCleanupError = err
+	}
+	stored := m.authorityCleanupError
+	m.mu.Unlock()
+	return stored
+}
+
+func (m *Manager) startupBoundaryError(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	requested := m.shutdownRequested
+	m.mu.Unlock()
+	if requested {
+		return errors.New("runtime shutdown was requested during startup")
+	}
+	return nil
+}
+
+func (m *Manager) managedCodexHomeCleanupError() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.authorityCleanupError
 }
 
 func (m *Manager) setArtifact(artifact ArtifactInfo) {

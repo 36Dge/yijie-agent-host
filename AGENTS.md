@@ -124,7 +124,7 @@ Baseline 2 对断线和退出的处理是撤销 readiness、失败所有等待�
 - 只支持 `codex-cli 0.144.6`、`aarch64-apple-darwin` 和 stdio；默认 stable API/`experimentalApi=false`，仅 FEAT-128 图片 exact-local 开关启用时为注册单一 `generate_image` 使用 `experimentalApi=true`；
 - Host 通过绝对 binary/manifest/`CODEX_HOME` 路径消费产物，不使用 URL 连接本地 Runtime；
 - `codex app-server` 参数固定为 `--listen stdio:// --strict-config`；该版本顶层 CLI 不公开 `--session-source`；
-- Runtime 只接受 manifest 固定的 FEAT-126 日志安全 patch → Owner 授权 FEAT-136 early sandbox-denial lifecycle patch 的精确顺序；canonical `yijie-codex/codex-rs` 仍不得直接修改；
+- Runtime 只接受 manifest 固定的 FEAT-126 日志安全 patch → Owner 授权 FEAT-136 early sandbox-denial lifecycle patch → Owner 授权 FEAT-137 stable sandbox provenance patch 的精确顺序；canonical `yijie-codex/codex-rs` 仍不得直接修改；
 - 模型认证固定为 MiniMax 中国站按量付费 API Key，endpoint 为 `https://api.minimaxi.com/v1`，模型为 `MiniMax-M3`，wire API 为 Responses；
 - Key 由 Host 显式从环境或 owner-only 文件读取，只以 `MINIMAX_API_KEY` 注入 Runtime；
 - Runtime Home 与 Host Home 独立；Host Home 使用 bbolt 持久化映射，并保存本机 HTTP bearer token；
