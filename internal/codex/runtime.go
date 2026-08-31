@@ -235,7 +235,11 @@ func (m *Manager) Start(ctx context.Context) error {
 		return errors.New("Runtime command approval handler is not configured")
 	}
 	if m.config.MiniMax.Enabled {
-		if err := prepareMiniMaxCodexHome(m.config.CodexHome, m.config.ManagedReasoningProfile); err != nil {
+		if err := prepareMiniMaxCodexHome(
+			m.config.CodexHome,
+			m.config.ManagedReasoningProfile,
+			m.config.CommandApprovalEnabled,
+		); err != nil {
 			m.fail("provider_config_failed")
 			return err
 		}

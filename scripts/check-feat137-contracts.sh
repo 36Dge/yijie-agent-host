@@ -3,9 +3,9 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 contracts_repo="${YIJIE_CONTRACTS_REPO:-$repo_root/../yijie-contracts}"
-required_commit="2e490dea4444ea1e33c2df1a5267b2bff5bfb8e6"
-required_parent="87f94c9aa6d4848cb67aa8a1265bd21474edb0bb"
-required_tree="0041ca35366ec4718f9937398924983591bd7010"
+required_commit="0acf2a39a505a4ef9fb8757b29cb53efe9e9846f"
+required_parent="2e490dea4444ea1e33c2df1a5267b2bff5bfb8e6"
+required_tree="4f14d1fb2bb6a9fe8b1bb0fe104112a81229c69e"
 required_version="0.7.0"
 legacy_fixture_baseline_commit="3832a6c5e99b2a6365f193280fdb887c8fdbc2de"
 lock_file="$repo_root/api/contracts.lock"
@@ -46,9 +46,9 @@ lock_value() {
 [ "$(lock_value CONTRACTS_AUTHORITY_TREE)" = "$required_tree" ] || fail "Contracts authority tree pin drifted."
 [ "$(lock_value CONTRACTS_GENERATOR)" = "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen" ] ||
   fail "FEAT-137 generator identity drifted."
-[ "$(lock_value FEAT137_SCOPED_SYNC_VERSION)" = "1" ] || fail "FEAT-137 scoped sync version is invalid."
+[ "$(lock_value FEAT137_SCOPED_SYNC_VERSION)" = "2" ] || fail "FEAT-137 scoped sync version is invalid."
 [ "$(lock_value FEAT137_SCOPED_SOURCES)" = \
-  "ordinary-openapi-runtime-v1-approval-v6-schema-session-event-v1-v6-host-v6-json" ] ||
+  "ordinary-openapi-runtime-v1-approval-v6-v1-v2-schema-session-event-v1-v6-host-v6-json" ] ||
   fail "FEAT-137 scoped source declaration drifted."
 [ "$(lock_value FEAT137_BASELINE_COMMIT)" = "$required_parent" ] || fail "FEAT-137 baseline commit drifted."
 [ "$(lock_value FEAT137_LEGACY_EQUALITY)" = "runtime-v1-session-event-v1-v5" ] ||
@@ -66,7 +66,9 @@ source_paths=(
   openapi/agent-host/agent-host.yaml
   compatibility/agent-host-runtime-v1.json
   compatibility/agent-host-runtime-approval-v6.json
+  compatibility/agent-host-runtime-approval-v6-v2.json
   jsonschema/compatibility/agent-host-runtime-approval-v6.schema.json
+  jsonschema/compatibility/agent-host-runtime-approval-v6-v2.schema.json
   jsonschema/agent/session-event.schema.json
   jsonschema/agent/session-event-v2.schema.json
   jsonschema/agent/session-event-v3.schema.json
@@ -81,7 +83,9 @@ snapshot_paths=(
   api/openapi/agent-host.yaml
   api/compatibility/agent-host-runtime-v1.json
   api/compatibility/agent-host-runtime-approval-v6.json
+  api/compatibility/agent-host-runtime-approval-v6-v2.json
   api/jsonschema/agent-host-runtime-approval-v6.schema.json
+  api/jsonschema/agent-host-runtime-approval-v6-v2.schema.json
   api/jsonschema/agent-session-event.schema.json
   api/jsonschema/agent-session-event-v2.schema.json
   api/jsonschema/agent-session-event-v3.schema.json
@@ -96,7 +100,9 @@ digest_keys=(
   OPENAPI_SHA256
   RUNTIME_COMPATIBILITY_SHA256
   RUNTIME_APPROVAL_V6_COMPATIBILITY_SHA256
+  RUNTIME_APPROVAL_V6_V2_COMPATIBILITY_SHA256
   RUNTIME_APPROVAL_V6_SCHEMA_SHA256
+  RUNTIME_APPROVAL_V6_V2_SCHEMA_SHA256
   AGENT_SESSION_EVENT_SCHEMA_SHA256
   AGENT_SESSION_EVENT_V2_SCHEMA_SHA256
   AGENT_SESSION_EVENT_V3_SCHEMA_SHA256
@@ -237,6 +243,9 @@ git -C "$contracts_repo" show "$required_commit:package.json" >"$source_package"
 [ "$(awk -F '"' '/^[[:space:]]*"contracts_version"[[:space:]]*:/ { print $4; exit }' \
   "$repo_root/api/compatibility/agent-host-runtime-approval-v6.json")" = "$required_version" ] ||
   fail "Runtime approval projection version differs from v$required_version."
+[ "$(awk -F '"' '/^[[:space:]]*"contracts_version"[[:space:]]*:/ { print $4; exit }' \
+  "$repo_root/api/compatibility/agent-host-runtime-approval-v6-v2.json")" = "$required_version" ] ||
+  fail "Runtime approval v2 projection version differs from v$required_version."
 
 verify_fixture_set() {
   local source_prefix="$1"

@@ -9,12 +9,14 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
-	maxTurnInputBytes    = 1 << 20
-	maxTurnV2InputCount  = 16
-	maxImageDataURLBytes = 13981039
+	maxTurnInputBytes      = 1 << 20
+	maxTurnV2InputCount    = 16
+	maxImageDataURLBytes   = 13981039
+	maxApprovalReasonBytes = 512
 
 	RuntimeMethodThreadResume                = "thread/resume"
 	RuntimeMethodThreadStart                 = "thread/start"
@@ -31,7 +33,7 @@ const (
 	SessionSandbox                           = "read-only"
 )
 
-const feat137ManagedInstructions = "Runtime Baseline 2 is read-only for workspace and operating-system actions. Only when required, request approval for exactly one command: git rev-parse --is-inside-work-tree in the current workspace. Do not run or request any other command, network access, file change, additional permission, policy amendment, shell wrapper, pipe, redirect, environment assignment, or unsandboxed execution."
+const feat137ManagedInstructions = "Runtime Baseline 2 is read-only for workspace and operating-system actions. Run exactly one command through exec_command with cmd set exactly to git rev-parse --is-inside-work-tree, the default login-shell setting, and sandbox_permissions=use_default. The Host-managed exec policy will request approval without elevating permissions; never use require_escalated or add a justification. Do not run or request any other command, network access, file change, additional permission, policy amendment, explicit shell wrapper, pipe, redirect, environment assignment, or unsandboxed execution."
 
 var sessionRuntimeMethods = []string{
 	RuntimeMethodThreadResume,
@@ -391,7 +393,8 @@ type commandApprovalParams struct {
 func decodeCommandApprovalParams(raw json.RawMessage) (commandApprovalParams, error) {
 	allowed := map[string]struct{}{
 		"threadId": {}, "turnId": {}, "itemId": {}, "startedAtMs": {}, "command": {},
-		"commandActions": {}, "cwd": {}, "approvalId": {}, "environmentId": {}, "availableDecisions": {},
+		"commandActions": {}, "cwd": {}, "approvalId": {}, "environmentId": {}, "reason": {},
+		"availableDecisions": {},
 	}
 	fields, err := decodeUniqueJSONObject(raw, allowed)
 	if err != nil {
@@ -420,6 +423,16 @@ func decodeCommandApprovalParams(raw json.RawMessage) (commandApprovalParams, er
 			return commandApprovalParams{}, errors.New("command environmentId is invalid")
 		}
 		params.EnvironmentID = &value
+	}
+	if reason, ok := fields["reason"]; ok && string(reason) != "null" {
+		var value string
+		if !utf8.Valid(reason) || json.Unmarshal(reason, &value) != nil || len(value) > maxApprovalReasonBytes ||
+			!utf8.ValidString(value) || strings.ContainsRune(value, '\x00') {
+			return commandApprovalParams{}, errors.New("command approval reason is invalid")
+		}
+		// Runtime reason is explanatory model text, not approval authority. It is
+		// deliberately validated and discarded here so it cannot enter Host
+		// session state, events, logs, replay fingerprints, or persistence.
 	}
 	var actions []json.RawMessage
 	if json.Unmarshal(fields["commandActions"], &actions) != nil || len(actions) != 1 {

@@ -16,25 +16,26 @@ import (
 )
 
 const (
-	approvalSchemaVersion      = 6
-	approvalPendingRevision    = int64(1)
-	approvalResolvedRevision   = int64(2)
-	approvalTTL                = 120 * time.Second
-	approvalTTLSeconds         = 120
-	approvalAuditLimit         = 128
-	approvalActionID           = "git_repository_check"
-	approvalWorkspaceScope     = "current_workspace"
-	approvalDecisionAcceptOnce = "accept_once"
-	approvalDecisionCancelTurn = "cancel_current_turn"
-	approvalOutcomeAccepted    = "accepted_once"
-	approvalOutcomeCancelled   = "cancelled_current_turn"
-	approvalOutcomeExpired     = "expired"
-	approvalOutcomeElsewhere   = "resolved_elsewhere"
-	approvalRuntimeCommand     = "git rev-parse --is-inside-work-tree"
-	approvalRuntimeEnvironment = "local"
-	approvalPhasePending       = "pending"
-	approvalPhaseCommitted     = "response_committed_wait_ack"
-	approvalPhaseTTLCommitted  = "ttl_cancel_committed_wait_ack"
+	approvalSchemaVersion       = 6
+	approvalPendingRevision     = int64(1)
+	approvalResolvedRevision    = int64(2)
+	approvalTTL                 = 120 * time.Second
+	approvalTTLSeconds          = 120
+	approvalAuditLimit          = 128
+	approvalActionID            = "git_repository_check"
+	approvalWorkspaceScope      = "current_workspace"
+	approvalDecisionAcceptOnce  = "accept_once"
+	approvalDecisionCancelTurn  = "cancel_current_turn"
+	approvalOutcomeAccepted     = "accepted_once"
+	approvalOutcomeCancelled    = "cancelled_current_turn"
+	approvalOutcomeExpired      = "expired"
+	approvalOutcomeElsewhere    = "resolved_elsewhere"
+	approvalRuntimeCommand      = "git rev-parse --is-inside-work-tree"
+	approvalRuntimeShellWrapper = "/bin/zsh -lc 'git rev-parse --is-inside-work-tree'"
+	approvalRuntimeEnvironment  = "local"
+	approvalPhasePending        = "pending"
+	approvalPhaseCommitted      = "response_committed_wait_ack"
+	approvalPhaseTTLCommitted   = "ttl_cancel_committed_wait_ack"
 )
 
 const (
@@ -362,12 +363,26 @@ func (s *Service) validateCommandApprovalRequest(request codex.CommandApprovalRe
 	}
 	canonicalCwd, err := canonicalDirectory(request.Cwd)
 	if err != nil || canonicalCwd != record.Cwd || filepath.Clean(canonicalCwd) != canonicalCwd ||
-		request.Command != approvalRuntimeCommand || len(request.CommandActions) != 1 ||
-		request.CommandActions[0].Type != "unknown" || request.CommandActions[0].Command != approvalRuntimeCommand ||
-		(request.EnvironmentID != nil && *request.EnvironmentID != approvalRuntimeEnvironment) {
+		len(request.CommandActions) != 1 {
+		return Record{}, "", false
+	}
+	action := request.CommandActions[0]
+	if action.Type != "unknown" ||
+		action.Command != approvalRuntimeCommand ||
+		!validApprovalRuntimeShellWrapper(request.Command, action.Command) ||
+		request.EnvironmentID == nil || *request.EnvironmentID != approvalRuntimeEnvironment {
 		return Record{}, "", false
 	}
 	return record, approvalRequestFingerprint(request, canonicalCwd), true
+}
+
+// validApprovalRuntimeShellWrapper recognizes the sole deterministic macOS
+// presentation emitted by the pinned Runtime when the model supplies the
+// allowlisted command through the default login-shell exec path. The parsed
+// commandAction remains the business authority; the wrapper is accepted only
+// as a closed transport correlation and can neither widen nor replace it.
+func validApprovalRuntimeShellWrapper(presentation, actionCommand string) bool {
+	return actionCommand == approvalRuntimeCommand && presentation == approvalRuntimeShellWrapper
 }
 
 func (s *Service) HandleCommandApprovalResponseWritten(result codex.CommandApprovalResponseWriteResult) {
@@ -880,7 +895,7 @@ func approvalRequestFingerprint(request codex.CommandApprovalRequest, canonicalC
 		StartedAtMS                                                                    int64
 	}{
 		ItemID: request.ItemID, ThreadID: request.ThreadID, TurnID: request.TurnID,
-		Command: request.Command, ActionType: request.CommandActions[0].Type,
+		Command: request.CommandActions[0].Command, ActionType: request.CommandActions[0].Type,
 		ActionCommand: request.CommandActions[0].Command, Cwd: canonicalCwd,
 		Environment: environment, StartedAtMS: request.StartedAtMS,
 	}

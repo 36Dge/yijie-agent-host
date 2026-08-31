@@ -44,6 +44,72 @@ type feat137DecisionCompletion struct {
 	err    error
 }
 
+func TestFEAT137RuntimeApprovalV2EligibilityMatchesSessionAuthority(t *testing.T) {
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate FEAT-137 session authority test")
+	}
+	encoded, err := os.ReadFile(filepath.Clean(filepath.Join(
+		filepath.Dir(sourceFile), "..", "..", "api", "compatibility", "agent-host-runtime-approval-v6-v2.json",
+	)))
+	if err != nil {
+		t.Fatalf("read Runtime approval v2 compatibility contract: %v", err)
+	}
+	var authority struct {
+		ReverseRequest struct {
+			Eligibility struct {
+				Command struct {
+					Wire              string `json:"wire"`
+					Role              string `json:"role"`
+					Validation        string `json:"validation"`
+					BusinessAuthority string `json:"business_authority"`
+					Handling          string `json:"handling"`
+				} `json:"command"`
+				CommandActions struct {
+					ExactCount           int    `json:"exact_count"`
+					Type                 string `json:"type"`
+					Command              string `json:"command"`
+					AdditionalProperties string `json:"additional_properties"`
+				} `json:"command_actions"`
+				ApprovalID    string `json:"approval_id"`
+				Cwd           string `json:"cwd"`
+				EnvironmentID string `json:"environment_id"`
+			} `json:"eligibility"`
+		} `json:"reverse_request"`
+		Lifecycle struct {
+			TTLSeconds                  int    `json:"ttl_seconds"`
+			TTLClock                    string `json:"ttl_clock"`
+			RuntimeStartedAtIsAuthority bool   `json:"runtime_started_at_ms_is_ttl_authority"`
+			MaxPendingPerSession        int    `json:"max_pending_per_session"`
+			AutomaticDecisionRetry      bool   `json:"automatic_decision_retry"`
+		} `json:"lifecycle"`
+	}
+	if err := json.Unmarshal(encoded, &authority); err != nil {
+		t.Fatalf("decode Runtime approval v2 compatibility contract: %v", err)
+	}
+	eligibility := authority.ReverseRequest.Eligibility
+	if eligibility.Command.Wire != approvalRuntimeShellWrapper ||
+		eligibility.Command.Role != "non_authoritative_transport_presentation" ||
+		eligibility.Command.Validation != "exact_pinned_macos_zsh_login_wrapper" ||
+		eligibility.Command.BusinessAuthority != "command_actions" ||
+		eligibility.Command.Handling != "validate_normalize_then_discard" ||
+		eligibility.CommandActions.ExactCount != 1 ||
+		eligibility.CommandActions.Type != "unknown" ||
+		eligibility.CommandActions.Command != approvalRuntimeCommand ||
+		eligibility.CommandActions.AdditionalProperties != "forbidden" ||
+		eligibility.ApprovalID != "absent_or_null" ||
+		eligibility.Cwd != "canonical_equal_to_host_known_workspace_root" ||
+		eligibility.EnvironmentID != "exact_local" {
+		t.Fatalf("Host session admission drifted from the v2 eligibility authority: %+v", eligibility)
+	}
+	if authority.Lifecycle.TTLSeconds != approvalTTLSeconds ||
+		authority.Lifecycle.TTLClock != "host_monotonic_receive_time" ||
+		authority.Lifecycle.RuntimeStartedAtIsAuthority ||
+		authority.Lifecycle.MaxPendingPerSession != 1 || authority.Lifecycle.AutomaticDecisionRetry {
+		t.Fatalf("Host approval lifecycle drifted from the v2 authority: %+v", authority.Lifecycle)
+	}
+}
+
 func TestFEAT137DecisionWaitsForMatchingTypedAckReplayAndIdempotency(t *testing.T) {
 	harness := newFEAT137ApprovalHarness(t)
 	request := harness.request
@@ -745,12 +811,24 @@ func TestFEAT137GenerationCloseWinsAdmissionValidationRace(t *testing.T) {
 
 func TestFEAT137InvalidRequestsAndCanonicalUUIDsFailClosed(t *testing.T) {
 	remote := "remote"
+	legacyHostLocal := "host-local"
 	for name, mutate := range map[string]func(*codex.CommandApprovalRequest){
 		"malformed typed request key": func(request *codex.CommandApprovalRequest) { request.RequestIDKey = "n:01" },
-		"wrong command":               func(request *codex.CommandApprovalRequest) { request.Command = "git status" },
-		"wrong action":                func(request *codex.CommandApprovalRequest) { request.CommandActions[0].Type = "read" },
-		"wrong cwd":                   func(request *codex.CommandApprovalRequest) { request.Cwd = t.TempDir() },
-		"foreign environment":         func(request *codex.CommandApprovalRequest) { request.EnvironmentID = &remote },
+		"bare command presentation":   func(request *codex.CommandApprovalRequest) { request.Command = approvalRuntimeCommand },
+		"wrong shell command":         func(request *codex.CommandApprovalRequest) { request.Command = "/bin/zsh -lc 'git status'" },
+		"non login shell wrapper": func(request *codex.CommandApprovalRequest) {
+			request.Command = "/bin/zsh -c 'git rev-parse --is-inside-work-tree'"
+		},
+		"foreign shell wrapper": func(request *codex.CommandApprovalRequest) {
+			request.Command = "/bin/bash -lc 'git rev-parse --is-inside-work-tree'"
+		},
+		"extra shell token":    func(request *codex.CommandApprovalRequest) { request.Command = approvalRuntimeShellWrapper + " extra" },
+		"wrong action":         func(request *codex.CommandApprovalRequest) { request.CommandActions[0].Type = "read" },
+		"wrong action command": func(request *codex.CommandApprovalRequest) { request.CommandActions[0].Command = "git status" },
+		"wrong cwd":            func(request *codex.CommandApprovalRequest) { request.Cwd = t.TempDir() },
+		"missing environment":  func(request *codex.CommandApprovalRequest) { request.EnvironmentID = nil },
+		"foreign environment":  func(request *codex.CommandApprovalRequest) { request.EnvironmentID = &remote },
+		"legacy environment":   func(request *codex.CommandApprovalRequest) { request.EnvironmentID = &legacyHostLocal },
 	} {
 		t.Run(name, func(t *testing.T) {
 			harness := newFEAT137ApprovalHarness(t)
@@ -898,6 +976,10 @@ func newFEAT137ApprovalHarness(t *testing.T) *feat137ApprovalHarness {
 		"turnId":   testTurnID,
 		"item": map[string]any{
 			"id": feat137ItemID, "type": "commandExecution", "status": "inProgress", "cwd": record.Cwd,
+			"command": approvalRuntimeShellWrapper,
+			"commandActions": []any{map[string]any{
+				"type": "unknown", "command": approvalRuntimeCommand,
+			}},
 		},
 	}))
 	if !service.expectedLiveCommandItem(record, testTurnID, feat137ItemID) {
@@ -912,6 +994,7 @@ func newFEAT137ApprovalHarness(t *testing.T) *feat137ApprovalHarness {
 		t.Fatalf("failed to establish live command authority: v5=%+v v5err=%v v6=%+v v6err=%v",
 			v5Replay, v5Err, v6Replay, v6Err)
 	}
+	environment := approvalRuntimeEnvironment
 	request := codex.CommandApprovalRequest{
 		RuntimeGeneration: feat137GenerationCanary,
 		RequestIDKey:      feat137RequestIDCanary,
@@ -919,11 +1002,11 @@ func newFEAT137ApprovalHarness(t *testing.T) *feat137ApprovalHarness {
 		TurnID:            testTurnID,
 		ItemID:            feat137ItemID,
 		StartedAtMS:       1723456789000,
-		Command:           approvalRuntimeCommand,
+		Command:           approvalRuntimeShellWrapper,
 		CommandActions: []codex.CommandApprovalAction{{
 			Type: "unknown", Command: approvalRuntimeCommand,
 		}},
-		Cwd: record.Cwd,
+		Cwd: record.Cwd, EnvironmentID: &environment,
 	}
 	if _, _, eligible := service.validateCommandApprovalRequest(request); !eligible {
 		t.Fatal("canonical FEAT-137 test request is not eligible")

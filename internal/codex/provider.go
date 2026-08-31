@@ -9,22 +9,35 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/google/uuid"
 )
 
 const (
-	MiniMaxProviderID       = "minimax"
-	MiniMaxModel            = "MiniMax-M3"
-	MiniMaxChinaBaseURL     = "https://api.minimaxi.com/v1"
-	MiniMaxRuntimeEnvKey    = "MINIMAX_API_KEY"
-	FEAT126FakeBaseURL      = "http://127.0.0.1:18082/v1"
-	FEAT126FakeFixtureID    = "normal-000"
-	feat126RunIDHeader      = "X-Yijie-Feat126-Run-Id"
-	feat126FixtureIDHeader  = "X-Yijie-Feat126-Fixture-Id"
-	managedConfigMarker     = "# Managed by yijie-agent-host Runtime Baseline 2.\n"
-	managedModelCatalogName = "minimax-m3-model-catalog.json"
+	MiniMaxProviderID        = "minimax"
+	MiniMaxModel             = "MiniMax-M3"
+	MiniMaxChinaBaseURL      = "https://api.minimaxi.com/v1"
+	MiniMaxRuntimeEnvKey     = "MINIMAX_API_KEY"
+	FEAT126FakeBaseURL       = "http://127.0.0.1:18082/v1"
+	FEAT126FakeFixtureID     = "normal-000"
+	feat126RunIDHeader       = "X-Yijie-Feat126-Run-Id"
+	feat126FixtureIDHeader   = "X-Yijie-Feat126-Fixture-Id"
+	managedConfigMarker      = "# Managed by yijie-agent-host Runtime Baseline 2.\n"
+	managedFEAT137RuleMarker = "# Managed by yijie-agent-host FEAT-137 command approval.\n"
+	managedModelCatalogName  = "minimax-m3-model-catalog.json"
+	managedRulesDirectory    = "rules"
+	managedDefaultRulesFile  = "default.rules"
 )
+
+const managedFEAT137ExecPolicy = managedFEAT137RuleMarker + `prefix_rule(
+    pattern=["git", "rev-parse", "--is-inside-work-tree"],
+    decision="prompt",
+    justification="Confirm the one read-only repository check.",
+    match=[["git", "rev-parse", "--is-inside-work-tree"]],
+    not_match=[["git", "status"], ["git", "show", "HEAD"]],
+)
+`
 
 type MiniMaxConfig struct {
 	Enabled bool
@@ -112,7 +125,11 @@ func (c MiniMaxConfig) validate() error {
 	return nil
 }
 
-func prepareMiniMaxCodexHome(codexHome string, profile ManagedReasoningProfile) error {
+func prepareMiniMaxCodexHome(
+	codexHome string,
+	profile ManagedReasoningProfile,
+	commandApprovalEnabled bool,
+) error {
 	if err := profile.validate(true, false); err != nil {
 		return err
 	}
@@ -161,7 +178,94 @@ func prepareMiniMaxCodexHome(codexHome string, profile ManagedReasoningProfile) 
 	if err := writeManagedFile(filepath.Join(codexHome, "config.toml"), []byte(config), true); err != nil {
 		return fmt.Errorf("write managed CODEX_HOME config: %w", err)
 	}
+	if err := reconcileManagedFEAT137ExecPolicy(codexHome, commandApprovalEnabled); err != nil {
+		return err
+	}
 	return nil
+}
+
+// reconcileManagedFEAT137ExecPolicy makes the exact FEAT-137 safe prompt rule
+// share the same Host-owned CODEX_HOME lifecycle as the managed provider
+// config. Runtime loads every *.rules file under this directory, so an
+// unmanaged or additional rule is an authority expansion and must fail closed.
+// The gate-off path removes only the file carrying this feature's exact marker.
+func reconcileManagedFEAT137ExecPolicy(codexHome string, enabled bool) error {
+	rulesDirectory := filepath.Join(codexHome, managedRulesDirectory)
+	rulesPath := filepath.Join(rulesDirectory, managedDefaultRulesFile)
+	info, err := os.Lstat(rulesDirectory)
+	if errors.Is(err, os.ErrNotExist) {
+		if !enabled {
+			return nil
+		}
+		if err := os.Mkdir(rulesDirectory, 0o700); err != nil {
+			return fmt.Errorf("create managed Runtime rules directory: %w", err)
+		}
+		info, err = os.Lstat(rulesDirectory)
+	}
+	if err != nil {
+		return fmt.Errorf("inspect managed Runtime rules directory: %w", err)
+	}
+	if !currentUserOwns(info) || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
+		return errors.New("managed Runtime rules directory must be an owner-only non-symlink directory")
+	}
+	entries, err := os.ReadDir(rulesDirectory)
+	if err != nil {
+		return fmt.Errorf("read managed Runtime rules directory: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.Name() != managedDefaultRulesFile {
+			return errors.New("managed Runtime rules directory contains an unexpected entry")
+		}
+	}
+
+	ruleInfo, err := os.Lstat(rulesPath)
+	if errors.Is(err, os.ErrNotExist) {
+		if !enabled {
+			if len(entries) == 0 {
+				_ = os.Remove(rulesDirectory)
+			}
+			return nil
+		}
+		if err := writeManagedFile(rulesPath, []byte(managedFEAT137ExecPolicy), false); err != nil {
+			return fmt.Errorf("write managed FEAT-137 Runtime exec policy: %w", err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect managed FEAT-137 Runtime exec policy: %w", err)
+	}
+	if !currentUserOwns(ruleInfo) || !ruleInfo.Mode().IsRegular() ||
+		ruleInfo.Mode()&os.ModeSymlink != 0 || ruleInfo.Mode().Perm() != 0o600 {
+		return errors.New("managed FEAT-137 Runtime exec policy must be an owner-only regular file")
+	}
+	if ruleInfo.Size() > 4096 {
+		return errors.New("managed FEAT-137 Runtime exec policy exceeds its closed size limit")
+	}
+	existing, err := os.ReadFile(rulesPath)
+	if err != nil {
+		return fmt.Errorf("read managed FEAT-137 Runtime exec policy: %w", err)
+	}
+	if !bytes.HasPrefix(existing, []byte(managedFEAT137RuleMarker)) {
+		return errors.New("refusing to replace unmanaged Runtime exec policy")
+	}
+	if enabled {
+		if !bytes.Equal(existing, []byte(managedFEAT137ExecPolicy)) {
+			return errors.New("managed FEAT-137 Runtime exec policy drifted")
+		}
+		return nil
+	}
+	if err := os.Remove(rulesPath); err != nil {
+		return fmt.Errorf("remove disabled FEAT-137 Runtime exec policy: %w", err)
+	}
+	if err := os.Remove(rulesDirectory); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove empty managed Runtime rules directory: %w", err)
+	}
+	return nil
+}
+
+func currentUserOwns(info os.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && stat.Uid == uint32(os.Geteuid())
 }
 
 func prepareFakeResponsesCodexHome(codexHome string, fake FakeResponsesConfig) error {

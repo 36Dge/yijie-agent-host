@@ -2,6 +2,7 @@ package codex
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,7 @@ func TestPrepareMiniMaxCodexHomeWritesSecretFreeManagedConfig(t *testing.T) {
 	if err := os.Chmod(home, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileDefault); err != nil {
+	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileDefault, false); err != nil {
 		t.Fatal(err)
 	}
 	config, err := os.ReadFile(filepath.Join(home, "config.toml"))
@@ -58,14 +59,17 @@ func TestPrepareMiniMaxCodexHomeWritesSecretFreeManagedConfig(t *testing.T) {
 			t.Fatalf("managed file %s is accessible to group/other: %o", name, info.Mode().Perm())
 		}
 	}
-	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileDefault); err != nil {
+	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileDefault, false); err != nil {
 		t.Fatalf("managed config should be idempotent: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(home, managedRulesDirectory)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("default-off Runtime profile retained an exec-policy authority: %v", err)
 	}
 }
 
 func TestPrepareMiniMaxCodexHomeWritesHighRawManagedProfile(t *testing.T) {
 	home := t.TempDir()
-	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileHighRaw); err != nil {
+	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileHighRaw, false); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(filepath.Join(home, "config.toml"))
@@ -92,7 +96,7 @@ func TestPrepareMiniMaxCodexHomeRefusesUnmanagedConfig(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("model = \"other\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileDefault); err == nil {
+	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileDefault, false); err == nil {
 		t.Fatal("expected unmanaged config to be preserved")
 	}
 	config, err := os.ReadFile(filepath.Join(home, "config.toml"))
@@ -101,6 +105,72 @@ func TestPrepareMiniMaxCodexHomeRefusesUnmanagedConfig(t *testing.T) {
 	}
 	if string(config) != "model = \"other\"\n" {
 		t.Fatalf("unmanaged config changed: %q", config)
+	}
+}
+
+func TestPrepareMiniMaxCodexHomeOwnsExactFEAT137ExecPolicyLifecycle(t *testing.T) {
+	home := t.TempDir()
+	rulesPath := filepath.Join(home, managedRulesDirectory, managedDefaultRulesFile)
+	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileHighRaw, true); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(rulesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != managedFEAT137ExecPolicy {
+		t.Fatalf("managed FEAT-137 exec policy drifted: %q", content)
+	}
+	rulesInfo, err := os.Lstat(filepath.Dir(rulesPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ruleInfo, err := os.Lstat(rulesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rulesInfo.Mode().Perm() != 0o700 || ruleInfo.Mode().Perm() != 0o600 || !ruleInfo.Mode().IsRegular() {
+		t.Fatalf("managed FEAT-137 rule authority is not owner-only: dir=%o file=%o",
+			rulesInfo.Mode().Perm(), ruleInfo.Mode().Perm())
+	}
+	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileHighRaw, true); err != nil {
+		t.Fatalf("managed FEAT-137 exec policy should be idempotent: %v", err)
+	}
+	if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileHighRaw, false); err != nil {
+		t.Fatalf("disable managed FEAT-137 exec policy: %v", err)
+	}
+	if _, err := os.Lstat(rulesPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("gate-off retained the FEAT-137 exec policy: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Dir(rulesPath)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("gate-off retained the managed rules directory: %v", err)
+	}
+}
+
+func TestPrepareMiniMaxCodexHomeRefusesForeignExecPolicyAuthority(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(map[bool]string{false: "gate off", true: "gate on"}[enabled], func(t *testing.T) {
+			home := t.TempDir()
+			rulesDirectory := filepath.Join(home, managedRulesDirectory)
+			if err := os.Mkdir(rulesDirectory, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			rulesPath := filepath.Join(rulesDirectory, managedDefaultRulesFile)
+			foreign := []byte(`prefix_rule(pattern=["git"], decision="allow")` + "\n")
+			if err := os.WriteFile(rulesPath, foreign, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := prepareMiniMaxCodexHome(home, ManagedReasoningProfileHighRaw, enabled); err == nil {
+				t.Fatal("unmanaged Runtime exec policy was accepted")
+			}
+			content, err := os.ReadFile(rulesPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(content, foreign) {
+				t.Fatalf("unmanaged Runtime exec policy changed: %q", content)
+			}
+		})
 	}
 }
 

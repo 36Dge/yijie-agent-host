@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -15,13 +16,20 @@ const feat137CanonicalApprovalParams = `{
 	"turnId":"turn-137",
 	"itemId":"item-137",
 	"startedAtMs":137000,
-	"command":"git rev-parse --is-inside-work-tree",
+	"command":"/bin/zsh -lc 'git rev-parse --is-inside-work-tree'",
 	"commandActions":[{"type":"unknown","command":"git rev-parse --is-inside-work-tree"}],
 	"cwd":"/workspace",
+	"reason":"FEAT137_REASON_CANARY",
 	"approvalId":null,
-	"environmentId":"host-local",
+	"environmentId":"local",
 	"availableDecisions":["accept","cancel"]
 }`
+
+const (
+	feat137RuntimeReason         = "`/bin/zsh -lc 'git rev-parse --is-inside-work-tree'` requires approval: Confirm the one read-only repository check."
+	feat137CanonicalReason       = "FEAT137_REASON_CANARY"
+	feat137CanonicalReasonMember = `"reason":"` + feat137CanonicalReason + `"`
+)
 
 type feat137ApprovalHandler struct {
 	result   CommandApprovalResult
@@ -29,6 +37,147 @@ type feat137ApprovalHandler struct {
 	written  chan CommandApprovalResponseWriteResult
 	resolved chan CommandApprovalResolved
 	closed   chan string
+}
+
+func TestFEAT137PinnedRuntimeCommandApprovalWireFixture(t *testing.T) {
+	raw, err := os.ReadFile("testdata/feat137-runtime-command-approval.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exactServerRequestEnvelope(raw) {
+		t.Fatal("pinned Runtime fixture lost its exact reverse-request envelope")
+	}
+	var wire struct {
+		ID     json.RawMessage `json:"id"`
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	requestKey, err := requestIDKey(wire.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params, err := decodeCommandApprovalParams(wire.Params)
+	if err != nil {
+		t.Fatalf("decode pinned Runtime approval wire: %v", err)
+	}
+	if wire.Method != RuntimeMethodCommandApproval || requestKey != "n:7" ||
+		params.ThreadID != "thread-137" || params.TurnID != "turn-137" || params.ItemID != "item-137" ||
+		params.StartedAtMS != 137000 || params.Command != "/bin/zsh -lc 'git rev-parse --is-inside-work-tree'" ||
+		params.Cwd != "/workspace" || params.EnvironmentID == nil || *params.EnvironmentID != "local" ||
+		len(params.CommandActions) != 1 || params.CommandActions[0] != (CommandApprovalAction{
+		Type: "unknown", Command: "git rev-parse --is-inside-work-tree",
+	}) {
+		t.Fatalf("pinned Runtime approval wire mapped incorrectly: method=%q key=%q params=%+v",
+			wire.Method, requestKey, params)
+	}
+	mapped, err := json.Marshal(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(mapped, []byte(feat137RuntimeReason)) {
+		t.Fatal("pinned Runtime reason entered mapped Host authority")
+	}
+}
+
+func TestFEAT137RuntimeApprovalV2ContractMatchesAdapter(t *testing.T) {
+	encoded, err := os.ReadFile("../../api/compatibility/agent-host-runtime-approval-v6-v2.json")
+	if err != nil {
+		t.Fatalf("read Runtime approval v2 compatibility contract: %v", err)
+	}
+	var authority struct {
+		SchemaVersion int    `json:"schema_version"`
+		ProjectionID  string `json:"projection_id"`
+		Activation    struct {
+			Exposure             string   `json:"exposure"`
+			Profile              string   `json:"profile"`
+			RequiredFeatureGates []string `json:"required_feature_gates"`
+			ApprovalPolicy       string   `json:"approval_policy"`
+			FallbackPolicy       string   `json:"fallback_approval_policy"`
+			Sandbox              string   `json:"sandbox"`
+			ExperimentalAPI      bool     `json:"experimental_api"`
+			Producer             struct {
+				Mechanism               string   `json:"mechanism"`
+				RulePattern             []string `json:"rule_pattern"`
+				Justification           string   `json:"justification"`
+				RuntimeMatchSemantics   string   `json:"runtime_match_semantics"`
+				ExactAdmissionAuthority string   `json:"exact_admission_authority"`
+				SandboxPermissions      string   `json:"sandbox_permissions"`
+				SandboxOverride         string   `json:"sandbox_override"`
+				PermissionEscalation    bool     `json:"permission_escalation"`
+				InstallationScope       string   `json:"installation_scope"`
+				GateOffState            string   `json:"gate_off_state"`
+				LoadTimeExamples        struct {
+					Match     [][]string `json:"match"`
+					NotMatch  [][]string `json:"not_match"`
+					Authority string     `json:"authority"`
+				} `json:"load_time_examples"`
+			} `json:"producer"`
+		} `json:"activation"`
+		ReverseRequest struct {
+			Method      string `json:"method"`
+			Eligibility struct {
+				Reason struct {
+					Forms             string `json:"forms"`
+					MaxUTF8Bytes      int    `json:"max_utf8_bytes"`
+					NUL               string `json:"nul"`
+					Handling          string `json:"handling"`
+					ReplayFingerprint string `json:"replay_fingerprint"`
+					Exposed           bool   `json:"exposed_to_yijie_surfaces"`
+				} `json:"reason"`
+				MustBeAbsent map[string]string `json:"must_be_absent"`
+			} `json:"eligibility"`
+		} `json:"reverse_request"`
+	}
+	if err := json.Unmarshal(encoded, &authority); err != nil {
+		t.Fatalf("decode Runtime approval v2 compatibility contract: %v", err)
+	}
+	producer := authority.Activation.Producer
+	reason := authority.ReverseRequest.Eligibility.Reason
+	if authority.SchemaVersion != 2 || authority.ProjectionID != "agent-host-runtime-approval-v6-v2" ||
+		authority.Activation.Exposure != "local" || authority.Activation.Profile != "demo_fast" ||
+		strings.Join(authority.Activation.RequiredFeatureGates, ",") != "FEAT-134,FEAT-136,FEAT-137" ||
+		authority.Activation.ApprovalPolicy != SessionApprovalPolicyOnRequest ||
+		authority.Activation.FallbackPolicy != SessionApprovalPolicy ||
+		authority.Activation.Sandbox != SessionSandbox || authority.Activation.ExperimentalAPI ||
+		authority.ReverseRequest.Method != RuntimeMethodCommandApproval {
+		t.Fatalf("Runtime approval v2 activation drifted from the Host adapter: %+v", authority)
+	}
+	if producer.Mechanism != "managed_execpolicy_prompt_rule" ||
+		strings.Join(producer.RulePattern, "\x00") != "git\x00rev-parse\x00--is-inside-work-tree" ||
+		producer.Justification != "Confirm the one read-only repository check." ||
+		producer.RuntimeMatchSemantics != "prefix" ||
+		producer.ExactAdmissionAuthority != "host_wire_and_command_action_allowlist" ||
+		producer.SandboxPermissions != "use_default" || producer.SandboxOverride != "forbidden" ||
+		producer.PermissionEscalation ||
+		producer.InstallationScope != "exact_local_demo_fast_feat_134_feat_136_feat_137" ||
+		producer.GateOffState != "managed_rule_absent" ||
+		len(producer.LoadTimeExamples.Match) != 1 ||
+		strings.Join(producer.LoadTimeExamples.Match[0], "\x00") != "git\x00rev-parse\x00--is-inside-work-tree" ||
+		len(producer.LoadTimeExamples.NotMatch) != 2 ||
+		strings.Join(producer.LoadTimeExamples.NotMatch[0], "\x00") != "git\x00status" ||
+		strings.Join(producer.LoadTimeExamples.NotMatch[1], "\x00") != "git\x00show\x00HEAD" ||
+		producer.LoadTimeExamples.Authority != "validation_only_not_runtime_exactness" {
+		t.Fatalf("managed Runtime Prompt authority drifted from the v2 contract: %+v", producer)
+	}
+	if managedFEAT137ExecPolicy != managedFEAT137RuleMarker+`prefix_rule(
+    pattern=["git", "rev-parse", "--is-inside-work-tree"],
+    decision="prompt",
+    justification="Confirm the one read-only repository check.",
+    match=[["git", "rev-parse", "--is-inside-work-tree"]],
+    not_match=[["git", "status"], ["git", "show", "HEAD"]],
+)
+` {
+		t.Fatal("Host managed Runtime Prompt rule drifted from the frozen authority")
+	}
+	if reason.Forms != "absent_null_or_utf8_string" || reason.MaxUTF8Bytes != maxApprovalReasonBytes ||
+		reason.NUL != "forbidden" || reason.Handling != "validate_then_discard" ||
+		reason.ReplayFingerprint != "excluded" || reason.Exposed ||
+		len(authority.ReverseRequest.Eligibility.MustBeAbsent) != 4 {
+		t.Fatalf("Runtime reason/redaction authority drifted from the closed decoder: %+v", reason)
+	}
 }
 
 func newFEAT137ApprovalHandler(result CommandApprovalResult) *feat137ApprovalHandler {
@@ -243,23 +392,60 @@ func TestFEAT137CommandApprovalParamsClosedDecoder(t *testing.T) {
 		t.Fatalf("decode canonical params: %v", err)
 	}
 	if params.ThreadID != "thread-137" || params.TurnID != "turn-137" || params.ItemID != "item-137" ||
-		params.StartedAtMS != 137000 || params.Command != "git rev-parse --is-inside-work-tree" ||
-		params.Cwd != "/workspace" || params.EnvironmentID == nil || *params.EnvironmentID != "host-local" ||
+		params.StartedAtMS != 137000 || params.Command != "/bin/zsh -lc 'git rev-parse --is-inside-work-tree'" ||
+		params.Cwd != "/workspace" || params.EnvironmentID == nil || *params.EnvironmentID != "local" ||
 		len(params.CommandActions) != 1 || params.CommandActions[0] != (CommandApprovalAction{
 		Type: "unknown", Command: "git rev-parse --is-inside-work-tree",
 	}) {
 		t.Fatalf("canonical params mapped incorrectly: %+v", params)
 	}
+	mapped, err := json.Marshal(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(mapped, []byte(feat137CanonicalReason)) {
+		t.Fatal("validated Runtime reason escaped the closed decoder")
+	}
+	for name, raw := range map[string]string{
+		"absent": strings.Replace(feat137CanonicalApprovalParams, "\n\t"+feat137CanonicalReasonMember+",", "", 1),
+		"null":   strings.Replace(feat137CanonicalApprovalParams, feat137CanonicalReasonMember, `"reason":null`, 1),
+		"exact byte limit": strings.Replace(
+			feat137CanonicalApprovalParams,
+			feat137CanonicalReasonMember,
+			`"reason":"`+strings.Repeat("r", maxApprovalReasonBytes)+`"`,
+			1,
+		),
+		"multibyte below byte limit": strings.Replace(
+			feat137CanonicalApprovalParams,
+			feat137CanonicalReasonMember,
+			`"reason":"`+strings.Repeat("界", 170)+`"`,
+			1,
+		),
+	} {
+		t.Run("reason "+name, func(t *testing.T) {
+			if _, err := decodeCommandApprovalParams(json.RawMessage(raw)); err != nil {
+				t.Fatalf("bounded optional Runtime reason was rejected: %v", err)
+			}
+		})
+	}
 
+	oversizedReason := strings.Repeat("r", maxApprovalReasonBytes+1)
 	tests := []struct {
 		name string
 		raw  string
 	}{
-		{name: "unknown reason", raw: strings.Replace(feat137CanonicalApprovalParams, `"approvalId":null`, `"reason":"why","approvalId":null`, 1)},
+		{name: "unknown field", raw: strings.Replace(feat137CanonicalApprovalParams, `"approvalId":null`, `"unexpected":"why","approvalId":null`, 1)},
+		{name: "network context", raw: strings.Replace(feat137CanonicalApprovalParams, `"approvalId":null`, `"networkApprovalContext":{},"approvalId":null`, 1)},
+		{name: "additional permissions", raw: strings.Replace(feat137CanonicalApprovalParams, `"approvalId":null`, `"additionalPermissions":{},"approvalId":null`, 1)},
+		{name: "exec policy amendment", raw: strings.Replace(feat137CanonicalApprovalParams, `"approvalId":null`, `"proposedExecpolicyAmendment":{},"approvalId":null`, 1)},
+		{name: "network policy amendments", raw: strings.Replace(feat137CanonicalApprovalParams, `"approvalId":null`, `"proposedNetworkPolicyAmendments":[],"approvalId":null`, 1)},
+		{name: "oversized reason", raw: strings.Replace(feat137CanonicalApprovalParams, feat137CanonicalReasonMember, `"reason":"`+oversizedReason+`"`, 1)},
+		{name: "oversized multibyte reason", raw: strings.Replace(feat137CanonicalApprovalParams, feat137CanonicalReasonMember, `"reason":"`+strings.Repeat("界", 171)+`"`, 1)},
+		{name: "reason with nul", raw: strings.Replace(feat137CanonicalApprovalParams, feat137CanonicalReasonMember, `"reason":"\u0000"`, 1)},
 		{name: "missing started time", raw: strings.Replace(feat137CanonicalApprovalParams, `"startedAtMs":137000,`, "", 1)},
 		{name: "fractional started time", raw: strings.Replace(feat137CanonicalApprovalParams, `137000`, `137000.5`, 1)},
 		{name: "non-null approval id", raw: strings.Replace(feat137CanonicalApprovalParams, `"approvalId":null`, `"approvalId":"approval"`, 1)},
-		{name: "empty environment", raw: strings.Replace(feat137CanonicalApprovalParams, `"environmentId":"host-local"`, `"environmentId":""`, 1)},
+		{name: "empty environment", raw: strings.Replace(feat137CanonicalApprovalParams, `"environmentId":"local"`, `"environmentId":""`, 1)},
 		{name: "two command actions", raw: strings.Replace(feat137CanonicalApprovalParams,
 			`[{"type":"unknown","command":"git rev-parse --is-inside-work-tree"}]`,
 			`[{"type":"unknown","command":"git rev-parse --is-inside-work-tree"},{"type":"unknown","command":"other"}]`, 1)},
@@ -312,8 +498,8 @@ func TestFEAT137CommandApprovalMapper(t *testing.T) {
 			if request.RuntimeGeneration == "" || request.RuntimeGeneration != manager.runtimeGeneration ||
 				request.RequestIDKey != "n:7" || request.ThreadID != "thread-137" ||
 				request.TurnID != "turn-137" || request.ItemID != "item-137" || request.StartedAtMS != 137000 ||
-				request.Command != "git rev-parse --is-inside-work-tree" || request.Cwd != "/workspace" ||
-				request.EnvironmentID == nil || *request.EnvironmentID != "host-local" || len(request.CommandActions) != 1 {
+				request.Command != "/bin/zsh -lc 'git rev-parse --is-inside-work-tree'" || request.Cwd != "/workspace" ||
+				request.EnvironmentID == nil || *request.EnvironmentID != "local" || len(request.CommandActions) != 1 {
 				t.Fatalf("approval mapper lost authority fields: %+v", request)
 			}
 		})
