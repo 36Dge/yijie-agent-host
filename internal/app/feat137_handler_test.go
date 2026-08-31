@@ -508,6 +508,12 @@ func TestFEAT137DecisionHTTPProjectionIsStrictlyCorrelated(t *testing.T) {
 		{name: "wrong revision", mutate: func(value *session.ApprovalDecisionResult) { value.Revision = 1 }},
 		{name: "wrong decision", mutate: func(value *session.ApprovalDecisionResult) { value.Decision = feat137AppSensitiveTag }},
 		{name: "decision outcome mismatch", mutate: func(value *session.ApprovalDecisionResult) { value.Outcome = "cancelled_current_turn" }},
+		{name: "zero requested time", mutate: func(value *session.ApprovalDecisionResult) { value.RequestedAt = time.Time{} }},
+		{name: "invalid ttl window", mutate: func(value *session.ApprovalDecisionResult) { value.ExpiresAt = value.ExpiresAt.Add(time.Second) }},
+		{name: "resolved before request", mutate: func(value *session.ApprovalDecisionResult) {
+			value.ResolvedAt = value.RequestedAt.Add(-time.Nanosecond)
+		}},
+		{name: "resolved at expiry", mutate: func(value *session.ApprovalDecisionResult) { value.ResolvedAt = value.ExpiresAt }},
 		{name: "zero resolved time", mutate: func(value *session.ApprovalDecisionResult) { value.ResolvedAt = time.Time{} }},
 	}
 	for _, test := range resultTests {
@@ -638,6 +644,7 @@ func validFEAT137PendingSnapshot() session.PendingApprovalSnapshot {
 }
 
 func validFEAT137DecisionResult() session.ApprovalDecisionResult {
+	requestedAt := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
 	return session.ApprovalDecisionResult{
 		SchemaVersion:     6,
 		ApprovalRequestID: feat137AppApprovalID,
@@ -646,7 +653,9 @@ func validFEAT137DecisionResult() session.ApprovalDecisionResult {
 		Revision:          2,
 		Decision:          "accept_once",
 		Outcome:           "accepted_once",
-		ResolvedAt:        time.Date(2026, 8, 30, 12, 0, 2, 0, time.UTC),
+		RequestedAt:       requestedAt,
+		ExpiresAt:         requestedAt.Add(120 * time.Second),
+		ResolvedAt:        requestedAt.Add(2 * time.Second),
 	}
 }
 

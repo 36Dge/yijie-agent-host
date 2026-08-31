@@ -93,6 +93,8 @@ type ApprovalDecisionResult struct {
 	Revision          int64
 	Decision          string
 	Outcome           string
+	RequestedAt       time.Time
+	ExpiresAt         time.Time
 	ResolvedAt        time.Time
 }
 
@@ -105,6 +107,7 @@ type approvalAuthority struct {
 	closedRuntime          map[string]struct{}
 	auditBySession         map[string][]approvalAuditRecord
 	acknowledgementTimeout time.Duration
+	now                    func() time.Time
 	// admissionBarrier is nil in production and supplies deterministic package
 	// test synchronization between the two closed-generation admission checks.
 	admissionBarrier func()
@@ -125,6 +128,7 @@ type approvalPending struct {
 	decisionID                    string
 	decision                      string
 	decisionFingerprint           string
+	decisionCommittedAt           time.Time
 	runtimeResponseWritten        bool
 	runtimeResolutionAcknowledged bool
 	handlerOutcome                chan codex.CommandApprovalResult
@@ -158,7 +162,33 @@ func newApprovalAuthority(acknowledgementTimeout time.Duration) *approvalAuthori
 		closedRuntime:          make(map[string]struct{}),
 		auditBySession:         make(map[string][]approvalAuditRecord),
 		acknowledgementTimeout: acknowledgementTimeout,
+		now:                    time.Now,
 	}
+}
+
+// approvalNowLocked is called only while approvalAuthority.mu is held. The
+// injectable clock keeps the deadline/ack boundary deterministic in focused
+// tests without changing the production monotonic clock authority.
+func (s *Service) approvalNowLocked() time.Time {
+	if s.approvals != nil && s.approvals.now != nil {
+		return s.approvals.now()
+	}
+	return time.Now()
+}
+
+// approvalObservedAt maps the monotonic elapsed interval back onto the frozen
+// public requested_at/expires_at window. This keeps public timestamps closed
+// even if the wall clock changes after the request was admitted.
+func approvalObservedAt(pending *approvalPending, observed time.Time) time.Time {
+	elapsed := approvalTTL - pending.monotonicDeadline.Sub(observed)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	return pending.requestedAt.Add(elapsed).UTC()
+}
+
+func (s *Service) approvalDeadlineReachedLocked(pending *approvalPending) bool {
+	return pending != nil && !s.approvalNowLocked().Before(pending.monotonicDeadline)
 }
 
 // rememberResolvedRuntimeLocked retains only a digest of the Runtime replay
@@ -285,7 +315,7 @@ func (s *Service) HandleCommandApproval(
 		}
 		return cancel
 	}
-	receivedAt := time.Now()
+	receivedAt := s.approvalNowLocked()
 	pending := &approvalPending{
 		record: record, runtimeGeneration: request.RuntimeGeneration, runtimeKey: runtimeKey,
 		requestFingerprint: fingerprint, approvalID: approvalID,
@@ -388,6 +418,15 @@ func (s *Service) HandleCommandApprovalResolved(resolved codex.CommandApprovalRe
 		return
 	}
 	if pending.phase == approvalPhasePending {
+		if s.approvalDeadlineReachedLocked(pending) {
+			s.commitApprovalExpiryLocked(pending)
+			pending.runtimeResolutionAcknowledged = true
+			if pending.runtimeResponseWritten {
+				s.resolveApprovalLocked(pending, approvalOutcomeExpired, "", "", codex.CommandApprovalResult{}, nil)
+			}
+			authority.mu.Unlock()
+			return
+		}
 		s.resolveApprovalLocked(pending, approvalOutcomeElsewhere, "", "", codex.CommandApprovalResult{}, nil)
 		authority.mu.Unlock()
 		return
@@ -408,12 +447,18 @@ func (s *Service) HandleCommandApprovalResolved(resolved codex.CommandApprovalRe
 	if pending.decision == approvalDecisionCancelTurn {
 		outcome = approvalOutcomeCancelled
 	}
-	resolvedAt := time.Now().UTC()
+	resolvedAt := pending.decisionCommittedAt
+	if resolvedAt.IsZero() || resolvedAt.Before(pending.requestedAt) || !resolvedAt.Before(pending.expiresAt) {
+		s.resolveApprovalLocked(pending, approvalOutcomeElsewhere, "", "", codex.CommandApprovalResult{},
+			&ApprovalError{Code: ApprovalErrorInternal})
+		authority.mu.Unlock()
+		return
+	}
 	result := ApprovalDecisionResult{
 		SchemaVersion: approvalSchemaVersion, ApprovalRequestID: pending.approvalID,
 		DecisionID: pending.decisionID, StreamID: pending.streamID,
 		Revision: approvalResolvedRevision, Decision: pending.decision, Outcome: outcome,
-		ResolvedAt: resolvedAt,
+		RequestedAt: pending.requestedAt, ExpiresAt: pending.expiresAt, ResolvedAt: resolvedAt,
 	}
 	if err := s.publishApprovalResolved(pending.record, pending, outcome, pending.decisionID, pending.decision, resolvedAt); err != nil {
 		s.finishApprovalLocked(pending, approvalAuditRecord{
@@ -453,6 +498,9 @@ func (s *Service) HandleCommandApprovalGenerationClosed(generation string) {
 		} else {
 			s.resolveApprovalLocked(candidate, approvalOutcomeElsewhere, "", "", codex.CommandApprovalResult{},
 				&ApprovalError{Code: ApprovalErrorUnavailable})
+			if candidate.phase == approvalPhaseTTLCommitted {
+				s.discardApprovalLocked(candidate)
+			}
 		}
 	}
 	authority.clearResolvedRuntimeGenerationLocked(generation)
@@ -476,7 +524,7 @@ func (s *Service) PendingApprovals(sessionID string) (PendingApprovalSnapshot, e
 	}
 	authority := s.approvals
 	authority.mu.Lock()
-	now := time.Now()
+	now := s.approvalNowLocked()
 	pending := authority.pendingBySession[sessionID]
 	if pending != nil && pending.phase == approvalPhasePending && !now.Before(pending.monotonicDeadline) {
 		s.commitApprovalExpiryLocked(pending)
@@ -559,7 +607,8 @@ func (s *Service) DecideApproval(
 		authority.mu.Unlock()
 		return ApprovalDecisionResult{}, &ApprovalError{Code: ApprovalErrorAlreadyResolved}
 	}
-	if !time.Now().Before(pending.monotonicDeadline) {
+	decisionObservedAt := s.approvalNowLocked()
+	if !decisionObservedAt.Before(pending.monotonicDeadline) {
 		s.commitApprovalExpiryLocked(pending)
 		authority.mu.Unlock()
 		return ApprovalDecisionResult{}, &ApprovalError{Code: ApprovalErrorExpired}
@@ -572,6 +621,14 @@ func (s *Service) DecideApproval(
 	pending.decisionID = input.DecisionID
 	pending.decision = input.Decision
 	pending.decisionFingerprint = fingerprint
+	pending.decisionCommittedAt = approvalObservedAt(pending, decisionObservedAt)
+	if pending.decisionCommittedAt.Before(pending.requestedAt) ||
+		!pending.decisionCommittedAt.Before(pending.expiresAt) {
+		s.resolveApprovalLocked(pending, approvalOutcomeElsewhere, "", "", codex.CommandApprovalResult{},
+			&ApprovalError{Code: ApprovalErrorInternal})
+		authority.mu.Unlock()
+		return ApprovalDecisionResult{}, &ApprovalError{Code: ApprovalErrorInternal}
+	}
 	pending.decisionWaiters = append(pending.decisionWaiters, waiter)
 	runtimeDecision := "accept"
 	if input.Decision == approvalDecisionCancelTurn {
@@ -638,6 +695,9 @@ func (s *Service) resolveApprovalForRuntimeKey(generation, runtimeKey string) {
 		} else {
 			s.resolveApprovalLocked(pending, approvalOutcomeElsewhere, "", "", codex.CommandApprovalResult{},
 				&ApprovalError{Code: ApprovalErrorUnavailable})
+			if pending.phase == approvalPhaseTTLCommitted {
+				s.discardApprovalLocked(pending)
+			}
 		}
 	}
 	authority.mu.Unlock()
@@ -677,6 +737,9 @@ func (s *Service) clearApprovalSession(sessionID string) {
 		} else {
 			s.resolveApprovalLocked(pending, approvalOutcomeElsewhere, "", "", codex.CommandApprovalResult{},
 				&ApprovalError{Code: ApprovalErrorUnavailable})
+			if pending.phase == approvalPhaseTTLCommitted {
+				s.discardApprovalLocked(pending)
+			}
 		}
 	}
 	delete(authority.auditBySession, sessionID)
@@ -692,6 +755,11 @@ func (s *Service) resolveApprovalLocked(
 	if pending == nil || s.approvals.pendingBySession[pending.record.AgentSessionID] != pending {
 		return
 	}
+	if outcome != approvalOutcomeExpired && pending.phase == approvalPhasePending &&
+		s.approvalDeadlineReachedLocked(pending) {
+		s.commitApprovalExpiryLocked(pending)
+		return
+	}
 	if pending.phase == approvalPhaseTTLCommitted {
 		// TTL already won and its Cancel was committed. Only the matching Runtime
 		// acknowledgement may publish its expired terminal. Later item/turn
@@ -702,7 +770,19 @@ func (s *Service) resolveApprovalLocked(
 		outcome, decisionID, decision = approvalOutcomeExpired, "", ""
 		handlerOutcome = codex.CommandApprovalResult{}
 	}
-	resolvedAt := time.Now().UTC()
+	resolvedAt, validWindow := s.approvalResolvedAtLocked(pending, outcome)
+	if !validWindow {
+		if pending.phase == approvalPhasePending {
+			s.commitApprovalExpiryLocked(pending)
+			return
+		}
+		if waiterErr == nil {
+			waiterErr = &ApprovalError{Code: ApprovalErrorInternal}
+		}
+		s.discardApprovalLocked(pending)
+		s.notifyDecisionWaitersLocked(pending, approvalDecisionCompletion{err: waiterErr})
+		return
+	}
 	_ = s.publishApprovalResolved(pending.record, pending, outcome, decisionID, decision, resolvedAt)
 	audit := approvalAuditRecord{
 		approvalID: pending.approvalID, outcome: outcome,
@@ -717,6 +797,23 @@ func (s *Service) resolveApprovalLocked(
 	if waiterErr != nil {
 		s.notifyDecisionWaitersLocked(pending, approvalDecisionCompletion{err: waiterErr})
 	}
+}
+
+func (s *Service) approvalResolvedAtLocked(pending *approvalPending, outcome string) (time.Time, bool) {
+	if pending == nil {
+		return time.Time{}, false
+	}
+	resolvedAt := approvalObservedAt(pending, s.approvalNowLocked())
+	if !pending.decisionCommittedAt.IsZero() && outcome != approvalOutcomeExpired {
+		resolvedAt = pending.decisionCommittedAt.UTC()
+	}
+	if outcome == approvalOutcomeExpired {
+		if resolvedAt.Before(pending.expiresAt) {
+			resolvedAt = pending.expiresAt
+		}
+		return resolvedAt, !resolvedAt.Before(pending.expiresAt)
+	}
+	return resolvedAt, !resolvedAt.Before(pending.requestedAt) && resolvedAt.Before(pending.expiresAt)
 }
 
 // discardApprovalLocked retires authority only when its Runtime generation,
@@ -911,24 +1008,32 @@ func validateV6RetainedEvent(event Event) error {
 		event.Payload.Decisions != nil || event.Payload.TTLSeconds != nil {
 		return ErrEventLimitExceeded
 	}
+	resolvedAt := *event.Payload.ResolvedAt
+	requestedAt := *event.Payload.RequestedAt
+	expiresAt := *event.Payload.ExpiresAt
+	if resolvedAt.Before(requestedAt) {
+		return ErrEventLimitExceeded
+	}
 	allowed := []string{"item_type", "approval_request_id", "revision", "action_id", "workspace_scope", "outcome", "requested_at", "expires_at", "resolved_at"}
 	switch event.Payload.Outcome {
 	case approvalOutcomeAccepted:
-		if !validUUID(event.Payload.DecisionID) || event.Payload.Decision != approvalDecisionAcceptOnce {
+		if !validUUID(event.Payload.DecisionID) || event.Payload.Decision != approvalDecisionAcceptOnce ||
+			!resolvedAt.Before(expiresAt) {
 			return ErrEventLimitExceeded
 		}
 		allowed = append(allowed, "decision_id", "decision")
 	case approvalOutcomeCancelled:
-		if !validUUID(event.Payload.DecisionID) || event.Payload.Decision != approvalDecisionCancelTurn {
+		if !validUUID(event.Payload.DecisionID) || event.Payload.Decision != approvalDecisionCancelTurn ||
+			!resolvedAt.Before(expiresAt) {
 			return ErrEventLimitExceeded
 		}
 		allowed = append(allowed, "decision_id", "decision")
 	case approvalOutcomeExpired:
-		if event.Payload.DecisionID != "" || event.Payload.Decision != "" || event.Payload.ResolvedAt.Before(*event.Payload.ExpiresAt) {
+		if event.Payload.DecisionID != "" || event.Payload.Decision != "" || resolvedAt.Before(expiresAt) {
 			return ErrEventLimitExceeded
 		}
 	case approvalOutcomeElsewhere:
-		if event.Payload.DecisionID != "" || event.Payload.Decision != "" {
+		if event.Payload.DecisionID != "" || event.Payload.Decision != "" || !resolvedAt.Before(expiresAt) {
 			return ErrEventLimitExceeded
 		}
 	default:

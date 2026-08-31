@@ -235,6 +235,172 @@ func TestFEAT137CancelDecisionCommittedWritersShareOneAckAndRuntimeResponse(t *t
 	validateFEAT137V6Events(t, feat137V6Replay(t, harness.service))
 }
 
+func TestFEAT137DecisionCommitTimeStaysAuthoritativeWhenRuntimeAckCrossesDeadline(t *testing.T) {
+	for _, test := range []struct {
+		name, decision, runtimeDecision, outcome string
+	}{
+		{name: "accept once", decision: approvalDecisionAcceptOnce, runtimeDecision: "accept", outcome: approvalOutcomeAccepted},
+		{name: "cancel current turn", decision: approvalDecisionCancelTurn, runtimeDecision: "cancel", outcome: approvalOutcomeCancelled},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			harness := newFEAT137ApprovalHarness(t)
+			request := harness.request
+			request.RequestIDKey = "s:deadline-" + strings.ReplaceAll(test.name, " ", "-")
+			requestedAt := time.Date(2026, 8, 31, 10, 0, 0, 0, time.UTC)
+			pending := installFEAT137PendingAt(t, harness, request, requestedAt)
+			committedAt := pending.expiresAt.Add(-500 * time.Millisecond)
+			setFEAT137ApprovalNow(harness.service, committedAt)
+
+			input := ApprovalDecisionInput{
+				SchemaVersion: approvalSchemaVersion, DecisionID: feat137DecisionID,
+				ExpectedStreamID: pending.streamID, ExpectedRevision: approvalPendingRevision,
+				Decision: test.decision,
+			}
+			decisionDone := make(chan feat137DecisionCompletion, 1)
+			go func() {
+				result, err := harness.service.DecideApproval(
+					context.Background(), testSessionID, pending.approvalID, input,
+				)
+				decisionDone <- feat137DecisionCompletion{result: result, err: err}
+			}()
+			if response := awaitFEAT137HandlerResult(t, pending.handlerOutcome); !response.Respond || response.Decision != test.runtimeDecision {
+				t.Fatalf("decision did not commit the exact Runtime response: %+v", response)
+			}
+
+			setFEAT137ApprovalNow(harness.service, pending.expiresAt.Add(5*time.Second))
+			harness.service.HandleCommandApprovalResolved(codex.CommandApprovalResolved{
+				RuntimeGeneration: request.RuntimeGeneration,
+				RequestIDKey:      request.RequestIDKey,
+				ThreadID:          testThreadID,
+			})
+			completion := awaitFEAT137Decision(t, decisionDone)
+			if completion.err != nil || completion.result.Outcome != test.outcome ||
+				!completion.result.RequestedAt.Equal(pending.requestedAt) ||
+				!completion.result.ExpiresAt.Equal(pending.expiresAt) ||
+				!completion.result.ResolvedAt.Equal(committedAt) ||
+				!completion.result.ResolvedAt.Before(completion.result.ExpiresAt) {
+				t.Fatalf("late ack changed the decision winner timestamp: result=%+v err=%v",
+					completion.result, completion.err)
+			}
+			events := feat137ApprovalEvents(t, harness.service)
+			if len(events) != 2 || events[1].Payload.ResolvedAt == nil ||
+				!events[1].Payload.ResolvedAt.Equal(committedAt) || events[1].Payload.Outcome != test.outcome {
+				t.Fatalf("late ack emitted an invalid terminal: %+v", events)
+			}
+			invalidAtExpiry := events[1]
+			invalidAtExpiry.Payload.ResolvedAt = invalidAtExpiry.Payload.ExpiresAt
+			if err := validateV6RetainedEvent(invalidAtExpiry); !errors.Is(err, ErrEventLimitExceeded) {
+				t.Fatalf("retained validator accepted a non-expired terminal at expiry: %v", err)
+			}
+			validateFEAT137V6Events(t, feat137V6Replay(t, harness.service))
+		})
+	}
+}
+
+func TestFEAT137DeadlineWinsLateRuntimeAndAuthorityCleanup(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		invoke func(*feat137ApprovalHarness, codex.CommandApprovalRequest)
+	}{
+		{
+			name: "runtime resolved notification",
+			invoke: func(harness *feat137ApprovalHarness, request codex.CommandApprovalRequest) {
+				harness.service.HandleCommandApprovalResolved(codex.CommandApprovalResolved{
+					RuntimeGeneration: request.RuntimeGeneration,
+					RequestIDKey:      request.RequestIDKey,
+					ThreadID:          testThreadID,
+				})
+			},
+		},
+		{
+			name: "turn terminal",
+			invoke: func(harness *feat137ApprovalHarness, _ codex.CommandApprovalRequest) {
+				harness.service.resolveApprovalForTurn(harness.record, testTurnID)
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			harness := newFEAT137ApprovalHarness(t)
+			request := harness.request
+			request.RequestIDKey = "s:late-cleanup-" + strings.ReplaceAll(test.name, " ", "-")
+			requestedAt := time.Date(2026, 8, 31, 11, 0, 0, 0, time.UTC)
+			pending := installFEAT137PendingAt(t, harness, request, requestedAt)
+			lateAt := pending.expiresAt.Add(time.Second)
+			setFEAT137ApprovalNow(harness.service, lateAt)
+
+			test.invoke(harness, request)
+			if response := awaitFEAT137HandlerResult(t, pending.handlerOutcome); !response.Respond || response.Decision != "cancel" {
+				t.Fatalf("deadline winner did not commit one Runtime cancel: %+v", response)
+			}
+			if events := feat137ApprovalEvents(t, harness.service); len(events) != 1 {
+				t.Fatalf("cleanup published a terminal before the TTL response/ack pair: %+v", events)
+			}
+			if test.name == "turn terminal" {
+				harness.service.HandleCommandApprovalResolved(codex.CommandApprovalResolved{
+					RuntimeGeneration: request.RuntimeGeneration,
+					RequestIDKey:      request.RequestIDKey,
+					ThreadID:          testThreadID,
+				})
+			}
+			harness.service.HandleCommandApprovalResponseWritten(codex.CommandApprovalResponseWriteResult{
+				RuntimeGeneration: request.RuntimeGeneration,
+				RequestIDKey:      request.RequestIDKey,
+				ThreadID:          testThreadID,
+				Succeeded:         true,
+			})
+			events := feat137ApprovalEvents(t, harness.service)
+			if len(events) != 2 || events[1].Payload.Outcome != approvalOutcomeExpired ||
+				events[1].Payload.ResolvedAt == nil || events[1].Payload.ResolvedAt.Before(pending.expiresAt) {
+				t.Fatalf("late cleanup did not converge to a valid expired terminal: %+v", events)
+			}
+			validateFEAT137V6Events(t, feat137V6Replay(t, harness.service))
+		})
+	}
+}
+
+func TestFEAT137DeadlineCleanupTeardownNeverEmitsLateResolvedElsewhere(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		invoke func(*feat137ApprovalHarness, codex.CommandApprovalRequest)
+	}{
+		{name: "generation close", invoke: func(harness *feat137ApprovalHarness, request codex.CommandApprovalRequest) {
+			harness.service.HandleCommandApprovalGenerationClosed(request.RuntimeGeneration)
+		}},
+		{name: "request context close", invoke: func(harness *feat137ApprovalHarness, request codex.CommandApprovalRequest) {
+			harness.service.resolveApprovalForRuntimeKey(request.RuntimeGeneration, request.RuntimeGeneration+"\x00"+request.RequestIDKey)
+		}},
+		{name: "session clear", invoke: func(harness *feat137ApprovalHarness, _ codex.CommandApprovalRequest) {
+			harness.service.clearApprovalSession(testSessionID)
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			harness := newFEAT137ApprovalHarness(t)
+			request := harness.request
+			request.RequestIDKey = "s:late-teardown-" + strings.ReplaceAll(test.name, " ", "-")
+			pending := installFEAT137PendingAt(
+				t, harness, request, time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC),
+			)
+			setFEAT137ApprovalNow(harness.service, pending.expiresAt.Add(time.Second))
+
+			test.invoke(harness, request)
+			if response := awaitFEAT137HandlerResult(t, pending.handlerOutcome); !response.Respond || response.Decision != "cancel" {
+				t.Fatalf("late teardown did not preserve the TTL cancel winner: %+v", response)
+			}
+			if events := feat137ApprovalEvents(t, harness.service); len(events) != 1 ||
+				events[0].EventType != EventApprovalRequested {
+				t.Fatalf("late teardown emitted a forged resolved_elsewhere terminal: %+v", events)
+			}
+			harness.service.approvals.mu.Lock()
+			pendingSessions := len(harness.service.approvals.pendingBySession)
+			pendingRuntime := len(harness.service.approvals.pendingByRuntime)
+			harness.service.approvals.mu.Unlock()
+			if pendingSessions != 0 || pendingRuntime != 0 {
+				t.Fatalf("late teardown retained authority: sessions=%d runtime=%d", pendingSessions, pendingRuntime)
+			}
+		})
+	}
+}
+
 func TestFEAT137TTLWaitsForMatchingRuntimeAckBeforeExpiredProjection(t *testing.T) {
 	harness := newFEAT137ApprovalHarness(t)
 	request := harness.request
@@ -484,6 +650,11 @@ func TestFEAT137GenerationCleanupResolvesElsewhereWithoutResponse(t *testing.T) 
 	if len(events) != 2 || events[1].Payload.Outcome != approvalOutcomeElsewhere ||
 		events[1].Payload.DecisionID != "" || events[1].Payload.Decision != "" {
 		t.Fatalf("cleanup projection drifted: %+v", events)
+	}
+	invalidAtExpiry := events[1]
+	invalidAtExpiry.Payload.ResolvedAt = invalidAtExpiry.Payload.ExpiresAt
+	if err := validateV6RetainedEvent(invalidAtExpiry); !errors.Is(err, ErrEventLimitExceeded) {
+		t.Fatalf("retained validator accepted late resolved_elsewhere: %v", err)
 	}
 	validateFEAT137V6Events(t, feat137V6Replay(t, harness.service))
 }
@@ -777,6 +948,17 @@ func installExpiredFEAT137Pending(
 ) *approvalPending {
 	t.Helper()
 	requestedAt := time.Now().UTC().Add(-approvalTTL - time.Second)
+	return installFEAT137PendingAt(t, harness, request, requestedAt)
+}
+
+func installFEAT137PendingAt(
+	t *testing.T,
+	harness *feat137ApprovalHarness,
+	request codex.CommandApprovalRequest,
+	requestedAt time.Time,
+) *approvalPending {
+	t.Helper()
+	requestedAt = requestedAt.UTC()
 	expiresAt := requestedAt.Add(approvalTTL)
 	approvalID, err := newUUID()
 	if err != nil {
@@ -800,6 +982,12 @@ func installExpiredFEAT137Pending(
 	harness.service.approvals.pendingBySession[testSessionID] = pending
 	harness.service.approvals.mu.Unlock()
 	return pending
+}
+
+func setFEAT137ApprovalNow(service *Service, now time.Time) {
+	service.approvals.mu.Lock()
+	service.approvals.now = func() time.Time { return now }
+	service.approvals.mu.Unlock()
 }
 
 func awaitFEAT137Pending(t *testing.T, service *Service) PendingApprovalSnapshot {

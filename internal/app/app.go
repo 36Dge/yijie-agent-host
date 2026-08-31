@@ -1313,7 +1313,9 @@ func validApprovalDecisionResultV6(
 	if result.SchemaVersion != 6 || result.ApprovalRequestID != approvalID || result.DecisionID != input.DecisionID ||
 		result.StreamID != input.ExpectedStreamID || result.Revision != 2 || result.Decision != input.Decision ||
 		!isCanonicalUUID(result.ApprovalRequestID) || !isCanonicalUUID(result.DecisionID) ||
-		!isCanonicalUUID(result.StreamID) || result.ResolvedAt.IsZero() {
+		!isCanonicalUUID(result.StreamID) || result.RequestedAt.IsZero() || result.ExpiresAt.IsZero() ||
+		result.ResolvedAt.IsZero() || result.ExpiresAt.Sub(result.RequestedAt) != 120*time.Second ||
+		result.ResolvedAt.Before(result.RequestedAt) || !result.ResolvedAt.Before(result.ExpiresAt) {
 		return false
 	}
 	return (result.Decision == "accept_once" && result.Outcome == "accepted_once") ||
