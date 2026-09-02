@@ -405,6 +405,45 @@ func TestPinnedPolicyRejectsSelfConsistentAlternativeArtifact(t *testing.T) {
 	}
 }
 
+func TestFEAT137PinnedRuntimeFourPatchManifestAuthority(t *testing.T) {
+	if ExpectedRuntimeRepositoryCommit != "9ed24710d73f22a9b269092b8cdf2225199ea222" ||
+		ExpectedRuntimeRepositoryTree != "984e0f5bb48aaa953ed3a329614d00e5905514fb" {
+		t.Fatal("FEAT-137 Runtime source authority drifted")
+	}
+	manifest := Manifest{
+		SchemaVersion: ExpectedSchemaVersion,
+		Baseline:      BaselineName,
+		RustToolchain: ExpectedRustToolchain,
+		Upstream: ManifestUpstream{
+			URL: ExpectedUpstreamURL, Tag: ExpectedUpstreamTag, Commit: ExpectedUpstreamCommit,
+		},
+		Runtime: ManifestRuntime{
+			Binary: "codex", ReportedVersion: ExpectedReportedVersion,
+			SHA256: ExpectedRuntimeSHA256, SizeBytes: ExpectedRuntimeSize,
+			Target: ExpectedTarget, Version: ExpectedRuntimeVersion,
+		},
+		AppServer: ManifestAppServer{
+			ExperimentalAPI: false, SchemaFileCount: 267,
+			SchemaTreeSHA256: ExpectedSchemaTreeSHA256, Transport: ExpectedTransport,
+		},
+		Patches: []ManifestPatch{
+			{Path: ExpectedRuntimePatch1Path, SHA256: ExpectedRuntimePatch1SHA256},
+			{Path: ExpectedRuntimePatch2Path, SHA256: ExpectedRuntimePatch2SHA256},
+			{Path: ExpectedRuntimePatch3Path, SHA256: ExpectedRuntimePatch3SHA256},
+			{Path: ExpectedRuntimePatch4Path, SHA256: ExpectedRuntimePatch4SHA256},
+		},
+		BuildLock: ManifestBuildLock{
+			FromVersion: "0.0.0", NormalizedPackageCount: 132,
+			Policy:             "local-workspace-version-normalization-only",
+			ResolvedLockSHA256: ExpectedResolvedLockSHA256, SchemaVersion: 1,
+			ToVersion: ExpectedRuntimeVersion, UpstreamLockSHA256: ExpectedUpstreamLockSHA256,
+		},
+	}
+	if err := validateManifest(manifest, runtimeBaseline0Policy); err != nil {
+		t.Fatalf("validate pinned FEAT-137 Runtime manifest: %v", err)
+	}
+}
+
 func TestVerifyArtifactRejectsUnexpectedRuntimePatchAuthority(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -462,6 +501,18 @@ func TestVerifyArtifactRejectsUnexpectedRuntimePatchAuthority(t *testing.T) {
 			name: "third digest",
 			mutate: func(manifest *Manifest) {
 				manifest.Patches[2].SHA256 = strings.Repeat("0", 64)
+			},
+		},
+		{
+			name: "fourth path",
+			mutate: func(manifest *Manifest) {
+				manifest.Patches[3].Path = ".yijie/patches/unreviewed.patch"
+			},
+		},
+		{
+			name: "fourth digest",
+			mutate: func(manifest *Manifest) {
+				manifest.Patches[3].SHA256 = strings.Repeat("0", 64)
 			},
 		},
 	}
@@ -710,7 +761,10 @@ func TestRuntimeEnvironmentRemovesBaselineCredentials(t *testing.T) {
 		"YIJIE_MINIMAX_API_KEY=secret",
 		"YIJIE_MINIMAX_API_KEY_FILE=/secret",
 		"CODEX_HOME=/old",
-	}, "/new", "")
+		feat137D4DeterministicProducerHostEnv + "=true",
+		feat137DeterministicApprovalProducerEnv + "=1",
+		feat137DeterministicApprovalProducerEnv + "=ambient-duplicate",
+	}, "/new", "", false)
 	joined := strings.Join(environment, "\n")
 	for _, secret := range []string{
 		"OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN", "CHATGPT_ACCESS_TOKEN",
@@ -722,6 +776,67 @@ func TestRuntimeEnvironmentRemovesBaselineCredentials(t *testing.T) {
 	}
 	if !strings.Contains(joined, "CODEX_HOME=/new") {
 		t.Fatalf("new CODEX_HOME missing from Runtime environment: %v", environment)
+	}
+	if strings.Contains(joined, feat137DeterministicApprovalProducerEnv+"=") {
+		t.Fatal("ambient FEAT-137 deterministic approval producer gate reached a gate-off Runtime")
+	}
+	if strings.Contains(joined, feat137D4DeterministicProducerHostEnv+"=") {
+		t.Fatal("Host-only FEAT-137 D4 gate reached the Runtime process")
+	}
+}
+
+func TestFEAT137RuntimeEnvironmentStripsAmbientDeterministicProducerWhenGateOff(t *testing.T) {
+	environment := runtimeEnvironment([]string{
+		"PATH=/bin",
+		feat137DeterministicApprovalProducerEnv + "=1",
+		feat137DeterministicApprovalProducerEnv + "=ambient-duplicate",
+	}, "/codex", "", false)
+	for _, entry := range environment {
+		if strings.HasPrefix(entry, feat137DeterministicApprovalProducerEnv+"=") {
+			t.Fatal("ambient FEAT-137 deterministic producer reached a gate-off Runtime")
+		}
+	}
+}
+
+func TestFEAT137RuntimeEnvironmentInjectsDeterministicProducerExactlyOnce(t *testing.T) {
+	environment := runtimeEnvironment([]string{
+		"PATH=/bin",
+		feat137DeterministicApprovalProducerEnv + "=0",
+		feat137DeterministicApprovalProducerEnv + "=1",
+		feat137DeterministicApprovalProducerEnv + "=ambient-duplicate",
+	}, "/codex", "scoped-secret", true)
+
+	want := feat137DeterministicApprovalProducerEnv + "=1"
+	count := 0
+	for _, entry := range environment {
+		if strings.HasPrefix(entry, feat137DeterministicApprovalProducerEnv+"=") {
+			count++
+			if entry != want {
+				t.Fatalf("FEAT-137 deterministic producer value=%q, want exact enabled value", entry)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("FEAT-137 deterministic producer entry count=%d, want 1", count)
+	}
+}
+
+func TestFEAT137RuntimeConfigRejectsDeterministicProducerWithoutCommandApprovalAuthority(t *testing.T) {
+	tempRoot, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve Runtime fixture root: %v", err)
+	}
+	codexHome := filepath.Join(tempRoot, "codex-home")
+	if err := os.Mkdir(codexHome, 0o700); err != nil {
+		t.Fatalf("create managed CODEX_HOME fixture: %v", err)
+	}
+	config := DefaultConfig()
+	config.BinaryPath = "/nonexistent/runtime"
+	config.ManifestPath = "/nonexistent/runtime-manifest.json"
+	config.CodexHome = codexHome
+	config.DeterministicApprovalProducerEnabled = true
+	if err := config.validate(); err == nil || !strings.Contains(err.Error(), "requires FEAT-137 command approval authority") {
+		t.Fatalf("Runtime producer-without-authority validation error=%v", err)
 	}
 }
 
@@ -1010,6 +1125,10 @@ func newRuntimeFixture(t *testing.T) Config {
 			{
 				Path:   ExpectedRuntimePatch3Path,
 				SHA256: ExpectedRuntimePatch3SHA256,
+			},
+			{
+				Path:   ExpectedRuntimePatch4Path,
+				SHA256: ExpectedRuntimePatch4SHA256,
 			},
 		},
 		BuildLock: ManifestBuildLock{

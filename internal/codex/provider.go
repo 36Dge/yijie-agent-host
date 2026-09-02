@@ -27,6 +27,18 @@ const (
 	managedModelCatalogName  = "minimax-m3-model-catalog.json"
 )
 
+const managedFEAT137ClosedFeatures = `[features]
+hooks = false
+plugins = false
+apps = false
+tool_suggest = false
+shell_snapshot = false
+`
+
+const managedFEAT137ClosedProviderRetries = `request_max_retries = 0
+stream_max_retries = 0
+`
+
 const managedFEAT137ExecPolicy = managedFEAT137RuleMarker + `prefix_rule(
     pattern=["git", "rev-parse", "--is-inside-work-tree"],
     decision="prompt",
@@ -126,6 +138,14 @@ func prepareMiniMaxCodexHome(
 	authority *managedCodexHomeAuthority,
 	profile ManagedReasoningProfile,
 ) error {
+	return prepareMiniMaxCodexHomeForAuthority(authority, profile, false)
+}
+
+func prepareMiniMaxCodexHomeForAuthority(
+	authority *managedCodexHomeAuthority,
+	profile ManagedReasoningProfile,
+	commandApprovalEnabled bool,
+) error {
 	if err := profile.validate(true, false); err != nil {
 		return err
 	}
@@ -136,15 +156,30 @@ func prepareMiniMaxCodexHome(
 	if err != nil {
 		return err
 	}
-	config, err := miniMaxManagedConfig(authority.path, profile)
+	config, err := miniMaxManagedConfigForAuthority(authority.path, profile, commandApprovalEnabled)
 	if err != nil {
 		return err
 	}
-	defaultConfig, err := miniMaxManagedConfig(authority.path, ManagedReasoningProfileDefault)
+	if err := validateFEAT137ManagedConfig(config, commandApprovalEnabled); err != nil {
+		return err
+	}
+	defaultConfig, err := miniMaxManagedConfigForAuthority(authority.path, ManagedReasoningProfileDefault, false)
 	if err != nil {
 		return err
 	}
-	highRawConfig, err := miniMaxManagedConfig(authority.path, ManagedReasoningProfileHighRaw)
+	highRawConfig, err := miniMaxManagedConfigForAuthority(authority.path, ManagedReasoningProfileHighRaw, false)
+	if err != nil {
+		return err
+	}
+	defaultApprovalConfig, err := miniMaxManagedConfigForAuthority(
+		authority.path, ManagedReasoningProfileDefault, true,
+	)
+	if err != nil {
+		return err
+	}
+	highRawApprovalConfig, err := miniMaxManagedConfigForAuthority(
+		authority.path, ManagedReasoningProfileHighRaw, true,
+	)
 	if err != nil {
 		return err
 	}
@@ -152,7 +187,14 @@ func prepareMiniMaxCodexHome(
 	if err != nil {
 		return fmt.Errorf("preflight MiniMax model catalog: %w", err)
 	}
-	configPlan, err := authority.preflightManagedFile("config.toml", config, defaultConfig, highRawConfig)
+	configPlan, err := authority.preflightManagedFile(
+		"config.toml",
+		config,
+		defaultConfig,
+		highRawConfig,
+		defaultApprovalConfig,
+		highRawApprovalConfig,
+	)
 	if err != nil {
 		return fmt.Errorf("preflight managed CODEX_HOME config: %w", err)
 	}
@@ -171,6 +213,14 @@ func currentUserOwns(info os.FileInfo) bool {
 }
 
 func miniMaxManagedConfig(codexHome string, profile ManagedReasoningProfile) ([]byte, error) {
+	return miniMaxManagedConfigForAuthority(codexHome, profile, false)
+}
+
+func miniMaxManagedConfigForAuthority(
+	codexHome string,
+	profile ManagedReasoningProfile,
+	commandApprovalEnabled bool,
+) ([]byte, error) {
 	if err := profile.validate(true, false); err != nil {
 		return nil, err
 	}
@@ -194,6 +244,12 @@ func miniMaxManagedConfig(codexHome string, profile ManagedReasoningProfile) ([]
 	configLines = append(configLines,
 		"model_catalog_json = "+strconv.Quote(filepath.Join(codexHome, managedModelCatalogName)),
 		"",
+	)
+	if commandApprovalEnabled {
+		configLines = append(configLines, strings.Split(strings.TrimSuffix(managedFEAT137ClosedFeatures, "\n"), "\n")...)
+		configLines = append(configLines, "")
+	}
+	configLines = append(configLines,
 		"[model_providers.minimax]",
 		"name = \"MiniMax\"",
 		"base_url = "+strconv.Quote(MiniMaxChinaBaseURL),
@@ -201,9 +257,63 @@ func miniMaxManagedConfig(codexHome string, profile ManagedReasoningProfile) ([]
 		"wire_api = \"responses\"",
 		"requires_openai_auth = false",
 		"supports_websockets = false",
-		"",
 	)
+	if commandApprovalEnabled {
+		configLines = append(
+			configLines,
+			strings.Split(strings.TrimSuffix(managedFEAT137ClosedProviderRetries, "\n"), "\n")...,
+		)
+	}
+	configLines = append(configLines, "")
 	return []byte(managedConfigMarker + strings.Join(configLines, "\n")), nil
+}
+
+func validateFEAT137ManagedConfig(config []byte, commandApprovalEnabled bool) error {
+	text := string(config)
+	closedBlock := "\n" + managedFEAT137ClosedFeatures + "\n"
+	closedTokens := []string{
+		"[features]",
+		"hooks = false",
+		"plugins = false",
+		"apps = false",
+		"tool_suggest = false",
+		"shell_snapshot = false",
+	}
+	closedRetryTokens := []string{
+		"request_max_retries = 0",
+		"stream_max_retries = 0",
+	}
+	if !commandApprovalEnabled {
+		for _, token := range append(closedTokens, closedRetryTokens...) {
+			if strings.Contains(text, token) {
+				return errors.New("gate-off MiniMax config contains FEAT-137 closed features")
+			}
+		}
+		return nil
+	}
+	if strings.Count(text, closedBlock) != 1 {
+		return errors.New("FEAT-137 command approval config requires the exact closed features block")
+	}
+	for _, token := range closedTokens {
+		if strings.Count(text, token) != 1 {
+			return errors.New("FEAT-137 command approval config contains duplicate or missing closed features")
+		}
+	}
+	closedRetryBlock := "supports_websockets = false\n" + managedFEAT137ClosedProviderRetries
+	if strings.Count(text, closedRetryBlock) != 1 {
+		return errors.New("FEAT-137 command approval config requires the exact closed retry policy")
+	}
+	for _, token := range closedRetryTokens {
+		if strings.Count(text, token) != 1 {
+			return errors.New("FEAT-137 command approval config contains duplicate or missing closed retry policy")
+		}
+	}
+	for _, forbidden := range []string{"[mcp_servers", "[plugins", "[apps", "dynamic_tools"} {
+		if strings.Contains(text, forbidden) {
+			return errors.New("FEAT-137 command approval config expands a managed tool surface")
+		}
+	}
+	return nil
 }
 
 func prepareFakeResponsesCodexHome(authority *managedCodexHomeAuthority, fake FakeResponsesConfig) error {

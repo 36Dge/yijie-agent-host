@@ -149,6 +149,13 @@ func TestFEAT137LegacyRuleIsMigratedAndCleanedOnlyWhenExact(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if enabled {
+				if err := prepareMiniMaxCodexHomeForAuthority(
+					authority, ManagedReasoningProfileHighRaw, true,
+				); err != nil {
+					t.Fatal(err)
+				}
+			}
 			plan, err := authority.preflightFEAT137ExecPolicy()
 			if err != nil {
 				t.Fatal(err)
@@ -308,6 +315,11 @@ func TestFEAT137RuleApplyRequiresFinalExactPostcondition(t *testing.T) {
 			home := canonicalOwnedTempDir(t)
 			authority, err := acquireManagedCodexHomeAuthority(home)
 			if err != nil {
+				t.Fatal(err)
+			}
+			if err := prepareMiniMaxCodexHomeForAuthority(
+				authority, ManagedReasoningProfileHighRaw, true,
+			); err != nil {
 				t.Fatal(err)
 			}
 			plan, err := authority.preflightFEAT137ExecPolicy()

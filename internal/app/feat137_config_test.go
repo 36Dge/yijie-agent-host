@@ -85,6 +85,9 @@ func TestFEAT137CommandApprovalProfileRequiresExactConjunction(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			// An ambient Runtime-only producer gate must not bypass the Host's
+			// exact local/demo_fast + FEAT-134/136/137 profile validation.
+			t.Setenv("YIJIE_FEAT137_DETERMINISTIC_APPROVAL_PRODUCER", "1")
 			t.Setenv("YIJIE_FEAT137_COMMAND_APPROVAL_ENABLED", test.flag)
 			t.Setenv("YIJIE_ENV", test.environment)
 			t.Setenv("YIJIE_LOCAL_PROFILE", test.profile)
@@ -102,6 +105,79 @@ func TestFEAT137CommandApprovalProfileRequiresExactConjunction(t *testing.T) {
 	}
 }
 
+func TestFEAT137D4DeterministicProducerRequiresExactApprovalAuthority(t *testing.T) {
+	tests := []struct {
+		name            string
+		value           string
+		commandApproval bool
+		want            bool
+		wantErr         bool
+	}{
+		{name: "default off"},
+		{name: "explicit false", value: "false", commandApproval: true},
+		{name: "exact enabled", value: "true", commandApproval: true, want: true},
+		{name: "approval gate off", value: "true", wantErr: true},
+		{name: "non exact true", value: "TRUE", commandApproval: true, wantErr: true},
+		{name: "numeric true", value: "1", commandApproval: true, wantErr: true},
+		{name: "whitespace", value: "true ", commandApproval: true, wantErr: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv(feat137D4DeterministicProducerEnv, test.value)
+			enabled, err := loadFEAT137D4DeterministicProducerProfile(test.commandApproval)
+			if (err != nil) != test.wantErr || enabled != test.want {
+				t.Fatalf("profile got=(%t,%v), want=(%t,err=%t)", enabled, err, test.want, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestFEAT137D4DeterministicProducerCannotBypassRejectedProfiles(t *testing.T) {
+	canonicalHome := filepath.Join(t.TempDir(), "host-home")
+	stableRuntime := codex.DefaultConfig()
+	stableRuntime.MiniMax = codex.MiniMaxConfig{Enabled: true, APIKey: "synthetic-test-key"}
+
+	tests := []struct {
+		name        string
+		environment string
+		profile     string
+		mutate      func(*codex.Config)
+	}{
+		{name: "production", environment: "production", profile: "demo_fast"},
+		{
+			name: "fake provider", environment: "local", profile: "demo_fast",
+			mutate: func(config *codex.Config) { config.FakeResponses.Enabled = true },
+		},
+		{
+			name: "dynamic tools", environment: "local", profile: "demo_fast",
+			mutate: func(config *codex.Config) { config.DynamicToolsEnabled = true },
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("YIJIE_FEAT137_COMMAND_APPROVAL_ENABLED", "true")
+			t.Setenv(feat137D4DeterministicProducerEnv, "true")
+			t.Setenv("YIJIE_ENV", test.environment)
+			t.Setenv("YIJIE_LOCAL_PROFILE", test.profile)
+			runtimeConfig := stableRuntime
+			if test.mutate != nil {
+				test.mutate(&runtimeConfig)
+			}
+			commandApproval, err := loadFEAT137CommandApprovalProfile(
+				test.environment, canonicalHome, true, true, runtimeConfig,
+			)
+			if err == nil {
+				_, err = loadFEAT137D4DeterministicProducerProfile(commandApproval)
+			}
+			if err == nil {
+				t.Fatal("D4 deterministic producer accepted a rejected FEAT-137 profile")
+			}
+		})
+	}
+}
+
 func TestFEAT137LoadConfigWiresApprovalWithoutExperimentalTools(t *testing.T) {
 	for _, key := range []string{
 		"YIJIE_AGENT_HOST_HOME", "YIJIE_AGENT_HOST_INSTANCE_NONCE", "YIJIE_AGENT_HOST_PARENT_PID",
@@ -112,7 +188,8 @@ func TestFEAT137LoadConfigWiresApprovalWithoutExperimentalTools(t *testing.T) {
 		"YIJIE_FEAT128_IMAGE_GENERATION_ENABLED", "YIJIE_FEAT128_S10_TEST_PROFILE_ENABLED",
 		"YIJIE_FEAT128_SYNTHETIC_ENABLED", "YIJIE_FEAT128_SYNTHETIC_MANIFEST",
 		"YIJIE_FEAT134_STREAMING_ENABLED", "YIJIE_FEAT136_COMMAND_TOOL_ITEMS_ENABLED",
-		"YIJIE_FEAT137_COMMAND_APPROVAL_ENABLED", "YIJIE_LOCAL_PROFILE", "YIJIE_MINIMAX_API_KEY",
+		"YIJIE_FEAT137_COMMAND_APPROVAL_ENABLED", feat137D4DeterministicProducerEnv,
+		"YIJIE_LOCAL_PROFILE", "YIJIE_MINIMAX_API_KEY",
 		"YIJIE_MINIMAX_API_KEY_FILE", "YIJIE_MODEL_PROVIDER", skillBundleRootEnv, skillInstallRootEnv,
 	} {
 		t.Setenv(key, "")
@@ -134,6 +211,14 @@ func TestFEAT137LoadConfigWiresApprovalWithoutExperimentalTools(t *testing.T) {
 	if disabled.FEAT137CommandApprovalEnabled || disabled.Runtime.CommandApprovalEnabled {
 		t.Fatalf("FEAT-137 approval was enabled by default: %#v", disabled.Runtime)
 	}
+	if disabled.Runtime.DeterministicApprovalProducerEnabled {
+		t.Fatalf("FEAT-137 D4 producer was enabled by default: %#v", disabled.Runtime)
+	}
+	t.Setenv(feat137D4DeterministicProducerEnv, "true")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("FEAT-137 D4 producer bypassed the disabled command approval gate")
+	}
+	t.Setenv(feat137D4DeterministicProducerEnv, "false")
 
 	t.Setenv("YIJIE_FEAT137_COMMAND_APPROVAL_ENABLED", "true")
 	enabled, err := LoadConfig()
@@ -147,5 +232,21 @@ func TestFEAT137LoadConfigWiresApprovalWithoutExperimentalTools(t *testing.T) {
 	if enabled.ImageGenerationEnabled || enabled.Runtime.DynamicToolsEnabled ||
 		codex.NewManager(enabled.Runtime, nil).Snapshot().ExperimentalAPI {
 		t.Fatalf("FEAT-137 enabled an experimental Runtime surface: %#v", enabled.Runtime)
+	}
+	if enabled.Runtime.DeterministicApprovalProducerEnabled {
+		t.Fatalf("normal FEAT-137 profile enabled the D4 producer: %#v", enabled.Runtime)
+	}
+
+	t.Setenv(feat137D4DeterministicProducerEnv, "true")
+	d4Enabled, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("load exact FEAT-137 D4 producer configuration: %v", err)
+	}
+	if !d4Enabled.Runtime.DeterministicApprovalProducerEnabled {
+		t.Fatalf("exact FEAT-137 D4 producer gate was not wired: %#v", d4Enabled.Runtime)
+	}
+	if !d4Enabled.Runtime.CommandApprovalEnabled || d4Enabled.Runtime.DynamicToolsEnabled ||
+		d4Enabled.Runtime.ManagedReasoningProfile != codex.ManagedReasoningProfileHighRaw {
+		t.Fatalf("D4 producer escaped the exact closed MiniMax approval profile: %#v", d4Enabled.Runtime)
 	}
 }

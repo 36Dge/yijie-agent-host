@@ -1,4 +1,4 @@
-.PHONY: dev test runtime-test runtime-turn-test feat126-eval feat126-fake-readiness lint generate sync-contracts contract-check sync-feat136-contracts feat136-contract-check test-feat136 sync-feat137-contracts feat137-contract-check test-feat137 skills-conformance
+.PHONY: dev test runtime-test runtime-turn-test feat126-eval feat126-fake-readiness lint generate sync-contracts contract-check sync-feat136-contracts feat136-contract-check test-feat136 test-feat136-safe sync-feat137-contracts feat137-contract-check test-feat137 test-feat137-safe test-feat137-owner-authorized-fault skills-conformance
 
 YIJIE_SKILLS_REPO ?= ../yijie-skills
 YIJIE_SKILLS_REPO_ABS := $(abspath $(YIJIE_SKILLS_REPO))
@@ -49,12 +49,14 @@ feat136-contract-check:
 	# so the historical FEAT-136 regression gate must not downgrade the consumer.
 	./scripts/check-feat137-contracts.sh
 
-# Safe FEAT-136 evidence only. Full repository suites include pre-existing
-# archive, permission, symlink and process-fault scenarios outside this gate.
-test-feat136: feat136-contract-check
-	go test -race ./internal/session -run '^TestFEAT136' -count=1
-	go test -race ./internal/app -run '^TestFEAT136' -count=1
-	go test ./internal/app -run '^TestRuntimeCompatibilityProjectionMatchesHostAdapter$$' -count=1
+# The former prefix-wide recipe made future TestFEAT136 additions implicit.
+# Keep the public target safe by routing it through the reviewed exact-name
+# allowlist. No process-fault, permission, archive, symlink, or attack fixture
+# test is selected by this target.
+test-feat136: test-feat136-safe
+
+test-feat136-safe: feat136-contract-check
+	bash scripts/test-feat136-safe.sh
 
 # FEAT-137 safe scoped contract workflow. It consumes only ordinary OpenAPI,
 # schemas, compatibility manifests and JSON fixtures. Excluded fixture families
@@ -66,13 +68,23 @@ sync-feat137-contracts:
 feat137-contract-check:
 	./scripts/check-feat137-contracts.sh
 
-# Safe FEAT-137 Host evidence only. It does not start Desktop, Runtime, a
-# provider, or a model, and it excludes broad archive/fault fixture suites.
-test-feat137: feat137-contract-check
-	go test -race ./internal/codex -run '^TestFEAT137' -count=1
-	go test -race ./internal/session -run '^TestFEAT137' -count=1
-	go test -race ./internal/app -run '^TestFEAT137' -count=1
-	go test -race ./cmd/desktop-host -run '^TestFEAT137' -count=1
+# The former ^TestFEAT137 prefix recipe mixed ordinary conformance with
+# deterministic fault/drift hooks. That broad recipe was NOT RUN for the
+# post-repair safe gate. The compatibility target now aliases the reviewed
+# safe allowlist so newly added tests cannot enter evidence implicitly.
+test-feat137: test-feat137-safe
+
+test-feat137-safe: feat137-contract-check
+	bash scripts/test-feat137-safe.sh
+
+# Owner-only, test-process-local fault/drift evidence. This target is separate
+# from every default gate and requires an exact per-invocation authorization.
+# It may only use Go test hooks and temporary directories; it must never use a
+# real process kill, permission sabotage, binary replacement, or attack fixture.
+test-feat137-owner-authorized-fault:
+	@test "$(YIJIE_FEAT137_OWNER_AUTHORIZED_TEST_INJECTION)" = "true" || \
+		(echo "FEAT-137 fault/drift tests require YIJIE_FEAT137_OWNER_AUTHORIZED_TEST_INJECTION=true" >&2; exit 2)
+	bash scripts/test-feat137-owner-authorized-fault.sh
 
 skills-conformance:
 	YIJIE_SKILLS_REPO="$(YIJIE_SKILLS_REPO_ABS)" ./scripts/check-skills-producer.sh --provenance-only

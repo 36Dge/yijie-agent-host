@@ -146,6 +146,8 @@ func TestFEAT137RuntimeApprovalV3ContractMatchesAdapter(t *testing.T) {
 	}
 	producer := authority.Activation.Producer
 	reason := authority.ReverseRequest.Eligibility.Reason
+	// v3 remains the immutable historical Contracts projection until the
+	// source-first v4 projection pins ExpectedRuntimeRepositoryCommit.
 	if authority.SchemaVersion != 3 || authority.ProjectionID != "agent-host-runtime-approval-v6-v3" ||
 		authority.Activation.Exposure != "local" || authority.Activation.Profile != "demo_fast" ||
 		strings.Join(authority.Activation.RequiredFeatureGates, ",") != "FEAT-134,FEAT-136,FEAT-137" ||
@@ -858,6 +860,38 @@ func TestFEAT137SessionWireUsesOnRequestReadOnlyPolicy(t *testing.T) {
 	if defaultManager.sessionApprovalPolicy() != SessionApprovalPolicy ||
 		sessionTurnSandboxPolicy() != (readOnlySandboxPolicy{Type: "readOnly", NetworkAccess: false}) {
 		t.Fatal("default read-only/never policy drifted")
+	}
+}
+
+func TestFEAT137D4SessionWireUsesZeroArgumentOneShotInstructions(t *testing.T) {
+	harness := newFEAT137WireHarness(t, true, false)
+	harness.manager.config.DeterministicApprovalProducerEnabled = true
+	threadDone := make(chan error, 1)
+	go func() {
+		_, err := harness.manager.StartThread(context.Background(), t.TempDir())
+		threadDone <- err
+	}()
+	threadRequest := harness.nextRequest(t)
+	if threadRequest.Method != RuntimeMethodThreadStart {
+		t.Fatalf("unexpected thread method: %q", threadRequest.Method)
+	}
+	var params map[string]any
+	if err := json.Unmarshal(threadRequest.Params, &params); err != nil {
+		t.Fatal(err)
+	}
+	if params["developerInstructions"] != feat137D4DeterministicManagedInstructions ||
+		params["approvalPolicy"] != SessionApprovalPolicyOnRequest || params["sandbox"] != SessionSandbox {
+		t.Fatalf("D4 deterministic thread policy drifted: %s", threadRequest.Params)
+	}
+	if _, present := params["dynamicTools"]; present {
+		t.Fatalf("D4 deterministic profile enabled dynamic tools: %s", threadRequest.Params)
+	}
+	harness.responses <- json.RawMessage(`{
+		"thread":{"id":"thread-137-d4","sessionId":"session-137-d4","turns":[]},
+		"model":"MiniMax-M3","modelProvider":"minimax"
+	}`)
+	if err := <-threadDone; err != nil {
+		t.Fatal(err)
 	}
 }
 

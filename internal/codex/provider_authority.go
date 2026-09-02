@@ -262,6 +262,28 @@ func (a *managedCodexHomeAuthority) applyManagedFile(plan managedFilePlan) error
 	return writeOwnedRegularAt(a.root, plan.name, plan.desired, a.syncDirectoryLocked)
 }
 
+func (a *managedCodexHomeAuthority) validateManagedFileExact(name string, expected []byte) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return errors.New("managed CODEX_HOME authority is closed")
+	}
+	if err := a.validateRootPathLocked(); err != nil {
+		return err
+	}
+	if err := validateManagedChildName(name); err != nil {
+		return err
+	}
+	content, _, exists, err := readOwnedRegularAt(a.root, name, maxManagedAuthorityFileBytes)
+	if err != nil {
+		return err
+	}
+	if !exists || !bytes.Equal(content, expected) {
+		return fmt.Errorf("managed file %s failed exact authority validation", name)
+	}
+	return nil
+}
+
 func (a *managedCodexHomeAuthority) preflightFEAT137ExecPolicy() (feat137RulePlan, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -385,6 +407,11 @@ func (a *managedCodexHomeAuthority) applyFEAT137ExecPolicyLocked(enabled bool, p
 	if err := a.validateRootPathLocked(); err != nil {
 		return err
 	}
+	if enabled {
+		if err := a.validateFEAT137ClosedConfigLocked(); err != nil {
+			return err
+		}
+	}
 	current, err := a.preflightFEAT137ExecPolicyLocked()
 	if err != nil {
 		return err
@@ -458,6 +485,32 @@ func (a *managedCodexHomeAuthority) applyFEAT137ExecPolicyLocked(enabled bool, p
 	// See applyFEAT137ExecPolicy: the empty owner-only directory is inert and is
 	// intentionally retained to avoid a pathname-only directory unlink race.
 	return nil
+}
+
+func (a *managedCodexHomeAuthority) validateFEAT137ClosedConfigLocked() error {
+	content, _, exists, err := readOwnedRegularAt(a.root, "config.toml", maxManagedAuthorityFileBytes)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return errors.New("FEAT-137 Runtime exec policy requires the closed managed MiniMax config")
+	}
+	defaultConfig, err := miniMaxManagedConfigForAuthority(
+		a.path, ManagedReasoningProfileDefault, true,
+	)
+	if err != nil {
+		return err
+	}
+	highRawConfig, err := miniMaxManagedConfigForAuthority(
+		a.path, ManagedReasoningProfileHighRaw, true,
+	)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(content, defaultConfig) && !bytes.Equal(content, highRawConfig) {
+		return errors.New("FEAT-137 Runtime exec policy requires the exact closed managed MiniMax config")
+	}
+	return validateFEAT137ManagedConfig(content, true)
 }
 
 func validateFEAT137RulesDirectoryTransition(

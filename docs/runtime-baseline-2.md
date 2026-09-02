@@ -9,6 +9,7 @@ Baseline 2 在 Runtime Baseline 1 上完成 MiniMax 中国站的真实、只读 
 | 项目 | 结果 |
 | --- | --- |
 | Runtime | `codex-cli 0.144.6`，`rust-v0.144.6` / `5d1fbf26c43abc65a203928b2e31561cb039e06d` |
+| Runtime source authority | commit `9ed24710d73f22a9b269092b8cdf2225199ea222` / tree `984e0f5bb48aaa953ed3a329614d00e5905514fb` |
 | transport/API | JSONL stdio、stable、`experimentalApi=false` |
 | 模型 provider | MiniMax 中国站，按量付费 API Key |
 | endpoint | `https://api.minimaxi.com/v1`，Responses API |
@@ -65,6 +66,12 @@ Host 不持久化输入、delta、完成消息、provider 原始响应、API Key
 ## 安全边界
 
 - Host 清理父进程中的 OpenAI/Codex/MiniMax Key 变量，只注入本次显式加载的 `MINIMAX_API_KEY`；
+- FEAT-137 D4 producer 默认关闭；Host 始终剥离 ambient Runtime 私有 gate，只有 Owner-run exact D4
+  Host gate 与既有 approval authority 同时成立时才注入一次，不提升权限或改变 public v6；
+- exact FEAT-137 approval managed profile 逐项关闭 hooks、plugins、apps、tool suggestion 与 shell
+  snapshot，不声明 MCP server 或 dynamic tool，并固定 provider request/stream retries 为 0；D4
+  启动前重验该私有配置，所有 MiniMax profile
+  在 spawn 前重验固定 model catalog，gate-off 配置字节不变；
 - managed `config.toml` 只保存 `env_key`，不保存 Key；
 - Host 拒绝覆盖非受管 Runtime 配置；
 - 会话 API 必须携带 Host bearer token；服务只监听 `127.0.0.1`；

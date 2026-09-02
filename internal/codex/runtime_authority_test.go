@@ -51,6 +51,13 @@ func TestFEAT137ManagerHoldsRuleAndLeaseAcrossRuntimeSessions(t *testing.T) {
 	if err := manager.Start(context.Background()); err != nil {
 		t.Fatalf("start FEAT-137 Runtime helper: %v", err)
 	}
+	configBytes, err := os.ReadFile(filepath.Join(config.CodexHome, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateFEAT137ManagedConfig(configBytes, true); err != nil {
+		t.Fatalf("ready FEAT-137 Runtime lacks the closed managed profile: %v", err)
+	}
 	rulePath := filepath.Join(config.CodexHome, managedRulesDirectory, managedFEAT137RulesFile)
 	assertFEAT137ExactManagedRule(t, rulePath)
 	if _, err := acquireManagedCodexHomeAuthority(config.CodexHome); err == nil ||
@@ -85,6 +92,119 @@ func TestFEAT137ManagerHoldsRuleAndLeaseAcrossRuntimeSessions(t *testing.T) {
 	}
 	if err := authority.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestFEAT137D4StartRejectsManagedProfileMissingClosedFeature(t *testing.T) {
+	manager, config := newFEAT137AuthorityRuntimeManager(t, "feat137_authority")
+	config.DeterministicApprovalProducerEnabled = true
+	config.testBeforeProcessStart = func(context.Context) error {
+		path := filepath.Join(config.CodexHome, "config.toml")
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		content = []byte(strings.Replace(string(content), "shell_snapshot = false\n", "", 1))
+		return os.WriteFile(path, content, 0o600)
+	}
+	manager = NewManager(config, nil)
+	if err := manager.SetCommandApprovalHandler(feat137LifecycleApprovalHandler{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Start(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "failed exact authority validation") {
+		t.Fatalf("D4 Runtime start accepted an incomplete closed managed profile: %v", err)
+	}
+	manager.mu.Lock()
+	process := manager.cmd
+	manager.mu.Unlock()
+	if process != nil {
+		t.Fatal("D4 Runtime process started without the five closed managed features")
+	}
+	if status := manager.Snapshot(); status.State != StateFailed || status.FailureCode != "provider_config_failed" {
+		t.Fatalf("incomplete managed profile did not fail closed: %+v", status)
+	}
+	assertFEAT137RuleAbsentAndLeaseReleased(t, config.CodexHome)
+}
+
+func TestFEAT137D4StartRejectsManagedRetryPolicyDrift(t *testing.T) {
+	for _, setting := range []string{
+		"request_max_retries = 0\n",
+		"stream_max_retries = 0\n",
+	} {
+		t.Run(strings.Fields(setting)[0], func(t *testing.T) {
+			config := feat137AuthorityRuntimeFixture(t, "feat137_authority")
+			config.DeterministicApprovalProducerEnabled = true
+			config.testBeforeProcessStart = func(context.Context) error {
+				path := filepath.Join(config.CodexHome, "config.toml")
+				content, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				content = []byte(strings.Replace(string(content), setting, "", 1))
+				return os.WriteFile(path, content, 0o600)
+			}
+			manager := NewManager(config, nil)
+			if err := manager.SetCommandApprovalHandler(feat137LifecycleApprovalHandler{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := manager.Start(context.Background()); err == nil ||
+				!strings.Contains(err.Error(), "failed exact authority validation") {
+				t.Fatalf("D4 Runtime start accepted managed retry-policy drift: %v", err)
+			}
+			manager.mu.Lock()
+			process := manager.cmd
+			manager.mu.Unlock()
+			if process != nil {
+				t.Fatal("D4 Runtime process started without the closed retry policy")
+			}
+			if status := manager.Snapshot(); status.State != StateFailed || status.FailureCode != "provider_config_failed" {
+				t.Fatalf("managed retry-policy drift did not fail closed: %+v", status)
+			}
+			assertFEAT137RuleAbsentAndLeaseReleased(t, config.CodexHome)
+		})
+	}
+}
+
+func TestFEAT137StartRejectsPostPrepareManagedCatalogDrift(t *testing.T) {
+	for _, commandApprovalEnabled := range []bool{false, true} {
+		name := map[bool]string{false: "gate off", true: "approval D4"}[commandApprovalEnabled]
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("YIJIE_FAKE_MODE", "feat137_authority")
+			config := newRuntimeFixture(t)
+			config.MiniMax = MiniMaxConfig{Enabled: true, APIKey: "test-minimax-key"}
+			config.ManagedReasoningProfile = ManagedReasoningProfileHighRaw
+			config.CommandApprovalEnabled = commandApprovalEnabled
+			config.DeterministicApprovalProducerEnabled = commandApprovalEnabled
+			config.testBeforeProcessStart = func(context.Context) error {
+				path := filepath.Join(config.CodexHome, managedModelCatalogName)
+				content, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				return os.WriteFile(path, append(content, ' '), 0o600)
+			}
+			manager := NewManager(config, nil)
+			if commandApprovalEnabled {
+				if err := manager.SetCommandApprovalHandler(feat137LifecycleApprovalHandler{}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := manager.Start(context.Background()); err == nil ||
+				!strings.Contains(err.Error(), managedModelCatalogName+" failed exact authority validation") {
+				t.Fatalf("Runtime start accepted post-prepare managed catalog drift: %v", err)
+			}
+			manager.mu.Lock()
+			process := manager.cmd
+			manager.mu.Unlock()
+			if process != nil {
+				t.Fatal("Runtime process started after managed catalog authority drift")
+			}
+			if status := manager.Snapshot(); status.State != StateFailed || status.FailureCode != "provider_config_failed" {
+				t.Fatalf("managed catalog drift did not fail closed: %+v", status)
+			}
+			assertFEAT137RuleAbsentAndLeaseReleased(t, config.CodexHome)
+		})
 	}
 }
 

@@ -8,20 +8,22 @@ Agent Host Runtime Baseline 2 继承 Baseline 1 的固定兼容边界，只兼�
 | --- | --- |
 | 上游 tag | `rust-v0.144.6` |
 | 上游 commit | `5d1fbf26c43abc65a203928b2e31561cb039e06d` |
-| Runtime repository commit | `acf2da55d8a53175343aaf112e03368dfef9922a` |
+| Runtime repository commit | `9ed24710d73f22a9b269092b8cdf2225199ea222` |
+| Runtime repository tree | `984e0f5bb48aaa953ed3a329614d00e5905514fb` |
 | Runtime 版本 | `codex-cli 0.144.6` |
 | 发布目标 | `aarch64-apple-darwin` |
-| binary size | `356082232` bytes |
-| binary SHA-256 | `84bb0445a15f99354ddd38ccb407b9b0d3d28522accece3fa9755918ab6978e3` |
-| manifest SHA-256 | `e62d8210f5abcad7ff0fc1b4d068c7fe4da59501c6fa6b12f18dc4a1f939c6aa` |
+| binary size | `355996616` bytes |
+| binary SHA-256 | `896d303658a0978c3628f10e9e78f12139168be9508dd5f2abc658db186a828b` |
+| manifest SHA-256 | `c428c0d06c9cf578e4bcfe53b328015977578469fc46e9461cb85f8c8bcd66fb` |
 | Schema tree SHA-256 | `d82a33f683e554c10dd056a0101c26fd24477928e3f98ee3d9ef250b97395228` |
 | transport | JSONL over stdio |
 | API surface | stable，`experimentalApi=false` |
 | Yijie Runtime patch 1 | `0001-feat-126-filter-persistent-diagnostics.patch` / `6b337a02caf064c6819fab5c7367a485004c85cce0d42acb06fa6d5003e599a0` |
 | Yijie Runtime patch 2 | `0002-feat-136-unified-exec-pre-emitter-command-lifecycle.patch` / `43de168e1443f4b9ca60d7f61e3de2daf20e1cfea14d2e196d28ba417bf3e06d` |
 | Yijie Runtime patch 3 | `0003-feat-137-stable-sandbox-provenance.patch` / `af7196f609fbbe722f69e7913d2aeb2f38bfc5f4cbed4bfb32c9e6f844a9910c` |
+| Yijie Runtime patch 4 | `0004-feat-137-deterministic-approval-producer.patch` / `b66583db09948fda038eaf056310d6116a37930e8b4d08e73d483c7ed1cf74e6` |
 
-Host 不接受“同版本号但不同哈希”的二进制，也不把随附 manifest 当作可自行声明的新信任根。启动前先校验 manifest 文件本身的精确 SHA-256，再依次把其中的 binary、三 patch 的严格顺序、Schema tree 和 build-lock 摘要与编译时固定值比较，随后校验实际二进制文件名、大小、SHA-256，以及 `codex --version` 的精确输出。
+Host 不接受“同版本号但不同哈希”的二进制，也不把随附 manifest 当作可自行声明的新信任根。启动前先校验 manifest 文件本身的精确 SHA-256，再依次把其中的 binary、四 patch 的严格顺序、Schema tree 和 build-lock 摘要与编译时固定值比较，随后校验实际二进制文件名、大小、SHA-256，以及 `codex --version` 的精确输出。
 
 ## 进程与握手
 
@@ -34,6 +36,21 @@ codex app-server --listen stdio:// --strict-config
 `0.144.6` 顶层 `codex app-server` 命令没有公开 `--session-source` 参数，并在内部固定使用 `SessionSource::VSCode`。Host 不伪造参数，也不为此修改 Runtime；升级时必须重新评估该行为。
 
 Runtime 启动环境继承普通进程环境，但强制覆盖 `CODEX_HOME`，移除 OpenAI/Codex 凭据以及父进程中所有 MiniMax/Yijie Key 变量。仅当 Host 显式加载通过校验的 MiniMax Key 时，才以 `MINIMAX_API_KEY` 注入子进程。Key 不写入 `config.toml`、manifest、状态、日志或 bbolt。
+
+FEAT-137 的确定性 approval producer 也是默认关闭的 Runtime 私有能力。Host 总会剥离父进程中的
+Runtime 私有 producer 变量；只有 Owner-run D4 显式提供 exact
+`YIJIE_FEAT137_D4_DETERMINISTIC_PRODUCER_ENABLED=true`，并且 exact local/demo_fast、
+FEAT-134/136/137、stable MiniMax、read-only managed Runtime authority 已全部通过时，Host 才向
+子 Runtime 注入一次 exact 私有值。该门禁不改变 `sandbox=read-only`、审批决定、Command authority
+或 public v6；普通 stable、production、Fake provider 与 dynamic-tools 配置均不注入。
+
+同一 exact approval authority 会把受管 MiniMax `config.toml` 组合为封闭 profile：
+`hooks=false`、`plugins=false`、`apps=false`、`tool_suggest=false`、`shell_snapshot=false`，且没有
+MCP server 或 dynamic-tool 配置；同一 profile 在 provider section 固定
+`request_max_retries=0` 与 `stream_max_retries=0`。Host 对 fresh/既有 exact managed config 都使用相同字节权威；普通
+gate-off profile 继续写回原有配置字节。D4 在进程启动前复核该 exact config 与 Runtime exec-policy，
+任一关闭项或 retry 项缺失均 fail closed；approval 与 gate-off MiniMax profile 都在同一 spawn 前边界复核固定
+model catalog 字节。
 
 连接建立后 Host 发送：
 
@@ -86,7 +103,8 @@ Host 管理 Runtime 专用 `CODEX_HOME/config.toml` 和固定模型目录，配�
 - `wire_api="responses"`，不使用 WebSocket；
 - `env_key="MINIMAX_API_KEY"`，不把 Key 内联到配置；
 - 模型目录只允许 `none` 和 `high` reasoning effort；
-- `thread/start` 固定 `approvalPolicy="never"`、`sandbox="read-only"`、`ephemeral=false`；
+- `thread/start` 默认固定 `approvalPolicy="never"`、`sandbox="read-only"`、`ephemeral=false`；
+  exact FEAT-137 approval profile 仅将 approval policy 收窄为 `on-request`；
 - 只调用 stable `thread/start`、`thread/resume`、`turn/start`、`turn/interrupt`，不使用 experimental 字段。
 
 受管配置文件以固定 marker 标识。Host 不覆盖用户创建的 `config.toml` 或模型目录，避免吞掉外部配置；开发期应给 Host 独立空目录。

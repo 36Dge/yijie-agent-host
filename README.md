@@ -119,10 +119,26 @@ export YIJIE_FEAT136_COMMAND_TOOL_ITEMS_ENABLED=true
 ```
 
 该门禁本身不动态改变 Runtime pin；Host 仅接受已审查的 FEAT-126 → FEAT-136 → FEAT-137
-三 patch Runtime artifact。FEAT-137 只在 exact local/demo_fast 与 FEAT-134/136/137 gates
+四 patch Runtime artifact。FEAT-137 只在 exact local/demo_fast 与 FEAT-134/136/137 gates
 全开时使用 `approvalPolicy=on-request`，仍固定 `sandbox=read-only` 且不开启 dynamic tools 或
 experimental API；其它配置保持 `approvalPolicy=never`。客户端仍须在 v5 route 上显式协商
 `event_schema_version=5`；关闭 FEAT-136 后 v1-v4 行为不变。
+
+第四个 Runtime patch 的确定性 approval producer 默认关闭，普通 stable 入口行为不变。它只允许
+Owner-run D4 在上述全部审批门禁已通过后，再显式设置
+`YIJIE_FEAT137_D4_DETERMINISTIC_PRODUCER_ENABLED=true`。Host 无条件从父进程环境剥离 Runtime
+私有 producer 变量；只有该 D4 gate 为 exact `true` 时，才向受管 Runtime 子进程注入一次 exact
+私有值。错误值、gate-off、production、Fake provider 或 dynamic-tools 配置均 fail closed；该开关不
+提升权限、不改变审批决定，也不扩张 public v6。
+
+exact FEAT-137 command-approval authority 同时使用独立的受管 MiniMax profile，在
+`[features]` 中逐项固定 `hooks=false`、`plugins=false`、`apps=false`、`tool_suggest=false` 和
+`shell_snapshot=false`；受管配置不声明 MCP server，也不启用 dynamic tools。普通 gate-off
+MiniMax profile 保持既有字节和语义。approval profile 还在受管 MiniMax provider 中固定
+`request_max_retries=0` 与 `stream_max_retries=0`，decision POST 仍由 Host 保持不自动重试。D4 producer
+在五项关闭或两项 Provider retry authority 缺失、漂移时
+必须在 Runtime 进程启动前失败；所有 MiniMax profile 也会在同一边界重验受管 model catalog 的固定
+字节，避免 prepare 与 process spawn 之间的目录漂移。
 
 ## 验证
 

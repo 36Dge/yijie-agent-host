@@ -16,28 +16,32 @@ import (
 )
 
 const (
-	BaselineName                  = "Runtime Baseline 0"
-	ExpectedSchemaVersion         = 1
-	ExpectedUpstreamURL           = "https://github.com/openai/codex.git"
-	ExpectedUpstreamTag           = "rust-v0.144.6"
-	ExpectedUpstreamCommit        = "5d1fbf26c43abc65a203928b2e31561cb039e06d"
-	ExpectedRuntimeVersion        = "0.144.6"
-	ExpectedReportedVersion       = "codex-cli 0.144.6"
-	ExpectedRustToolchain         = "1.95.0"
-	ExpectedTarget                = "aarch64-apple-darwin"
-	ExpectedTransport             = "stdio"
-	ExpectedRuntimeSHA256         = "84bb0445a15f99354ddd38ccb407b9b0d3d28522accece3fa9755918ab6978e3"
-	ExpectedRuntimeSize           = int64(356082232)
-	ExpectedRuntimeManifestSHA256 = "e62d8210f5abcad7ff0fc1b4d068c7fe4da59501c6fa6b12f18dc4a1f939c6aa"
-	ExpectedRuntimePatch1Path     = ".yijie/patches/0001-feat-126-filter-persistent-diagnostics.patch"
-	ExpectedRuntimePatch1SHA256   = "6b337a02caf064c6819fab5c7367a485004c85cce0d42acb06fa6d5003e599a0"
-	ExpectedRuntimePatch2Path     = ".yijie/patches/0002-feat-136-unified-exec-pre-emitter-command-lifecycle.patch"
-	ExpectedRuntimePatch2SHA256   = "43de168e1443f4b9ca60d7f61e3de2daf20e1cfea14d2e196d28ba417bf3e06d"
-	ExpectedRuntimePatch3Path     = ".yijie/patches/0003-feat-137-stable-sandbox-provenance.patch"
-	ExpectedRuntimePatch3SHA256   = "af7196f609fbbe722f69e7913d2aeb2f38bfc5f4cbed4bfb32c9e6f844a9910c"
-	ExpectedSchemaTreeSHA256      = "d82a33f683e554c10dd056a0101c26fd24477928e3f98ee3d9ef250b97395228"
-	ExpectedResolvedLockSHA256    = "5cc77d7dfcc2828d3d389daf5824998c445c01e1d30367b04885813242d53f11"
-	ExpectedUpstreamLockSHA256    = "175793a40a3147db1fee08fd9db0acc59312c344b3513dd7ee316f5446d8119e"
+	BaselineName                    = "Runtime Baseline 0"
+	ExpectedSchemaVersion           = 1
+	ExpectedUpstreamURL             = "https://github.com/openai/codex.git"
+	ExpectedUpstreamTag             = "rust-v0.144.6"
+	ExpectedUpstreamCommit          = "5d1fbf26c43abc65a203928b2e31561cb039e06d"
+	ExpectedRuntimeRepositoryCommit = "9ed24710d73f22a9b269092b8cdf2225199ea222"
+	ExpectedRuntimeRepositoryTree   = "984e0f5bb48aaa953ed3a329614d00e5905514fb"
+	ExpectedRuntimeVersion          = "0.144.6"
+	ExpectedReportedVersion         = "codex-cli 0.144.6"
+	ExpectedRustToolchain           = "1.95.0"
+	ExpectedTarget                  = "aarch64-apple-darwin"
+	ExpectedTransport               = "stdio"
+	ExpectedRuntimeSHA256           = "896d303658a0978c3628f10e9e78f12139168be9508dd5f2abc658db186a828b"
+	ExpectedRuntimeSize             = int64(355996616)
+	ExpectedRuntimeManifestSHA256   = "c428c0d06c9cf578e4bcfe53b328015977578469fc46e9461cb85f8c8bcd66fb"
+	ExpectedRuntimePatch1Path       = ".yijie/patches/0001-feat-126-filter-persistent-diagnostics.patch"
+	ExpectedRuntimePatch1SHA256     = "6b337a02caf064c6819fab5c7367a485004c85cce0d42acb06fa6d5003e599a0"
+	ExpectedRuntimePatch2Path       = ".yijie/patches/0002-feat-136-unified-exec-pre-emitter-command-lifecycle.patch"
+	ExpectedRuntimePatch2SHA256     = "43de168e1443f4b9ca60d7f61e3de2daf20e1cfea14d2e196d28ba417bf3e06d"
+	ExpectedRuntimePatch3Path       = ".yijie/patches/0003-feat-137-stable-sandbox-provenance.patch"
+	ExpectedRuntimePatch3SHA256     = "af7196f609fbbe722f69e7913d2aeb2f38bfc5f4cbed4bfb32c9e6f844a9910c"
+	ExpectedRuntimePatch4Path       = ".yijie/patches/0004-feat-137-deterministic-approval-producer.patch"
+	ExpectedRuntimePatch4SHA256     = "b66583db09948fda038eaf056310d6116a37930e8b4d08e73d483c7ed1cf74e6"
+	ExpectedSchemaTreeSHA256        = "d82a33f683e554c10dd056a0101c26fd24477928e3f98ee3d9ef250b97395228"
+	ExpectedResolvedLockSHA256      = "5cc77d7dfcc2828d3d389daf5824998c445c01e1d30367b04885813242d53f11"
+	ExpectedUpstreamLockSHA256      = "175793a40a3147db1fee08fd9db0acc59312c344b3513dd7ee316f5446d8119e"
 )
 
 type Manifest struct {
@@ -259,7 +263,7 @@ func validateManifest(manifest Manifest, policy artifactPolicy) error {
 		return errors.New("app-server schema file count does not match baseline")
 	case manifest.AppServer.SchemaTreeSHA256 != ExpectedSchemaTreeSHA256:
 		return errors.New("app-server schema tree SHA-256 does not match baseline")
-	case len(manifest.Patches) != 3:
+	case len(manifest.Patches) != 4:
 		return errors.New("runtime patch count does not match reviewed overlay")
 	case manifest.Patches[0].Path != ExpectedRuntimePatch1Path:
 		return errors.New("runtime patch path does not match reviewed overlay")
@@ -272,6 +276,10 @@ func validateManifest(manifest Manifest, policy artifactPolicy) error {
 	case manifest.Patches[2].Path != ExpectedRuntimePatch3Path:
 		return errors.New("runtime patch path does not match reviewed overlay")
 	case manifest.Patches[2].SHA256 != ExpectedRuntimePatch3SHA256:
+		return errors.New("runtime patch SHA-256 does not match reviewed overlay")
+	case manifest.Patches[3].Path != ExpectedRuntimePatch4Path:
+		return errors.New("runtime patch path does not match reviewed overlay")
+	case manifest.Patches[3].SHA256 != ExpectedRuntimePatch4SHA256:
 		return errors.New("runtime patch SHA-256 does not match reviewed overlay")
 	case manifest.BuildLock.SchemaVersion != 1:
 		return errors.New("runtime build lock schema version does not match baseline")

@@ -37,6 +37,11 @@ const (
 	defaultStderrTailBytes = 64 << 10
 )
 
+const (
+	feat137D4DeterministicProducerHostEnv   = "YIJIE_FEAT137_D4_DETERMINISTIC_PRODUCER_ENABLED"
+	feat137DeterministicApprovalProducerEnv = "YIJIE_FEAT137_DETERMINISTIC_APPROVAL_PRODUCER"
+)
+
 type Config struct {
 	BinaryPath              string
 	ManifestPath            string
@@ -52,6 +57,10 @@ type Config struct {
 	ManagedReasoningProfile ManagedReasoningProfile
 	DynamicToolsEnabled     bool
 	CommandApprovalEnabled  bool
+	// DeterministicApprovalProducerEnabled is a D4-only, Host-validated
+	// producer gate. It never changes the command approval authority or
+	// execution permissions and cannot be enabled without that authority.
+	DeterministicApprovalProducerEnabled bool
 
 	// testArtifactPolicy is intentionally package-private. Production always
 	// uses the exact Runtime Baseline 0 artifact policy.
@@ -125,6 +134,9 @@ func (c Config) validate() error {
 	}
 	if c.CommandApprovalEnabled && (!c.MiniMax.Enabled || c.FakeResponses.Enabled || c.DynamicToolsEnabled) {
 		return errors.New("Runtime command approvals require the exact stable MiniMax profile without dynamic tools")
+	}
+	if c.DeterministicApprovalProducerEnabled && !c.CommandApprovalEnabled {
+		return errors.New("Runtime deterministic approval producer requires FEAT-137 command approval authority")
 	}
 	return nil
 }
@@ -337,7 +349,11 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 	cleanupAuthority = true
 	rulePlan, providerErr := authority.preflightFEAT137ExecPolicy()
 	if providerErr == nil && m.config.MiniMax.Enabled {
-		providerErr = prepareMiniMaxCodexHome(authority, m.config.ManagedReasoningProfile)
+		providerErr = prepareMiniMaxCodexHomeForAuthority(
+			authority,
+			m.config.ManagedReasoningProfile,
+			m.config.CommandApprovalEnabled,
+		)
 		if providerErr == nil {
 			m.status.ModelProvider = MiniMaxProviderID
 			m.status.Model = MiniMaxModel
@@ -367,6 +383,10 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 	}
 	if err := m.startupBoundaryError(startupCtx); err != nil {
 		m.fail("startup_cancelled")
+		return err
+	}
+	if err := m.validateManagedProviderAuthority(authority); err != nil {
+		m.fail("provider_config_failed")
 		return err
 	}
 
@@ -440,6 +460,39 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 	m.status.Ready = true
 	m.status.FailureCode = ""
 	m.mu.Unlock()
+	return nil
+}
+
+func (m *Manager) validateManagedProviderAuthority(authority *managedCodexHomeAuthority) error {
+	if !m.config.MiniMax.Enabled {
+		return nil
+	}
+	catalog, err := miniMaxModelCatalog()
+	if err != nil {
+		return err
+	}
+	if err := authority.validateManagedFileExact(managedModelCatalogName, catalog); err != nil {
+		return err
+	}
+	expected, err := miniMaxManagedConfigForAuthority(
+		m.config.CodexHome,
+		m.config.ManagedReasoningProfile,
+		m.config.CommandApprovalEnabled,
+	)
+	if err != nil {
+		return err
+	}
+	if err := validateFEAT137ManagedConfig(expected, m.config.CommandApprovalEnabled); err != nil {
+		return err
+	}
+	if err := authority.validateManagedFileExact("config.toml", expected); err != nil {
+		return err
+	}
+	if m.config.CommandApprovalEnabled {
+		if _, err := authority.preflightFEAT137ExecPolicy(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -576,7 +629,12 @@ func (m *Manager) startProcess() (io.WriteCloser, io.ReadCloser, *exec.Cmd, *tai
 	if m.config.MiniMax.Enabled {
 		miniMaxKey = m.config.MiniMax.APIKey
 	}
-	cmd.Env = runtimeEnvironment(os.Environ(), m.config.CodexHome, miniMaxKey)
+	cmd.Env = runtimeEnvironment(
+		os.Environ(),
+		m.config.CodexHome,
+		miniMaxKey,
+		m.config.DeterministicApprovalProducerEnabled,
+	)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("open runtime stdin: %w", err)
@@ -862,19 +920,26 @@ type initializeResponse struct {
 	PlatformOS     string `json:"platformOs"`
 }
 
-func runtimeEnvironment(current []string, codexHome, miniMaxAPIKey string) []string {
+func runtimeEnvironment(
+	current []string,
+	codexHome string,
+	miniMaxAPIKey string,
+	deterministicApprovalProducer bool,
+) []string {
 	blocked := map[string]struct{}{
-		"OPENAI_API_KEY":             {},
-		"CODEX_API_KEY":              {},
-		"CODEX_ACCESS_TOKEN":         {},
-		"CHATGPT_ACCESS_TOKEN":       {},
-		"MINIMAX_API_KEY":            {},
-		"MINIMAX_API_KEY_FILE":       {},
-		"YIJIE_MINIMAX_API_KEY":      {},
-		"YIJIE_MINIMAX_API_KEY_FILE": {},
-		"CODEX_HOME":                 {},
+		"OPENAI_API_KEY":                        {},
+		"CODEX_API_KEY":                         {},
+		"CODEX_ACCESS_TOKEN":                    {},
+		"CHATGPT_ACCESS_TOKEN":                  {},
+		"MINIMAX_API_KEY":                       {},
+		"MINIMAX_API_KEY_FILE":                  {},
+		"YIJIE_MINIMAX_API_KEY":                 {},
+		"YIJIE_MINIMAX_API_KEY_FILE":            {},
+		"CODEX_HOME":                            {},
+		feat137D4DeterministicProducerHostEnv:   {},
+		feat137DeterministicApprovalProducerEnv: {},
 	}
-	clean := make([]string, 0, len(current)+1)
+	clean := make([]string, 0, len(current)+2)
 	for _, entry := range current {
 		name, _, found := strings.Cut(entry, "=")
 		if !found {
@@ -888,6 +953,9 @@ func runtimeEnvironment(current []string, codexHome, miniMaxAPIKey string) []str
 	clean = append(clean, "CODEX_HOME="+codexHome)
 	if miniMaxAPIKey != "" {
 		clean = append(clean, MiniMaxRuntimeEnvKey+"="+miniMaxAPIKey)
+	}
+	if deterministicApprovalProducer {
+		clean = append(clean, feat137DeterministicApprovalProducerEnv+"=1")
 	}
 	return clean
 }

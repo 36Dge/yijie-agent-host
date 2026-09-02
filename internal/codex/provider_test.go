@@ -65,6 +65,179 @@ func TestPrepareMiniMaxCodexHomeWritesSecretFreeManagedConfig(t *testing.T) {
 	}
 }
 
+func TestMiniMaxManagedConfigGateOffPreservesBaselineBytes(t *testing.T) {
+	const codexHome = "/managed/codex-home"
+	wantDefault := managedConfigMarker + `model = "MiniMax-M3"
+model_provider = "minimax"
+model_context_window = 1000000
+model_reasoning_effort = "none"
+model_reasoning_summary = "none"
+model_catalog_json = "/managed/codex-home/minimax-m3-model-catalog.json"
+
+[model_providers.minimax]
+name = "MiniMax"
+base_url = "https://api.minimaxi.com/v1"
+env_key = "MINIMAX_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = false
+`
+	wantHighRaw := managedConfigMarker + `model = "MiniMax-M3"
+model_provider = "minimax"
+model_context_window = 1000000
+model_reasoning_effort = "high"
+model_reasoning_summary = "none"
+show_raw_agent_reasoning = true
+model_catalog_json = "/managed/codex-home/minimax-m3-model-catalog.json"
+
+[model_providers.minimax]
+name = "MiniMax"
+base_url = "https://api.minimaxi.com/v1"
+env_key = "MINIMAX_API_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = false
+`
+	for _, test := range []struct {
+		name    string
+		profile ManagedReasoningProfile
+		want    string
+	}{
+		{name: "default", profile: ManagedReasoningProfileDefault, want: wantDefault},
+		{name: "high raw", profile: ManagedReasoningProfileHighRaw, want: wantHighRaw},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := miniMaxManagedConfig(codexHome, test.profile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, []byte(test.want)) {
+				t.Fatalf("gate-off managed config bytes drifted:\n%s", got)
+			}
+			if strings.Contains(string(got), "[features]") {
+				t.Fatal("gate-off managed config added a feature section")
+			}
+		})
+	}
+}
+
+func TestFEAT137MiniMaxManagedConfigClosesAmbientProductSurfacesExactly(t *testing.T) {
+	home := canonicalOwnedTempDir(t)
+	authority := acquireTestCodexHomeAuthority(t, home)
+	if err := prepareMiniMaxCodexHomeForAuthority(authority, ManagedReasoningProfileHighRaw, true); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.ReadFile(filepath.Join(home, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateFEAT137ManagedConfig(first, true); err != nil {
+		t.Fatalf("validate fresh FEAT-137 config: %v", err)
+	}
+	for _, required := range []string{
+		"[features]",
+		"hooks = false",
+		"plugins = false",
+		"apps = false",
+		"tool_suggest = false",
+		"shell_snapshot = false",
+		"request_max_retries = 0",
+		"stream_max_retries = 0",
+	} {
+		if strings.Count(string(first), required) != 1 {
+			t.Fatalf("FEAT-137 managed config occurrence count for %q is not one", required)
+		}
+	}
+	for _, forbidden := range []string{"[mcp_servers", "[plugins", "[apps", "dynamic_tools"} {
+		if strings.Contains(string(first), forbidden) {
+			t.Fatalf("FEAT-137 managed config contains forbidden product surface %q", forbidden)
+		}
+	}
+	if err := prepareMiniMaxCodexHomeForAuthority(authority, ManagedReasoningProfileHighRaw, true); err != nil {
+		t.Fatalf("fresh FEAT-137 config was not idempotent: %v", err)
+	}
+	second, err := os.ReadFile(filepath.Join(home, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatal("idempotent FEAT-137 config preparation changed bytes")
+	}
+	if err := prepareMiniMaxCodexHome(authority, ManagedReasoningProfileHighRaw); err != nil {
+		t.Fatalf("return to gate-off managed profile: %v", err)
+	}
+	gateOff, err := os.ReadFile(filepath.Join(home, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantGateOff, err := miniMaxManagedConfig(home, ManagedReasoningProfileHighRaw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(gateOff, wantGateOff) {
+		t.Fatal("gate-off transition did not restore exact baseline bytes")
+	}
+}
+
+func TestFEAT137ManagedConfigValidationRejectsIncompleteClosedAuthority(t *testing.T) {
+	config, err := miniMaxManagedConfigForAuthority("/managed/codex-home", ManagedReasoningProfileHighRaw, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, missing := range []string{
+		"hooks = false\n",
+		"plugins = false\n",
+		"apps = false\n",
+		"tool_suggest = false\n",
+		"shell_snapshot = false\n",
+		"request_max_retries = 0\n",
+		"stream_max_retries = 0\n",
+	} {
+		t.Run(strings.Fields(missing)[0], func(t *testing.T) {
+			incomplete := bytes.Replace(config, []byte(missing), nil, 1)
+			if err := validateFEAT137ManagedConfig(incomplete, true); err == nil {
+				t.Fatalf("approval config without %q was accepted", strings.TrimSpace(missing))
+			}
+		})
+	}
+}
+
+func TestFEAT137ManagedConfigValidationRejectsRetryExpansion(t *testing.T) {
+	config, err := miniMaxManagedConfigForAuthority("/managed/codex-home", ManagedReasoningProfileHighRaw, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func([]byte) []byte
+	}{
+		{
+			name: "request retry nonzero",
+			mutate: func(input []byte) []byte {
+				return bytes.Replace(input, []byte("request_max_retries = 0"), []byte("request_max_retries = 1"), 1)
+			},
+		},
+		{
+			name: "stream retry nonzero",
+			mutate: func(input []byte) []byte {
+				return bytes.Replace(input, []byte("stream_max_retries = 0"), []byte("stream_max_retries = 1"), 1)
+			},
+		},
+		{
+			name: "duplicate retry authority",
+			mutate: func(input []byte) []byte {
+				return append(input, []byte("request_max_retries = 0\n")...)
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validateFEAT137ManagedConfig(test.mutate(append([]byte(nil), config...)), true); err == nil {
+				t.Fatal("approval config accepted expanded Provider retry authority")
+			}
+		})
+	}
+}
+
 func TestPrepareMiniMaxCodexHomeWritesHighRawManagedProfile(t *testing.T) {
 	home := canonicalOwnedTempDir(t)
 	authority := acquireTestCodexHomeAuthority(t, home)
@@ -90,6 +263,25 @@ func TestPrepareMiniMaxCodexHomeWritesHighRawManagedProfile(t *testing.T) {
 	}
 }
 
+func TestFEAT137ExecPolicyRejectsGateOffManagedConfig(t *testing.T) {
+	home := canonicalOwnedTempDir(t)
+	authority := acquireTestCodexHomeAuthority(t, home)
+	if err := prepareMiniMaxCodexHome(authority, ManagedReasoningProfileHighRaw); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := authority.preflightFEAT137ExecPolicy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := authority.applyFEAT137ExecPolicy(true, plan); err == nil ||
+		!strings.Contains(err.Error(), "closed managed MiniMax config") {
+		t.Fatalf("FEAT-137 exec policy accepted the gate-off managed config: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(home, managedRulesDirectory)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("rejected exec policy mutated the managed rules directory: %v", err)
+	}
+}
+
 func TestPrepareMiniMaxCodexHomeRefusesUnmanagedConfig(t *testing.T) {
 	home := canonicalOwnedTempDir(t)
 	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("model = \"other\"\n"), 0o600); err != nil {
@@ -112,7 +304,7 @@ func TestPrepareMiniMaxCodexHomeOwnsExactFEAT137ExecPolicyLifecycle(t *testing.T
 	home := canonicalOwnedTempDir(t)
 	authority := acquireTestCodexHomeAuthority(t, home)
 	rulesPath := filepath.Join(home, managedRulesDirectory, managedFEAT137RulesFile)
-	if err := prepareMiniMaxCodexHome(authority, ManagedReasoningProfileHighRaw); err != nil {
+	if err := prepareMiniMaxCodexHomeForAuthority(authority, ManagedReasoningProfileHighRaw, true); err != nil {
 		t.Fatal(err)
 	}
 	plan, err := authority.preflightFEAT137ExecPolicy()
@@ -356,7 +548,7 @@ func TestRuntimeEnvironmentScopesMiniMaxCredential(t *testing.T) {
 		"MINIMAX_API_KEY=ambient",
 		"YIJIE_MINIMAX_API_KEY=host-secret",
 		"YIJIE_MINIMAX_API_KEY_FILE=/secret/path",
-	}, "/codex", "scoped-secret")
+	}, "/codex", "scoped-secret", false)
 	joined := strings.Join(environment, "\n")
 	if strings.Contains(joined, "ambient") || strings.Contains(joined, "host-secret") || strings.Contains(joined, "/secret/path") {
 		t.Fatalf("ambient MiniMax credential leaked: %s", joined)

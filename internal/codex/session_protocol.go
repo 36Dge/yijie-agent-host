@@ -35,6 +35,8 @@ const (
 
 const feat137ManagedInstructions = "Runtime Baseline 2 is read-only for workspace and operating-system actions. Run exactly one command through exec_command with cmd set exactly to git rev-parse --is-inside-work-tree, the default login-shell setting, and sandbox_permissions=use_default. The Host-managed exec policy will request approval without elevating permissions; never use require_escalated or add a justification. Do not run or request any other command, network access, file change, additional permission, policy amendment, explicit shell wrapper, pipe, redirect, environment assignment, or unsandboxed execution."
 
+const feat137D4DeterministicManagedInstructions = "Runtime Baseline 2 is in the explicit FEAT-137 D4 deterministic approval profile. Call the zero-argument exec_command tool exactly once with an empty JSON object. Runtime owns the fixed read-only action and use_default sandbox permissions; do not provide command, cwd, shell, permission, justification, or any other parameter. Do not call or request any other tool, command, network access, file change, additional permission, policy amendment, or unsandboxed execution, and do not retry the tool call."
+
 var sessionRuntimeMethods = []string{
 	RuntimeMethodThreadResume,
 	RuntimeMethodThreadStart,
@@ -222,6 +224,9 @@ func (m *Manager) sessionApprovalPolicy() string {
 }
 
 func (m *Manager) sessionDeveloperInstructions() string {
+	if m.config.DeterministicApprovalProducerEnabled {
+		return feat137D4DeterministicManagedInstructions
+	}
 	if m.config.CommandApprovalEnabled {
 		return feat137ManagedInstructions
 	}

@@ -27,8 +27,9 @@ import (
 )
 
 const (
-	ServiceName                 = "yijie-agent-host"
-	defaultSSEHeartbeatInterval = 15 * time.Second
+	ServiceName                       = "yijie-agent-host"
+	defaultSSEHeartbeatInterval       = 15 * time.Second
+	feat137D4DeterministicProducerEnv = "YIJIE_FEAT137_D4_DETERMINISTIC_PRODUCER_ENABLED"
 )
 
 type Config struct {
@@ -239,6 +240,11 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		return Config{}, err
 	}
 	runtimeConfig.CommandApprovalEnabled = feat137CommandApproval
+	feat137D4DeterministicProducer, err := loadFEAT137D4DeterministicProducerProfile(feat137CommandApproval)
+	if err != nil {
+		return Config{}, err
+	}
+	runtimeConfig.DeterministicApprovalProducerEnabled = feat137D4DeterministicProducer
 	if feat134Streaming {
 		runtimeConfig.ManagedReasoningProfile = codex.ManagedReasoningProfileHighRaw
 	}
@@ -354,6 +360,17 @@ func loadFEAT137CommandApprovalProfile(
 	if !canonicalAbsolutePath(hostHome) || !runtimeConfig.MiniMax.Enabled || runtimeConfig.FakeResponses.Enabled ||
 		runtimeConfig.DynamicToolsEnabled {
 		return false, errors.New("FEAT-137 Command approval requires the stable read-only managed Runtime profile")
+	}
+	return true, nil
+}
+
+func loadFEAT137D4DeterministicProducerProfile(commandApprovalEnabled bool) (bool, error) {
+	enabled, err := exactBoolEnv(feat137D4DeterministicProducerEnv)
+	if err != nil || !enabled {
+		return false, err
+	}
+	if !commandApprovalEnabled {
+		return false, errors.New("FEAT-137 D4 deterministic producer requires the exact command approval profile")
 	}
 	return true, nil
 }
