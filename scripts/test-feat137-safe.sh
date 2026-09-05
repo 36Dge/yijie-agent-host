@@ -84,7 +84,7 @@ run_allowlist ./internal/app \
   TestFEAT137CommandApprovalProfileRequiresExactConjunction \
   TestFEAT137D4DeterministicProducerRequiresExactApprovalAuthority \
   TestFEAT137D4DeterministicProducerCannotBypassRejectedProfiles \
-  TestFEAT137LoadConfigWiresApprovalWithoutExperimentalTools \
+  TestFEAT137RetirementKeepsV4V5AndRejectsApprovalActivation \
   TestFEAT137V6RoutesRequireExactConjunctionAndCapability \
   TestFEAT137V6EventsRejectAmbiguousQueries \
   TestFEAT137V6EventsNormalizeUUIDsAndRejectAmbiguousHeaders \

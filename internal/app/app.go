@@ -62,6 +62,17 @@ type RuntimeStatusProvider interface {
 }
 
 func LoadConfig() (Config, error) {
+	// Owner permanently terminated FEAT-137 before acceptance. Reject old
+	// opt-in flags before credentials, persistent state or Runtime are touched.
+	for _, key := range []string{
+		"YIJIE_FEAT137_COMMAND_APPROVAL_ENABLED",
+		"YIJIE_FEAT137_D4_DETERMINISTIC_PRODUCER_ENABLED",
+		"YIJIE_FEAT137_DETERMINISTIC_APPROVAL_PRODUCER",
+	} {
+		if value := os.Getenv(key); value != "" && value != "false" && value != "0" {
+			return Config{}, errors.New("FEAT-137 is permanently terminated; approval activation is unavailable")
+		}
+	}
 	return loadConfigWithDirectoryAuthority(validateOwnerOnlyDirectoryAuthority)
 }
 

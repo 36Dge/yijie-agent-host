@@ -178,7 +178,7 @@ func TestFEAT137D4DeterministicProducerCannotBypassRejectedProfiles(t *testing.T
 	}
 }
 
-func TestFEAT137LoadConfigWiresApprovalWithoutExperimentalTools(t *testing.T) {
+func TestFEAT137RetirementKeepsV4V5AndRejectsApprovalActivation(t *testing.T) {
 	for _, key := range []string{
 		"YIJIE_AGENT_HOST_HOME", "YIJIE_AGENT_HOST_INSTANCE_NONCE", "YIJIE_AGENT_HOST_PARENT_PID",
 		"YIJIE_AGENT_HOST_V2_CLEANUP_ENABLED", "YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED",
@@ -221,32 +221,16 @@ func TestFEAT137LoadConfigWiresApprovalWithoutExperimentalTools(t *testing.T) {
 	t.Setenv(feat137D4DeterministicProducerEnv, "false")
 
 	t.Setenv("YIJIE_FEAT137_COMMAND_APPROVAL_ENABLED", "true")
-	enabled, err := LoadConfig()
-	if err != nil {
-		t.Fatalf("load exact FEAT-137 configuration: %v", err)
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("permanently terminated FEAT-137 accepted its former exact opt-in")
 	}
-	if !enabled.FEAT134StreamingEnabled || !enabled.FEAT136CommandToolItemsEnabled ||
-		!enabled.FEAT137CommandApprovalEnabled || !enabled.Runtime.CommandApprovalEnabled {
-		t.Fatalf("FEAT-137 dependent gates were not wired: %#v", enabled)
+	if !disabled.FEAT134StreamingEnabled || !disabled.FEAT136CommandToolItemsEnabled ||
+		disabled.Runtime.ManagedReasoningProfile != codex.ManagedReasoningProfileHighRaw {
+		t.Fatal("retirement disabled retained v4/v5 capabilities")
 	}
-	if enabled.ImageGenerationEnabled || enabled.Runtime.DynamicToolsEnabled ||
-		codex.NewManager(enabled.Runtime, nil).Snapshot().ExperimentalAPI {
-		t.Fatalf("FEAT-137 enabled an experimental Runtime surface: %#v", enabled.Runtime)
-	}
-	if enabled.Runtime.DeterministicApprovalProducerEnabled {
-		t.Fatalf("normal FEAT-137 profile enabled the D4 producer: %#v", enabled.Runtime)
-	}
-
-	t.Setenv(feat137D4DeterministicProducerEnv, "true")
-	d4Enabled, err := LoadConfig()
-	if err != nil {
-		t.Fatalf("load exact FEAT-137 D4 producer configuration: %v", err)
-	}
-	if !d4Enabled.Runtime.DeterministicApprovalProducerEnabled {
-		t.Fatalf("exact FEAT-137 D4 producer gate was not wired: %#v", d4Enabled.Runtime)
-	}
-	if !d4Enabled.Runtime.CommandApprovalEnabled || d4Enabled.Runtime.DynamicToolsEnabled ||
-		d4Enabled.Runtime.ManagedReasoningProfile != codex.ManagedReasoningProfileHighRaw {
-		t.Fatalf("D4 producer escaped the exact closed MiniMax approval profile: %#v", d4Enabled.Runtime)
+	t.Setenv("YIJIE_FEAT137_COMMAND_APPROVAL_ENABLED", "false")
+	t.Setenv("YIJIE_FEAT137_DETERMINISTIC_APPROVAL_PRODUCER", "1")
+	if _, err := LoadConfig(); err == nil {
+		t.Fatal("retired Runtime producer environment was accepted")
 	}
 }

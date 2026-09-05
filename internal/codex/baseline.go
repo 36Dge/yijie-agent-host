@@ -93,15 +93,32 @@ type ManifestBuildLock struct {
 }
 
 type artifactPolicy struct {
-	runtimeSHA256  string
-	runtimeSize    int64
-	manifestSHA256 string
+	runtimeSHA256    string
+	runtimeSize      int64
+	manifestSHA256   string
+	schemaTreeSHA256 string
+	patches          []ManifestPatch
 }
 
 var runtimeBaseline0Policy = artifactPolicy{
 	runtimeSHA256:  ExpectedRuntimeSHA256,
 	runtimeSize:    ExpectedRuntimeSize,
 	manifestSHA256: ExpectedRuntimeManifestSHA256,
+}
+
+// Active after Owner termination of FEAT-137. The old four-patch constants
+// remain historical test/source evidence, never the production artifact policy.
+// Authority: yijie-contracts@4d3f967938dde1c86ca34003a0a5628717f96262
+// docs/retirements/FEAT-137.json (SHA-256 67d7dfe8d539668a366ed744d92483d39597208259fe929d32d6d811c79ffbb8).
+var retiredApprovalBaselinePolicy = artifactPolicy{
+	runtimeSHA256:    "4efe16d2848680752cf9aacf4c17741ab2eeb7415894a66c2bb03652b00a322d",
+	runtimeSize:      355676760,
+	manifestSHA256:   "1cfa2e0a139b2213f4d29b1efeed71d4810110ac865f0bcbd931ff33b0062c1b",
+	schemaTreeSHA256: "82ee9de771cf1d41bac16d87380f1121e7794107aa3aa526ad702d5d1bf7afe1",
+	patches: []ManifestPatch{
+		{Path: ExpectedRuntimePatch1Path, SHA256: ExpectedRuntimePatch1SHA256},
+		{Path: ExpectedRuntimePatch2Path, SHA256: ExpectedRuntimePatch2SHA256},
+	},
 }
 
 type ArtifactInfo struct {
@@ -115,7 +132,7 @@ type ArtifactInfo struct {
 }
 
 func VerifyArtifact(ctx context.Context, binaryPath, manifestPath string, timeout time.Duration) (ArtifactInfo, error) {
-	return verifyArtifactWithPolicy(ctx, binaryPath, manifestPath, timeout, runtimeBaseline0Policy)
+	return verifyArtifactWithPolicy(ctx, binaryPath, manifestPath, timeout, retiredApprovalBaselinePolicy)
 }
 
 func verifyArtifactWithPolicy(
@@ -230,6 +247,26 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 }
 
 func validateManifest(manifest Manifest, policy artifactPolicy) error {
+	schemaTree := policy.schemaTreeSHA256
+	patches := policy.patches
+	if patches == nil {
+		// Existing internal fixtures cover the historical four-patch candidate.
+		schemaTree = ExpectedSchemaTreeSHA256
+		patches = []ManifestPatch{
+			{Path: ExpectedRuntimePatch1Path, SHA256: ExpectedRuntimePatch1SHA256},
+			{Path: ExpectedRuntimePatch2Path, SHA256: ExpectedRuntimePatch2SHA256},
+			{Path: ExpectedRuntimePatch3Path, SHA256: ExpectedRuntimePatch3SHA256},
+			{Path: ExpectedRuntimePatch4Path, SHA256: ExpectedRuntimePatch4SHA256},
+		}
+	}
+	if len(manifest.Patches) != len(patches) {
+		return errors.New("runtime patch count does not match reviewed overlay")
+	}
+	for index, expected := range patches {
+		if manifest.Patches[index] != expected {
+			return errors.New("runtime patch authority does not match reviewed overlay")
+		}
+	}
 	switch {
 	case manifest.SchemaVersion != ExpectedSchemaVersion:
 		return errors.New("unsupported runtime manifest schema version")
@@ -261,26 +298,8 @@ func validateManifest(manifest Manifest, policy artifactPolicy) error {
 		return errors.New("experimental app-server API must remain disabled")
 	case manifest.AppServer.SchemaFileCount != 267:
 		return errors.New("app-server schema file count does not match baseline")
-	case manifest.AppServer.SchemaTreeSHA256 != ExpectedSchemaTreeSHA256:
+	case manifest.AppServer.SchemaTreeSHA256 != schemaTree:
 		return errors.New("app-server schema tree SHA-256 does not match baseline")
-	case len(manifest.Patches) != 4:
-		return errors.New("runtime patch count does not match reviewed overlay")
-	case manifest.Patches[0].Path != ExpectedRuntimePatch1Path:
-		return errors.New("runtime patch path does not match reviewed overlay")
-	case manifest.Patches[0].SHA256 != ExpectedRuntimePatch1SHA256:
-		return errors.New("runtime patch SHA-256 does not match reviewed overlay")
-	case manifest.Patches[1].Path != ExpectedRuntimePatch2Path:
-		return errors.New("runtime patch path does not match reviewed overlay")
-	case manifest.Patches[1].SHA256 != ExpectedRuntimePatch2SHA256:
-		return errors.New("runtime patch SHA-256 does not match reviewed overlay")
-	case manifest.Patches[2].Path != ExpectedRuntimePatch3Path:
-		return errors.New("runtime patch path does not match reviewed overlay")
-	case manifest.Patches[2].SHA256 != ExpectedRuntimePatch3SHA256:
-		return errors.New("runtime patch SHA-256 does not match reviewed overlay")
-	case manifest.Patches[3].Path != ExpectedRuntimePatch4Path:
-		return errors.New("runtime patch path does not match reviewed overlay")
-	case manifest.Patches[3].SHA256 != ExpectedRuntimePatch4SHA256:
-		return errors.New("runtime patch SHA-256 does not match reviewed overlay")
 	case manifest.BuildLock.SchemaVersion != 1:
 		return errors.New("runtime build lock schema version does not match baseline")
 	case manifest.BuildLock.FromVersion != "0.0.0" || manifest.BuildLock.ToVersion != ExpectedRuntimeVersion:

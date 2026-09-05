@@ -1,5 +1,7 @@
 # yijie-agent-host
 
+FEAT-137 已由 Owner 永久终止，未完成验收。生产入口拒绝旧审批/D4 producer 开关；现行 Runtime 使用保留的 FEAT-136 双补丁制品，维持 `read-only/never`。退役来源：Contracts `4d3f967938dde1c86ca34003a0a5628717f96262` 的 `docs/retirements/FEAT-137.json`。旧 v6 实现与四补丁测试材料仅作历史保留。
+
 易界业务系统与 Codex Runtime 之间的薄宿主和安全适配层。它不实现 planner、业务数据库或平台连接器。
 
 ## 当前状态
