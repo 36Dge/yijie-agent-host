@@ -103,7 +103,13 @@ func (s *Service) loadOperations() error {
 		return errors.New("Skill operation journal is not owner-only")
 	}
 	var stored operationStore
-	if err := strictJSON(raw, &stored); err != nil || stored.SchemaVersion != 1 || len(stored.Operations) > maxOperations {
+	if err := strictJSON(raw, &stored); err != nil {
+		return errors.New("Skill operation journal is invalid")
+	}
+	if stored.SchemaVersion == 2 && len(stored.Operations) == 0 {
+		return s.loadOperationDatabase()
+	}
+	if stored.SchemaVersion != 1 || len(stored.Operations) > maxOperations {
 		return errors.New("Skill operation journal is invalid")
 	}
 	for _, persisted := range stored.Operations {
@@ -360,6 +366,9 @@ func (s *Service) persistOperationsLocked() error {
 			return err
 		}
 	}
+	if s.operationDB != nil {
+		return s.persistOperationDatabase(stored)
+	}
 	raw, err := json.Marshal(stored)
 	if err != nil {
 		return err
@@ -447,6 +456,15 @@ func snapshotToPersistedV1(snapshot *Snapshot) *persistedSnapshotV1 {
 func (s *Service) reserveOperation(id, fingerprint, kind, skillID string) (*operationRecord, bool, error) {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
+	if s.operationDB != nil {
+		if err := syncRoot(s.state); err != nil {
+			return nil, false, errorWithCode(CodeScanFailed, err)
+		}
+		s.releaseCompletedOperationCache()
+		if err := s.cachePersistedOperation(id); err != nil {
+			return nil, false, errorWithCode(CodeScanFailed, err)
+		}
+	}
 	if existing := s.operations[id]; existing != nil {
 		if existing.Fingerprint != fingerprint {
 			return nil, false, errorWithCode(CodeOperationConflict, errors.New("operation id was reused with different input"))
@@ -468,10 +486,15 @@ func (s *Service) reserveOperation(id, fingerprint, kind, skillID string) (*oper
 		return existing, false, nil
 	}
 	if len(s.operations) >= maxOperations {
-		// Never evict an idempotency key: Contracts 0.5.1 defines no expiry window. New
-		// operations fail closed at the bounded storage limit while every old ID
-		// continues to replay or conflict deterministically.
-		return nil, false, errorWithCode(CodeBusy, errors.New("Skill operation journal is full"))
+		if s.operationDB == nil {
+			if err := s.migrateOperationDatabase(); err != nil {
+				return nil, false, errorWithCode(CodeScanFailed, err)
+			}
+		}
+		s.releaseCompletedOperationCache()
+		if len(s.operations) >= maxOperations {
+			return nil, false, errorWithCode(CodeBusy, errors.New("too many active Skill operations"))
+		}
 	}
 	record := &operationRecord{
 		ID:          id,
@@ -542,6 +565,9 @@ func (s *Service) finishStateOperation(record *operationRecord, state State, ope
 	defer s.opMu.Unlock()
 	if !keep {
 		delete(s.operations, record.ID)
+		if s.operationDB != nil {
+			s.operationDeletes[record.ID] = struct{}{}
+		}
 		persistErr := s.persistOperationsLocked()
 		closeOnce(record.done)
 		if persistErr != nil {
@@ -598,6 +624,9 @@ func (s *Service) finishSnapshotOperation(record *operationRecord, snapshot Snap
 	defer s.opMu.Unlock()
 	if !keep {
 		delete(s.operations, record.ID)
+		if s.operationDB != nil {
+			s.operationDeletes[record.ID] = struct{}{}
+		}
 		persistErr := s.persistOperationsLocked()
 		closeOnce(record.done)
 		if persistErr != nil {

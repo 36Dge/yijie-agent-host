@@ -18,6 +18,7 @@ import (
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	"github.com/google/uuid"
+	bolt "go.etcd.io/bbolt"
 )
 
 const transactionSeparator = "--"
@@ -46,6 +47,9 @@ type Service struct {
 	changed                      chan struct{}
 	mutation                     chan struct{}
 	operations                   map[string]*operationRecord
+	operationDB                  *bolt.DB
+	operationDeletes             map[string]struct{}
+	operationCatalog             catalog
 	operationStoreNeedsV1Rewrite bool
 	persistOperationsFault       func(operationStore) error
 	registeredRoots              []string
@@ -113,18 +117,20 @@ func NewService(config Config) (*Service, error) {
 		now = time.Now
 	}
 	service := &Service{
-		bundleRoot:  bundleRoot,
-		managedRoot: managedRoot,
-		bundle:      bundle,
-		managed:     managed,
-		state:       state,
-		runtime:     config.Runtime,
-		now:         now,
-		changed:     make(chan struct{}, 1),
-		mutation:    make(chan struct{}, 1),
-		operations:  make(map[string]*operationRecord),
-		syncManaged: syncRoot,
-		syncSkill:   syncRoot,
+		bundleRoot:       bundleRoot,
+		managedRoot:      managedRoot,
+		bundle:           bundle,
+		managed:          managed,
+		state:            state,
+		runtime:          config.Runtime,
+		now:              now,
+		changed:          make(chan struct{}, 1),
+		mutation:         make(chan struct{}, 1),
+		operations:       make(map[string]*operationRecord),
+		operationDeletes: make(map[string]struct{}),
+		operationCatalog: initialCatalog,
+		syncManaged:      syncRoot,
+		syncSkill:        syncRoot,
 	}
 	if err := service.loadOperations(); err != nil {
 		service.Close()
@@ -151,10 +157,16 @@ func (s *Service) Close() error {
 		return nil
 	}
 	s.closed = true
+	s.opMu.Lock()
+	var operationErr error
+	if s.operationDB != nil {
+		operationErr = s.operationDB.Close()
+	}
+	s.opMu.Unlock()
 	bundleErr := s.bundle.Close()
 	managedErr := s.managed.Close()
 	stateErr := s.state.Close()
-	return errors.Join(bundleErr, managedErr, stateErr)
+	return errors.Join(operationErr, bundleErr, managedErr, stateErr)
 }
 
 func (s *Service) List(ctx context.Context) (Snapshot, error) {
@@ -933,7 +945,23 @@ func (s *Service) restoreEnabledStateLocked(
 }
 
 func (s *Service) recoverTransactionsLocked() error {
+	entries, err := fs.ReadDir(s.managed.FS(), ".")
+	if err != nil {
+		return errorWithCode(CodeScanFailed, err)
+	}
 	s.opMu.Lock()
+	// Cache eviction must never hide a completed commit from cleanup, including
+	// cleanup retried in this process after a successful operation.
+	if s.operationDB != nil {
+		for _, entry := range entries {
+			if _, id, ok := parseSkillTransactionName(entry.Name()); ok {
+				if err := s.cachePersistedOperation(id); err != nil {
+					s.opMu.Unlock()
+					return errorWithCode(CodeScanFailed, err)
+				}
+			}
+		}
+	}
 	records := make(map[string]operationRecord, len(s.operations))
 	for id, record := range s.operations {
 		records[id] = *record
@@ -942,10 +970,6 @@ func (s *Service) recoverTransactionsLocked() error {
 
 	managedChanged := false
 	managedNeedsSync := false
-	entries, err := fs.ReadDir(s.managed.FS(), ".")
-	if err != nil {
-		return errorWithCode(CodeScanFailed, err)
-	}
 	for _, entry := range entries {
 		name := entry.Name()
 		switch {

@@ -83,7 +83,7 @@ export YIJIE_SKILL_INSTALL_ROOT=/absolute/path/to/private/app-data/skills
 
 两个根目录必须同时存在、为规范绝对路径且互不重叠；`YIJIE_AGENT_HOST_HOME` 也必须为规范绝对路径。正常 Desktop 流程透明读取并携带 Host bearer，用户不需要登录或手动授权，但直接调用 Host 不能绕过 bearer/capability 校验。当前锁定的 `yijie-skills@0.3.0` 清单中 38 项均已声明并验证 `desktop-distribution`，正式产品目录不存在 blocked 条目。
 
-Runtime 不会注册整个 App Data 根；清单外目录、损坏安装和包含额外嵌套 `SKILL.md` 的包均 fail closed。operation ID 不做静默过期或裁剪；当前本地 journal 最多保留 4096 条，达到上限后新 operation 返回 `skill_busy`，旧 ID 仍保持重放/冲突语义。
+Runtime 不会注册整个 App Data 根；清单外目录、损坏安装和包含额外嵌套 `SKILL.md` 的包均 fail closed。operation ID 不做静默过期或裁剪。旧 JSON journal 达到 4096 条时自动完整迁移到本地 bbolt journal，保留原文件的精确备份及所有旧 ID 的重放/冲突语义；4096 只继续限制同时未完成的操作，不再限制历史操作总数。迁移后旧 Host 会拒绝 v2 标记，回滚必须保留 v2 reader，详见 [`docs/skills-journal-v2.md`](docs/skills-journal-v2.md)。
 
 Desktop 管理的本地进程还会设置 `YIJIE_AGENT_HOST_PARENT_PID`。Host 只在该值与启动瞬间的真实 PPID
 精确一致时启用 parent watchdog；Desktop 正常退出、崩溃或被强制终止后，Host 都沿既有 Runtime/HTTP
