@@ -224,6 +224,9 @@ func (m *Manager) sessionApprovalPolicy() string {
 }
 
 func (m *Manager) sessionDeveloperInstructions() string {
+	if m.config.RuntimePermissionsEnabled {
+		return permissionInstructions
+	}
 	if m.config.DeterministicApprovalProducerEnabled {
 		return feat137D4DeterministicManagedInstructions
 	}
@@ -274,6 +277,11 @@ func (m *Manager) SetCommandApprovalHandler(handler CommandApprovalHandler) erro
 }
 
 func (m *Manager) handleServerRequest(ctx context.Context, request serverRequest) serverRequestResult {
+	if m.config.RuntimePermissionsEnabled {
+		if result, supported := m.handleRuntimePermissionRequest(ctx, request); supported {
+			return result
+		}
+	}
 	if request.method == RuntimeMethodCommandApproval && m.config.CommandApprovalEnabled {
 		return m.handleCommandApprovalRequest(ctx, request)
 	}
@@ -484,6 +492,8 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		ApprovalPolicy        string            `json:"approvalPolicy"`
 		Sandbox               string            `json:"sandbox"`
 		DeveloperInstructions string            `json:"developerInstructions"`
+		BaseInstructions      *string           `json:"baseInstructions,omitempty"`
+		Config                map[string]any    `json:"config,omitempty"`
 		Ephemeral             bool              `json:"ephemeral"`
 		DynamicTools          []dynamicToolSpec `json:"dynamicTools,omitempty"`
 	}{
@@ -494,6 +504,11 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		Sandbox:               SessionSandbox,
 		DeveloperInstructions: m.sessionDeveloperInstructions(),
 		Ephemeral:             false,
+	}
+	if m.config.RuntimePermissionsEnabled {
+		instructions := permissionInstructions
+		params.BaseInstructions = &instructions
+		params.Config = m.permissionVerificationConfig()
 	}
 	if m.config.DynamicToolsEnabled {
 		if m.dynamicToolHandler == nil {
@@ -514,19 +529,25 @@ func (m *Manager) ResumeThread(ctx context.Context, threadID string) (ThreadInfo
 		return ThreadInfo{}, errors.New("Codex thread id is required")
 	}
 	type resumeParams struct {
-		ThreadID              string  `json:"threadId"`
-		ApprovalPolicy        *string `json:"approvalPolicy,omitempty"`
-		Sandbox               *string `json:"sandbox,omitempty"`
-		DeveloperInstructions *string `json:"developerInstructions,omitempty"`
+		ThreadID              string         `json:"threadId"`
+		ApprovalPolicy        *string        `json:"approvalPolicy,omitempty"`
+		Sandbox               *string        `json:"sandbox,omitempty"`
+		DeveloperInstructions *string        `json:"developerInstructions,omitempty"`
+		BaseInstructions      *string        `json:"baseInstructions,omitempty"`
+		Config                map[string]any `json:"config,omitempty"`
 	}
 	params := resumeParams{ThreadID: threadID}
-	if m.config.CommandApprovalEnabled {
+	if m.config.CommandApprovalEnabled || m.config.RuntimePermissionsEnabled {
 		approvalPolicy := m.sessionApprovalPolicy()
 		sandbox := SessionSandbox
 		developerInstructions := m.sessionDeveloperInstructions()
 		params.ApprovalPolicy = &approvalPolicy
 		params.Sandbox = &sandbox
 		params.DeveloperInstructions = &developerInstructions
+		if m.config.RuntimePermissionsEnabled {
+			params.BaseInstructions = &developerInstructions
+			params.Config = m.permissionVerificationConfig()
+		}
 	}
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadResume, params, &response); err != nil {
@@ -620,11 +641,12 @@ func (m *Manager) StartTurnV2(
 		wireInputs = append(wireInputs, wire)
 	}
 	params := struct {
-		ThreadID       string                 `json:"threadId"`
-		Input          []any                  `json:"input"`
-		Effort         string                 `json:"effort"`
-		ApprovalPolicy *string                `json:"approvalPolicy,omitempty"`
-		SandboxPolicy  *readOnlySandboxPolicy `json:"sandboxPolicy,omitempty"`
+		ThreadID          string  `json:"threadId"`
+		Input             []any   `json:"input"`
+		Effort            string  `json:"effort"`
+		ApprovalPolicy    *string `json:"approvalPolicy,omitempty"`
+		SandboxPolicy     any     `json:"sandboxPolicy,omitempty"`
+		ApprovalsReviewer *string `json:"approvalsReviewer,omitempty"`
 	}{
 		ThreadID: threadID, Input: wireInputs, Effort: reasoningEffort,
 	}
@@ -633,6 +655,18 @@ func (m *Manager) StartTurnV2(
 		sandboxPolicy := sessionTurnSandboxPolicy()
 		params.ApprovalPolicy = &approvalPolicy
 		params.SandboxPolicy = &sandboxPolicy
+	}
+	if mode, ok := ctx.Value(permissionContextKey{}).(PermissionMode); ok {
+		if err := m.ValidatePermissionMode(mode); err != nil {
+			return TurnInfo{}, err
+		}
+		policy, reviewer, sandbox, err := permissionPolicy(mode)
+		if err != nil {
+			return TurnInfo{}, err
+		}
+		params.ApprovalPolicy = &policy
+		params.ApprovalsReviewer = &reviewer
+		params.SandboxPolicy = sandbox
 	}
 	var response turnStartResponse
 	if err := m.request(ctx, RuntimeMethodTurnStart, params, &response); err != nil {

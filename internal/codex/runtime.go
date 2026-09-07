@@ -43,20 +43,23 @@ const (
 )
 
 type Config struct {
-	BinaryPath              string
-	ManifestPath            string
-	CodexHome               string
-	StartupTimeout          time.Duration
-	RequestTimeout          time.Duration
-	ShutdownTimeout         time.Duration
-	MaxMessageBytes         int
-	WriteQueueDepth         int
-	StderrTailBytes         int
-	MiniMax                 MiniMaxConfig
-	FakeResponses           FakeResponsesConfig
-	ManagedReasoningProfile ManagedReasoningProfile
-	DynamicToolsEnabled     bool
-	CommandApprovalEnabled  bool
+	BinaryPath                    string
+	ManifestPath                  string
+	CodexHome                     string
+	StartupTimeout                time.Duration
+	RequestTimeout                time.Duration
+	ShutdownTimeout               time.Duration
+	MaxMessageBytes               int
+	WriteQueueDepth               int
+	StderrTailBytes               int
+	MiniMax                       MiniMaxConfig
+	FakeResponses                 FakeResponsesConfig
+	ManagedReasoningProfile       ManagedReasoningProfile
+	DynamicToolsEnabled           bool
+	CommandApprovalEnabled        bool
+	RuntimePermissionsEnabled     bool
+	PermissionVerificationBaseURL string
+	PermissionVerificationPolicy  string
 	// DeterministicApprovalProducerEnabled is a D4-only, Host-validated
 	// producer gate. It never changes the command approval authority or
 	// execution permissions and cannot be enabled without that authority.
@@ -162,8 +165,9 @@ type Status struct {
 }
 
 type Manager struct {
-	config Config
-	logger *slog.Logger
+	permissionCallbacks runtimeApprovalCallbacks
+	config              Config
+	logger              *slog.Logger
 
 	mu       sync.Mutex
 	status   Status
@@ -710,6 +714,7 @@ func (m *Manager) handleClientFailure(err error) {
 }
 
 func (m *Manager) handleNotification(method string, params json.RawMessage) {
+	m.handlePermissionNotification(method, params)
 	m.logger.Debug("Codex Runtime notification", "method", method)
 	if method == RuntimeNotificationServerRequestResolved {
 		fields, err := decodeUniqueJSONObject(params, map[string]struct{}{"requestId": {}, "threadId": {}})

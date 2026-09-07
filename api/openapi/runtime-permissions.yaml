@@ -1,0 +1,418 @@
+openapi: 3.0.3
+info:
+  title: Yijie local Runtime permissions
+  version: 0.1.0
+  description: FEAT-152 local-only thin adapter to native Codex approval callbacks. Legacy v1-v6 remain unchanged.
+servers:
+  - url: http://127.0.0.1:9130
+security:
+  - LocalBearer: []
+paths:
+  /v1/agent-sessions/{agent_session_id}/permission-turns:
+    parameters:
+      - name: agent_session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: startPermissionTurn
+      summary: Start a turn with an explicit saved task permission mode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionTurnRequest'
+      responses:
+        '202':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartTurnResponse'
+        '400':
+          description: Invalid request
+        '409':
+          description: Active turn or operation conflict
+        '503':
+          description: Runtime unavailable
+  /v1/agent-sessions/{agent_session_id}/runtime-approvals:
+    parameters:
+      - name: agent_session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: listRuntimeApprovals
+      summary: Read bounded live callback state for this task
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeApprovalSnapshot'
+        '404':
+          description: Unknown session
+  /v1/agent-sessions/{agent_session_id}/runtime-approvals/{approval_id}:
+    parameters:
+      - name: agent_session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: approval_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: decideRuntimeApproval
+      summary: Approve once or reject the exact original Runtime callback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuntimeApprovalDecision'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeApproval'
+        '400':
+          description: Invalid decision
+        '404':
+          description: Unknown session or callback
+        '409':
+          description: Already decided differently or unavailable
+        '503':
+          description: Runtime response unconfirmed
+components:
+  securitySchemes:
+    LocalBearer:
+      type: http
+      scheme: bearer
+  schemas:
+    PermissionMode:
+      type: string
+      enum:
+        - ask
+        - auto
+        - full
+      description: ask = on-request/user/workspace-write; auto = on-request/auto_review/workspace-write; full = never/user/danger-full-access. Native OS restrictions still apply.
+    PermissionTurnRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - permission_mode
+        - turn
+      properties:
+        permission_mode:
+          $ref: '#/components/schemas/PermissionMode'
+        turn:
+          $ref: '#/components/schemas/StartTurnV2Request'
+    RuntimeApprovalDecision:
+      type: object
+      additionalProperties: false
+      required:
+        - decision
+      properties:
+        decision:
+          type: string
+          enum:
+            - approve_once
+            - reject
+    RuntimeApproval:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - kind
+        - summary
+        - scope
+        - reason
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+            - command
+            - file_change
+            - permissions
+            - auto_review
+        summary:
+          type: string
+          maxLength: 4096
+          description: Display-only escaped and redacted operation summary
+        scope:
+          type: string
+          maxLength: 4096
+          description: Display-only affected command cwd, files or network target
+        reason:
+          type: string
+          maxLength: 4096
+          description: Redacted Runtime reason or automatic assessment
+        status:
+          type: string
+          enum:
+            - pending
+            - approved
+            - rejected
+            - unavailable
+    RuntimeApprovalSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+        - requests
+      properties:
+        requests:
+          type: array
+          maxItems: 128
+          items:
+            $ref: '#/components/schemas/RuntimeApproval'
+    StartTurnV2TextBlock:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - text
+      properties:
+        type:
+          type: string
+          enum:
+            - text
+          x-enum-varnames:
+            - StartTurnV2ContentTypeText
+        text:
+          type: string
+          minLength: 1
+          maxLength: 1048576
+          pattern: \S
+          x-yijie-max-utf8-bytes: 1048576
+          description: Non-blank user text, bounded to 1 MiB in UTF-8 bytes.
+    StartTurnV2ImageBlock:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - attachment_id
+        - media_type
+        - size_bytes
+        - sha256
+        - data_url
+      properties:
+        type:
+          type: string
+          enum:
+            - image
+          x-enum-varnames:
+            - StartTurnV2ContentTypeImage
+        attachment_id:
+          type: string
+          format: uuid
+          description: Desktop attachment identifier; correlation only, never a local path.
+        media_type:
+          type: string
+          enum:
+            - image/jpeg
+            - image/png
+            - image/webp
+            - image/gif
+          x-enum-varnames:
+            - StartTurnV2ImageMediaTypeJPEG
+            - StartTurnV2ImageMediaTypePNG
+            - StartTurnV2ImageMediaTypeWebP
+            - StartTurnV2ImageMediaTypeGIF
+        size_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 10485760
+          description: Exact decoded image byte length.
+        sha256:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+          description: Lowercase hexadecimal SHA-256 of the decoded image bytes.
+        data_url:
+          type: string
+          minLength: 23
+          maxLength: 13981039
+          pattern: ^data:image/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$
+          description: |
+            Canonical base64 data URL. Its header must equal `media_type`; decoded
+            length must equal `size_bytes`; and decoded SHA-256 must equal `sha256`.
+            Host validates all three relationships before invoking Runtime and
+            never persists this value.
+    StartTurnV2FileMediaType:
+      type: string
+      description: Canonical media type produced after Desktop format and container validation.
+      enum:
+        - application/pdf
+        - text/plain
+        - text/markdown
+        - text/csv
+        - application/json
+        - application/yaml
+        - application/xml
+        - text/html
+        - application/rtf
+        - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+        - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+        - application/vnd.openxmlformats-officedocument.presentationml.presentation
+      x-enum-varnames:
+        - StartTurnV2FileMediaTypePDF
+        - StartTurnV2FileMediaTypePlainText
+        - StartTurnV2FileMediaTypeMarkdown
+        - StartTurnV2FileMediaTypeCSV
+        - StartTurnV2FileMediaTypeJSON
+        - StartTurnV2FileMediaTypeYAML
+        - StartTurnV2FileMediaTypeXML
+        - StartTurnV2FileMediaTypeHTML
+        - StartTurnV2FileMediaTypeRTF
+        - StartTurnV2FileMediaTypeDOCX
+        - StartTurnV2FileMediaTypeXLSX
+        - StartTurnV2FileMediaTypePPTX
+    StartTurnV2FileBlock:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - attachment_id
+        - name
+        - media_type
+        - size_bytes
+        - sha256
+        - context_chunks
+      properties:
+        type:
+          type: string
+          enum:
+            - file
+          x-enum-varnames:
+            - StartTurnV2ContentTypeFile
+        attachment_id:
+          type: string
+          format: uuid
+          description: Desktop attachment identifier; correlation only, never a local path.
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: ^[^/\\\x00-\x1F\x7F\s]([^/\\\x00-\x1F\x7F]*[^/\\\x00-\x1F\x7F\s])?$
+          not:
+            enum:
+              - .
+              - ..
+          description: |
+            NFC display basename with no path separator, control character, or
+            leading/trailing whitespace. It is untrusted text and must never be
+            interpreted as a path, markup, authorization input, or log label.
+        media_type:
+          $ref: '#/components/schemas/StartTurnV2FileMediaType'
+        size_bytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 10485760
+          description: Exact original file byte length verified by Desktop before parsing.
+        sha256:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+          description: Lowercase hexadecimal SHA-256 of the original file bytes, verified by Desktop.
+        context_chunks:
+          type: array
+          minItems: 1
+          maxItems: 32
+          description: |
+            Ordered, untrusted plain-text excerpts selected locally from this file.
+            Host maps them to bounded Runtime text input and never persists them.
+            UTF-8 bytes across every file block in the turn must be at most 256 KiB.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 16384
+            pattern: \S
+    StartTurnV2ContentBlock:
+      description: A closed content-block union discriminated by `type`.
+      oneOf:
+        - $ref: '#/components/schemas/StartTurnV2TextBlock'
+        - $ref: '#/components/schemas/StartTurnV2ImageBlock'
+        - $ref: '#/components/schemas/StartTurnV2FileBlock'
+      discriminator:
+        propertyName: type
+        mapping:
+          text: '#/components/schemas/StartTurnV2TextBlock'
+          image: '#/components/schemas/StartTurnV2ImageBlock'
+          file: '#/components/schemas/StartTurnV2FileBlock'
+    StartTurnV2Request:
+      type: object
+      additionalProperties: false
+      required:
+        - operation_id
+        - content_blocks
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+          description: |
+            Desktop-selected idempotency identifier scoped to this Agent session.
+            The same canonical ordered input returns the original accepted turn;
+            reuse with different input returns `turn_operation_conflict`.
+        trace_id:
+          type: string
+          description: Optional correlation identifier copied to events from this operation onward.
+        request_id:
+          type: string
+          description: Optional request correlation identifier copied to events from this operation onward.
+        tenant_id:
+          type: string
+          description: Optional correlation context only; it does not grant tenant access.
+        user_id:
+          type: string
+          description: Optional correlation context only; it does not authenticate a user.
+        content_blocks:
+          type: array
+          minItems: 1
+          maxItems: 16
+          description: |
+            Ordered Runtime input. Array order is message order and must be
+            preserved when Host maps blocks to Runtime UserInput values. The
+            request may contain at most 10 image/file blocks. Decoded image bytes
+            across all image blocks must be at most 10 MiB; UTF-8 bytes across all
+            file `context_chunks` must be at most 256 KiB. Those aggregate limits
+            are validated semantically before Runtime invocation.
+          items:
+            $ref: '#/components/schemas/StartTurnV2ContentBlock'
+        reasoning_effort:
+          type: string
+          enum:
+            - ''
+            - none
+            - high
+          x-enum-varnames:
+            - StartTurnV2ReasoningEffortEmpty
+            - StartTurnV2ReasoningEffortNone
+            - StartTurnV2ReasoningEffortHigh
+          default: none
+          description: Omit or send the empty string for `none`; clients should prefer omission, `none`, or `high`.
+    StartTurnResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - turn_id
+      properties:
+        turn_id:
+          type: string
+          format: uuid

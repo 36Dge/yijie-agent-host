@@ -85,6 +85,7 @@ type TurnFileBlock struct {
 }
 
 type StartTurnV2Input struct {
+	PermissionMode  codex.PermissionMode
 	AgentSessionID  string
 	OperationID     string
 	ContentBlocks   []TurnContentBlock
@@ -117,11 +118,24 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 	if s.fixedReasoningEffort != "" {
 		normalizedEffort = s.fixedReasoningEffort
 	}
+	if input.PermissionMode != "" {
+		validator, ok := s.runtime.(interface {
+			ValidatePermissionMode(codex.PermissionMode) error
+		})
+		if !ok || validator.ValidatePermissionMode(input.PermissionMode) != nil {
+			return codex.TurnInfo{}, ErrInvalidArgument
+		}
+		ctx = codex.WithPermissionMode(ctx, input.PermissionMode)
+	}
 	runtimeInputs, err := validateAndMapTurnV2Blocks(input.ContentBlocks)
 	if err != nil {
 		return codex.TurnInfo{}, err
 	}
-	inputDigest, err := s.store.turnV2InputDigest(input.ContentBlocks, normalizedEffort)
+	digestEffort := normalizedEffort
+	if input.PermissionMode != "" {
+		digestEffort += "\x00permission-mode:" + string(input.PermissionMode)
+	}
+	inputDigest, err := s.store.turnV2InputDigest(input.ContentBlocks, digestEffort)
 	if err != nil {
 		return codex.TurnInfo{}, err
 	}
@@ -130,6 +144,7 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 		input.OperationID,
 		inputDigest,
 		input.Trace,
+		s.requireNoRuntimeApprovalForThread,
 	)
 	if err != nil {
 		if err == ErrTurnOperationPending {

@@ -750,6 +750,7 @@ func (s *Store) BindThread(sessionID, threadID, runtimeSessionID, model, provide
 func (s *Store) PrepareTurnOperation(
 	sessionID, operationID, inputDigest string,
 	trace TraceContext,
+	admission ...func(string) error,
 ) (TurnOperation, Record, error) {
 	if !isCanonicalNonZeroUUID(operationID) || !validTurnOperationDigest(inputDigest) {
 		return TurnOperation{}, Record{}, fmt.Errorf("%w: turn operation identity is invalid", ErrInvalidArgument)
@@ -791,6 +792,11 @@ func (s *Store) PrepareTurnOperation(
 		}
 		if loaded.ActiveTurnID != "" || loaded.State == StateActive || loaded.State == StateStarting {
 			return ErrTurnActive
+		}
+		for _, check := range admission {
+			if err := check(loaded.CodexThreadID); err != nil {
+				return err
+			}
 		}
 		now := time.Now().UTC()
 		operation = TurnOperation{

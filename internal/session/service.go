@@ -438,6 +438,9 @@ func (s *Service) StartTurn(ctx context.Context, input StartTurnInput) (codex.Tu
 	if input.ReasoningEffort != "" && input.ReasoningEffort != "none" && input.ReasoningEffort != "high" {
 		return codex.TurnInfo{}, fmt.Errorf("%w: reasoning effort must be none or high", ErrInvalidArgument)
 	}
+	if err := s.requireNoRuntimeApproval(input.AgentSessionID); err != nil {
+		return codex.TurnInfo{}, err
+	}
 	record, err := s.store.PrepareTurn(input.AgentSessionID, input.Trace)
 	if err != nil {
 		return codex.TurnInfo{}, err

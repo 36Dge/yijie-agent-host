@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-152",
+  "contract_family_version": "0.1.0",
+  "contracts": {
+    "repository": "https://github.com/36Dge/yijie-contracts.git",
+    "full_commit": "0bdef80491db8263bad4d54cfe1d1950785a6b64",
+    "sources": {
+      "openapi/runtime-permissions/runtime-permissions.yaml": "0cd99d5ee3f7035bf43c0996648dc855f71a447595dcb61d903232d81b602a99",
+      "sdks/go/openapi/runtime-permissions/source.bundle.yaml": "613032548bc666f6724b62f73444ef0052f07f71af715bdc5a436da6fb887fc1",
+      "sdks/go/openapi/runtime-permissions/client.gen.go": "e1129eeb3eb1985a5be8f95aa2e4cca1a4c211fe96f3fefcc8ae1f7d8433bc2b",
+      "sdks/typescript/src/openapi/runtime-permissions.gen.ts": "70cc7af6c1102b813ef3aa501ffa86a49891194dcbf9cd3445b39d1e33167bd8",
+      "scripts/generate.mjs": "3c0cc0d335367e0f65a590bfd07f3c41abeee9939255534524c6f5d9e108e6e0"
+    }
+  },
+  "consumption": {
+    "source": "sdks/go/openapi/runtime-permissions/source.bundle.yaml",
+    "snapshot": "api/openapi/runtime-permissions.yaml",
+    "generated_types": "internal/contracts/runtimepermissions/types.gen.go",
+    "generated_types_sha256": "6f26e5e2d6b9b27b9af010021854431066de2eb35ef5f172d031c30b343934ef",
+    "generator": "github.com/oapi-codegen/oapi-codegen/v2 v2.7.2",
+    "command": "go tool oapi-codegen -generate types -package runtimepermissions api/openapi/runtime-permissions.yaml"
+  },
+  "exposure": "local/demo_fast; not a published tag"
+}

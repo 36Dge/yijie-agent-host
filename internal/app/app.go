@@ -251,6 +251,24 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		return Config{}, err
 	}
 	runtimeConfig.CommandApprovalEnabled = feat137CommandApproval
+	// FEAT-152 uses the retained native Runtime, independently of retired v6.
+	runtimeConfig.RuntimePermissionsEnabled = environment == "local" && os.Getenv("YIJIE_LOCAL_PROFILE") == "demo_fast" && os.Getenv("YIJIE_RUNTIME_PERMISSIONS_ENABLED") == "true" && runtimeConfig.MiniMax.Enabled
+	if value := os.Getenv("YIJIE_PERMISSION_VERIFICATION_BASE_URL"); value != "" {
+		// Fixed loopback meter only; the meter forwards to the normal MiniMax
+		// endpoint and never changes model request or response bodies.
+		if !runtimeConfig.RuntimePermissionsEnabled || value != "http://127.0.0.1:18083/v1" {
+			return Config{}, errors.New("permission verification meter requires the exact local profile")
+		}
+		runtimeConfig.PermissionVerificationBaseURL = value
+	}
+	runtimeConfig.PermissionVerificationPolicy, err = loadPermissionVerificationPolicy(
+		runtimeConfig.RuntimePermissionsEnabled,
+		runtimeConfig.PermissionVerificationBaseURL,
+		os.Getenv("YIJIE_PERMISSION_VERIFICATION_POLICY_FILE"),
+	)
+	if err != nil {
+		return Config{}, err
+	}
 	feat137D4DeterministicProducer, err := loadFEAT137D4DeterministicProducerProfile(feat137CommandApproval)
 	if err != nil {
 		return Config{}, err
@@ -753,6 +771,7 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 		handler := &sessionHandler{
 			service: sessions, apiToken: apiToken, heartbeatInterval: defaultSSEHeartbeatInterval,
 		}
+		registerRuntimePermissions(mux, handler, config.Runtime.RuntimePermissionsEnabled)
 		mux.Handle("POST /v1/tasks/{task_id}/agent-sessions", handler.authorize(http.HandlerFunc(handler.startSession)))
 		mux.Handle("POST /v1/agent-sessions/{agent_session_id}/resume", handler.authorize(http.HandlerFunc(handler.resumeSession)))
 		mux.Handle("GET /v1/agent-sessions/{agent_session_id}", handler.authorize(http.HandlerFunc(handler.getSession)))
