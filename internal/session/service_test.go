@@ -134,43 +134,6 @@ func TestServiceMarksOversizeReasoningUnavailableWithoutBody(t *testing.T) {
 	}
 }
 
-func TestServiceMarksSparseTerminalReasoningAsStreamGapWithContractValidPrefix(t *testing.T) {
-	v2 := NewEventHubVersion(EventSchemaVersionV2, 16, 8)
-	service := NewService(&fakeRuntime{}, nil, NewEventHub(16, 8), nil, WithV2Events(v2), WithRawReasoningProjection(true))
-	record := Record{TaskID: testTaskID, AgentSessionID: testSessionID, CodexThreadID: testThreadID}
-	if err := service.appendReasoningDelta(record, testTurnID, "reasoning-gap", 0, "verified-prefix"); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.appendReasoningDelta(record, testTurnID, "reasoning-gap", 2, "after-gap"); err != nil {
-		t.Fatal(err)
-	}
-	service.finalizeInterruptedReasoning(record, testTurnID, "completed")
-	_, replay, _, cancel, err := v2.Subscribe(testSessionID, "", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cancel()
-	finalized := replay[len(replay)-1]
-	if finalized.EventType != EventItemReasoningFinalized || finalized.Payload.Status != "incomplete" || finalized.Payload.ReasonCode != "stream_gap" {
-		t.Fatalf("unexpected sparse terminal result: %+v", finalized)
-	}
-	if finalized.Payload.Contents == nil || !reflect.DeepEqual(*finalized.Payload.Contents, []ReasoningContent{{ContentIndex: 0, Text: "verified-prefix"}}) {
-		t.Fatalf("sparse terminal result did not preserve only the valid prefix: %+v", finalized)
-	}
-	contract := compileAgentSessionEventV2Contract(t)
-	encoded, err := json.Marshal(finalized)
-	if err != nil {
-		t.Fatal(err)
-	}
-	instance, err := jsonschema.UnmarshalJSON(bytes.NewReader(encoded))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := contract.Validate(instance); err != nil {
-		t.Fatalf("sparse finalized event violates contract: %v\n%s", err, encoded)
-	}
-}
-
 func TestServiceGeneratesSanitizedIdempotentTitleWithoutDurableBody(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "host-home")
 	store, err := OpenStore(home)

@@ -55,7 +55,7 @@ var (
 )
 
 const (
-	storeSchemaVersion        = "4"
+	storeSchemaVersion        = "5"
 	feat126CwdEncodingVersion = "opaque-project-v1"
 	feat126OpaqueProjectCwd   = "feat126-s10-project"
 )
@@ -68,6 +68,11 @@ type TraceContext struct {
 }
 
 type Record struct {
+	// Operational provenance is additive. Absent fields on legacy records prove nothing.
+	NativeRevision       uint64 `json:"native_revision,omitempty"`
+	NativeTerminalTurnID string `json:"native_terminal_turn_id,omitempty"`
+	NativeTerminalStatus string `json:"native_terminal_status,omitempty"`
+
 	TaskID             string       `json:"task_id"`
 	AgentSessionID     string       `json:"agent_session_id"`
 	CodexThreadID      string       `json:"codex_thread_id,omitempty"`
@@ -207,7 +212,7 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 		}
 		metadata := tx.Bucket(metadataBucket)
 		version := metadata.Get(storeSchemaVersionKey)
-		if version != nil && string(version) != "1" && string(version) != "2" && string(version) != "3" && string(version) != storeSchemaVersion {
+		if version != nil && string(version) != "1" && string(version) != "2" && string(version) != "3" && string(version) != "4" && string(version) != storeSchemaVersion {
 			return fmt.Errorf("unsupported Agent Host store schema version %q", version)
 		}
 		if version == nil || string(version) != storeSchemaVersion {
@@ -315,10 +320,10 @@ func (s *Store) validateExistingFEAT126Store(tx *bolt.Tx) error {
 	}
 	metadata := tx.Bucket(metadataBucket)
 	version := string(metadata.Get(storeSchemaVersionKey))
-	if version != "3" && version != storeSchemaVersion {
+	if version != "3" && version != "4" && version != storeSchemaVersion {
 		return errors.New("pre-existing FEAT-126 session store has an unsupported schema")
 	}
-	if version == storeSchemaVersion && tx.Bucket(turnOperationsBucket) == nil {
+	if (version == "4" || version == storeSchemaVersion) && tx.Bucket(turnOperationsBucket) == nil {
 		return errors.New("pre-existing FEAT-126 session store is incomplete")
 	}
 	if string(metadata.Get(feat126CwdEncodingKey)) != feat126CwdEncodingVersion ||
@@ -873,6 +878,7 @@ func (s *Store) AcceptTurnOperation(
 			record.ActiveTurnID = turnID
 			record.State = StateActive
 		}
+		record.NativeRevision++
 		now := time.Now().UTC()
 		record.UpdatedAt = now
 		operation.State = TurnOperationStateAccepted
@@ -982,6 +988,7 @@ func (s *Store) BindTurn(sessionID, turnID string) (Record, error) {
 		if record.ActiveTurnID != "" && record.ActiveTurnID != turnID {
 			return ErrTurnActive
 		}
+		record.NativeRevision++
 		record.ActiveTurnID = turnID
 		record.State = StateActive
 		return nil
@@ -1001,6 +1008,9 @@ func (s *Store) TurnStartFailed(sessionID, failureCode string) (Record, error) {
 }
 
 func (s *Store) CompleteTurn(sessionID, turnID, status string) (Record, error) {
+	if status != "completed" && status != "failed" && status != "interrupted" {
+		return Record{}, ErrInvalidArgument
+	}
 	return s.update(sessionID, func(record *Record) error {
 		if record.State == StateCleaning || record.CleanupOperationID != "" {
 			return ErrSessionNotUsable
@@ -1008,6 +1018,9 @@ func (s *Store) CompleteTurn(sessionID, turnID, status string) (Record, error) {
 		if record.ActiveTurnID != "" && record.ActiveTurnID != turnID {
 			return ErrTurnNotActive
 		}
+		record.NativeRevision++
+		record.NativeTerminalTurnID = turnID
+		record.NativeTerminalStatus = status
 		record.ActiveTurnID = ""
 		record.LastTurnID = turnID
 		record.LastTurnStatus = status
@@ -1039,6 +1052,7 @@ func (s *Store) Resume(
 	sessionID string,
 	trace TraceContext,
 	runtimeSessionID, activeTurnID, lastTurnID, lastStatus string,
+	expectedNativeRevision ...uint64,
 ) (Record, error) {
 	return s.update(sessionID, func(record *Record) error {
 		if record.State == StateCleaning || record.CleanupOperationID != "" {
@@ -1047,6 +1061,16 @@ func (s *Store) Resume(
 		record.Trace = trace
 		if runtimeSessionID != "" {
 			record.RuntimeSessionID = runtimeSessionID
+		}
+		// A notification received while resume was in flight is newer than that read.
+		if len(expectedNativeRevision) > 0 && record.NativeRevision != expectedNativeRevision[0] {
+			return nil
+		}
+		if lastTurnID == record.NativeTerminalTurnID && record.NativeTerminalStatus != "" {
+			lastStatus = record.NativeTerminalStatus
+			if activeTurnID == lastTurnID {
+				activeTurnID = ""
+			}
 		}
 		record.ActiveTurnID = activeTurnID
 		record.LastTurnID = lastTurnID

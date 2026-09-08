@@ -143,192 +143,49 @@ func isV5GenericItemType(value string) bool {
 	}
 }
 
-func (s *Service) publishV5Lifecycle(
-	record Record,
-	method string,
-	raw json.RawMessage,
-	envelope itemNotification,
-) error {
+func (s *Service) publishV5Lifecycle(record Record, method string, raw json.RawMessage, envelope itemNotification) error {
 	if s.eventsV5 == nil && s.eventsV6 == nil {
 		return nil
 	}
-	// A terminal Turn is the final authority. Late lifecycle notifications must
-	// never recreate running Items after turn.completed cleared the live state.
-	if record.ActiveTurnID == "" || record.ActiveTurnID != envelope.TurnID {
-		return nil
+	var notification v5LifecycleNotification
+	if err := json.Unmarshal(raw, &notification); err != nil {
+		return err
+	}
+	if notification.ThreadID != envelope.ThreadID || notification.TurnID != envelope.TurnID || notification.Item.ID != envelope.Item.ID || notification.Item.Type != envelope.Item.Type {
+		return errors.New("invalid lifecycle identity")
 	}
 	key := v5ItemKey{sessionID: record.AgentSessionID, turnID: envelope.TurnID, itemID: envelope.Item.ID}
 	s.v5ItemsMu.Lock()
 	defer s.v5ItemsMu.Unlock()
-
-	state := s.v5Items[key]
 	if method == RuntimeNotificationItemStarted {
-		if state != nil {
-			return nil
-		}
-	}
-
-	var notification v5LifecycleNotification
-	if err := json.Unmarshal(raw, &notification); err != nil ||
-		notification.ThreadID != envelope.ThreadID || notification.TurnID != envelope.TurnID ||
-		notification.Item.ID != envelope.Item.ID || notification.Item.Type != envelope.Item.Type {
-		return s.publishV5ProtocolFailureLocked(record, method, key, envelope.Item.Type, state)
-	}
-
-	if method == RuntimeNotificationItemStarted {
-		created, event, err := newV5StartedProjection(record, notification)
+		state, event, err := newV5StartedProjection(record, notification)
 		if err != nil {
-			return s.publishV5ProtocolFailureLocked(record, method, key, envelope.Item.Type, nil)
-		}
-		s.v5Items[key] = created
-		if err := s.publishV5Projection(event); err != nil {
-			delete(s.v5Items, key)
 			return err
 		}
-		return nil
-	}
-
-	if method != RuntimeNotificationItemCompleted {
-		return errors.New("unsupported v5 lifecycle method")
-	}
-	if state == nil {
-		recovered, started, err := newV5RecoveredStartedProjection(record, notification)
-		if err != nil {
-			return s.publishV5ProtocolFailureLocked(record, method, key, envelope.Item.Type, nil)
+		// Only actual started/completed observations support old approval identity checks.
+		if old := s.v5Items[key]; old != nil {
+			state.liveBytes = old.liveBytes
+			state.liveCapped = old.liveCapped
+			state.liveContinued = old.liveContinued
+			state.progressCount = old.progressCount
+			state.progressBytes = old.progressBytes
+			state.sealed = old.sealed
 		}
-		s.v5Items[key] = recovered
-		if err := s.publishV5Projection(started); err != nil {
-			delete(s.v5Items, key)
-			return err
-		}
-		state = recovered
-	}
-	if state.sealed {
-		return nil
-	}
-	if state.kind != notification.Item.Type {
-		event := newV5ProtocolCompleted(record, notification.TurnID, notification.Item.ID, state)
-		state.sealed = true
-		if err := s.publishV5Projection(event); err != nil {
-			state.sealed = false
-			return err
-		}
-		return nil
-	}
-	event, err := newV5CompletedProjection(record, notification, state)
-	if err != nil {
-		event = newV5ProtocolCompleted(record, notification.TurnID, notification.Item.ID, state)
-	}
-	state.sealed = true
-	if err := s.publishV5Projection(event); err != nil {
-		state.sealed = false
-		return err
-	}
-	return nil
-}
-
-func (s *Service) publishV5ProtocolFailureLocked(
-	record Record,
-	method string,
-	key v5ItemKey,
-	kind string,
-	state *v5ItemState,
-) error {
-	if state == nil {
-		state = fallbackV5ItemState(kind)
-		if state == nil {
-			return errors.New("unsupported malformed v5 lifecycle item type")
-		}
-		started := fallbackV5StartedEvent(record, key.turnID, key.itemID, state)
 		s.v5Items[key] = state
-		if err := s.publishV5Projection(started); err != nil {
-			delete(s.v5Items, key)
-			return err
-		}
-	} else if method == RuntimeNotificationItemStarted {
-		return nil
+		return s.publishV5Projection(event)
 	}
-	if state.sealed {
-		return nil
+	if method != RuntimeNotificationItemCompleted {
+		return errors.New("unsupported lifecycle method")
 	}
-	completed := newV5ProtocolCompleted(record, key.turnID, key.itemID, state)
-	state.sealed = true
-	if err := s.publishV5Projection(completed); err != nil {
-		state.sealed = false
+	state := s.v5Items[key]
+	if state != nil {
+		state.sealed = true
+	}
+	event, err := newV5CompletedProjection(record, notification, &v5ItemState{kind: notification.Item.Type})
+	if err != nil {
 		return err
 	}
-	return nil
-}
-
-func fallbackV5ItemState(kind string) *v5ItemState {
-	state := &v5ItemState{kind: kind}
-	switch kind {
-	case "commandExecution":
-		state.command = boundedV5Summary("执行命令", maxV5CommandSummaryBytes)
-		state.cwd = CommandCwd{Kind: "redacted"}
-	case "mcpToolCall":
-		state.identity = unknownV5ToolIdentity()
-		state.arguments = boundedV5Summary("参数不可用", maxV5ToolArgumentsBytes)
-	default:
-		return nil
-	}
-	return state
-}
-
-func fallbackV5StartedEvent(record Record, turnID, itemID string, state *v5ItemState) Event {
-	payload := EventPayload{ItemType: state.kind}
-	if state.kind == "commandExecution" {
-		payload.Status = "running"
-		payload.CommandSummary = &state.command
-		payload.CommandCwd = &state.cwd
-	} else {
-		payload.Status = "in_progress"
-		payload.ToolIdentity = &state.identity
-		payload.ArgumentsSummary = &state.arguments
-	}
-	return decoratedV5ItemEvent(record, turnID, itemID, EventItemStarted, payload)
-}
-
-func newV5RecoveredStartedProjection(record Record, notification v5LifecycleNotification) (*v5ItemState, Event, error) {
-	state := &v5ItemState{kind: notification.Item.Type}
-	payload := EventPayload{ItemType: notification.Item.Type}
-	switch notification.Item.Type {
-	case "commandExecution":
-		state.command = v5CommandSummary(notification)
-		state.cwd = v5CommandCwd(record.Cwd, notification.Item.Cwd)
-		payload.Status = "running"
-		payload.CommandSummary = &state.command
-		payload.CommandCwd = &state.cwd
-	case "mcpToolCall":
-		arguments, err := v5JSONMetadataSummary(notification.Item.Arguments, "参数")
-		if err != nil {
-			return nil, Event{}, errors.New("tool completed lifecycle has invalid arguments")
-		}
-		state.identity = unknownV5ToolIdentity()
-		state.arguments = boundedV5Summary(arguments, maxV5ToolArgumentsBytes)
-		payload.Status = "in_progress"
-		payload.ToolIdentity = &state.identity
-		payload.ArgumentsSummary = &state.arguments
-	default:
-		return nil, Event{}, errors.New("unsupported recovered v5 lifecycle item type")
-	}
-	return state, decoratedV5ItemEvent(record, notification.TurnID, notification.Item.ID, EventItemStarted, payload), nil
-}
-
-func newV5ProtocolCompleted(record Record, turnID, itemID string, state *v5ItemState) Event {
-	payload := EventPayload{ItemType: state.kind, Status: "failed"}
-	if state.kind == "commandExecution" {
-		output := CommandOutput{Retention: "unavailable", Reason: "not_available"}
-		payload.CommandSummary = &state.command
-		payload.CommandCwd = &state.cwd
-		payload.Output = &output
-		payload.ItemError = &ProjectionError{Code: "protocol_error", Summary: "命令生命周期发生冲突"}
-	} else {
-		payload.ToolIdentity = &state.identity
-		payload.ArgumentsSummary = &state.arguments
-		payload.ItemError = &ProjectionError{Code: "protocol_error", Summary: "工具生命周期发生冲突"}
-	}
-	return decoratedV5ItemEvent(record, turnID, itemID, EventItemCompleted, payload)
+	return s.publishV5Projection(event)
 }
 
 func newV5StartedProjection(record Record, notification v5LifecycleNotification) (*v5ItemState, Event, error) {
@@ -382,10 +239,7 @@ func newV5CommandCompleted(record Record, notification v5LifecycleNotification, 
 	command := v5CommandSummary(notification)
 	cwd := v5CommandCwd(record.Cwd, notification.Item.Cwd)
 	duration := validV5Duration(notification.Item.DurationMS)
-	if notification.Item.DurationMS != nil && duration == nil {
-		status = "failed"
-		projectionError = &ProjectionError{Code: "protocol_error", Summary: "命令完成信息无效"}
-	}
+
 	payload := EventPayload{
 		ItemType:       "commandExecution",
 		Status:         status,
@@ -401,7 +255,7 @@ func newV5CommandCompleted(record Record, notification v5LifecycleNotification, 
 
 func v5CommandTerminalStatus(status *string) (string, *ProjectionError) {
 	if status == nil {
-		return "failed", &ProjectionError{Code: "protocol_error", Summary: "命令完成状态缺失"}
+		return "", nil
 	}
 	switch *status {
 	case "completed":
@@ -411,61 +265,33 @@ func v5CommandTerminalStatus(status *string) (string, *ProjectionError) {
 	case "declined":
 		return "declined", &ProjectionError{Code: "command_declined", Summary: "命令未获执行"}
 	default:
-		return "failed", &ProjectionError{Code: "protocol_error", Summary: "命令完成状态无效"}
+		return "", nil
 	}
 }
 
-func newV5ToolCompleted(record Record, notification v5LifecycleNotification, state *v5ItemState) Event {
-	status := "failed"
+func newV5ToolCompleted(record Record, notification v5LifecycleNotification, _ *v5ItemState) Event {
+	status := ""
 	var projectionError *ProjectionError
-	var resultSummary *BoundedSummary
-	argumentsSummary := state.arguments
-	arguments, argumentsErr := v5JSONMetadataSummary(notification.Item.Arguments, "参数")
-	if argumentsErr == nil {
-		argumentsSummary = boundedV5Summary(arguments, maxV5ToolArgumentsBytes)
-	} else {
-		projectionError = &ProjectionError{Code: "protocol_error", Summary: "工具完成参数无效"}
-	}
-	if notification.Item.Status == nil {
-		projectionError = &ProjectionError{Code: "protocol_error", Summary: "工具完成状态缺失"}
-	} else if argumentsErr == nil {
+	if notification.Item.Status != nil {
 		switch *notification.Item.Status {
 		case "completed":
-			if summary, err := v5JSONMetadataSummary(notification.Item.Result, "结果"); err == nil {
-				bounded := boundedV5Summary(summary, maxV5ToolResultBytes)
-				resultSummary = &bounded
-				status = "completed"
-			} else {
-				projectionError = &ProjectionError{Code: "protocol_error", Summary: "工具完成结果无效"}
-			}
+			status = "completed"
 		case "failed":
+			status = "failed"
 			projectionError = &ProjectionError{Code: "tool_failed", Summary: "工具执行失败"}
-			if len(bytes.TrimSpace(notification.Item.Result)) > 0 && string(bytes.TrimSpace(notification.Item.Result)) != "null" {
-				if summary, err := v5JSONMetadataSummary(notification.Item.Result, "结果"); err == nil {
-					bounded := boundedV5Summary(summary, maxV5ToolResultBytes)
-					resultSummary = &bounded
-				}
-			}
-		default:
-			projectionError = &ProjectionError{Code: "protocol_error", Summary: "工具完成状态无效"}
 		}
 	}
-	duration := validV5Duration(notification.Item.DurationMS)
-	if notification.Item.DurationMS != nil && duration == nil {
-		status = "failed"
-		resultSummary = nil
-		projectionError = &ProjectionError{Code: "protocol_error", Summary: "工具完成信息无效"}
+	identity := unknownV5ToolIdentity()
+	argumentsSummary := boundedV5Summary("参数信息不可用", maxV5ToolArgumentsBytes)
+	if text, err := v5JSONMetadataSummary(notification.Item.Arguments, "参数"); err == nil {
+		argumentsSummary = boundedV5Summary(text, maxV5ToolArgumentsBytes)
 	}
-	payload := EventPayload{
-		ItemType:         "mcpToolCall",
-		Status:           status,
-		ToolIdentity:     &state.identity,
-		ArgumentsSummary: &argumentsSummary,
-		DurationMS:       duration,
-		ResultSummary:    resultSummary,
-		ItemError:        projectionError,
+	var resultSummary *BoundedSummary
+	if text, err := v5JSONMetadataSummary(notification.Item.Result, "结果"); err == nil && len(bytes.TrimSpace(notification.Item.Result)) > 0 && string(bytes.TrimSpace(notification.Item.Result)) != "null" {
+		bounded := boundedV5Summary(text, maxV5ToolResultBytes)
+		resultSummary = &bounded
 	}
-	return decoratedV5ItemEvent(record, notification.TurnID, notification.Item.ID, EventItemCompleted, payload)
+	return decoratedV5ItemEvent(record, notification.TurnID, notification.Item.ID, EventItemCompleted, EventPayload{ItemType: "mcpToolCall", Status: status, ToolIdentity: &identity, ArgumentsSummary: &argumentsSummary, ResultSummary: resultSummary, DurationMS: validV5Duration(notification.Item.DurationMS), ItemError: projectionError})
 }
 
 func (s *Service) publishV5CommandDelta(record Record, notification commandOutputDeltaNotification) error {

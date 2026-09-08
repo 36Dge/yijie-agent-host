@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"errors"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversation"
 	"sync"
 	"time"
 )
@@ -28,62 +29,63 @@ var (
 )
 
 type EventPayload struct {
-	Model             string              `json:"model,omitempty"`
-	ModelProvider     string              `json:"model_provider,omitempty"`
-	Status            string              `json:"status,omitempty"`
-	ItemType          string              `json:"item_type,omitempty"`
-	Text              *string             `json:"text,omitempty"`
-	V4Text            *string             `json:"-"`
-	Phase             **string            `json:"phase,omitempty"`
-	Delta             *string             `json:"delta,omitempty"`
-	Code              string              `json:"code,omitempty"`
-	Message           *string             `json:"message,omitempty"`
-	V4Message         *string             `json:"-"`
-	WillRetry         *bool               `json:"will_retry,omitempty"`
-	ContentIndex      *int                `json:"content_index,omitempty"`
-	Contents          *[]ReasoningContent `json:"contents,omitempty"`
-	ReasonCode        string              `json:"reason_code,omitempty"`
-	ArtifactID        string              `json:"artifact_id,omitempty"`
-	Kind              string              `json:"kind,omitempty"`
-	Provenance        string              `json:"provenance,omitempty"`
-	Ordinal           *int                `json:"ordinal,omitempty"`
-	DisplayName       string              `json:"display_name,omitempty"`
-	Stage             string              `json:"stage,omitempty"`
-	Progress          *int                `json:"progress_percent,omitempty"`
-	MediaType         string              `json:"media_type,omitempty"`
-	SizeBytes         *int64              `json:"size_bytes,omitempty"`
-	SHA256            string              `json:"sha256,omitempty"`
-	ContentHref       string              `json:"content_href,omitempty"`
-	PosterHref        string              `json:"poster_href,omitempty"`
-	ErrorCode         string              `json:"error_code,omitempty"`
-	Retryable         *bool               `json:"retryable,omitempty"`
-	Explanation       **string            `json:"explanation,omitempty"`
-	Plan              *[]PlanStep         `json:"plan,omitempty"`
-	CommandSummary    *BoundedSummary     `json:"command_summary,omitempty"`
-	CommandCwd        *CommandCwd         `json:"cwd,omitempty"`
-	DurationMS        *int64              `json:"duration_ms,omitempty"`
-	ExitCode          *int32              `json:"exit_code,omitempty"`
-	Output            *CommandOutput      `json:"output,omitempty"`
-	ItemError         *ProjectionError    `json:"error,omitempty"`
-	ToolIdentity      *ToolIdentity       `json:"identity,omitempty"`
-	ArgumentsSummary  *BoundedSummary     `json:"arguments_summary,omitempty"`
-	ProgressIndex     *int                `json:"progress_index,omitempty"`
-	Summary           *BoundedSummary     `json:"summary,omitempty"`
-	ResultSummary     *BoundedSummary     `json:"result_summary,omitempty"`
-	Truncated         *bool               `json:"truncated,omitempty"`
-	TruncationReason  string              `json:"truncation_reason,omitempty"`
-	ApprovalRequestID string              `json:"approval_request_id,omitempty"`
-	Revision          *int64              `json:"revision,omitempty"`
-	ActionID          string              `json:"action_id,omitempty"`
-	WorkspaceScope    string              `json:"workspace_scope,omitempty"`
-	Decisions         *ApprovalDecisions  `json:"decisions,omitempty"`
-	RequestedAt       *time.Time          `json:"requested_at,omitempty"`
-	ExpiresAt         *time.Time          `json:"expires_at,omitempty"`
-	TTLSeconds        *int                `json:"ttl_seconds,omitempty"`
-	Outcome           string              `json:"outcome,omitempty"`
-	DecisionID        string              `json:"decision_id,omitempty"`
-	Decision          string              `json:"decision,omitempty"`
-	ResolvedAt        *time.Time          `json:"resolved_at,omitempty"`
+	Native            *native.NativeNotification `json:"native,omitempty"`
+	Model             string                     `json:"model,omitempty"`
+	ModelProvider     string                     `json:"model_provider,omitempty"`
+	Status            string                     `json:"status,omitempty"`
+	ItemType          string                     `json:"item_type,omitempty"`
+	Text              *string                    `json:"text,omitempty"`
+	V4Text            *string                    `json:"-"`
+	Phase             **string                   `json:"phase,omitempty"`
+	Delta             *string                    `json:"delta,omitempty"`
+	Code              string                     `json:"code,omitempty"`
+	Message           *string                    `json:"message,omitempty"`
+	V4Message         *string                    `json:"-"`
+	WillRetry         *bool                      `json:"will_retry,omitempty"`
+	ContentIndex      *int                       `json:"content_index,omitempty"`
+	Contents          *[]ReasoningContent        `json:"contents,omitempty"`
+	ReasonCode        string                     `json:"reason_code,omitempty"`
+	ArtifactID        string                     `json:"artifact_id,omitempty"`
+	Kind              string                     `json:"kind,omitempty"`
+	Provenance        string                     `json:"provenance,omitempty"`
+	Ordinal           *int                       `json:"ordinal,omitempty"`
+	DisplayName       string                     `json:"display_name,omitempty"`
+	Stage             string                     `json:"stage,omitempty"`
+	Progress          *int                       `json:"progress_percent,omitempty"`
+	MediaType         string                     `json:"media_type,omitempty"`
+	SizeBytes         *int64                     `json:"size_bytes,omitempty"`
+	SHA256            string                     `json:"sha256,omitempty"`
+	ContentHref       string                     `json:"content_href,omitempty"`
+	PosterHref        string                     `json:"poster_href,omitempty"`
+	ErrorCode         string                     `json:"error_code,omitempty"`
+	Retryable         *bool                      `json:"retryable,omitempty"`
+	Explanation       **string                   `json:"explanation,omitempty"`
+	Plan              *[]PlanStep                `json:"plan,omitempty"`
+	CommandSummary    *BoundedSummary            `json:"command_summary,omitempty"`
+	CommandCwd        *CommandCwd                `json:"cwd,omitempty"`
+	DurationMS        *int64                     `json:"duration_ms,omitempty"`
+	ExitCode          *int32                     `json:"exit_code,omitempty"`
+	Output            *CommandOutput             `json:"output,omitempty"`
+	ItemError         *ProjectionError           `json:"error,omitempty"`
+	ToolIdentity      *ToolIdentity              `json:"identity,omitempty"`
+	ArgumentsSummary  *BoundedSummary            `json:"arguments_summary,omitempty"`
+	ProgressIndex     *int                       `json:"progress_index,omitempty"`
+	Summary           *BoundedSummary            `json:"summary,omitempty"`
+	ResultSummary     *BoundedSummary            `json:"result_summary,omitempty"`
+	Truncated         *bool                      `json:"truncated,omitempty"`
+	TruncationReason  string                     `json:"truncation_reason,omitempty"`
+	ApprovalRequestID string                     `json:"approval_request_id,omitempty"`
+	Revision          *int64                     `json:"revision,omitempty"`
+	ActionID          string                     `json:"action_id,omitempty"`
+	WorkspaceScope    string                     `json:"workspace_scope,omitempty"`
+	Decisions         *ApprovalDecisions         `json:"decisions,omitempty"`
+	RequestedAt       *time.Time                 `json:"requested_at,omitempty"`
+	ExpiresAt         *time.Time                 `json:"expires_at,omitempty"`
+	TTLSeconds        *int                       `json:"ttl_seconds,omitempty"`
+	Outcome           string                     `json:"outcome,omitempty"`
+	DecisionID        string                     `json:"decision_id,omitempty"`
+	Decision          string                     `json:"decision,omitempty"`
+	ResolvedAt        *time.Time                 `json:"resolved_at,omitempty"`
 }
 
 type ApprovalDecisions struct {
@@ -180,7 +182,7 @@ func NewEventHub(capacity, subscriberCapacity int) *EventHub {
 func NewEventHubVersion(schemaVersion, capacity, subscriberCapacity int) *EventHub {
 	if schemaVersion != EventSchemaVersionV2 && schemaVersion != EventSchemaVersionV3 &&
 		schemaVersion != EventSchemaVersionV4 && schemaVersion != EventSchemaVersionV5 &&
-		schemaVersion != EventSchemaVersionV6 {
+		schemaVersion != EventSchemaVersionV6 && schemaVersion != 7 {
 		schemaVersion = EventSchemaVersion
 	}
 	if capacity < 1 {
@@ -213,6 +215,18 @@ func (h *EventHub) Publish(event Event) (Event, error) {
 	event.StreamID = stream.id
 	event.Sequence = stream.next + 1
 	event.OccurredAt = time.Now().UTC()
+	if h.schemaVersion == 7 {
+		if event.Payload.Native == nil || event.EventType != "native.notification" {
+			return Event{}, ErrEventLimitExceeded
+		}
+		encoded, err := json.Marshal(event)
+		if err != nil {
+			return Event{}, err
+		}
+		if len(encoded) > maxRetainedEventDataBytes {
+			return Event{}, ErrEventLimitExceeded
+		}
+	}
 	if h.schemaVersion == EventSchemaVersionV4 || h.schemaVersion == EventSchemaVersionV5 ||
 		h.schemaVersion == EventSchemaVersionV6 {
 		var validateErr error

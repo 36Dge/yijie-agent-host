@@ -168,7 +168,7 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 		)
 		return codex.TurnInfo{}, err
 	}
-	turn, err := runtime.StartTurnV2(ctx, record.CodexThreadID, runtimeInputs, normalizedEffort)
+	turn, err := runtime.StartTurnV2(codex.WithClientUserMessageID(ctx, input.OperationID), record.CodexThreadID, runtimeInputs, normalizedEffort)
 	if err != nil {
 		s.clearImageTurn(record.CodexThreadID)
 		s.abortSyntheticTerminalBarrier(input.AgentSessionID)

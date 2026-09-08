@@ -772,6 +772,9 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 			service: sessions, apiToken: apiToken, heartbeatInterval: defaultSSEHeartbeatInterval,
 		}
 		registerRuntimePermissions(mux, handler, config.Runtime.RuntimePermissionsEnabled)
+		if config.Environment == "local" {
+			registerNativeConversation(mux, handler)
+		}
 		mux.Handle("POST /v1/tasks/{task_id}/agent-sessions", handler.authorize(http.HandlerFunc(handler.startSession)))
 		mux.Handle("POST /v1/agent-sessions/{agent_session_id}/resume", handler.authorize(http.HandlerFunc(handler.resumeSession)))
 		mux.Handle("GET /v1/agent-sessions/{agent_session_id}", handler.authorize(http.HandlerFunc(handler.getSession)))

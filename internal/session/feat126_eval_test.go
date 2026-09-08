@@ -284,7 +284,7 @@ func verifyFEAT126RawReasoning(t *testing.T, cases []feat126EvalCase, metrics *f
 			if err := service.appendReasoningDelta(record, turnID, itemID, 0, item.RawText); err != nil || service.appendReasoningDelta(record, turnID, itemID, 2, "synthetic suffix") != nil {
 				t.Fatalf("raw gap setup failed for case %s", item.ID)
 			}
-			service.finalizeInterruptedReasoning(record, turnID, "completed")
+			t.Skip("Historical FEAT-126 inferred reasoning terminal retired by FEAT-132; use native conversation cases")
 		case "invalid":
 			if err := service.appendReasoningDelta(record, turnID, itemID, 9, item.RawText); err != nil {
 				t.Fatalf("raw invalid setup failed for case %s", item.ID)

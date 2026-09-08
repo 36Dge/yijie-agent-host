@@ -52,6 +52,17 @@ func SupportedSessionRuntimeMethods() []string {
 	return append([]string(nil), sessionRuntimeMethods...)
 }
 
+type clientUserMessageIDKey struct{}
+
+// This native field correlates UI input. It is not a Runtime idempotency key or Item ID.
+func WithClientUserMessageID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, clientUserMessageIDKey{}, id)
+}
+func clientUserMessageID(ctx context.Context) string {
+	value, _ := ctx.Value(clientUserMessageIDKey{}).(string)
+	return value
+}
+
 type NotificationHandler func(method string, params json.RawMessage)
 
 type DynamicToolCall struct {
@@ -197,8 +208,10 @@ type threadWire struct {
 }
 
 type turnWire struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
+	ID     string            `json:"id"`
+	Status string            `json:"status"`
+	Items  []json.RawMessage `json:"items"`
+	Error  json.RawMessage   `json:"error"`
 }
 
 type threadResponse struct {
@@ -563,6 +576,30 @@ func (m *Manager) ResumeThread(ctx context.Context, threadID string) (ThreadInfo
 	return thread, nil
 }
 
+// ReadThread uses the stable, side-effect-free native history API. Raw Items
+// remain process-local until the session adapter projects its closed safe fields.
+func (m *Manager) ReadThread(ctx context.Context, threadID string) (json.RawMessage, error) {
+	if threadID == "" {
+		return nil, errors.New("Codex thread id is required")
+	}
+	var response struct {
+		Thread json.RawMessage `json:"thread"`
+	}
+	if err := m.request(ctx, "thread/read", struct {
+		ThreadID     string `json:"threadId"`
+		IncludeTurns bool   `json:"includeTurns"`
+	}{threadID, true}, &response); err != nil {
+		return nil, err
+	}
+	var identity struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(response.Thread, &identity) != nil || identity.ID != threadID {
+		return nil, errors.New("thread/read returned an unexpected thread id")
+	}
+	return response.Thread, nil
+}
+
 func (m *Manager) StartTurn(
 	ctx context.Context,
 	threadID string,
@@ -641,14 +678,15 @@ func (m *Manager) StartTurnV2(
 		wireInputs = append(wireInputs, wire)
 	}
 	params := struct {
-		ThreadID          string  `json:"threadId"`
-		Input             []any   `json:"input"`
-		Effort            string  `json:"effort"`
-		ApprovalPolicy    *string `json:"approvalPolicy,omitempty"`
-		SandboxPolicy     any     `json:"sandboxPolicy,omitempty"`
-		ApprovalsReviewer *string `json:"approvalsReviewer,omitempty"`
+		ClientUserMessageID string  `json:"clientUserMessageId,omitempty"`
+		ThreadID            string  `json:"threadId"`
+		Input               []any   `json:"input"`
+		Effort              string  `json:"effort"`
+		ApprovalPolicy      *string `json:"approvalPolicy,omitempty"`
+		SandboxPolicy       any     `json:"sandboxPolicy,omitempty"`
+		ApprovalsReviewer   *string `json:"approvalsReviewer,omitempty"`
 	}{
-		ThreadID: threadID, Input: wireInputs, Effort: reasoningEffort,
+		ThreadID: threadID, Input: wireInputs, Effort: reasoningEffort, ClientUserMessageID: clientUserMessageID(ctx),
 	}
 	if m.config.CommandApprovalEnabled {
 		approvalPolicy := m.sessionApprovalPolicy()

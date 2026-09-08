@@ -25,20 +25,6 @@ const (
 	v4ProjectionLimitMessage = "agent event exceeded local projection limit"
 )
 
-type v4TurnKey struct {
-	sessionID string
-	turnID    string
-}
-
-type v4TurnState struct {
-	projectionFailed  bool
-	terminalPublished bool
-	agentPhases       map[string]*string
-	agentPhaseOrder   []string
-	reasoningItems    map[string]struct{}
-	reasoningLimited  map[string]struct{}
-}
-
 func nullableString(value *string) **string {
 	return &value
 }
@@ -65,26 +51,8 @@ func (s *Service) publishV4(record Record, event Event) error {
 		event.Payload.V4Message = nil
 	}
 
-	if event.TurnID != "" && s.v4TurnProjectionFailed(record.AgentSessionID, event.TurnID) {
-		if event.Terminal {
-			return s.publishV4SanitizedTerminal(record, event.TurnID)
-		}
-		return nil
-	}
 	if err := validateV4Event(event); err != nil {
 		return s.rejectV4Event(record, event)
-	}
-	if event.EventType == EventItemAgentMessageDelta &&
-		!s.hasV4AgentLifecycle(record.AgentSessionID, event.TurnID, event.ItemID) {
-		return s.rejectV4Event(record, event)
-	}
-	if (event.EventType == EventItemReasoningTextDelta || event.EventType == EventItemReasoningFinalized) &&
-		!s.admitV4ReasoningItem(record.AgentSessionID, event.TurnID, event.ItemID) {
-		return s.publishV4ReasoningLimit(record, event.TurnID, event.ItemID)
-	}
-	if event.Payload.ItemType == "agentMessage" &&
-		(event.EventType == EventItemStarted || event.EventType == EventItemCompleted) {
-		s.rememberV4AgentPhase(record.AgentSessionID, event.TurnID, event.ItemID, *event.Payload.Phase)
 	}
 	if _, err := s.publishV4Projection(event); err != nil {
 		if errors.Is(err, ErrEventLimitExceeded) {
@@ -92,72 +60,15 @@ func (s *Service) publishV4(record Record, event Event) error {
 		}
 		return err
 	}
-	if event.Terminal {
-		s.clearV4Turn(record.AgentSessionID, event.TurnID)
-	}
 	return nil
 }
 
+// A compatibility projection problem carries no execution result.
 func (s *Service) rejectV4Event(record Record, event Event) error {
-	if event.TurnID == "" {
-		if event.EventType != EventWarning {
-			return ErrEventLimitExceeded
-		}
-		willRetry := false
-		warning := Event{
-			EventType: EventWarning,
-			Payload: EventPayload{
-				Code:      v4ProjectionLimitCode,
-				Message:   stringPointer(v4ProjectionLimitMessage),
-				WillRetry: &willRetry,
-			},
-		}
-		decorateV4ProblemEvent(record, &warning)
-		_, err := s.publishV4Projection(warning)
-		return err
-	}
-
-	first := s.markV4TurnProjectionFailed(record.AgentSessionID, event.TurnID)
-	if event.Terminal {
-		return s.publishV4SanitizedTerminal(record, event.TurnID)
-	}
-	if !first {
-		return nil
-	}
 	willRetry := false
-	problem := Event{
-		TurnID:    event.TurnID,
-		EventType: EventError,
-		Payload: EventPayload{
-			Code:      v4ProjectionLimitCode,
-			Message:   stringPointer(v4ProjectionLimitMessage),
-			WillRetry: &willRetry,
-		},
-	}
+	problem := Event{EventType: EventWarning, Payload: EventPayload{Code: v4ProjectionLimitCode, Message: stringPointer(v4ProjectionLimitMessage), WillRetry: &willRetry}}
 	decorateV4ProblemEvent(record, &problem)
 	_, err := s.publishV4Projection(problem)
-	return err
-}
-
-func (s *Service) publishV4SanitizedTerminal(record Record, turnID string) error {
-	if !s.beginV4SanitizedTerminal(record.AgentSessionID, turnID) {
-		return nil
-	}
-	terminal := Event{
-		TurnID:    turnID,
-		EventType: EventTurnCompleted,
-		Terminal:  true,
-		Payload: EventPayload{
-			Status:  "failed",
-			Code:    v4ProjectionLimitCode,
-			Message: stringPointer(v4ProjectionLimitMessage),
-		},
-	}
-	decorateV4ProblemEvent(record, &terminal)
-	_, err := s.publishV4Projection(terminal)
-	if err != nil {
-		s.rollbackV4SanitizedTerminal(record.AgentSessionID, turnID)
-	}
 	return err
 }
 
@@ -175,191 +86,6 @@ func decorateV4ProblemEvent(record Record, event *Event) {
 	if utf8.RuneCountInString(event.UserID) > maxV4IdentityRunes {
 		event.UserID = ""
 	}
-}
-
-func (s *Service) v4TurnProjectionFailed(sessionID, turnID string) bool {
-	s.v4Mu.Lock()
-	defer s.v4Mu.Unlock()
-	state := s.v4Turns[v4TurnKey{sessionID: sessionID, turnID: turnID}]
-	return state != nil && state.projectionFailed
-}
-
-func (s *Service) markV4TurnProjectionFailed(sessionID, turnID string) bool {
-	s.v4Mu.Lock()
-	defer s.v4Mu.Unlock()
-	key := v4TurnKey{sessionID: sessionID, turnID: turnID}
-	state := s.v4Turns[key]
-	if state == nil {
-		state = newV4TurnState()
-		s.v4Turns[key] = state
-	}
-	first := !state.projectionFailed
-	state.projectionFailed = true
-	return first
-}
-
-func newV4TurnState() *v4TurnState {
-	return &v4TurnState{
-		agentPhases:      make(map[string]*string),
-		reasoningItems:   make(map[string]struct{}),
-		reasoningLimited: make(map[string]struct{}),
-	}
-}
-
-func (s *Service) beginV4SanitizedTerminal(sessionID, turnID string) bool {
-	s.v4Mu.Lock()
-	defer s.v4Mu.Unlock()
-	key := v4TurnKey{sessionID: sessionID, turnID: turnID}
-	state := s.v4Turns[key]
-	if state == nil {
-		state = newV4TurnState()
-		s.v4Turns[key] = state
-	}
-	state.projectionFailed = true
-	if state.terminalPublished {
-		return false
-	}
-	state.terminalPublished = true
-	return true
-}
-
-func (s *Service) rollbackV4SanitizedTerminal(sessionID, turnID string) {
-	s.v4Mu.Lock()
-	if state := s.v4Turns[v4TurnKey{sessionID: sessionID, turnID: turnID}]; state != nil {
-		state.terminalPublished = false
-	}
-	s.v4Mu.Unlock()
-}
-
-func (s *Service) v4SanitizedTerminalPublished(sessionID, turnID string) bool {
-	s.v4Mu.Lock()
-	defer s.v4Mu.Unlock()
-	state := s.v4Turns[v4TurnKey{sessionID: sessionID, turnID: turnID}]
-	return state != nil && state.terminalPublished
-}
-
-func (s *Service) rememberV4AgentPhase(sessionID, turnID, itemID string, phase *string) {
-	s.v4Mu.Lock()
-	defer s.v4Mu.Unlock()
-	key := v4TurnKey{sessionID: sessionID, turnID: turnID}
-	state := s.v4Turns[key]
-	if state == nil {
-		state = newV4TurnState()
-		s.v4Turns[key] = state
-	}
-	if _, exists := state.agentPhases[itemID]; !exists {
-		if len(state.agentPhases) >= maxV4RememberedAgentPhases {
-			oldest := state.agentPhaseOrder[0]
-			state.agentPhaseOrder = state.agentPhaseOrder[1:]
-			delete(state.agentPhases, oldest)
-		}
-		state.agentPhaseOrder = append(state.agentPhaseOrder, itemID)
-	}
-	state.agentPhases[itemID] = copiedStringPointer(phase)
-}
-
-func (s *Service) hasV4AgentLifecycle(sessionID, turnID, itemID string) bool {
-	s.v4Mu.Lock()
-	defer s.v4Mu.Unlock()
-	state := s.v4Turns[v4TurnKey{sessionID: sessionID, turnID: turnID}]
-	if state == nil {
-		return false
-	}
-	_, ok := state.agentPhases[itemID]
-	return ok
-}
-
-func (s *Service) admitV4ReasoningItem(sessionID, turnID, itemID string) bool {
-	s.v4Mu.Lock()
-	defer s.v4Mu.Unlock()
-	key := v4TurnKey{sessionID: sessionID, turnID: turnID}
-	state := s.v4Turns[key]
-	if state == nil {
-		state = newV4TurnState()
-		s.v4Turns[key] = state
-	}
-	if _, ok := state.reasoningItems[itemID]; ok {
-		return true
-	}
-	if len(state.reasoningItems) >= maxV4ReasoningItemsPerTurn {
-		return false
-	}
-	state.reasoningItems[itemID] = struct{}{}
-	return true
-}
-
-func (s *Service) hasV4ReasoningItem(sessionID, turnID, itemID string) bool {
-	s.v4Mu.Lock()
-	defer s.v4Mu.Unlock()
-	state := s.v4Turns[v4TurnKey{sessionID: sessionID, turnID: turnID}]
-	if state == nil {
-		return false
-	}
-	_, exists := state.reasoningItems[itemID]
-	return exists
-}
-
-func (s *Service) publishV4ReasoningLimit(record Record, turnID, itemID string) error {
-	if !s.beginV4ReasoningLimit(record.AgentSessionID, turnID, itemID) {
-		return nil
-	}
-	contents := []ReasoningContent{}
-	event := Event{
-		TurnID:    turnID,
-		ItemID:    itemID,
-		EventType: EventItemReasoningFinalized,
-		Payload: EventPayload{
-			Status:     "unavailable",
-			Contents:   &contents,
-			ReasonCode: "limit_exceeded",
-		},
-	}
-	decorateV4ProblemEvent(record, &event)
-	_, err := s.publishV4Projection(event)
-	if err != nil {
-		s.rollbackV4ReasoningLimit(record.AgentSessionID, turnID, itemID)
-	}
-	return err
-}
-
-func (s *Service) beginV4ReasoningLimit(sessionID, turnID, itemID string) bool {
-	s.v4Mu.Lock()
-	defer s.v4Mu.Unlock()
-	key := v4TurnKey{sessionID: sessionID, turnID: turnID}
-	state := s.v4Turns[key]
-	if state == nil {
-		state = newV4TurnState()
-		s.v4Turns[key] = state
-	}
-	if _, exists := state.reasoningLimited[itemID]; exists {
-		return false
-	}
-	state.reasoningLimited[itemID] = struct{}{}
-	return true
-}
-
-func (s *Service) rollbackV4ReasoningLimit(sessionID, turnID, itemID string) {
-	s.v4Mu.Lock()
-	if state := s.v4Turns[v4TurnKey{sessionID: sessionID, turnID: turnID}]; state != nil {
-		delete(state.reasoningLimited, itemID)
-	}
-	s.v4Mu.Unlock()
-}
-
-func (s *Service) clearV4Turn(sessionID, turnID string) {
-	s.v4Mu.Lock()
-	delete(s.v4Turns, v4TurnKey{sessionID: sessionID, turnID: turnID})
-	s.v4Mu.Unlock()
-}
-
-func (s *Service) clearV4Session(sessionID string) {
-	s.v4Mu.Lock()
-	for key := range s.v4Turns {
-		if key.sessionID == sessionID {
-			delete(s.v4Turns, key)
-		}
-	}
-	s.v4Mu.Unlock()
 }
 
 func validateV4Event(event Event) error {
@@ -724,51 +450,5 @@ func (s *Service) rejectMalformedV4Notification(method string, params json.RawMe
 		return
 	}
 	event := Event{TurnID: turnID, EventType: EventError}
-	if method == RuntimeNotificationTurnCompleted {
-		_ = s.rejectMalformedV4Terminal(record, turnID)
-		return
-	}
 	_ = s.rejectV4Event(record, event)
-}
-
-func (s *Service) rejectMalformedV4Terminal(record Record, turnID string) error {
-	if s.v4SanitizedTerminalPublished(record.AgentSessionID, turnID) {
-		return nil
-	}
-	completed, err := s.store.CompleteTurn(record.AgentSessionID, turnID, "failed")
-	if err != nil {
-		return err
-	}
-	s.clearImageTurn(record.CodexThreadID)
-	s.abortSyntheticTerminalBarrier(record.AgentSessionID)
-	if err := s.publishMalformedV4ReasoningFinalized(completed, turnID); err != nil {
-		return err
-	}
-	s.markV4TurnProjectionFailed(record.AgentSessionID, turnID)
-	return s.publishV4SanitizedTerminal(completed, turnID)
-}
-
-func (s *Service) publishMalformedV4ReasoningFinalized(record Record, turnID string) error {
-	itemIDs := s.takeUnfinishedReasoningItems(record.AgentSessionID, turnID)
-	for _, itemID := range itemIDs {
-		if !s.hasV4ReasoningItem(record.AgentSessionID, turnID, itemID) {
-			continue
-		}
-		contents := []ReasoningContent{}
-		event := Event{
-			TurnID:    turnID,
-			ItemID:    itemID,
-			EventType: EventItemReasoningFinalized,
-			Payload: EventPayload{
-				Status:     "unavailable",
-				Contents:   &contents,
-				ReasonCode: "protocol_error",
-			},
-		}
-		decorateV4ProblemEvent(record, &event)
-		if _, err := s.publishV4Projection(event); err != nil {
-			return err
-		}
-	}
-	return nil
 }

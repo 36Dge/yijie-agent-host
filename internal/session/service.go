@@ -135,6 +135,7 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 		return incompleteCleanup(operationID, "host_mapping_cleanup_failed", "complete", "incomplete", "not_attempted"), nil
 	}
 	s.clearApprovalSession(sessionID)
+	s.nativeEvents.DeleteSession(sessionID)
 	if s.events != nil {
 		s.events.DeleteSession(sessionID)
 	}
@@ -158,14 +159,7 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 	}
 	s.clearImageSession(sessionID)
 	s.abortSyntheticTerminalBarrier(sessionID)
-	s.reasoningMu.Lock()
-	for key := range s.reasoning {
-		if key.sessionID == sessionID {
-			delete(s.reasoning, key)
-		}
-	}
-	s.reasoningMu.Unlock()
-	s.clearV4Session(sessionID)
+
 	s.clearV5Session(sessionID)
 	return CleanupResult{OperationID: operationID, Outcome: "complete", RuntimeThreadTree: "complete", HostMapping: "complete", HostReplay: "complete"}, nil
 }
@@ -193,9 +187,10 @@ type pendingNotification struct {
 }
 
 type syntheticTerminal struct {
-	turnID  string
-	status  string
-	payload EventPayload
+	nativeParams json.RawMessage
+	turnID       string
+	status       string
+	payload      EventPayload
 }
 
 type syntheticTerminalBarrier struct {
@@ -213,23 +208,21 @@ type Service struct {
 	eventsV4             *EventHub
 	eventsV5             *EventHub
 	eventsV6             *EventHub
+	nativeEvents         *EventHub
 	artifacts            *artifact.Store
 	syntheticArtifacts   bool
 	rawReasoning         bool
 	fixedReasoningEffort string
 	logger               *slog.Logger
 
-	pendingMu       sync.Mutex
-	notificationMu  sync.Mutex
-	pending         map[string][]pendingNotification
-	pendingCount    int
-	syntheticMu     sync.Mutex
-	syntheticTurns  map[string]*syntheticTerminalBarrier
-	terminalMu      sync.Mutex
-	reasoningMu     sync.Mutex
-	reasoning       map[reasoningTurnKey]*reasoningTurnState
-	v4Mu            sync.Mutex
-	v4Turns         map[v4TurnKey]*v4TurnState
+	pendingMu      sync.Mutex
+	notificationMu sync.Mutex
+	pending        map[string][]pendingNotification
+	pendingCount   int
+	syntheticMu    sync.Mutex
+	syntheticTurns map[string]*syntheticTerminalBarrier
+	terminalMu     sync.Mutex
+
 	v5ItemsMu       sync.Mutex
 	v5Items         map[v5ItemKey]*v5ItemState
 	titleMu         sync.Mutex
@@ -296,14 +289,14 @@ func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Lo
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	service := &Service{
-		runtime:         runtime,
-		store:           store,
-		events:          events,
-		logger:          logger,
-		pending:         make(map[string][]pendingNotification),
-		syntheticTurns:  make(map[string]*syntheticTerminalBarrier),
-		reasoning:       make(map[reasoningTurnKey]*reasoningTurnState),
-		v4Turns:         make(map[v4TurnKey]*v4TurnState),
+		runtime:        runtime,
+		store:          store,
+		events:         events,
+		nativeEvents:   NewEventHubVersion(7, 512, 64),
+		logger:         logger,
+		pending:        make(map[string][]pendingNotification),
+		syntheticTurns: make(map[string]*syntheticTerminalBarrier),
+
 		v5Items:         make(map[v5ItemKey]*v5ItemState),
 		titleOperations: make(map[titleOperationKey]*titleOperation),
 		imageTurns:      make(map[string]*imageTurn),
@@ -402,6 +395,11 @@ func (s *Service) ResumeSession(ctx context.Context, sessionID string, trace Tra
 		_, _ = s.store.MarkFailed(sessionID, "provider_identity_mismatch")
 		return Record{}, fmt.Errorf("%w: thread/resume returned an unexpected model provider identity", ErrRuntimeRequest)
 	}
+	for _, turn := range thread.Turns {
+		if normalizeTurnStatus(turn.Status) == "" {
+			return Record{}, ErrRuntimeRequest
+		}
+	}
 	activeTurnID, lastTurnID, lastStatus := resumedTurnState(thread.Turns)
 	s.notificationMu.Lock()
 	record, err = s.store.Resume(
@@ -411,6 +409,7 @@ func (s *Service) ResumeSession(ctx context.Context, sessionID string, trace Tra
 		activeTurnID,
 		lastTurnID,
 		lastStatus,
+		record.NativeRevision,
 	)
 	if err != nil {
 		s.notificationMu.Unlock()
@@ -611,16 +610,6 @@ func (s *Service) HandleNotification(method string, params json.RawMessage) {
 	if !supportedNotification(method) {
 		return
 	}
-	// Command deltas and MCP progress are v5-only Runtime notifications. Keep
-	// them completely outside the legacy correlation/pending path when the v5
-	// consumer is disabled so a producer cannot consume shared v1-v4 capacity.
-	if (method == RuntimeNotificationCommandOutputDelta || method == RuntimeNotificationMcpToolProgress) &&
-		s.eventsV5 == nil && s.eventsV6 == nil {
-		return
-	}
-	if method == RuntimeNotificationTurnPlanUpdated && s.eventsV4 == nil {
-		return
-	}
 	if method == RuntimeNotificationReasoningTextDelta && !s.rawReasoning {
 		return
 	}
@@ -649,8 +638,21 @@ func (s *Service) HandleNotification(method string, params json.RawMessage) {
 	}
 }
 
-func (s *Service) processNotification(method string, params json.RawMessage) error {
+func (s *Service) processNotification(method string, params json.RawMessage) (resultErr error) {
+	defer func() {
+		if resultErr != nil && method == RuntimeNotificationTurnCompleted {
+			s.publishNativeProjectionNotice(params)
+		}
+	}()
+
+	// This path projects the native notification before any legacy interpretation.
+	// It never consumes synthesized legacy terminal/Reasoning events.
+	if method != RuntimeNotificationTurnCompleted {
+		defer s.publishNativeNotification(method, params)
+	}
 	switch method {
+	case "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":
+		return nil
 	case RuntimeNotificationThreadStarted:
 		var notification struct {
 			Thread struct {
@@ -919,7 +921,10 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 		}
 		return s.appendReasoningDelta(record, notification.TurnID, notification.ItemID, contentIndex, delta)
 	case RuntimeNotificationTurnCompleted:
-		var notification turnNotification
+		var notification struct {
+			ThreadID string         `json:"threadId"`
+			Turn     nativeWireTurn `json:"turn"`
+		}
 		if err := json.Unmarshal(params, &notification); err != nil {
 			return err
 		}
@@ -936,27 +941,20 @@ func (s *Service) processNotification(method string, params json.RawMessage) err
 			return err
 		}
 		s.resolveApprovalForTurn(record, notification.Turn.ID)
-		if s.v4SanitizedTerminalPublished(record.AgentSessionID, notification.Turn.ID) {
-			s.clearImageTurn(notification.ThreadID)
-			s.abortSyntheticTerminalBarrier(record.AgentSessionID)
-			s.discardReasoningTurn(record.AgentSessionID, notification.Turn.ID)
-			return nil
-		}
+
 		s.clearImageTurn(notification.ThreadID)
 		status := normalizeTurnStatus(notification.Turn.Status)
 		payload := EventPayload{Status: status}
-		if notification.Turn.Error != nil {
-			if s.eventsV4 != nil && notification.Turn.Error.Message == nil {
-				return errors.New("turn/completed notification error omitted message")
-			}
-			payload.Code = normalizeCodexErrorCode(notification.Turn.Error.CodexErrorInfo)
+		var detail turnError
+		if len(notification.Turn.Error) > 0 && json.Unmarshal(notification.Turn.Error, &detail) == nil {
+			payload.Code = normalizeCodexErrorCode(detail.CodexErrorInfo)
 			message := ""
-			if notification.Turn.Error.Message != nil {
-				message = *notification.Turn.Error.Message
+			if detail.Message != nil {
+				message = *detail.Message
 			}
 			payload.Message, payload.V4Message = sanitizedMessagePointers(message)
 		}
-		terminal := syntheticTerminal{turnID: notification.Turn.ID, status: status, payload: payload}
+		terminal := syntheticTerminal{turnID: notification.Turn.ID, status: status, payload: payload, nativeParams: append(json.RawMessage(nil), params...)}
 		if deferred, err := s.deferSyntheticTerminal(record.AgentSessionID, terminal); deferred || err != nil {
 			return err
 		}
@@ -1149,8 +1147,8 @@ func (s *Service) completeTerminal(record Record, terminal syntheticTerminal) er
 			return err
 		}
 		record = current
-		if record.ActiveTurnID == "" && record.LastTurnID == terminal.turnID && record.LastTurnStatus != "" {
-			if record.LastTurnStatus == terminal.status {
+		if record.ActiveTurnID == "" && record.LastTurnID == terminal.turnID && record.NativeTerminalTurnID == terminal.turnID {
+			if record.NativeTerminalStatus == terminal.status {
 				return nil
 			}
 			return errors.New("terminal notification conflicts with persisted turn status")
@@ -1160,7 +1158,9 @@ func (s *Service) completeTerminal(record Record, terminal syntheticTerminal) er
 	if err != nil {
 		return err
 	}
-	s.finalizeInterruptedReasoning(completed, terminal.turnID, terminal.status)
+	if len(terminal.nativeParams) > 0 {
+		s.publishNativeNotification(RuntimeNotificationTurnCompleted, terminal.nativeParams)
+	}
 	return s.publish(completed, Event{
 		TurnID:    terminal.turnID,
 		EventType: EventTurnCompleted,
@@ -1304,82 +1304,23 @@ func decorateEvent(record Record, event *Event) {
 	event.UserID = record.Trace.UserID
 }
 
-type reasoningTurnKey struct{ sessionID, turnID string }
-type reasoningItemState struct {
-	parts     map[int]string
-	finalized bool
-}
-type reasoningTurnState struct {
-	items      map[string]*reasoningItemState
-	totalBytes int
-}
-
+// v1-v4 are one-way compatibility views. No Host reasoning text accumulator.
 func (s *Service) appendReasoningDelta(record Record, turnID, itemID string, contentIndex int, delta string) error {
 	if !s.rawReasoning {
 		return nil
 	}
-	if contentIndex < 0 || contentIndex > 7 || delta == "" {
-		return s.publishReasoningUnavailable(record, turnID, itemID, "protocol_error")
+	if contentIndex < 0 || contentIndex > 7 || len(delta) > 16<<10 {
+		return s.publishReasoningUnavailable(record, turnID, itemID, "projection_unavailable")
 	}
-	if len([]byte(delta)) > 16<<10 {
-		return s.publishReasoningUnavailable(record, turnID, itemID, "limit_exceeded")
-	}
-	s.reasoningMu.Lock()
-	state, item, ok := s.reasoningItemLocked(record.AgentSessionID, turnID, itemID)
-	if !ok {
-		s.reasoningMu.Unlock()
-		return s.publishReasoningUnavailable(record, turnID, itemID, "limit_exceeded")
-	}
-	if item.finalized {
-		s.reasoningMu.Unlock()
-		return nil
-	}
-	part := item.parts[contentIndex] + delta
-	newPartBytes := len([]byte(part))
-	itemBytes := 0
-	for index, value := range item.parts {
-		if index == contentIndex {
-			continue
-		}
-		itemBytes += len([]byte(value))
-	}
-	itemBytes += newPartBytes
-	if newPartBytes > 64<<10 || itemBytes > 128<<10 || state.totalBytes+len([]byte(delta)) > 256<<10 {
-		item.finalized = true
-		item.parts = nil
-		s.reasoningMu.Unlock()
-		return s.publishReasoningUnavailable(record, turnID, itemID, "limit_exceeded")
-	}
-	item.parts[contentIndex] = part
-	state.totalBytes += len([]byte(delta))
-	s.reasoningMu.Unlock()
-	index := contentIndex
-	return s.publishV2(record, Event{TurnID: turnID, ItemID: itemID, EventType: EventItemReasoningTextDelta, Payload: EventPayload{ContentIndex: &index, Delta: stringPointer(delta)}})
+	return s.publishV2(record, Event{TurnID: turnID, ItemID: itemID, EventType: EventItemReasoningTextDelta, Payload: EventPayload{ContentIndex: &contentIndex, Delta: stringPointer(delta)}})
 }
-
 func (s *Service) finalizeReasoning(record Record, turnID, itemID string, contents []string) error {
 	if !s.rawReasoning {
 		return nil
 	}
-	parts, total, valid := validateReasoningContents(contents)
-	s.reasoningMu.Lock()
-	state, item, registered := s.reasoningItemLocked(record.AgentSessionID, turnID, itemID)
-	if registered && item.finalized {
-		s.reasoningMu.Unlock()
-		return nil
-	}
-	turnWithinLimit := false
-	if registered && !item.finalized {
-		oldBytes := reasoningPartBytes(item.parts)
-		turnTotal := state.totalBytes - oldBytes + total
-		turnWithinLimit = turnTotal <= 256<<10
-		item.finalized = true
-		item.parts = nil
-		state.totalBytes = turnTotal
-	}
-	s.reasoningMu.Unlock()
-	if !registered || !valid || total > 128<<10 || !turnWithinLimit {
-		return s.publishReasoningUnavailable(record, turnID, itemID, "limit_exceeded")
+	parts, _, valid := validateReasoningContents(contents)
+	if !valid {
+		return s.publishReasoningUnavailable(record, turnID, itemID, "projection_unavailable")
 	}
 	return s.publishV2(record, Event{TurnID: turnID, ItemID: itemID, EventType: EventItemReasoningFinalized, Payload: EventPayload{Status: "complete", Contents: &parts}})
 }
@@ -1401,112 +1342,9 @@ func validateReasoningContents(contents []string) ([]ReasoningContent, int, bool
 	return parts, total, total <= 128<<10
 }
 
-func (s *Service) reasoningItemLocked(sessionID, turnID, itemID string) (*reasoningTurnState, *reasoningItemState, bool) {
-	key := reasoningTurnKey{sessionID: sessionID, turnID: turnID}
-	state := s.reasoning[key]
-	if state == nil {
-		state = &reasoningTurnState{items: make(map[string]*reasoningItemState)}
-		s.reasoning[key] = state
-	}
-	item := state.items[itemID]
-	if item == nil {
-		if len(state.items) >= 8 {
-			return state, nil, false
-		}
-		item = &reasoningItemState{parts: make(map[int]string)}
-		state.items[itemID] = item
-	}
-	return state, item, true
-}
-
 func (s *Service) publishReasoningUnavailable(record Record, turnID, itemID, reason string) error {
-	s.reasoningMu.Lock()
-	if state, item, ok := s.reasoningItemLocked(record.AgentSessionID, turnID, itemID); ok && !item.finalized {
-		state.totalBytes -= reasoningPartBytes(item.parts)
-		item.finalized = true
-		item.parts = nil
-	}
-	s.reasoningMu.Unlock()
-	contents := []ReasoningContent{}
-	return s.publishV2(record, Event{TurnID: turnID, ItemID: itemID, EventType: EventItemReasoningFinalized, Payload: EventPayload{Status: "unavailable", ReasonCode: reason, Contents: &contents}})
-}
-
-func reasoningPartBytes(parts map[int]string) int {
-	total := 0
-	for _, part := range parts {
-		total += len([]byte(part))
-	}
-	return total
-}
-
-func (s *Service) discardReasoningTurn(sessionID, turnID string) {
-	s.reasoningMu.Lock()
-	delete(s.reasoning, reasoningTurnKey{sessionID: sessionID, turnID: turnID})
-	s.reasoningMu.Unlock()
-}
-
-func (s *Service) takeUnfinishedReasoningItems(sessionID, turnID string) []string {
-	key := reasoningTurnKey{sessionID: sessionID, turnID: turnID}
-	s.reasoningMu.Lock()
-	state := s.reasoning[key]
-	delete(s.reasoning, key)
-	s.reasoningMu.Unlock()
-	if state == nil {
-		return nil
-	}
-	itemIDs := make([]string, 0, len(state.items))
-	for itemID, item := range state.items {
-		if item != nil && !item.finalized {
-			itemIDs = append(itemIDs, itemID)
-		}
-	}
-	sort.Strings(itemIDs)
-	return itemIDs
-}
-
-func (s *Service) finalizeInterruptedReasoning(record Record, turnID, status string) {
-	key := reasoningTurnKey{sessionID: record.AgentSessionID, turnID: turnID}
-	s.reasoningMu.Lock()
-	state := s.reasoning[key]
-	delete(s.reasoning, key)
-	s.reasoningMu.Unlock()
-	if state == nil {
-		return
-	}
-	baseReason := "runtime_error"
-	if status == "interrupted" {
-		baseReason = "turn_interrupted"
-	} else if status == "completed" {
-		baseReason = "stream_gap"
-	}
-	for itemID, item := range state.items {
-		if item.finalized || len(item.parts) == 0 {
-			continue
-		}
-		indexes := make([]int, 0, len(item.parts))
-		for index := range item.parts {
-			indexes = append(indexes, index)
-		}
-		sort.Ints(indexes)
-		contents := make([]ReasoningContent, 0, len(indexes))
-		gap := false
-		reason := baseReason
-		for expected, index := range indexes {
-			if index != expected {
-				gap = true
-				break
-			}
-			contents = append(contents, ReasoningContent{ContentIndex: index, Text: item.parts[index]})
-		}
-		if gap {
-			reason = "stream_gap"
-		}
-		if len(contents) == 0 {
-			_ = s.publishReasoningUnavailable(record, turnID, itemID, reason)
-			continue
-		}
-		_ = s.publishV2(record, Event{TurnID: turnID, ItemID: itemID, EventType: EventItemReasoningFinalized, Payload: EventPayload{Status: "incomplete", ReasonCode: reason, Contents: &contents}})
-	}
+	willRetry := false
+	return s.publish(record, Event{EventType: EventWarning, Payload: EventPayload{Code: "projection_unavailable", Message: stringPointer("推理展示暂不可用"), WillRetry: &willRetry}})
 }
 
 func (s *Service) queuePending(threadID, method string, params json.RawMessage) {
@@ -1540,7 +1378,7 @@ func (s *Service) flushPending(threadID string) {
 }
 
 func supportedNotification(method string) bool {
-	if method == RuntimeNotificationReasoningTextDelta {
+	if method == RuntimeNotificationReasoningTextDelta || method == "item/reasoning/summaryTextDelta" || method == "item/reasoning/summaryPartAdded" {
 		return true
 	}
 	for _, supported := range runtimeNotifications {
@@ -1612,7 +1450,7 @@ func normalizeTurnStatus(status string) string {
 		}
 		return status
 	default:
-		return "failed"
+		return ""
 	}
 }
 
