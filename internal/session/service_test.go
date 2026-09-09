@@ -103,7 +103,7 @@ func TestServiceProjectsBoundedRawReasoningOnlyToNegotiatedV2WithoutLoggingBody(
 	}
 }
 
-func TestServiceMarksOversizeReasoningUnavailableWithoutBody(t *testing.T) {
+func TestServiceWarnsOnOversizeReasoningWithoutInventingFinalized(t *testing.T) {
 	store, err := OpenStore(filepath.Join(t.TempDir(), "host-home"))
 	if err != nil {
 		t.Fatal(err)
@@ -126,10 +126,10 @@ func TestServiceMarksOversizeReasoningUnavailableWithoutBody(t *testing.T) {
 		t.Fatal(err)
 	}
 	cancel()
-	if len(replay) != 1 || replay[0].EventType != EventItemReasoningFinalized || replay[0].Payload.Status != "unavailable" || replay[0].Payload.ReasonCode != "limit_exceeded" {
+	if len(replay) != 1 || replay[0].EventType != EventWarning || replay[0].Terminal || replay[0].Payload.Status != "" || replay[0].Payload.Code != "projection_unavailable" {
 		t.Fatalf("unexpected oversize reasoning result: %+v", replay)
 	}
-	if replay[0].Payload.Contents == nil || len(*replay[0].Payload.Contents) != 0 || replay[0].Payload.Delta != nil {
+	if replay[0].Payload.Contents != nil || replay[0].Payload.Delta != nil {
 		t.Fatalf("oversize raw body escaped unavailable projection: %+v", replay[0])
 	}
 }

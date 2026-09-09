@@ -416,7 +416,7 @@ func TestFEAT134V4RawReasoningRequiresExplicitAuthorityAndStaysMemoryOnly(t *tes
 	}
 }
 
-func TestFEAT134V4ProjectionFailureIsContentFreeAndForcesSanitizedTerminal(t *testing.T) {
+func TestFEAT134V4ProjectionWarningPreservesNativeTerminal(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "host-home")
 	store, err := OpenStore(home)
 	if err != nil {
@@ -451,7 +451,7 @@ func TestFEAT134V4ProjectionFailureIsContentFreeAndForcesSanitizedTerminal(t *te
 		t.Fatal(err)
 	}
 	cancel()
-	if len(replay) != 2 || replay[0].EventType != EventError || replay[0].Terminal ||
+	if len(replay) != 2 || replay[0].EventType != EventWarning || replay[0].Terminal ||
 		replay[1].EventType != EventTurnCompleted || !replay[1].Terminal {
 		t.Fatalf("unexpected sanitized failure sequence: %+v", replay)
 	}
@@ -460,13 +460,23 @@ func TestFEAT134V4ProjectionFailureIsContentFreeAndForcesSanitizedTerminal(t *te
 		if err != nil {
 			t.Fatal(err)
 		}
-		if bytes.Contains(encoded, []byte(canary)) || event.Payload.Code != v4ProjectionLimitCode ||
-			event.Payload.Message == nil || *event.Payload.Message != v4ProjectionLimitMessage {
+		if bytes.Contains(encoded, []byte(canary)) {
 			t.Fatalf("projection failure leaked or drifted: %s", encoded)
 		}
 	}
-	if replay[1].Payload.Status != "failed" {
-		t.Fatalf("projection-failed turn retained the Runtime status: %+v", replay[1])
+	if replay[1].Payload.Status != "completed" || replay[1].Payload.Code != "" {
+		t.Fatalf("projection warning changed the Runtime status: %+v", replay[1])
+	}
+	if replay[0].Payload.Code != v4ProjectionLimitCode || replay[0].Payload.Message == nil || *replay[0].Payload.Message != v4ProjectionLimitMessage {
+		t.Fatal("projection warning lost its safe diagnostic")
+	}
+	_, nativeEvents, _, cancelNative, err := service.SubscribeNativeEvents(testSessionID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancelNative()
+	if len(nativeEvents) != 2 || nativeEvents[0].Terminal || !nativeEvents[1].Terminal || nativeEvents[1].Payload.Native.Turn == nil || *nativeEvents[1].Payload.Native.Turn.Status != "completed" {
+		t.Fatal("display limit changed native execution facts")
 	}
 	if err := store.db.Sync(); err != nil {
 		t.Fatal(err)
@@ -623,7 +633,7 @@ func TestFEAT134OversizeTraceDoesNotRejectSharedOperationsAndFailsOnlyV4Projecti
 	}
 }
 
-func TestFEAT134AgentDeltaRequiresSameTurnAgentLifecycleOnlyInV4(t *testing.T) {
+func TestFEAT134AgentDeltaPreservesNativeIdentityWithoutLifecycleInference(t *testing.T) {
 	otherTurnID := "019c0123-4567-7abc-8123-456789abcdf0"
 	tests := []struct {
 		name          string
@@ -633,9 +643,9 @@ func TestFEAT134AgentDeltaRequiresSameTurnAgentLifecycleOnlyInV4(t *testing.T) {
 		deltaTurn     string
 		deltaItem     string
 	}{
-		{name: "wrong item", lifecycleType: "agentMessage", lifecycleTurn: testTurnID, lifecycleItem: "agent-1", deltaTurn: testTurnID, deltaItem: "agent-2"},
-		{name: "cross turn", lifecycleType: "agentMessage", lifecycleTurn: testTurnID, lifecycleItem: "agent-1", deltaTurn: otherTurnID, deltaItem: "agent-1"},
-		{name: "non agent item", lifecycleType: "reasoning", lifecycleTurn: testTurnID, lifecycleItem: "agent-1", deltaTurn: testTurnID, deltaItem: "agent-1"},
+		{name: "another item", lifecycleType: "agentMessage", lifecycleTurn: testTurnID, lifecycleItem: "agent-1", deltaTurn: testTurnID, deltaItem: "agent-2"},
+		{name: "another turn", lifecycleType: "agentMessage", lifecycleTurn: testTurnID, lifecycleItem: "agent-1", deltaTurn: otherTurnID, deltaItem: "agent-1"},
+		{name: "independent reasoning item", lifecycleType: "reasoning", lifecycleTurn: testTurnID, lifecycleItem: "reasoning-1", deltaTurn: testTurnID, deltaItem: "agent-1"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -659,9 +669,9 @@ func TestFEAT134AgentDeltaRequiresSameTurnAgentLifecycleOnlyInV4(t *testing.T) {
 				t.Fatal(err)
 			}
 			cancel()
-			if len(replay) != 2 || replay[0].EventType != EventItemStarted || replay[1].EventType != EventError ||
-				replay[1].TurnID != test.deltaTurn || replay[1].Payload.Code != v4ProjectionLimitCode {
-				t.Fatalf("v4 retained an uncorrelated AgentMessage delta: %+v", replay)
+			if len(replay) != 2 || replay[0].EventType != EventItemStarted || replay[1].EventType != EventItemAgentMessageDelta ||
+				replay[1].TurnID != test.deltaTurn || replay[1].ItemID != test.deltaItem || replay[1].Payload.Delta == nil || *replay[1].Payload.Delta != "synthetic" {
+				t.Fatalf("v4 reinterpreted native delta identity: %+v", replay)
 			}
 			_, legacy, _, cancelLegacy, err := service.SubscribeEvents(testSessionID, "", 0)
 			if err != nil {
@@ -672,38 +682,6 @@ func TestFEAT134AgentDeltaRequiresSameTurnAgentLifecycleOnlyInV4(t *testing.T) {
 				t.Fatalf("v4 correlation changed legacy delta semantics: %+v", legacy)
 			}
 		})
-	}
-}
-
-func assertFEAT134MalformedTerminalLegacyEvents(t *testing.T, service *Service, v2 *EventHub) {
-	t.Helper()
-	_, legacy, _, cancelLegacy, err := service.SubscribeEvents(testSessionID, "", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cancelLegacy()
-	if len(legacy) != 0 {
-		t.Fatalf("v4 failure leaked into v1: %+v", legacy)
-	}
-	_, replayV2, _, cancelV2, err := v2.Subscribe(testSessionID, "", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cancelV2()
-	if len(replayV2) != 1 || replayV2[0].EventType != EventItemReasoningTextDelta || replayV2[0].ItemID != "reasoning-canary" {
-		t.Fatalf("malformed v4 terminal changed v2 reasoning semantics: %+v", replayV2)
-	}
-}
-
-func assertFEAT134ReasoningLegacyCount(t *testing.T, hub *EventHub, want int, ninthItemID string) {
-	t.Helper()
-	_, replay, _, cancel, err := hub.Subscribe(testSessionID, "", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cancel()
-	if len(replay) != want || replay[want-1].ItemID != ninthItemID || replay[want-1].EventType != EventItemReasoningFinalized {
-		t.Fatalf("legacy reasoning semantics changed: %+v", replay)
 	}
 }
 

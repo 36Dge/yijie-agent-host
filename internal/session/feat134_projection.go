@@ -8,18 +8,16 @@ import (
 )
 
 const (
-	maxV4IdentityRunes         = 256
-	maxV4IdentityBytes         = 1024
-	maxV4AgentTextRunes        = 1 << 20
-	maxV4AgentTextBytes        = 1 << 20
-	maxV4PlanSteps             = 128
-	maxV4PlanTextRunes         = 16 << 10
-	maxV4PlanTextBytes         = 64 << 10
-	maxV4RememberedAgentPhases = 512
-	maxV4ReasoningItemsPerTurn = 8
-	maxV4WarningCodeRunes      = 256
-	maxV4WarningMessageRunes   = 16 << 10
-	maxV4WarningMessageBytes   = 64 << 10
+	maxV4IdentityRunes       = 256
+	maxV4IdentityBytes       = 1024
+	maxV4AgentTextRunes      = 1 << 20
+	maxV4AgentTextBytes      = 1 << 20
+	maxV4PlanSteps           = 128
+	maxV4PlanTextRunes       = 16 << 10
+	maxV4PlanTextBytes       = 64 << 10
+	maxV4WarningCodeRunes    = 256
+	maxV4WarningMessageRunes = 16 << 10
+	maxV4WarningMessageBytes = 64 << 10
 
 	v4ProjectionLimitCode    = "limit_exceeded"
 	v4ProjectionLimitMessage = "agent event exceeded local projection limit"
