@@ -10,4 +10,4 @@ bbolt schema 4 → 5：事务升级既有 schema 元数据，新增原生 revisi
 
 安全验证：`go test -race ./internal/session ./internal/app ./internal/codex -run '^TestFEAT132Native'`。包括原生实际 RPC + 内存 JSONL 管道、producer OpenAPI conformance、鉴权/no-store、最终值、原生 error、summary 索引和 resume。测试不替换 executable，不启动模型，不强杀进程。
 
-完整 make test 的旧 binary/fault/attack fixture 不能在本次运行。真实 Runtime/model D4 未执行。Contracts 来源已固定；Desktop 必须在本仓提交后更新 canonical FEAT-152 的整体 Host pin，不能绕过该门禁。
+完整make test的旧binary/fault/attack fixture不能在本次运行，既有定向验证不等于完整Go测试集通过。2026-09-09真实local/demo_fast D4及后续日常入口验证已通过，实际累计19/25次文本、1/3次图片，日常复验未新增调用。Contracts来源已固定；Desktop的canonical FEAT-152整体Host pin已更新为`9e9d317f7e4ecff5f8aeec94fa467f9bede32139`及真实源摘要，并通过正常入口核验。完整证据与能力限制见元仓FEAT-132的02-verification.md和05-daily-entry-verification-2026-09-09.md；未发布或部署，不放宽来源和权限门禁。
