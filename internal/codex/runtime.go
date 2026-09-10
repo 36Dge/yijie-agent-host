@@ -647,6 +647,12 @@ func (m *Manager) startProcess() (io.WriteCloser, io.ReadCloser, *exec.Cmd, *tai
 		args = append(args, m.nativeConfigArgs...)
 	}
 	cmd := exec.Command(m.config.BinaryPath, args...)
+	if m.usesNativeConfigLayers() {
+		// The launcher repository is not an active task workspace. Bootstrap
+		// from a neutral directory; native thread/start/resume still receives
+		// and validates the real task cwd and its project configuration.
+		cmd.Dir = string(filepath.Separator)
+	}
 	miniMaxKey := ""
 	if m.config.MiniMax.Enabled {
 		miniMaxKey = m.config.MiniMax.APIKey

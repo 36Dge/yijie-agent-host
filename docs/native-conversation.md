@@ -14,6 +14,8 @@
 原生 MCP、Prompt、FEAT-152 三模式和 FEAT-137 退役门禁保持原语义。
 `go-toml/v2@v2.4.3` 只解析/编码配置；错误内容不外传，不包含密钥值。
 原生停用仍先证明线程 idle、正常 EOF/cleanup、以禁用 MCP 的配置重启并验证后才返回。
+现行配置层的 Runtime 初始化使用中性根目录，避免把启动器仓库当作任务工作区；
+CODEX_HOME 不变，实际 thread/start/resume 仍使用真实任务 cwd、读取原项目配置并执行原门禁。
 定向测试见 `native_config_layers_test.go`，无调用的真实验证为
 `TestPinnedRuntimeFEAT144NativeTrustSurvivesRestart`；不得用该测试冒充产品真实 D4。
 
