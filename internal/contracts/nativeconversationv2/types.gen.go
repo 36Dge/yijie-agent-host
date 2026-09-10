@@ -399,6 +399,60 @@ func (e NativeThreadSnapshotSource) Valid() bool {
 	}
 }
 
+// Defines values for NativeThreadStatusSnapshotSchemaVersion.
+const (
+	NativeThreadStatusSnapshotSchemaVersionN2 NativeThreadStatusSnapshotSchemaVersion = 2
+)
+
+// Valid indicates whether the value is a known member of the NativeThreadStatusSnapshotSchemaVersion enum.
+func (e NativeThreadStatusSnapshotSchemaVersion) Valid() bool {
+	switch e {
+	case NativeThreadStatusSnapshotSchemaVersionN2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NativeThreadStatusSnapshotSource.
+const (
+	NativeThreadStatusSnapshotSourceRuntimeRead NativeThreadStatusSnapshotSource = "runtime_read"
+)
+
+// Valid indicates whether the value is a known member of the NativeThreadStatusSnapshotSource enum.
+func (e NativeThreadStatusSnapshotSource) Valid() bool {
+	switch e {
+	case NativeThreadStatusSnapshotSourceRuntimeRead:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NativeThreadStatusSnapshotStatus.
+const (
+	NativeThreadStatusSnapshotStatusActive      NativeThreadStatusSnapshotStatus = "active"
+	NativeThreadStatusSnapshotStatusIdle        NativeThreadStatusSnapshotStatus = "idle"
+	NativeThreadStatusSnapshotStatusNotLoaded   NativeThreadStatusSnapshotStatus = "notLoaded"
+	NativeThreadStatusSnapshotStatusSystemError NativeThreadStatusSnapshotStatus = "systemError"
+)
+
+// Valid indicates whether the value is a known member of the NativeThreadStatusSnapshotStatus enum.
+func (e NativeThreadStatusSnapshotStatus) Valid() bool {
+	switch e {
+	case NativeThreadStatusSnapshotStatusActive:
+		return true
+	case NativeThreadStatusSnapshotStatusIdle:
+		return true
+	case NativeThreadStatusSnapshotStatusNotLoaded:
+		return true
+	case NativeThreadStatusSnapshotStatusSystemError:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NativeTurnStatus.
 const (
 	Completed   NativeTurnStatus = "completed"
@@ -588,6 +642,25 @@ type NativeThreadSnapshotSchemaVersion int
 // NativeThreadSnapshotSource defines model for NativeThreadSnapshot.Source.
 type NativeThreadSnapshotSource string
 
+// NativeThreadStatusSnapshot Current thread/read(includeTurns=false) status only. This ephemeral observation has no history watermark and must not change saved Item or Turn facts, infer their completion, or be persisted as a history format.
+type NativeThreadStatusSnapshot struct {
+	SchemaVersion NativeThreadStatusSnapshotSchemaVersion `json:"schema_version"`
+	Source        NativeThreadStatusSnapshotSource        `json:"source"`
+
+	// Status Exact native thread.status.type. active remains active even when historical Turns appear completed; idle is not inferred from Turn status. notLoaded and systemError do not prove readiness or grant permission.
+	Status   NativeThreadStatusSnapshotStatus `json:"status"`
+	ThreadId string                           `json:"thread_id"`
+}
+
+// NativeThreadStatusSnapshotSchemaVersion defines model for NativeThreadStatusSnapshot.SchemaVersion.
+type NativeThreadStatusSnapshotSchemaVersion int
+
+// NativeThreadStatusSnapshotSource defines model for NativeThreadStatusSnapshot.Source.
+type NativeThreadStatusSnapshotSource string
+
+// NativeThreadStatusSnapshotStatus Exact native thread.status.type. active remains active even when historical Turns appear completed; idle is not inferred from Turn status. notLoaded and systemError do not prove readiness or grant permission.
+type NativeThreadStatusSnapshotStatus string
+
 // NativeTurn defines model for NativeTurn.
 type NativeTurn struct {
 	Error *NativeError `json:"error,omitempty"`
@@ -693,8 +766,28 @@ type ClientInterface interface {
 	StreamNativeConversation(ctx context.Context, agentSessionId openapi_types.UUID, params *StreamNativeConversationParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
+// ClientThreadStatusInterface adds the opt-in current-status endpoint without widening ClientInterface.
+type ClientThreadStatusInterface interface {
+	ClientInterface
+
+	// ReadNativeThreadStatus request
+	ReadNativeThreadStatus(ctx context.Context, agentSessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
 func (c *Client) ReadNativeThread(ctx context.Context, agentSessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReadNativeThreadRequest(c.Server, agentSessionId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReadNativeThreadStatus(ctx context.Context, agentSessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReadNativeThreadStatusRequest(c.Server, agentSessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -734,6 +827,40 @@ func NewReadNativeThreadRequest(server string, agentSessionId openapi_types.UUID
 	}
 
 	operationPath := fmt.Sprintf("/v2/agent-sessions/%s/native-thread", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReadNativeThreadStatusRequest generates requests for ReadNativeThreadStatus
+func NewReadNativeThreadStatusRequest(server string, agentSessionId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "agent_session_id", agentSessionId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v2/agent-sessions/%s/native-thread-status", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -868,6 +995,26 @@ func NewClientWithResponses(server string, opts ...ClientOption) (*ClientWithRes
 	return &ClientWithResponses{client}, nil
 }
 
+// ClientWithThreadStatusResponses explicitly opts into current native status reads.
+type ClientWithThreadStatusResponses struct {
+	*ClientWithResponses
+	status ClientThreadStatusInterface
+}
+
+// NewClientWithThreadStatusResponses creates the opt-in response wrapper.
+func NewClientWithThreadStatusResponses(server string, opts ...ClientOption) (*ClientWithThreadStatusResponses, error) {
+	client, err := NewClient(server, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return WithThreadStatusResponses(client), nil
+}
+
+// WithThreadStatusResponses wraps a client that supports the new status endpoint.
+func WithThreadStatusResponses(client ClientThreadStatusInterface) *ClientWithThreadStatusResponses {
+	return &ClientWithThreadStatusResponses{ClientWithResponses: &ClientWithResponses{ClientInterface: client}, status: client}
+}
+
 // WithBaseURL overrides the baseURL.
 func WithBaseURL(baseURL string) ClientOption {
 	return func(c *Client) error {
@@ -887,6 +1034,14 @@ type ClientWithResponsesInterface interface {
 
 	// StreamNativeConversationWithResponse request
 	StreamNativeConversationWithResponse(ctx context.Context, agentSessionId openapi_types.UUID, params *StreamNativeConversationParams, reqEditors ...RequestEditorFn) (*StreamNativeConversationResponse, error)
+}
+
+// ClientWithThreadStatusResponsesInterface adds the opt-in current-status endpoint without widening ClientWithResponsesInterface.
+type ClientWithThreadStatusResponsesInterface interface {
+	ClientWithResponsesInterface
+
+	// ReadNativeThreadStatusWithResponse request
+	ReadNativeThreadStatusWithResponse(ctx context.Context, agentSessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ReadNativeThreadStatusResponse, error)
 }
 
 type ReadNativeThreadResponse struct {
@@ -913,6 +1068,36 @@ func (r ReadNativeThreadResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ReadNativeThreadResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ReadNativeThreadStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *NativeThreadStatusSnapshot
+}
+
+// Status returns HTTPResponse.Status
+func (r ReadNativeThreadStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReadNativeThreadStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReadNativeThreadStatusResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -957,6 +1142,15 @@ func (c *ClientWithResponses) ReadNativeThreadWithResponse(ctx context.Context, 
 	return ParseReadNativeThreadResponse(rsp)
 }
 
+// ReadNativeThreadStatusWithResponse request returning *ReadNativeThreadStatusResponse
+func (c *ClientWithThreadStatusResponses) ReadNativeThreadStatusWithResponse(ctx context.Context, agentSessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ReadNativeThreadStatusResponse, error) {
+	rsp, err := c.status.ReadNativeThreadStatus(ctx, agentSessionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReadNativeThreadStatusResponse(rsp)
+}
+
 // StreamNativeConversationWithResponse request returning *StreamNativeConversationResponse
 func (c *ClientWithResponses) StreamNativeConversationWithResponse(ctx context.Context, agentSessionId openapi_types.UUID, params *StreamNativeConversationParams, reqEditors ...RequestEditorFn) (*StreamNativeConversationResponse, error) {
 	rsp, err := c.StreamNativeConversation(ctx, agentSessionId, params, reqEditors...)
@@ -992,6 +1186,32 @@ func ParseReadNativeThreadResponse(rsp *http.Response) (*ReadNativeThreadRespons
 	return response, nil
 }
 
+// ParseReadNativeThreadStatusResponse parses an HTTP response from a ReadNativeThreadStatusWithResponse call
+func ParseReadNativeThreadStatusResponse(rsp *http.Response) (*ReadNativeThreadStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReadNativeThreadStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest NativeThreadStatusSnapshot
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseStreamNativeConversationResponse parses an HTTP response from a StreamNativeConversationWithResponse call
 func ParseStreamNativeConversationResponse(rsp *http.Response) (*StreamNativeConversationResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -1007,3 +1227,10 @@ func ParseStreamNativeConversationResponse(rsp *http.Response) (*StreamNativeCon
 
 	return response, nil
 }
+
+var (
+	_ ClientInterface                          = (*Client)(nil)
+	_ ClientThreadStatusInterface              = (*Client)(nil)
+	_ ClientWithResponsesInterface             = (*ClientWithResponses)(nil)
+	_ ClientWithThreadStatusResponsesInterface = (*ClientWithThreadStatusResponses)(nil)
+)

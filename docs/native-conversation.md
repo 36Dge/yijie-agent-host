@@ -1,5 +1,19 @@
 # FEAT-132 原生对话 Host 边界
 
+## FEAT-144 独立原生线程状态读取（2026-09-10）
+
+`GET /v2/agent-sessions/{agent_session_id}/native-thread-status` 使用现有 owner bearer、
+`no-store` 和标准安全错误响应。它从 Host 已保存的精确 native thread 绑定调用
+`thread/read(includeTurns=false)`，只返回该 thread 的原生 `status.type`：
+`notLoaded`、`idle`、`systemError` 或 `active`，以及原生 ID 和 `runtime_read` 来源。
+缺少绑定、身份不符、未知/缺失状态或读取失败均不提供可用状态。
+
+读取不调用 resume/start，不初始化 MCP，不读取 Turn 正文，不写 Host 映射或任何执行记录。
+`notLoaded` 只说明当前 Runtime 没有加载该线程，不能解释为历史 Turn 已完成或未执行。
+新状态 DTO 和路径独立于已有 v1/v2 history DTO；不新增历史字段，不改变权限语义，
+不把当前观察持久化为新的生命周期真相。旧 history/SSE 和 native idle permission gate 保留原行为。
+安全定向测试为三个层级的 `TestFEAT144NativeThreadStatus*`，不启动进程或真实服务。
+
 ## FEAT-144 原生配置与项目 trust（2026-09-10）
 
 现行 MiniMax + RuntimePermissions 路径将安全/Provider/MCP 模板精确保存为

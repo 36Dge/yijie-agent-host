@@ -15,6 +15,7 @@ type nativeConversationService interface {
 }
 
 func registerNativeConversation(mux *http.ServeMux, h *sessionHandler) {
+	registerNativeThreadStatus(mux, h)
 	service, ok := h.service.(nativeConversationService)
 	if !ok {
 		return

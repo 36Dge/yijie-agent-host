@@ -6,18 +6,18 @@
   "published": false,
   "contracts": {
     "repository": "https://github.com/36Dge/yijie-contracts.git",
-    "full_commit": "db54c617c65db5431b950eb297ba148a43a8e600"
+    "full_commit": "811f38d6b104fa18477107e7ac91a85e19c445d1"
   },
   "sources": {
     "compatibility/sorftime-product-detail.input.schema.json": "d507da888c8b9d0d93c6b8fdc8edb8d4a9f1ae7efbc134e87f188e53bcc88600",
-    "openapi/native-conversation-v2/native-conversation-v2.yaml": "ac50e89ba3667e9ac1fab63860cfd1c2b1b594c2746c31488669db100fdb7313",
-    "sdks/go/openapi/native-conversation-v2/client.gen.go": "a430b04153a822c968c167fc65a76fe8f713df17356a1e2bb1f6da8da80707c8",
-    "sdks/typescript/src/openapi/native-conversation-v2.gen.ts": "db7d4fdf4a863c0d6bdeac36ff43303ba51a5dc2f8ec640489cce07930e846f6",
+    "openapi/native-conversation-v2/native-conversation-v2.yaml": "5b2143cad791f5e2b36e1058bf603a0ca0f309cb8cdbde85d712c960fd16b2df",
+    "sdks/go/openapi/native-conversation-v2/client.gen.go": "6f1e05ae8deee5e33b82a93e5bbcf8e2fb25f16f96c75807c96c7927263a096c",
+    "sdks/typescript/src/openapi/native-conversation-v2.gen.ts": "8711f7ed10ccb6febdeed9cbda6ccb2e26b5050b78378b102187871701776300",
     "openapi/runtime-permissions-v2/runtime-permissions-v2.yaml": "2ab3f2b9db2f6f8cb9485c3fb0028dd7e66dd1859e22e6a5c06edb55d02bda74",
     "sdks/go/openapi/runtime-permissions-v2/client.gen.go": "3782b0eb05f6534cfca6d86c0504a7264cb3a806fb6603f85aa41c51842ac9fc",
     "sdks/typescript/src/openapi/runtime-permissions-v2.gen.ts": "17a640f2a951ed98356f77849a2bc8681440497619c234f09f9ffc3e402433b8",
-    "compatibility/agent-host-native-mcp-v2.json": "586e3712108ad969a2cb1b946f3b60ec9b5488ce222bc655baa80dc0b157ef01",
-    "scripts/generate.mjs": "711a529c8cd04f826c6f2db37892bd509004d1cfe078ecc78961761a8ab16a4a",
+    "compatibility/agent-host-native-mcp-v2.json": "a70b6e1beb245e4876cec12474a13441a63c7a434db1974375765be152adec37",
+    "scripts/generate.mjs": "b036f609bf63e97d34ad7a2d1e77dbfc1c40b42ba931b0c2f1c75e5ca74edf1d",
     "scripts/sync-native-mcp.mjs": "4b45697d93f4897424ca252bdb8cae937a699bcb3eb1226a5ce1b70982a0c31b",
     "go.mod": "4bd3ff739f9383a42d641a0cbfcf17d812bf2c260c19be379effff5c528bfc35",
     "go.sum": "0bb3ffbefa7ef6a6507a59feed3708cf92ac542e4c9911241eb2d9f4a7604b36",
