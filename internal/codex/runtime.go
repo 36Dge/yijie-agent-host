@@ -177,14 +177,15 @@ type Manager struct {
 	config              Config
 	logger              *slog.Logger
 
-	mu       sync.Mutex
-	status   Status
-	artifact ArtifactInfo
-	started  bool
-	cmd      *exec.Cmd
-	client   *Client
-	exitDone chan struct{}
-	stderr   *tailBuffer
+	mu               sync.Mutex
+	status           Status
+	artifact         ArtifactInfo
+	started          bool
+	cmd              *exec.Cmd
+	client           *Client
+	exitDone         chan struct{}
+	stderr           *tailBuffer
+	nativeConfigArgs []string
 
 	startDone             chan struct{}
 	startupCancel         context.CancelFunc
@@ -362,12 +363,16 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 	cleanupAuthority = true
 	rulePlan, providerErr := authority.preflightFEAT137ExecPolicy()
 	if providerErr == nil && m.config.MiniMax.Enabled {
-		providerErr = prepareMiniMaxCodexHomeForAuthority(
-			authority,
-			m.config.ManagedReasoningProfile,
-			m.config.CommandApprovalEnabled,
-			m.config.Sorftime.Enabled,
-		)
+		if m.usesNativeConfigLayers() {
+			m.nativeConfigArgs, providerErr = prepareNativeLayeredConfig(authority, m.config.ManagedReasoningProfile, m.config.Sorftime.Enabled)
+		} else {
+			providerErr = prepareMiniMaxCodexHomeForAuthority(
+				authority,
+				m.config.ManagedReasoningProfile,
+				m.config.CommandApprovalEnabled,
+				m.config.Sorftime.Enabled,
+			)
+		}
 		if providerErr == nil {
 			m.status.ModelProvider = MiniMaxProviderID
 			m.status.Model = MiniMaxModel
@@ -497,8 +502,14 @@ func (m *Manager) validateManagedProviderAuthority(authority *managedCodexHomeAu
 	if err != nil {
 		return err
 	}
-	if err := authority.validateManagedFileExact("config.toml", expected); err != nil {
-		return err
+	if m.usesNativeConfigLayers() {
+		if err := authority.validateNativeLayeredConfig(expected); err != nil {
+			return err
+		}
+	} else {
+		if err := authority.validateManagedFileExact("config.toml", expected); err != nil {
+			return err
+		}
 	}
 	if m.config.CommandApprovalEnabled {
 		if _, err := authority.preflightFEAT137ExecPolicy(); err != nil {
@@ -631,12 +642,11 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 }
 
 func (m *Manager) startProcess() (io.WriteCloser, io.ReadCloser, *exec.Cmd, *tailBuffer, error) {
-	cmd := exec.Command(
-		m.config.BinaryPath,
-		"app-server",
-		"--listen", "stdio://",
-		"--strict-config",
-	)
+	args := []string{"app-server", "--listen", "stdio://", "--strict-config"}
+	if m.usesNativeConfigLayers() {
+		args = append(args, m.nativeConfigArgs...)
+	}
+	cmd := exec.Command(m.config.BinaryPath, args...)
 	miniMaxKey := ""
 	if m.config.MiniMax.Enabled {
 		miniMaxKey = m.config.MiniMax.APIKey

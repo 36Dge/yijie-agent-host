@@ -1,5 +1,24 @@
 # FEAT-132 原生对话 Host 边界
 
+## FEAT-144 原生配置与项目 trust（2026-09-10）
+
+现行 MiniMax + RuntimePermissions 路径将安全/Provider/MCP 模板精确保存为
+`CODEX_HOME/yijie-runtime-v1.toml`，通过固定 Runtime 原生 `-c` 层读取。
+`CODEX_HOME/config.toml` 仅保留 Codex 原生 projects/trust；Host 不决定项目根或信任等级。
+旧布局仅在完整模板前缀逐字节匹配、尾部通过固定 ProjectConfig 闭合结构检查时迁移；尾部原字节保留。
+先准备新受管文件，再由既有 authority/身份复核/原子替换设施迁移根配置。
+未知字段或漂移继续拒绝，两个文件均在 Runtime spawn 前检查，模板不改为宽松语义比较。
+
+该私有布局只能交给支持它的 Host；回滚不得使用此前只认识整个 config.toml 模板的旧 Host。
+必须保留包含此兼容 reader 的实际提交。Desktop SQLCipher schema15 最低 reader 不变。
+原生 MCP、Prompt、FEAT-152 三模式和 FEAT-137 退役门禁保持原语义。
+`go-toml/v2@v2.4.3` 只解析/编码配置；错误内容不外传，不包含密钥值。
+原生停用仍先证明线程 idle、正常 EOF/cleanup、以禁用 MCP 的配置重启并验证后才返回。
+定向测试见 `native_config_layers_test.go`，无调用的真实验证为
+`TestPinnedRuntimeFEAT144NativeTrustSurvivesRestart`；不得用该测试冒充产品真实 D4。
+
+## FEAT-132 历史边界
+
 本地开发候选（2026-09-09，未发布）。公共源为兄弟 Contracts 的 native-conversation v1；本仓 api/native-conversation.lock.json 固定真实 Contracts commit 6f632f155eacdaf93df0e0b00b5dab9e369c5442 及源摘要。
 
 `internal/codex/session_protocol.go::ReadThread` 调用现有 JSON-RPC client 的 thread/read(includeTurns=true)，原始 Runtime 历史在 `internal/session/native_conversation.go` 做安全字段投影。新 history 路由和 v7 SSE 经现有 bearer 校验。普通 Runtime 仍由现有 Start/Resume/StartTurn/Interrupt 入口管理，不新增 Runtime patch、实验 API 或 model/tool 能力。
