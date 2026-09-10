@@ -141,3 +141,38 @@ func TestFEAT144CatalogRequiresTheActualNativeSchema(t *testing.T) {
 		t.Fatal("changed native schema was accepted")
 	}
 }
+
+// Captured from fixed 0.144.6 config/read without a credential, thread or MCP connection.
+func TestFEAT144EffectiveConfigMatchesFixedNativeSerialization(t *testing.T) {
+	raw, err := os.ReadFile("testdata/feat144-effective-native-config.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &config); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateSorftimeEffectiveConfig(config, true); err != nil {
+		t.Fatal(err)
+	}
+	// Unknown/default-less feature values must not count as verified isolation.
+	for _, value := range []string{`null`, `true`} {
+		var features map[string]json.RawMessage
+		if err := json.Unmarshal(config["features"], &features); err != nil {
+			t.Fatal(err)
+		}
+		features["plugins"] = json.RawMessage(value)
+		changed, _ := json.Marshal(features)
+		candidate := map[string]json.RawMessage{}
+		for key, original := range config {
+			candidate[key] = original
+		}
+		candidate["features"] = changed
+		if err := validateSorftimeEffectiveConfig(candidate, true); err == nil {
+			t.Fatal("unverified feature accepted")
+		}
+	}
+	if err := validateSorftimeEffectiveConfig(config, false); err == nil {
+		t.Fatal("configured MCP accepted as deactivated")
+	}
+}

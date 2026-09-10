@@ -242,10 +242,16 @@ func (m *Manager) validateSorftimeConfig(ctx context.Context, cwd string) error 
 	if err := m.request(ctx, "config/read", params, &response); err != nil {
 		return errors.New("native Sorftime configuration unavailable")
 	}
-	decode := func(key string, target any) bool { return json.Unmarshal(response.Config[key], target) == nil }
-	if !m.sorftimeEnabled() {
+	return validateSorftimeEffectiveConfig(response.Config, m.sorftimeEnabled())
+}
+
+// Compare the fixed Runtime's serialized effective configuration, including
+// its native defaults, rather than the shape of the input TOML.
+func validateSorftimeEffectiveConfig(config map[string]json.RawMessage, enabled bool) error {
+	decode := func(key string, target any) bool { return json.Unmarshal(config[key], target) == nil }
+	if !enabled {
 		var servers map[string]map[string]any
-		if raw, present := response.Config["mcp_servers"]; present && string(raw) != "null" {
+		if raw, present := config["mcp_servers"]; present && string(raw) != "null" {
 			if !decode("mcp_servers", &servers) {
 				return errors.New("native MCP deactivation unavailable")
 			}
@@ -263,29 +269,30 @@ func (m *Manager) validateSorftimeConfig(ctx context.Context, cwd string) error 
 	}
 	expected := map[string]any{
 		"url": sorftimeURL, "bearer_token_env_var": SorftimeSecretEnv,
-		"http_headers": map[string]any{"User-Agent": sorftimeUserAgent}, "enabled": true,
+		"http_headers": map[string]any{"User-Agent": sorftimeUserAgent}, "enabled": true, "environment_id": "local",
 		"enabled_tools": []any{"product_detail"}, "default_tools_approval_mode": "prompt",
-		"startup_timeout_sec": float64(30), "tool_timeout_sec": float64(60), "supports_parallel_tool_calls": false,
+		"startup_timeout_sec": float64(30), "tool_timeout_sec": float64(60),
 		"tools": map[string]any{"product_detail": map[string]any{"approval_mode": "prompt"}},
 	}
 	if !reflect.DeepEqual(servers["sorftime"], expected) {
 		return errors.New("native Sorftime configuration scope mismatch")
 	}
-	var features map[string]bool
+	var features map[string]any
 	if !decode("features", &features) {
 		return errors.New("native execution isolation unavailable")
 	}
 	for _, key := range []string{"hooks", "plugins", "apps", "tool_suggest", "shell_snapshot", "multi_agent", "js_repl", "memories"} {
-		if value, present := features[key]; !present || value {
+		if value, present := features[key]; !present || value != false {
 			return errors.New("native execution isolation mismatch")
 		}
 	}
-	if !features["tool_call_mcp_elicitation"] {
+	if features["tool_call_mcp_elicitation"] != true {
 		return errors.New("stable native MCP elicitation is unavailable")
 	}
 	var environment map[string]any
 	if !decode("shell_environment_policy", &environment) || !reflect.DeepEqual(environment, map[string]any{
 		"inherit": "core", "exclude": []any{SorftimeSecretEnv, SorftimeEnabledEnv, MiniMaxRuntimeEnvKey}, "set": map[string]any{},
+		"ignore_default_excludes": nil, "include_only": nil, "experimental_use_profile": nil,
 	}) {
 		return errors.New("native credential environment isolation mismatch")
 	}

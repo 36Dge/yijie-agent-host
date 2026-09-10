@@ -1,0 +1,52 @@
+{
+  "mcp_servers": {
+    "sorftime": {
+      "url": "https://mcp.sorftime.com/",
+      "bearer_token_env_var": "YIJIE_FEAT144_SORFTIME_ACCOUNT_SK",
+      "http_headers": {
+        "User-Agent": "codex-mcp-client/0.144.6"
+      },
+      "environment_id": "local",
+      "enabled": true,
+      "startup_timeout_sec": 30.0,
+      "tool_timeout_sec": 60.0,
+      "default_tools_approval_mode": "prompt",
+      "enabled_tools": [
+        "product_detail"
+      ],
+      "tools": {
+        "product_detail": {
+          "approval_mode": "prompt"
+        }
+      }
+    }
+  },
+  "features": {
+    "network_proxy": null,
+    "apps": false,
+    "hooks": false,
+    "js_repl": false,
+    "memories": false,
+    "multi_agent": false,
+    "plugins": false,
+    "shell_snapshot": false,
+    "tool_call_mcp_elicitation": true,
+    "tool_suggest": false,
+    "auth_elicitation": true,
+    "mentions_v2": true,
+    "remote_control": false,
+    "remote_plugin": true
+  },
+  "shell_environment_policy": {
+    "inherit": "core",
+    "ignore_default_excludes": null,
+    "exclude": [
+      "YIJIE_FEAT144_SORFTIME_ACCOUNT_SK",
+      "YIJIE_FEAT144_SORFTIME_ENABLED",
+      "MINIMAX_API_KEY"
+    ],
+    "set": {},
+    "include_only": null,
+    "experimental_use_profile": null
+  }
+}
