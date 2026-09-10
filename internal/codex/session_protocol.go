@@ -202,6 +202,7 @@ func (input UserInput) wireValue() (map[string]any, error) {
 }
 
 type threadWire struct {
+	Cwd       string     `json:"cwd"`
 	ID        string     `json:"id"`
 	SessionID string     `json:"sessionId"`
 	Turns     []turnWire `json:"turns"`
@@ -215,9 +216,12 @@ type turnWire struct {
 }
 
 type threadResponse struct {
-	Thread        threadWire `json:"thread"`
-	Model         string     `json:"model"`
-	ModelProvider string     `json:"modelProvider"`
+	Thread            threadWire      `json:"thread"`
+	Model             string          `json:"model"`
+	ModelProvider     string          `json:"modelProvider"`
+	ApprovalPolicy    string          `json:"approvalPolicy"`
+	ApprovalsReviewer string          `json:"approvalsReviewer"`
+	Sandbox           json.RawMessage `json:"sandbox"`
 }
 
 type turnStartResponse struct {
@@ -290,6 +294,9 @@ func (m *Manager) SetCommandApprovalHandler(handler CommandApprovalHandler) erro
 }
 
 func (m *Manager) handleServerRequest(ctx context.Context, request serverRequest) serverRequestResult {
+	if request.method == "mcpServer/elicitation/request" {
+		return m.handleSorftimeElicitation(ctx, request)
+	}
 	if m.config.RuntimePermissionsEnabled {
 		if result, supported := m.handleRuntimePermissionRequest(ctx, request); supported {
 			return result
@@ -492,10 +499,15 @@ func validCommandApprovalSandboxPermissions(value string) bool {
 }
 
 func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, error) {
+	m.sorftime.operation.Lock()
+	defer m.sorftime.operation.Unlock()
 	if !m.config.MiniMax.Enabled && !m.config.FakeResponses.Enabled {
 		return ThreadInfo{}, errors.New("model provider is not configured")
 	}
 	if err := validateWorkspace(cwd); err != nil {
+		return ThreadInfo{}, err
+	}
+	if err := m.validateSorftimeConfig(ctx, cwd); err != nil {
 		return ThreadInfo{}, err
 	}
 	params := struct {
@@ -523,21 +535,57 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		params.BaseInstructions = &instructions
 		params.Config = m.permissionVerificationConfig()
 	}
+	if m.sorftimeEnabled() {
+		params.ApprovalPolicy = "on-request"
+		params.Sandbox = "workspace-write"
+		if params.Config == nil {
+			params.Config = make(map[string]any)
+		}
+		params.Config["approvals_reviewer"] = "user"
+		params.DeveloperInstructions += " Sorftime product_detail may query exactly one user-requested public ASIN with explicit amz_site=US, after native approval. Do not call any other MCP tool or broaden the query."
+	}
 	if m.config.DynamicToolsEnabled {
 		if m.dynamicToolHandler == nil {
 			return ThreadInfo{}, errors.New("dynamic tool handler is not configured")
 		}
 		params.DeveloperInstructions += " The Host-owned generate_image dynamic tool is explicitly allowed in this read-only session and does not modify the workspace. It is the only permitted tool. Call generate_image exactly once only when the user explicitly asks to generate a new image, or to generate from the current turn's single character reference image. Never call it for ordinary image viewing or analysis, and never invent image output."
+		if m.sorftimeEnabled() {
+			params.DeveloperInstructions = strings.Replace(params.DeveloperInstructions, "It is the only permitted tool.", "It is the only permitted dynamic tool.", 1)
+		}
 		params.DynamicTools = []dynamicToolSpec{imageGenerationToolSpec()}
 	}
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadStart, params, &response); err != nil {
 		return ThreadInfo{}, err
 	}
-	return validateThreadResponse(response)
+	thread, err := validateThreadResponse(response)
+	if err != nil {
+		return ThreadInfo{}, err
+	}
+	if err := m.rememberSorftimeThread(response); err != nil {
+		return ThreadInfo{}, err
+	}
+	return thread, nil
 }
 
 func (m *Manager) ResumeThread(ctx context.Context, threadID string) (ThreadInfo, error) {
+	m.sorftime.operation.Lock()
+	defer m.sorftime.operation.Unlock()
+	return m.resumeThread(ctx, threadID)
+}
+
+func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo, error) {
+	if m.sorftime.configured {
+		var origin struct {
+			Thread threadWire `json:"thread"`
+		}
+		if err := m.request(ctx, "thread/read", map[string]any{"threadId": threadID, "includeTurns": false}, &origin); err != nil || origin.Thread.ID != threadID || origin.Thread.Cwd == "" {
+			return ThreadInfo{}, errors.New("native thread configuration unavailable")
+		}
+		if err := m.validateSorftimeConfig(ctx, origin.Thread.Cwd); err != nil {
+			return ThreadInfo{}, err
+		}
+	}
 	if threadID == "" {
 		return ThreadInfo{}, errors.New("Codex thread id is required")
 	}
@@ -562,6 +610,15 @@ func (m *Manager) ResumeThread(ctx context.Context, threadID string) (ThreadInfo
 			params.Config = m.permissionVerificationConfig()
 		}
 	}
+	if m.sorftimeEnabled() {
+		policy, sandbox := "on-request", "workspace-write"
+		params.ApprovalPolicy = &policy
+		params.Sandbox = &sandbox
+		if params.Config == nil {
+			params.Config = make(map[string]any)
+		}
+		params.Config["approvals_reviewer"] = "user"
+	}
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadResume, params, &response); err != nil {
 		return ThreadInfo{}, err
@@ -572,6 +629,12 @@ func (m *Manager) ResumeThread(ctx context.Context, threadID string) (ThreadInfo
 	}
 	if thread.ID != threadID {
 		return ThreadInfo{}, errors.New("thread/resume returned an unexpected thread id")
+	}
+	if err := m.validateSorftimeConfig(ctx, response.Thread.Cwd); err != nil {
+		return ThreadInfo{}, err
+	}
+	if err := m.rememberSorftimeThread(response); err != nil {
+		return ThreadInfo{}, err
 	}
 	return thread, nil
 }
@@ -606,6 +669,12 @@ func (m *Manager) StartTurn(
 	input string,
 	reasoningEffort string,
 ) (TurnInfo, error) {
+	m.sorftime.operation.Lock()
+	defer m.sorftime.operation.Unlock()
+	if m.sorftimeEnabled() {
+		return TurnInfo{}, errors.New("Sorftime requires the native permission-turn entry")
+	}
+
 	if threadID == "" {
 		return TurnInfo{}, errors.New("Codex thread id is required")
 	}
@@ -657,6 +726,9 @@ func (m *Manager) StartTurnV2(
 	inputs []UserInput,
 	reasoningEffort string,
 ) (TurnInfo, error) {
+	m.sorftime.operation.Lock()
+	defer m.sorftime.operation.Unlock()
+
 	if threadID == "" {
 		return TurnInfo{}, errors.New("Codex thread id is required")
 	}
@@ -706,6 +778,38 @@ func (m *Manager) StartTurnV2(
 		params.ApprovalsReviewer = &reviewer
 		params.SandboxPolicy = sandbox
 	}
+	if m.sorftimeEnabled() {
+		mode, ok := ctx.Value(permissionContextKey{}).(PermissionMode)
+		if !ok {
+			return TurnInfo{}, errors.New("Sorftime requires an explicit permission mode")
+		}
+		if _, _, err := m.prepareMcpPermissionScope(ctx, mode); err != nil {
+			return TurnInfo{}, err
+		}
+	}
+	m.mu.Lock()
+	generation := m.runtimeGeneration
+	m.mu.Unlock()
+	m.sorftime.mu.Lock()
+	prior, known := m.sorftime.threads[threadID]
+	m.sorftime.mu.Unlock()
+	if m.sorftimeEnabled() {
+		m.sorftime.mu.Lock()
+		verified := m.sorftime.verified[threadID]
+		m.sorftime.mu.Unlock()
+		if !verified {
+			return TurnInfo{}, errors.New("native Sorftime thread scope unavailable")
+		}
+	}
+	if known && prior != generation {
+		if _, err := m.resumeThread(ctx, threadID); err != nil {
+			return TurnInfo{}, err
+		}
+	}
+
+	if err := m.verifySorftimeCatalog(ctx, threadID); err != nil {
+		return TurnInfo{}, err
+	}
 	var response turnStartResponse
 	if err := m.request(ctx, RuntimeMethodTurnStart, params, &response); err != nil {
 		return TurnInfo{}, err
@@ -754,6 +858,13 @@ func (m *Manager) DeleteThread(ctx context.Context, threadID string) error {
 	defer timer.Stop()
 	select {
 	case <-waiter:
+		m.sorftime.mu.Lock()
+		delete(m.sorftime.threads, threadID)
+		delete(m.sorftime.verified, threadID)
+		delete(m.sorftime.startup, threadID)
+		delete(m.sorftime.catalogAttempted, threadID)
+		delete(m.sorftime.catalogVerified, threadID)
+		m.sorftime.mu.Unlock()
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()

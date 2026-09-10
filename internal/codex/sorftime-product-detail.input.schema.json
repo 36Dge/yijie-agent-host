@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "properties": {
+    "asin": {
+      "description": "Product ASIN, single-ASIN query only.",
+      "type": "string"
+    },
+    "amz_site": {
+      "description": "Amazon marketplace site. ",
+      "type": "string",
+      "enum": [
+        "Unknow",
+        "US",
+        "GB",
+        "DE",
+        "FR",
+        "IN",
+        "CA",
+        "JP",
+        "ES",
+        "IT",
+        "MX",
+        "AE",
+        "AU",
+        "BR",
+        "SA"
+      ],
+      "default": "Unknow"
+    }
+  },
+  "required": [
+    "asin"
+  ]
+}

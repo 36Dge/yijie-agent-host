@@ -253,6 +253,16 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	runtimeConfig.CommandApprovalEnabled = feat137CommandApproval
 	// FEAT-152 uses the retained native Runtime, independently of retired v6.
 	runtimeConfig.RuntimePermissionsEnabled = environment == "local" && os.Getenv("YIJIE_LOCAL_PROFILE") == "demo_fast" && os.Getenv("YIJIE_RUNTIME_PERMISSIONS_ENABLED") == "true" && runtimeConfig.MiniMax.Enabled
+	if os.Getenv(codex.SorftimeEnabledEnv) != "" || os.Getenv(codex.SorftimeSecretEnv) != "" || os.Getenv(codex.SorftimeProxyEnv) != "" {
+		if os.Getenv(codex.SorftimeEnabledEnv) != "true" || !runtimeConfig.RuntimePermissionsEnabled || runtimeConfig.FakeResponses.Enabled {
+			return Config{}, errors.New("Sorftime requires the explicit local demo profile")
+		}
+		runtimeConfig.Sorftime = codex.SorftimeConfig{Enabled: true, Token: os.Getenv(codex.SorftimeSecretEnv), HTTPSProxy: os.Getenv(codex.SorftimeProxyEnv)}
+		// Remove ambient inheritance after the explicit in-memory handoff.
+		_ = os.Unsetenv(codex.SorftimeSecretEnv)
+		_ = os.Unsetenv(codex.SorftimeEnabledEnv)
+		_ = os.Unsetenv(codex.SorftimeProxyEnv)
+	}
 	if value := os.Getenv("YIJIE_PERMISSION_VERIFICATION_BASE_URL"); value != "" {
 		// Fixed loopback meter only; the meter forwards to the normal MiniMax
 		// endpoint and never changes model request or response bodies.
@@ -1598,6 +1608,12 @@ func writeArtifactError(w http.ResponseWriter, status int, code, message string)
 type eventSubscriber func(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)
 
 func (h *sessionHandler) streamEvents(w http.ResponseWriter, r *http.Request, subscribe eventSubscriber) {
+	writeEvent := func(event session.Event) error {
+		if strings.HasPrefix(r.URL.Path, "/v7/agent-sessions/") && event.SchemaVersion == 8 {
+			event = session.LegacyNativeEvent(event)
+		}
+		return writeSSEEvent(w, event)
+	}
 	streamID, after, err := eventCursor(r)
 	if err != nil {
 		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidEventCursor, "event cursor is invalid")
@@ -1622,7 +1638,7 @@ func (h *sessionHandler) streamEvents(w http.ResponseWriter, r *http.Request, su
 	w.Header().Set("X-Yijie-Event-Stream-ID", actualStreamID)
 	w.WriteHeader(http.StatusOK)
 	for _, event := range replay {
-		if err := writeSSEEvent(w, event); err != nil {
+		if err := writeEvent(event); err != nil {
 			return
 		}
 	}
@@ -1639,7 +1655,7 @@ func (h *sessionHandler) streamEvents(w http.ResponseWriter, r *http.Request, su
 			if !open {
 				return
 			}
-			if err := writeSSEEvent(w, event); err != nil {
+			if err := writeEvent(event); err != nil {
 				return
 			}
 			flusher.Flush()

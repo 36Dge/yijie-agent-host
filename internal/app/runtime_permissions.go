@@ -26,6 +26,7 @@ func registerRuntimePermissions(mux *http.ServeMux, h *sessionHandler, enabled b
 	if !ok {
 		return
 	}
+	registerNativeMcpPermissions(mux, h, service)
 	register := func(pattern string, handler http.HandlerFunc) { mux.Handle(pattern, h.authorize(handler)) }
 	register("POST /v1/agent-sessions/{agent_session_id}/permission-turns", func(w http.ResponseWriter, r *http.Request) {
 		var request contract.PermissionTurnRequest
@@ -67,6 +68,9 @@ func registerRuntimePermissions(mux *http.ServeMux, h *sessionHandler, enabled b
 		}
 		response := contract.RuntimeApprovalSnapshot{Requests: make([]contract.RuntimeApproval, 0, len(values))}
 		for _, v := range values {
+			if v.Kind == "mcp" {
+				continue
+			}
 			response.Requests = append(response.Requests, approvalResponse(v))
 		}
 		w.Header().Set("Cache-Control", "no-store")
@@ -77,6 +81,17 @@ func registerRuntimePermissions(mux *http.ServeMux, h *sessionHandler, enabled b
 		if err := decodeRequest(w, r, &request); err != nil || (request.Decision != "approve_once" && request.Decision != "reject") {
 			writeSessionError(w, session.ErrInvalidArgument)
 			return
+		}
+		values, err := service.ListRuntimeApprovals(r.PathValue("agent_session_id"))
+		if err != nil {
+			writeSessionError(w, err)
+			return
+		}
+		for _, value := range values {
+			if value.ID == r.PathValue("approval_id") && value.Kind == "mcp" {
+				writeSessionError(w, session.ErrInvalidArgument)
+				return
+			}
 		}
 		value, err := service.DecideRuntimeApproval(r.Context(), r.PathValue("agent_session_id"), r.PathValue("approval_id"), string(request.Decision))
 		if err != nil {

@@ -3,7 +3,7 @@ package session
 import (
 	"encoding/json"
 	"errors"
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversation"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv2"
 	"sync"
 	"time"
 )
@@ -182,7 +182,7 @@ func NewEventHub(capacity, subscriberCapacity int) *EventHub {
 func NewEventHubVersion(schemaVersion, capacity, subscriberCapacity int) *EventHub {
 	if schemaVersion != EventSchemaVersionV2 && schemaVersion != EventSchemaVersionV3 &&
 		schemaVersion != EventSchemaVersionV4 && schemaVersion != EventSchemaVersionV5 &&
-		schemaVersion != EventSchemaVersionV6 && schemaVersion != 7 {
+		schemaVersion != EventSchemaVersionV6 && schemaVersion != 7 && schemaVersion != 8 {
 		schemaVersion = EventSchemaVersion
 	}
 	if capacity < 1 {
@@ -215,7 +215,7 @@ func (h *EventHub) Publish(event Event) (Event, error) {
 	event.StreamID = stream.id
 	event.Sequence = stream.next + 1
 	event.OccurredAt = time.Now().UTC()
-	if h.schemaVersion == 7 {
+	if h.schemaVersion == 7 || h.schemaVersion == 8 {
 		if event.Payload.Native == nil || event.EventType != "native.notification" {
 			return Event{}, ErrEventLimitExceeded
 		}

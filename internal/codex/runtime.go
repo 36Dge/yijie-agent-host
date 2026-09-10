@@ -53,6 +53,7 @@ type Config struct {
 	WriteQueueDepth               int
 	StderrTailBytes               int
 	MiniMax                       MiniMaxConfig
+	Sorftime                      SorftimeConfig
 	FakeResponses                 FakeResponsesConfig
 	ManagedReasoningProfile       ManagedReasoningProfile
 	DynamicToolsEnabled           bool
@@ -123,6 +124,12 @@ func (c Config) validate() error {
 	if err := c.MiniMax.validate(); err != nil {
 		return err
 	}
+	if err := c.Sorftime.validate(c.RuntimePermissionsEnabled, c.MiniMax.Enabled); err != nil {
+		return err
+	}
+	if c.Sorftime.Enabled && c.CommandApprovalEnabled {
+		return errors.New("Sorftime cannot use retired approvals")
+	}
 	if err := c.FakeResponses.validate(); err != nil {
 		return err
 	}
@@ -166,6 +173,7 @@ type Status struct {
 
 type Manager struct {
 	permissionCallbacks runtimeApprovalCallbacks
+	sorftime            sorftimeRuntimeState
 	config              Config
 	logger              *slog.Logger
 
@@ -198,8 +206,9 @@ func NewManager(config Config, logger *slog.Logger) *Manager {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &Manager{
-		config: config,
-		logger: logger,
+		config:   config,
+		sorftime: sorftimeRuntimeState{configured: config.Sorftime.Enabled, enabled: config.Sorftime.Enabled, threads: make(map[string]string), verified: make(map[string]bool), startup: make(map[string]string), catalogAttempted: make(map[string]bool), catalogVerified: make(map[string]bool), changed: make(chan struct{})},
+		logger:   logger,
 		status: Status{
 			State:           StateNotConfigured,
 			Transport:       ExpectedTransport,
@@ -357,6 +366,7 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 			authority,
 			m.config.ManagedReasoningProfile,
 			m.config.CommandApprovalEnabled,
+			m.config.Sorftime.Enabled,
 		)
 		if providerErr == nil {
 			m.status.ModelProvider = MiniMaxProviderID
@@ -478,15 +488,13 @@ func (m *Manager) validateManagedProviderAuthority(authority *managedCodexHomeAu
 	if err := authority.validateManagedFileExact(managedModelCatalogName, catalog); err != nil {
 		return err
 	}
-	expected, err := miniMaxManagedConfigForAuthority(
+	expected, err := miniMaxManagedConfigForRuntime(
 		m.config.CodexHome,
 		m.config.ManagedReasoningProfile,
 		m.config.CommandApprovalEnabled,
+		m.config.Sorftime.Enabled,
 	)
 	if err != nil {
-		return err
-	}
-	if err := validateFEAT137ManagedConfig(expected, m.config.CommandApprovalEnabled); err != nil {
 		return err
 	}
 	if err := authority.validateManagedFileExact("config.toml", expected); err != nil {
@@ -639,6 +647,24 @@ func (m *Manager) startProcess() (io.WriteCloser, io.ReadCloser, *exec.Cmd, *tai
 		miniMaxKey,
 		m.config.DeterministicApprovalProducerEnabled,
 	)
+	if m.config.Sorftime.Enabled {
+		// Use the existing native HTTP proxy support for the current system
+		// HTTPS route. Keep the normal provider and loopback routes direct.
+		clean := cmd.Env[:0]
+		for _, entry := range cmd.Env {
+			name, _, _ := strings.Cut(entry, "=")
+			switch strings.ToUpper(name) {
+			case "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY":
+				continue
+			}
+			clean = append(clean, entry)
+		}
+		cmd.Env = clean
+		if m.config.Sorftime.HTTPSProxy != "" {
+			cmd.Env = append(cmd.Env, "HTTPS_PROXY="+m.config.Sorftime.HTTPSProxy, "NO_PROXY=api.minimaxi.com,127.0.0.1,localhost")
+		}
+		cmd.Env = append(cmd.Env, SorftimeSecretEnv+"="+m.config.Sorftime.Token)
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("open runtime stdin: %w", err)
@@ -714,6 +740,7 @@ func (m *Manager) handleClientFailure(err error) {
 }
 
 func (m *Manager) handleNotification(method string, params json.RawMessage) {
+	m.observeSorftimeStartup(method, params)
 	m.handlePermissionNotification(method, params)
 	m.logger.Debug("Codex Runtime notification", "method", method)
 	if method == RuntimeNotificationServerRequestResolved {
@@ -941,6 +968,9 @@ func runtimeEnvironment(
 		"YIJIE_MINIMAX_API_KEY":                 {},
 		"YIJIE_MINIMAX_API_KEY_FILE":            {},
 		"CODEX_HOME":                            {},
+		SorftimeSecretEnv:                       {},
+		SorftimeEnabledEnv:                      {},
+		SorftimeProxyEnv:                        {},
 		feat137D4DeterministicProducerHostEnv:   {},
 		feat137DeterministicApprovalProducerEnv: {},
 	}

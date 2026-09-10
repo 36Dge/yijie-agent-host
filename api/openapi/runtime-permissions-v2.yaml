@@ -1,0 +1,323 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Yijie native MCP and Runtime approval display v2",
+    "version": "0.2.0",
+    "description": "FEAT-144 extension of FEAT-152 callback display, with stable MCP elicitation. Original mode semantics and v1 approvals unchanged. No MCP business executor or persistent callback state."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9130"
+    }
+  ],
+  "security": [
+    {
+      "LocalBearer": []
+    }
+  ],
+  "paths": {
+    "/v2/agent-sessions/{agent_session_id}/runtime-approvals": {
+      "parameters": [
+        {
+          "name": "agent_session_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "listRuntimeApprovals",
+        "summary": "Read bounded live callback state for this task",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeApprovalSnapshot"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown session"
+          }
+        }
+      }
+    },
+    "/v2/agent-sessions/{agent_session_id}/runtime-approvals/{approval_id}": {
+      "parameters": [
+        {
+          "name": "agent_session_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "approval_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "decideRuntimeApproval",
+        "summary": "Approve once or reject the exact original Runtime callback",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeApprovalDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeApproval"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid decision"
+          },
+          "404": {
+            "description": "Unknown session or callback"
+          },
+          "409": {
+            "description": "Already decided differently or unavailable"
+          },
+          "503": {
+            "description": "Runtime response unconfirmed"
+          }
+        }
+      }
+    },
+    "/v2/runtime-mcp/permission-scope": {
+      "post": {
+        "operationId": "prepareMcpPermissionScope",
+        "summary": "Deactivate Sorftime before a permission-mode change without changing permission semantics",
+        "description": "Owner-authorized local adapter only. No active Turn may be stopped; an active Turn or uncertain cleanup refuses the change. This does not grant any permission or start a model Turn.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/McpPermissionScopeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verified MCP availability",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpPermissionScopeResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An active Turn prevents normal deactivation"
+          },
+          "503": {
+            "description": "Normal exit, cleanup or verified restart could not be confirmed"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "LocalBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "PermissionMode": {
+        "type": "string",
+        "enum": [
+          "ask",
+          "auto",
+          "full"
+        ],
+        "description": "ask = on-request/user/workspace-write; auto = on-request/auto_review/workspace-write; full = never/user/danger-full-access. Native OS restrictions still apply."
+      },
+      "RuntimeApprovalDecision": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve_once",
+              "reject",
+              "cancel"
+            ]
+          }
+        },
+        "description": "approve_once/reject retain original FEAT-152 semantics; cancel is allowed only for MCP and maps to native elicitation cancel. Unsupported kinds never gain new choices."
+      },
+      "RuntimeApproval": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "summary",
+          "scope",
+          "reason",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "command",
+              "file_change",
+              "permissions",
+              "auto_review",
+              "mcp"
+            ]
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Display-only escaped and redacted operation summary"
+          },
+          "scope": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Display-only affected command cwd, files or network target"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Redacted Runtime reason or automatic assessment"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "unavailable",
+              "cancelled"
+            ]
+          },
+          "mcp": {
+            "$ref": "#/components/schemas/McpApprovalScope"
+          }
+        }
+      },
+      "RuntimeApprovalSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requests"
+        ],
+        "properties": {
+          "requests": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "$ref": "#/components/schemas/RuntimeApproval"
+            }
+          }
+        }
+      },
+      "McpApprovalScope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "server",
+          "tool",
+          "asin",
+          "marketplace"
+        ],
+        "description": "Validated bounded parameters from the actual native Prompt request; not an authorization or Tool Item binding. Only the configured sorftime/product_detail single US ASIN is supported.",
+        "properties": {
+          "server": {
+            "type": "string",
+            "enum": [
+              "sorftime"
+            ]
+          },
+          "tool": {
+            "type": "string",
+            "enum": [
+              "product_detail"
+            ]
+          },
+          "asin": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]{10}$",
+            "minLength": 10,
+            "maxLength": 10
+          },
+          "marketplace": {
+            "type": "string",
+            "enum": [
+              "US"
+            ]
+          }
+        }
+      },
+      "McpPermissionScopeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/PermissionMode"
+          }
+        }
+      },
+      "McpPermissionScopeResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "active",
+          "runtimeRestarted"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "Whether the scoped Sorftime configuration remains enabled. Returning to ask does not silently reactivate it."
+          },
+          "runtimeRestarted": {
+            "type": "boolean",
+            "description": "True only after normal EOF exit, cleanup and source-verified restart without Sorftime."
+          }
+        }
+      }
+    }
+  }
+}

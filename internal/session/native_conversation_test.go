@@ -3,7 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversation"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv2"
 	"github.com/getkin/kin-openapi/openapi3"
 	"os"
 	"strings"
@@ -67,7 +67,7 @@ func (r *nativeReadRuntime) ReadThread(_ context.Context, id string) (json.RawMe
 func TestFEAT132NativeReadUsesRuntimeHistoryAndPreservesNativeIDs(t *testing.T) {
 	r := &nativeReadRuntime{raw: rawJSON(t, map[string]any{"id": testThreadID, "cwd": "/private/not-exposed", "turns": []any{map[string]any{"id": testTurnID, "status": "completed", "items": []any{map[string]any{"id": "item-17", "type": "agentMessage", "text": "native history", "phase": nil}}}}})}
 	s := NewService(r, openBoundFEAT134Store(t), NewEventHub(32, 8), nil)
-	view, err := s.ReadNativeThread(context.Background(), testSessionID)
+	view, err := s.ReadNativeThreadV2(context.Background(), testSessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestFEAT132NativeSummaryIndexesAndSafeErrorAreNative(t *testing.T) {
 }
 
 func TestFEAT132NativeProducerConformsToSourceContract(t *testing.T) {
-	document, err := openapi3.NewLoader().LoadFromFile("../../api/openapi/native-conversation.yaml")
+	document, err := openapi3.NewLoader().LoadFromFile("../../api/openapi/native-conversation-v2.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +249,7 @@ func TestFEAT132NativeCrossRepoExport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cancel()
-	history, err := s.ReadNativeThread(context.Background(), testSessionID)
+	history, err := s.ReadNativeThreadV2(context.Background(), testSessionID)
 	if err != nil {
 		t.Fatal(err)
 	}

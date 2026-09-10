@@ -14,6 +14,16 @@ type runtimePermissions interface {
 	DecideRuntimeApproval(context.Context, string, string, string) (codex.RuntimeApproval, error)
 }
 
+func (s *Service) PrepareMcpPermissionScope(ctx context.Context, mode codex.PermissionMode) (bool, bool, error) {
+	runtime, ok := s.runtime.(interface {
+		PrepareMcpPermissionScope(context.Context, codex.PermissionMode) (bool, bool, error)
+	})
+	if !ok {
+		return false, false, ErrSessionNotUsable
+	}
+	return runtime.PrepareMcpPermissionScope(ctx, mode)
+}
+
 func (s *Service) ListRuntimeApprovals(sessionID string) ([]codex.RuntimeApproval, error) {
 	record, err := s.GetSession(sessionID)
 	if err != nil {

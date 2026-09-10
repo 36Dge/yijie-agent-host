@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversation"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv2"
 )
 
 const nativeTextLimit = 256 << 10
@@ -27,6 +27,7 @@ type nativeWireItem struct {
 	AggregatedOutput *string         `json:"aggregatedOutput"`
 	ExitCode         *int32          `json:"exitCode"`
 	DurationMS       *int64          `json:"durationMs"`
+	Server           string          `json:"server"`
 	Tool             string          `json:"tool"`
 	Arguments        json.RawMessage `json:"arguments"`
 	Result           json.RawMessage `json:"result"`
@@ -166,15 +167,7 @@ func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) 
 			}
 		}
 	case native.McpToolCall:
-		out.Availability = native.NativeItemAvailabilityPartial
-		// Tool registration/execution is outside this feature. Safe metadata only.
-		out.ToolLabel = nativeString("工具调用")
-		if len(wire.Arguments) > 0 && string(wire.Arguments) != "null" {
-			out.ArgumentsSummary = nativeString("参数已隐藏")
-		}
-		if len(wire.Result) > 0 && string(wire.Result) != "null" {
-			out.ResultSummary = nativeString("结果已接收")
-		}
+		projectNativeMcp(wire, &out)
 	}
 	return out, nil
 }
@@ -228,7 +221,7 @@ func projectNativeTurn(wire nativeWireTurn, cwd string, allowRawReasoning bool) 
 	return out
 }
 
-func (s *Service) ReadNativeThread(ctx context.Context, sessionID string) (native.NativeThreadSnapshot, error) {
+func (s *Service) ReadNativeThreadV2(ctx context.Context, sessionID string) (native.NativeThreadSnapshot, error) {
 	if err := requireUUID("agent_session_id", sessionID); err != nil {
 		return native.NativeThreadSnapshot{}, err
 	}
@@ -253,7 +246,7 @@ func (s *Service) ReadNativeThread(ctx context.Context, sessionID string) (nativ
 	if json.Unmarshal(raw, &wire) != nil || wire.ID != record.CodexThreadID {
 		return native.NativeThreadSnapshot{}, ErrRuntimeRequest
 	}
-	out := native.NativeThreadSnapshot{SchemaVersion: 1, Source: native.RuntimeRead, ThreadId: wire.ID, Turns: []native.NativeTurn{}, Availability: native.NativeThreadSnapshotAvailabilityPartial}
+	out := native.NativeThreadSnapshot{SchemaVersion: 2, Source: native.RuntimeRead, ThreadId: wire.ID, Turns: []native.NativeTurn{}, Availability: native.NativeThreadSnapshotAvailabilityPartial}
 	for i, turn := range wire.Turns {
 		if i >= 1024 {
 			break

@@ -1,0 +1,637 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Yijie native conversation facts v2",
+    "version": "0.2.0",
+    "description": "FEAT-144 stable Codex MCP safe display extension. Explicit SSE v8 and native-thread v2; old v7/v1 remain unchanged. No lifecycle inference or business error extension."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9130"
+    }
+  ],
+  "security": [
+    {
+      "LocalBearer": []
+    }
+  ],
+  "paths": {
+    "/v2/agent-sessions/{agent_session_id}/native-thread": {
+      "parameters": [
+        {
+          "name": "agent_session_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "readNativeThread",
+        "summary": "Read the native Codex history without resuming or executing a turn",
+        "responses": {
+          "200": {
+            "description": "Partial native Legacy history; absence never deletes observed facts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NativeThreadSnapshot"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "503": {
+            "description": "Native history unavailable"
+          }
+        }
+      }
+    },
+    "/v8/agent-sessions/{agent_session_id}/events": {
+      "parameters": [
+        {
+          "name": "agent_session_id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "stream_id",
+          "in": "query",
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        {
+          "name": "after",
+          "in": "query",
+          "schema": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        {
+          "name": "Last-Event-ID",
+          "in": "header",
+          "schema": {
+            "type": "string",
+            "maxLength": 128
+          }
+        }
+      ],
+      "get": {
+        "operationId": "streamNativeConversation",
+        "summary": "Subscribe to safe native notifications using the existing bounded SSE transport",
+        "description": "Native facts only. Last-Event-ID takes precedence. At-least-once within a process stream; deduplicate once at Native ingress. Stream changes/gaps require explicit read/resume, never submission retry. Snapshot reads have no SSE watermark and must not be merged item by item with live events. Projection notices are not execution terminals. Native turn/completed contains no final item collection. Command output deltas are not forwarded: a partial projection notice is emitted and safe final aggregatedOutput is used. This prevents secrets split across chunks without a second Host accumulator. Error responses do not include raw Runtime payloads.",
+        "responses": {
+          "200": {
+            "description": "SSE event native.notification; data is NativeEvent",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stream changed or replay unavailable"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "LocalBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "NativeItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "availability"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "userMessage",
+              "agentMessage",
+              "reasoning",
+              "commandExecution",
+              "mcpToolCall",
+              "unknown"
+            ]
+          },
+          "clientId": {
+            "type": "string",
+            "maxLength": 512,
+            "nullable": true
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 1048576
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "commentary",
+              "final_answer"
+            ],
+            "nullable": true
+          },
+          "summary": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "type": "string",
+              "maxLength": 1048576
+            }
+          },
+          "content": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "type": "string",
+              "maxLength": 1048576
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "inProgress",
+              "completed",
+              "failed",
+              "declined"
+            ],
+            "nullable": true
+          },
+          "exitCode": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "durationMs": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "nullable": true
+          },
+          "argumentsSummary": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Metadata display only; raw native arguments never leave Host."
+          },
+          "resultSummary": {
+            "type": "string",
+            "maxLength": 8192,
+            "description": "Metadata display only, omitted when native result is absent or null."
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "available",
+              "partial",
+              "unavailable"
+            ],
+            "description": "Completeness of this safe display projection, independent of the native execution status."
+          },
+          "commandLabel": {
+            "type": "string",
+            "maxLength": 8192,
+            "description": "Security projection label, not the original command. No execution semantics are inferred."
+          },
+          "cwdLabel": {
+            "type": "string",
+            "maxLength": 1024,
+            "description": "Workspace-relative display label; never the native absolute path."
+          },
+          "outputText": {
+            "type": "string",
+            "maxLength": 1048576,
+            "description": "Bounded, redacted projection of native aggregatedOutput. Omitted when native output is null or unavailable."
+          },
+          "toolLabel": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "Safe display label, not a registered tool identifier. Tool registration is outside FEAT-132."
+          },
+          "mcp": {
+            "$ref": "#/components/schemas/NativeMcpDisplay"
+          }
+        }
+      },
+      "NativeTurn": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "status",
+          "items",
+          "itemsComplete"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "inProgress",
+              "completed",
+              "interrupted",
+              "failed"
+            ],
+            "nullable": true
+          },
+          "errorCode": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Safe diagnostic category for a native error; not the raw error payload. Native status is preserved separately."
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 512,
+            "items": {
+              "$ref": "#/components/schemas/NativeItem"
+            }
+          },
+          "itemsComplete": {
+            "type": "boolean"
+          },
+          "error": {
+            "$ref": "#/components/schemas/NativeError"
+          }
+        }
+      },
+      "NativePlanStep": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "step",
+          "status"
+        ],
+        "properties": {
+          "step": {
+            "type": "string",
+            "maxLength": 65536
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "inProgress",
+              "completed"
+            ]
+          }
+        }
+      },
+      "NativeNotification": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "method",
+          "threadId",
+          "availability"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "runtime_notification",
+              "projection_notice"
+            ]
+          },
+          "method": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "threadId": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "turnId": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "itemId": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "item": {
+            "$ref": "#/components/schemas/NativeItem"
+          },
+          "turn": {
+            "$ref": "#/components/schemas/NativeTurn"
+          },
+          "delta": {
+            "type": "string",
+            "maxLength": 1048576
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 127
+          },
+          "plan": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "$ref": "#/components/schemas/NativePlanStep"
+            }
+          },
+          "explanation": {
+            "type": "string",
+            "maxLength": 65536,
+            "nullable": true
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "available",
+              "partial",
+              "unavailable"
+            ]
+          }
+        }
+      },
+      "NativeThreadSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "source",
+          "thread_id",
+          "turns",
+          "availability"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "enum": [
+              2
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "runtime_read",
+              "runtime_resume"
+            ]
+          },
+          "thread_id": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "turns": {
+            "type": "array",
+            "maxItems": 1024,
+            "items": {
+              "$ref": "#/components/schemas/NativeTurn"
+            }
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "partial",
+              "unavailable"
+            ]
+          }
+        }
+      },
+      "NativeEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "event_id",
+          "stream_id",
+          "sequence",
+          "occurred_at",
+          "task_id",
+          "agent_session_id",
+          "codex_thread_id",
+          "event_type",
+          "terminal",
+          "payload"
+        ],
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "enum": [
+              8
+            ]
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stream_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agent_session_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "codex_thread_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "turn_id": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "item_id": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "native.notification"
+            ]
+          },
+          "terminal": {
+            "type": "boolean"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "native"
+            ],
+            "properties": {
+              "native": {
+                "$ref": "#/components/schemas/NativeNotification"
+              }
+            }
+          }
+        }
+      },
+      "NativeError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "availability"
+        ],
+        "properties": {
+          "availability": {
+            "type": "string",
+            "enum": [
+              "partial",
+              "unavailable"
+            ]
+          },
+          "messageText": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Bounded redacted native message, not an inferred execution result."
+          },
+          "codexErrorInfo": {
+            "type": "string",
+            "enum": [
+              "contextWindowExceeded",
+              "sessionBudgetExceeded",
+              "usageLimitExceeded",
+              "serverOverloaded",
+              "cyberPolicy",
+              "httpConnectionFailed",
+              "responseStreamConnectionFailed",
+              "internalServerError",
+              "unauthorized",
+              "badRequest",
+              "threadRollbackFailed",
+              "sandboxError",
+              "responseStreamDisconnected",
+              "responseTooManyFailedAttempts",
+              "activeTurnNotSteerable",
+              "other"
+            ],
+            "description": "Allowlisted native discriminator. Unknown native details are omitted."
+          }
+        }
+      },
+      "NativeMcpText": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "index",
+          "text"
+        ],
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31,
+            "description": "Original native content array index; never renumber after filtering."
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 262144,
+            "description": "Complete native text block after existing whole-line confidentiality projection, then UTF-8 truncation. Plain text only; links remain inert."
+          }
+        }
+      },
+      "NativeMcpDisplay": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "resultKind",
+          "texts",
+          "diagnostics"
+        ],
+        "description": "Display-only native MCP facts. No raw arguments/error/meta/resources/structuredContent and no business field parsing. Limits do not change execution status. Host bounds total UTF-8 text at 256KiB and first 32 original content entries. Confidentiality may replace entire lines.",
+        "properties": {
+          "server": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "tool": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+$"
+          },
+          "resultKind": {
+            "type": "string",
+            "enum": [
+              "absent",
+              "null",
+              "empty",
+              "text",
+              "unsupported",
+              "omitted"
+            ]
+          },
+          "texts": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "$ref": "#/components/schemas/NativeMcpText"
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "maxItems": 8,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "identity_unavailable",
+                "arguments_unavailable",
+                "unsupported_content",
+                "content_redacted",
+                "content_truncated",
+                "content_limit",
+                "result_unavailable",
+                "display_limit"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

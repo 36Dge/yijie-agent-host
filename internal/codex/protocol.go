@@ -74,11 +74,12 @@ type Client struct {
 	requestContext  context.Context
 	cancelRequests  context.CancelFunc
 
-	mu      sync.Mutex
-	nextID  int64
-	pending map[string]chan pendingResponse
-	closed  chan struct{}
-	fatal   error
+	mu        sync.Mutex
+	nextID    int64
+	pending   map[string]chan pendingResponse
+	closed    chan struct{}
+	fatalDone chan struct{}
+	fatal     error
 
 	startOnce sync.Once
 	failOnce  sync.Once
@@ -106,6 +107,7 @@ func NewClient(
 		nextID:          -1,
 		pending:         make(map[string]chan pendingResponse),
 		closed:          make(chan struct{}),
+		fatalDone:       make(chan struct{}),
 	}
 }
 
@@ -439,6 +441,7 @@ func (c *Client) removePending(key string) {
 
 func (c *Client) fail(err error) {
 	c.failOnce.Do(func() {
+		defer close(c.fatalDone)
 		c.cancelRequests()
 		c.mu.Lock()
 		c.fatal = err

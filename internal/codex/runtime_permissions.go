@@ -57,6 +57,7 @@ func (m *Manager) ValidatePermissionMode(mode PermissionMode) error {
 
 type RuntimeApproval struct {
 	ID, Kind, Summary, Scope, Reason, Status string
+	Mcp                                      *McpApprovalScope
 }
 
 type runtimeApprovalCallback struct {
@@ -109,7 +110,7 @@ func (m *Manager) addRuntimeApproval(entry *runtimeApprovalCallback) error {
 }
 
 func (m *Manager) DecideRuntimeApproval(ctx context.Context, threadID, id, decision string) (RuntimeApproval, error) {
-	if decision != "approve_once" && decision != "reject" {
+	if decision != "approve_once" && decision != "reject" && decision != "cancel" {
 		return RuntimeApproval{}, errors.New("invalid approval decision")
 	}
 	c := &m.permissionCallbacks
@@ -124,6 +125,10 @@ func (m *Manager) DecideRuntimeApproval(ctx context.Context, threadID, id, decis
 	if entry == nil {
 		c.mu.Unlock()
 		return RuntimeApproval{}, errors.New("runtime approval not found")
+	}
+	if decision == "cancel" && entry.view.Kind != "mcp" {
+		c.mu.Unlock()
+		return RuntimeApproval{}, errors.New("invalid approval decision")
 	}
 	if entry.decision != "" {
 		if entry.decision != decision {
@@ -169,6 +174,8 @@ func (m *Manager) finishRuntimeApproval(entry *runtimeApprovalCallback, err erro
 			entry.view.Status = "unavailable"
 		} else if entry.decision == "approve_once" {
 			entry.view.Status = "approved"
+		} else if entry.decision == "cancel" {
+			entry.view.Status = "cancelled"
 		} else {
 			entry.view.Status = "rejected"
 		}
