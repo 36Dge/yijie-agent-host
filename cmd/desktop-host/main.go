@@ -16,6 +16,7 @@ import (
 	"github.com/36Dge/yijie-agent-host/internal/app"
 	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	inputonly "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeinputonly"
 	"github.com/36Dge/yijie-agent-host/internal/imagegen"
 	"github.com/36Dge/yijie-agent-host/internal/security"
 	"github.com/36Dge/yijie-agent-host/internal/session"
@@ -53,6 +54,15 @@ func run(logger *slog.Logger) error {
 		storeOptions := make([]session.StoreOption, 0, 1)
 		if config.FEAT126ProjectDir != "" {
 			storeOptions = append(storeOptions, session.WithFEAT126Authority(config.FEAT126ProjectDir, config.FEAT126TestRunID))
+		}
+		if config.ScheduledCandidate != nil {
+			// The descriptor alone is not an execution capability. Pin the real
+			// candidate before any Store6 writer is opened.
+			artifact, checkErr := codex.VerifyArtifact(context.Background(), config.Runtime.BinaryPath, config.Runtime.ManifestPath, config.Runtime.RequestTimeout)
+			if checkErr != nil || artifact.BinarySHA256 != inputonly.RuntimeBinarySHA256 || artifact.ManifestSHA256 != inputonly.RuntimeManifestSHA256 {
+				return errors.New("scheduled candidate Runtime artifact is unqualified")
+			}
+			storeOptions = append(storeOptions, session.WithScheduledDraftStorage())
 		}
 		sessionStore, err = session.OpenStore(config.HostHome, storeOptions...)
 		if err != nil {
@@ -111,6 +121,9 @@ func run(logger *slog.Logger) error {
 				return imageErr
 			}
 			serviceOptions = append(serviceOptions, session.WithImageGenerator(imageClient))
+		}
+		if config.ScheduledCandidate != nil {
+			serviceOptions = append(serviceOptions, session.WithScheduledDraftWorkspaceRoot(config.ScheduledCandidate.WorkspaceRoot))
 		}
 		sessionService = session.NewService(
 			runtime,

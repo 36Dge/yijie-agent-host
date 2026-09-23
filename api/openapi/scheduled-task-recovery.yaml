@@ -1,0 +1,434 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Yijie local scheduled task recovery",
+    "version": "0.1.0",
+    "description": "FEAT-155 local candidate, additive standalone family. Only exact YIJIE_ENV=local and YIJIE_LOCAL_PROFILE=demo_fast register these owner-only loopback routes. Host validates bearer, canonical IDs and session-operation linkage. Mutable Trace tenant/user fields are not authorization. Desktop native must validate current authority, plan/conversation scope and managed Host association before consuming. No multi-tenant service or scheduler is provided."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:18080"
+    }
+  ],
+  "security": [
+    {
+      "localBearer": []
+    }
+  ],
+  "paths": {
+    "/v1/tasks/{task_id}/agent-session-mapping": {
+      "get": {
+        "operationId": "readScheduledTaskSessionMapping",
+        "summary": "Read the persisted task to session mapping",
+        "description": "Read-only; no Runtime call, resume, retry, approval decision or state mutation. No query or body parameters. Missing, reserved, pending and uncertain never authorize re-submission. Accepted only identifies the original turn; it is not a terminal result. HEAD may return the same status and headers without a body under Go HTTP semantics.",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CanonicalID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Persisted facts only; not current Runtime liveness or business success.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                },
+                "description": "Responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionMapping"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Noncanonical ID, query parameters or request body.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                },
+                "description": "Responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Owner-only bearer is absent or invalid.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                },
+                "description": "Responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No current record, including normal cleanup. Not evidence of never executed.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                },
+                "description": "Responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Recovery facts are unavailable; preserve uncertainty and do not retry execution.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                },
+                "description": "Responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent-sessions/{agent_session_id}/turn-operations/{operation_id}": {
+      "get": {
+        "operationId": "readScheduledTaskTurnOperation",
+        "summary": "Read a persisted turn submission receipt",
+        "description": "Read-only; no Runtime call, resume, retry, approval decision or state mutation. No query or body parameters. Missing, reserved, pending and uncertain never authorize re-submission. Accepted only identifies the original turn; it is not a terminal result. HEAD may return the same status and headers without a body under Go HTTP semantics.",
+        "parameters": [
+          {
+            "name": "agent_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CanonicalID"
+            }
+          },
+          {
+            "name": "operation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CanonicalID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Persisted facts only; not current Runtime liveness or business success.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                },
+                "description": "Responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnOperationResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Noncanonical ID, query parameters or request body.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                },
+                "description": "Responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Owner-only bearer is absent or invalid.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                },
+                "description": "Responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No current record, including normal cleanup. Not evidence of never executed.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                },
+                "description": "Responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Recovery facts are unavailable; preserve uncertainty and do not retry execution.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                },
+                "description": "Responses must not be cached."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "localBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Existing Host owner-only bearer, transparently managed by native; never exposed to renderer."
+      }
+    },
+    "schemas": {
+      "CanonicalID": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        "not": {
+          "enum": [
+            "00000000-0000-0000-0000-000000000000"
+          ]
+        }
+      },
+      "MappingState": {
+        "type": "string",
+        "enum": [
+          "reserved",
+          "bound"
+        ]
+      },
+      "OperationState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "accepted",
+          "uncertain"
+        ]
+      },
+      "SessionMapping": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "task_id",
+          "agent_session_id",
+          "mapping_state"
+        ],
+        "properties": {
+          "task_id": {
+            "$ref": "#/components/schemas/CanonicalID"
+          },
+          "agent_session_id": {
+            "$ref": "#/components/schemas/CanonicalID"
+          },
+          "mapping_state": {
+            "$ref": "#/components/schemas/MappingState"
+          },
+          "codex_thread_id": {
+            "$ref": "#/components/schemas/CanonicalID"
+          },
+          "responding_host_instance_id": {
+            "$ref": "#/components/schemas/CanonicalID",
+            "description": "Responding Host instance only. Omitted means unknown. Never historical execution provenance or proof that an old generation stopped."
+          }
+        },
+        "x-state-rules": {
+          "field": "mapping_state",
+          "rules": {
+            "bound": {
+              "required": [
+                "codex_thread_id"
+              ]
+            },
+            "reserved": {
+              "forbidden": [
+                "codex_thread_id"
+              ]
+            }
+          }
+        }
+      },
+      "TurnOperationResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "agent_session_id",
+          "operation_id",
+          "state"
+        ],
+        "properties": {
+          "agent_session_id": {
+            "$ref": "#/components/schemas/CanonicalID"
+          },
+          "operation_id": {
+            "$ref": "#/components/schemas/CanonicalID"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OperationState"
+          },
+          "turn_id": {
+            "$ref": "#/components/schemas/CanonicalID"
+          },
+          "responding_host_instance_id": {
+            "$ref": "#/components/schemas/CanonicalID",
+            "description": "Responding Host instance only. Omitted means unknown. Never historical execution provenance or proof that an old generation stopped."
+          }
+        },
+        "x-state-rules": {
+          "field": "state",
+          "rules": {
+            "accepted": {
+              "required": [
+                "turn_id"
+              ]
+            },
+            "pending": {
+              "forbidden": [
+                "turn_id"
+              ]
+            },
+            "uncertain": {
+              "forbidden": [
+                "turn_id"
+              ]
+            }
+          }
+        }
+      },
+      "RecoveryError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "unauthorized",
+                  "invalid_request",
+                  "recovery_record_not_found",
+                  "recovery_unavailable"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

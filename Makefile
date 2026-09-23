@@ -95,3 +95,13 @@ skills-conformance:
 		YIJIE_SKILLS_LOCAL_BUNDLE_ROOT="$(YIJIE_SKILLS_REPO_ABS)/dist/skill-packages" \
 		YIJIE_SKILLS_DESKTOP_RELEASE_BUNDLE_ROOT="$(YIJIE_SKILLS_REPO_ABS)/dist/skill-packages-desktop-release" \
 		go test -race ./internal/integration -run '^TestYijieSkillsV030DualChannelConformance$$' -count=1
+
+# FEAT-155 standalone local candidate; no legacy archive/fault fixtures or
+# Runtime/Provider processes. This does not replace the release pin checks.
+.PHONY: scheduled-recovery-check scheduled-recovery-test
+scheduled-recovery-check:
+	node ../yijie-contracts/scripts/check-scheduled-task-recovery.mjs
+	node ../yijie-contracts/scripts/sync-scheduled-task-recovery.mjs --check
+
+scheduled-recovery-test:
+	go test -race ./internal/session ./internal/app -run '^(TestFEAT155RecoveryStoreReadOnlyReopenAndSessionAssociation|TestFEAT155RecoveryHTTPProducerAndResponderProvenance|TestFEAT155RecoveryHTTPAuthorityAndMissingFacts|TestFEAT155RecoveryExactLocalRegistration)$$' -count=1

@@ -34,6 +34,8 @@ const (
 
 type Config struct {
 	Environment                    string
+	ScheduledRecoveryEnabled       bool
+	ScheduledCandidate             *ScheduledCandidateConfig
 	Port                           string
 	HostHome                       string
 	ParentPID                      int
@@ -308,8 +310,17 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		return Config{}, err
 	}
 
+	candidate, err := loadScheduledCandidate(hostHome, runtimeConfig.CodexHome, instanceNonce, parentPID)
+	if err != nil {
+		return Config{}, err
+	}
+	if candidate != nil && (fakeProfile.Enabled || imageGeneration || feat137CommandApproval) {
+		return Config{}, errors.New("scheduled candidate is incompatible with alternate execution profiles")
+	}
 	return Config{
+		ScheduledCandidate:             candidate,
 		Environment:                    environment,
+		ScheduledRecoveryEnabled:       scheduledRecoveryEnabled(),
 		Port:                           env("YIJIE_AGENT_HOST_PORT", "18080"),
 		HostHome:                       hostHome,
 		ParentPID:                      parentPID,
@@ -782,6 +793,13 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 			service: sessions, apiToken: apiToken, heartbeatInterval: defaultSSEHeartbeatInterval,
 		}
 		registerRuntimePermissions(mux, handler, config.Runtime.RuntimePermissionsEnabled)
+		if config.Environment == "local" && config.ScheduledRecoveryEnabled {
+			registerScheduledRecovery(mux, handler, config.InstanceNonce)
+			registerScheduledDraft(mux, handler, config.InstanceNonce)
+			if config.ScheduledCandidate != nil {
+				registerNativeTiming(mux, handler)
+			}
+		}
 		if config.Environment == "local" {
 			registerNativeConversation(mux, handler)
 		}

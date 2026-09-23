@@ -68,6 +68,10 @@ type TraceContext struct {
 }
 
 type Record struct {
+	Purpose            string `json:"purpose,omitempty"`
+	DraftWorkspaceID   string `json:"draft_workspace_id,omitempty"`
+	DraftPolicyVersion int64  `json:"draft_policy_version,omitempty"`
+	DraftSchemaVersion int64  `json:"draft_schema_version,omitempty"`
 	// Operational provenance is additive. Absent fields on legacy records prove nothing.
 	NativeRevision       uint64 `json:"native_revision,omitempty"`
 	NativeTerminalTurnID string `json:"native_terminal_turn_id,omitempty"`
@@ -109,6 +113,7 @@ type TurnOperation struct {
 }
 
 type Store struct {
+	draftWriter             bool
 	db                      *bolt.DB
 	receiptKey              [32]byte
 	feat126ProjectDirectory string
@@ -151,6 +156,9 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 		}
 	}
 	featureProfile := store.feat126ProjectDirectory != ""
+	if featureProfile && store.draftWriter {
+		return nil, ErrDraftStorageDisabled
+	}
 	if featureProfile {
 		canonicalHostHome, err := validateExactOwnerDirectory(hostHome, "FEAT-126 Host home")
 		if err != nil {
@@ -212,10 +220,10 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 		}
 		metadata := tx.Bucket(metadataBucket)
 		version := metadata.Get(storeSchemaVersionKey)
-		if version != nil && string(version) != "1" && string(version) != "2" && string(version) != "3" && string(version) != "4" && string(version) != storeSchemaVersion {
+		if version != nil && string(version) != "1" && string(version) != "2" && string(version) != "3" && string(version) != "4" && string(version) != storeSchemaVersion && string(version) != "6" {
 			return fmt.Errorf("unsupported Agent Host store schema version %q", version)
 		}
-		if version == nil || string(version) != storeSchemaVersion {
+		if version == nil || (string(version) != storeSchemaVersion && string(version) != "6") {
 			if err := metadata.Put(storeSchemaVersionKey, []byte(storeSchemaVersion)); err != nil {
 				return err
 			}
@@ -225,6 +233,9 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 				return err
 			}
 		} else if err := validateDefaultStoreEncoding(tx); err != nil {
+			return err
+		}
+		if err := store.prepareDraftFormat(tx); err != nil {
 			return err
 		}
 		return purgeExpiredCleanupReceipts(tx, time.Now().UTC())
@@ -699,6 +710,12 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) Reserve(record Record) error {
+	if record.Purpose == "" {
+		record.Purpose = purposeOrdinary
+	}
+	if record.Purpose == purposeDraft && !s.draftWriter {
+		return ErrDraftStorageDisabled
+	}
 	return s.db.Update(func(tx *bolt.Tx) error {
 		tasks := tx.Bucket(tasksBucket)
 		if tasks.Get([]byte(record.TaskID)) != nil {
@@ -1217,10 +1234,16 @@ func (s *Store) loadRecord(tx *bolt.Tx, sessionID string) (Record, error) {
 	} else if record.Cwd == feat126OpaqueProjectCwd {
 		return Record{}, errors.New("opaque FEAT-126 project reference requires exact feature authority")
 	}
+	if err := validateStoredPurpose(tx, &record); err != nil {
+		return Record{}, err
+	}
 	return record, nil
 }
 
 func (s *Store) saveRecord(tx *bolt.Tx, record Record) error {
+	if err := validatePurposeWrite(tx, record); err != nil {
+		return err
+	}
 	if s.feat126ProjectDirectory != "" {
 		if record.Cwd != s.feat126ProjectDirectory {
 			return errors.New("FEAT-126 session cwd is outside the authorized project")

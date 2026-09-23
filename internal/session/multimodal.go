@@ -98,11 +98,30 @@ type multimodalRuntime interface {
 }
 
 func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (codex.TurnInfo, error) {
+	return s.startTurnV2(ctx, input, false)
+}
+func (s *Service) startTurnV2(ctx context.Context, input StartTurnV2Input, draft bool) (codex.TurnInfo, error) {
 	if err := requireUUID("agent_session_id", input.AgentSessionID); err != nil {
 		return codex.TurnInfo{}, err
 	}
 	if !isCanonicalNonZeroUUID(input.OperationID) {
 		return codex.TurnInfo{}, fmt.Errorf("%w: operation_id must be a canonical non-zero UUID", ErrInvalidArgument)
+	}
+	recordPurpose, e := s.store.Get(input.AgentSessionID)
+	if e != nil {
+		return codex.TurnInfo{}, e
+	}
+	if (recordPurpose.Purpose == purposeDraft) != draft {
+		return codex.TurnInfo{}, ErrDraftPurpose
+	}
+	if draft {
+		if e := s.draftCwdMatches(recordPurpose); e != nil {
+			return codex.TurnInfo{}, e
+		}
+		if input.PermissionMode != "" {
+			return codex.TurnInfo{}, ErrDraftPurpose
+		}
+		ctx = codex.WithScheduledDraft(ctx, recordPurpose.DraftWorkspaceID)
 	}
 	runtime, ok := s.runtime.(multimodalRuntime)
 	if !ok {
@@ -132,6 +151,9 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 		return codex.TurnInfo{}, err
 	}
 	digestEffort := normalizedEffort
+	if draft {
+		digestEffort += "\x00scheduled-plan-draft/1/policy/1/" + recordPurpose.DraftWorkspaceID
+	}
 	if input.PermissionMode != "" {
 		digestEffort += "\x00permission-mode:" + string(input.PermissionMode)
 	}
@@ -147,7 +169,7 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 		s.requireNoRuntimeApprovalForThread,
 	)
 	if err != nil {
-		if err == ErrTurnOperationPending {
+		if err == ErrTurnOperationPending && !draft {
 			return codex.TurnInfo{}, ErrSessionNotUsable
 		}
 		return codex.TurnInfo{}, err

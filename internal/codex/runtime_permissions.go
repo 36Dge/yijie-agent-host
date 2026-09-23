@@ -403,14 +403,21 @@ func mustJSON(value any) string { encoded, _ := json.Marshal(value); return stri
 
 // Only the explicitly opted-in local verification flow uses the fixed-route
 // request meter. A missing meter fails closed; there is no direct fallback.
-func (m *Manager) permissionVerificationConfig() map[string]any {
+func (m *Manager) verificationProviderConfig() map[string]any {
 	if !m.config.RuntimePermissionsEnabled || m.config.PermissionVerificationBaseURL == "" {
 		return nil
 	}
-	config := map[string]any{
+	return map[string]any{
 		"model_providers.minimax.base_url":            m.config.PermissionVerificationBaseURL,
 		"model_providers.minimax.request_max_retries": 0,
 		"model_providers.minimax.stream_max_retries":  0,
+	}
+}
+
+func (m *Manager) permissionVerificationConfig() map[string]any {
+	config := m.verificationProviderConfig()
+	if config == nil {
+		return nil
 	}
 	if m.config.PermissionVerificationPolicy != "" {
 		// A supported native policy override, only for explicitly scoped local

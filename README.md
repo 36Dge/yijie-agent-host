@@ -1,5 +1,7 @@
 # yijie-agent-host
 
+FEAT-155新增独立local/demo_fast只读恢复候选：task→session映射及session+operation投递事实查询，复用既有Store、不调用Runtime。来源、权限、未知语义和定向检查见[阶段一说明](docs/scheduled-task-recovery.md)。尚未接入Desktop调度或发布。
+
 FEAT-137 已由 Owner 永久终止，未完成验收。生产入口拒绝旧审批/D4 producer 开关；现行 Runtime 使用保留的 FEAT-136 双补丁制品，维持 `read-only/never`。退役来源：Contracts `4d3f967938dde1c86ca34003a0a5628717f96262` 的 `docs/retirements/FEAT-137.json`。旧 v6 实现与四补丁测试材料仅作历史保留。
 
 易界业务系统与 Codex Runtime 之间的薄宿主和安全适配层。它不实现 planner、业务数据库或平台连接器。
@@ -166,3 +168,8 @@ v3 S3 已实现但默认关闭，并由 schema、auth/range/integrity/ACK/TTL/re
 归档、权限、进程故障或真实模型路径，不属于 FEAT-136 的安全定向证据。本批不运行这些命令，也不把
 未执行项记录为通过。真实只读 Command D4 必须在 Host→Desktop conformance 完成并获得单独付费调用
 授权后执行；Tool D4 继续等待真实 producer 与 Owner 决策。
+
+FEAT-155受限草案使用新原生候选及同源策略回执，实施、启动/恢复资格和零真实调用验证边界见[草案资格](docs/scheduled-draft-input-only.md)。旧Runtime仍支持普通路径，新候选不自动激活Desktop或迁移数据。
+
+
+FEAT-155 4D-1新增[原生时间只读查询](docs/native-turn-timing.md)，仅显式候选注册，Store5/6保持。

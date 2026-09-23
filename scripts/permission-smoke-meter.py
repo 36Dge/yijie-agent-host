@@ -95,9 +95,11 @@ class Meter(http.server.BaseHTTPRequestHandler):
             with lock:
                 item['status'] = 'completed'
                 save()
-        except (OSError, http.client.HTTPException):
+        except (OSError, http.client.HTTPException) as error:
             with lock:
                 item['status'] = 'transport_ended'
+                # Classification only; exception text may contain request data.
+                item['transport_error_class'] = type(error).__name__
                 save()
             self.close_connection = True
         finally:

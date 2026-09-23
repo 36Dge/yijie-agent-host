@@ -41,6 +41,9 @@ func WithTitleGenerator(generator TitleGenerator) ServiceOption {
 }
 
 func (s *Service) GenerateTitle(ctx context.Context, sessionID, operationID, input string) (TitleResult, error) {
+	if err := s.requireOrdinaryPurpose(sessionID); err != nil {
+		return TitleResult{}, err
+	}
 	if err := requireUUID("agent_session_id", sessionID); err != nil {
 		return TitleResult{}, err
 	}

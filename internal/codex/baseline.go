@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	inputonly "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeinputonly"
 )
 
 const (
@@ -98,6 +100,7 @@ type artifactPolicy struct {
 	manifestSHA256   string
 	schemaTreeSHA256 string
 	patches          []ManifestPatch
+	schemaFileCount  int
 }
 
 var runtimeBaseline0Policy = artifactPolicy{
@@ -132,7 +135,25 @@ type ArtifactInfo struct {
 }
 
 func VerifyArtifact(ctx context.Context, binaryPath, manifestPath string, timeout time.Duration) (ArtifactInfo, error) {
-	return verifyArtifactWithPolicy(ctx, binaryPath, manifestPath, timeout, retiredApprovalBaselinePolicy)
+	// Both artifacts are exact immutable byte pins. The new candidate is never
+	// selected by a bool or by its version string, and the retained default stays valid.
+	policy := retiredApprovalBaselinePolicy
+	digest, err := fileSHA256(manifestPath)
+	if err != nil {
+		return ArtifactInfo{}, err
+	}
+	if digest == inputonly.RuntimeManifestSHA256 {
+		var patches []ManifestPatch
+		if err := json.Unmarshal([]byte(inputonly.RuntimePatchManifest), &patches); err != nil {
+			return ArtifactInfo{}, errors.New("input-only artifact authority unavailable")
+		}
+		policy = artifactPolicy{
+			runtimeSHA256: inputonly.RuntimeBinarySHA256, runtimeSize: inputonly.RuntimeBinarySize,
+			manifestSHA256: inputonly.RuntimeManifestSHA256, schemaTreeSHA256: inputonly.RuntimeSchemaTreeSHA256,
+			patches: patches, schemaFileCount: inputonly.RuntimeSchemaFileCount,
+		}
+	}
+	return verifyArtifactWithPolicy(ctx, binaryPath, manifestPath, timeout, policy)
 }
 
 func verifyArtifactWithPolicy(
@@ -248,6 +269,10 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 
 func validateManifest(manifest Manifest, policy artifactPolicy) error {
 	schemaTree := policy.schemaTreeSHA256
+	schemaFileCount := policy.schemaFileCount
+	if schemaFileCount == 0 {
+		schemaFileCount = 267
+	}
 	patches := policy.patches
 	if patches == nil {
 		// Existing internal fixtures cover the historical four-patch candidate.
@@ -296,7 +321,7 @@ func validateManifest(manifest Manifest, policy artifactPolicy) error {
 		return errors.New("runtime transport does not match baseline")
 	case manifest.AppServer.ExperimentalAPI:
 		return errors.New("experimental app-server API must remain disabled")
-	case manifest.AppServer.SchemaFileCount != 267:
+	case manifest.AppServer.SchemaFileCount != schemaFileCount:
 		return errors.New("app-server schema file count does not match baseline")
 	case manifest.AppServer.SchemaTreeSHA256 != schemaTree:
 		return errors.New("app-server schema tree SHA-256 does not match baseline")

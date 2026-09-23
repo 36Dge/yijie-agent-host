@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.yijie.ai/scheduled-task-recovery/v1",
+  "$defs": {
+    "CanonicalID": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "not": {
+        "enum": [
+          "00000000-0000-0000-0000-000000000000"
+        ]
+      }
+    },
+    "MappingState": {
+      "type": "string",
+      "enum": [
+        "reserved",
+        "bound"
+      ]
+    },
+    "OperationState": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "uncertain"
+      ]
+    },
+    "SessionMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "agent_session_id",
+        "mapping_state"
+      ],
+      "properties": {
+        "task_id": {
+          "$ref": "#/$defs/CanonicalID"
+        },
+        "agent_session_id": {
+          "$ref": "#/$defs/CanonicalID"
+        },
+        "mapping_state": {
+          "$ref": "#/$defs/MappingState"
+        },
+        "codex_thread_id": {
+          "$ref": "#/$defs/CanonicalID"
+        },
+        "responding_host_instance_id": {
+          "$ref": "#/$defs/CanonicalID",
+          "description": "Responding Host instance only. Omitted means unknown. Never historical execution provenance or proof that an old generation stopped."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mapping_state": {
+                "const": "bound"
+              }
+            },
+            "required": [
+              "mapping_state"
+            ]
+          },
+          "then": {
+            "required": [
+              "codex_thread_id"
+            ],
+            "properties": {
+              "codex_thread_id": {}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mapping_state": {
+                "const": "reserved"
+              }
+            },
+            "required": [
+              "mapping_state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "codex_thread_id": false
+            }
+          }
+        }
+      ]
+    },
+    "TurnOperationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "agent_session_id",
+        "operation_id",
+        "state"
+      ],
+      "properties": {
+        "agent_session_id": {
+          "$ref": "#/$defs/CanonicalID"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/CanonicalID"
+        },
+        "state": {
+          "$ref": "#/$defs/OperationState"
+        },
+        "turn_id": {
+          "$ref": "#/$defs/CanonicalID"
+        },
+        "responding_host_instance_id": {
+          "$ref": "#/$defs/CanonicalID",
+          "description": "Responding Host instance only. Omitted means unknown. Never historical execution provenance or proof that an old generation stopped."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "accepted"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "turn_id"
+            ],
+            "properties": {
+              "turn_id": {}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "pending"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "turn_id": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "uncertain"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "properties": {
+              "turn_id": false
+            }
+          }
+        }
+      ]
+    },
+    "RecoveryError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "unauthorized",
+                "invalid_request",
+                "recovery_record_not_found",
+                "recovery_unavailable"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            }
+          }
+        }
+      }
+    }
+  }
+}

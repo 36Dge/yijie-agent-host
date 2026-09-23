@@ -41,6 +41,9 @@ func (s *Service) ListRuntimeApprovals(sessionID string) ([]codex.RuntimeApprova
 }
 
 func (s *Service) DecideRuntimeApproval(ctx context.Context, sessionID, id, decision string) (codex.RuntimeApproval, error) {
+	if err := s.requireOrdinaryPurpose(sessionID); err != nil {
+		return codex.RuntimeApproval{}, err
+	}
 	record, err := s.GetSession(sessionID)
 	if err != nil {
 		return codex.RuntimeApproval{}, err

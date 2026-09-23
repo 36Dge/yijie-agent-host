@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "contract_version": "0.1.0",
+  "mode": "local_candidate",
+  "release": false,
+  "repository": "https://github.com/36Dge/yijie-contracts.git",
+  "base_commit": "db4458fe94572c4df41a114005d54a049bb79b1f",
+  "sources": [
+    {
+      "path": "openapi/native-turn-timing/native-turn-timing.yaml",
+      "sha256": "1388e9a8ae674d43f78492ec2125c48ce776664e6385230e4239c89247ac1c32"
+    },
+    {
+      "path": "scripts/generate-native-turn-timing.mjs",
+      "sha256": "dff4287b61427fdd9b922462c36d6294d6d616448b31661781ee2b977d72d81f"
+    },
+    {
+      "path": "scripts/sync-native-turn-timing.mjs",
+      "sha256": "3c5013d4af9694e02f4587383efa1dc82e2b6bffd50e30dc73dfb5a5136bfc1c"
+    },
+    {
+      "path": "scripts/scheduled-consumer-source.mjs",
+      "sha256": "69e7fa6b1b4371d1d6c9456fe68b9ede76cc3a0896253597428729f531fde015"
+    },
+    {
+      "path": "go.mod",
+      "sha256": "4bd3ff739f9383a42d641a0cbfcf17d812bf2c260c19be379effff5c528bfc35"
+    },
+    {
+      "path": "go.sum",
+      "sha256": "0bb3ffbefa7ef6a6507a59feed3708cf92ac542e4c9911241eb2d9f4a7604b36"
+    },
+    {
+      "path": "package.json",
+      "sha256": "d53fedd8cba4cfd7238b1f60121803905ce6c0127a2e0cde16ba9af18a6333c6"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "57eece158a0405a85ea9b8fd2c382af130e4248897b67af587878737bbf86313"
+    }
+  ],
+  "generated": [
+    {
+      "path": "sdks/go/openapi/native-turn-timing/types.gen.go",
+      "sha256": "29d3dbf94365f0801287a3811c0116a67c355ec774f23b8ebfc396b7431ce211"
+    },
+    {
+      "path": "sdks/typescript/src/openapi/native-turn-timing.gen.ts",
+      "sha256": "85b2da1dfb4194517cf17392b46a22f0cda43616bf668645eff5372cfcf3d7ae"
+    },
+    {
+      "path": "sdks/rust/native-turn-timing/types.gen.rs",
+      "sha256": "0a4bc187479514d2f27e2f71c380e1378832276cb32b92810c8c657bc1ec8ff5"
+    },
+    {
+      "path": "sdks/jsonschema/native-turn-timing.schema.json",
+      "sha256": "413f7adc1445f1eb1805e4c0404b9b8ef59f6724930b5bee0f0c031675d70c86"
+    }
+  ],
+  "runtime": {
+    "upstream_commit": "5d1fbf26c43abc65a203928b2e31561cb039e06d",
+    "experimental_api": false,
+    "canonical_files": {
+      ".yijie/schemas/input-only-app-server/generated-json-schema/v2/ThreadReadResponse.json": "6100887d082e7a72c37a561aa0d7b9f744c8a1c6a8c92c536144582a44e2cea8",
+      ".yijie/schemas/input-only-app-server/generated-json-schema/v2/TurnStartedNotification.json": "9b535a04e2900c0939f500900d5e818fe5e7d2b8aecdecce95322c109affe967",
+      ".yijie/schemas/input-only-app-server/generated-json-schema/v2/TurnCompletedNotification.json": "92031b880c81246ad2cb60550994eb183ff36a3836ec4840cabea33941a75fd4"
+    }
+  },
+  "generators": {
+    "go": "oapi-codegen/v2@v2.7.2",
+    "typescript": "openapi-typescript@7.13.0",
+    "rust_jsonschema": "closed source-local native timing v1"
+  },
+  "source_commit": "ccbae065f0294db25562c90cd4d39cf112129d23",
+  "source_lock_path": "compatibility/native-turn-timing/source.lock.json"
+}

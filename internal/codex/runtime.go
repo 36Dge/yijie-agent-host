@@ -200,6 +200,7 @@ type Manager struct {
 	deleteWaiters          map[string]chan struct{}
 	titleCollectors        map[string]*titleCollector
 	pendingTitleStarts     int
+	draftProofs            map[string]scheduledDraftProof
 }
 
 func NewManager(config Config, logger *slog.Logger) *Manager {

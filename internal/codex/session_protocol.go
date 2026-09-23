@@ -499,6 +499,9 @@ func validCommandApprovalSandboxPermissions(value string) bool {
 }
 
 func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, error) {
+	if isScheduledDraft(ctx) {
+		return m.startDraftThread(ctx, cwd, "")
+	}
 	m.sorftime.operation.Lock()
 	defer m.sorftime.operation.Unlock()
 	if !m.config.MiniMax.Enabled && !m.config.FakeResponses.Enabled {
@@ -569,6 +572,9 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 }
 
 func (m *Manager) ResumeThread(ctx context.Context, threadID string) (ThreadInfo, error) {
+	if isScheduledDraft(ctx) {
+		return m.resumeDraftThread(ctx, threadID)
+	}
 	m.sorftime.operation.Lock()
 	defer m.sorftime.operation.Unlock()
 	return m.resumeThread(ctx, threadID)
@@ -748,6 +754,9 @@ func (m *Manager) StartTurnV2(
 			return TurnInfo{}, err
 		}
 		wireInputs = append(wireInputs, wire)
+	}
+	if isScheduledDraft(ctx) {
+		return m.startDraftTurnLocked(ctx, threadID, wireInputs)
 	}
 	params := struct {
 		ClientUserMessageID string  `json:"clientUserMessageId,omitempty"`

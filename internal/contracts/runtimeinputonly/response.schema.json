@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "AbsolutePathBuf": {
+      "description": "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
+      "type": "string"
+    },
+    "InputOnlyExecutionPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "cwd": {
+          "$ref": "#/definitions/AbsolutePathBuf"
+        },
+        "extensionContributorsEnabled": {
+          "type": "boolean"
+        },
+        "fileReadRoots": {
+          "items": {
+            "$ref": "#/definitions/AbsolutePathBuf"
+          },
+          "type": "array"
+        },
+        "fileWriteRoots": {
+          "items": {
+            "$ref": "#/definitions/AbsolutePathBuf"
+          },
+          "type": "array"
+        },
+        "instructionSources": {
+          "items": {
+            "$ref": "#/definitions/LegacyAppPathString"
+          },
+          "type": "array"
+        },
+        "networkAccess": {
+          "type": "boolean"
+        },
+        "toolNames": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "version": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cwd",
+        "extensionContributorsEnabled",
+        "fileReadRoots",
+        "fileWriteRoots",
+        "instructionSources",
+        "networkAccess",
+        "toolNames",
+        "version"
+      ],
+      "type": "object"
+    },
+    "LegacyAppPathString": {
+      "type": "string"
+    }
+  },
+  "properties": {
+    "policy": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/InputOnlyExecutionPolicy"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "threadId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "threadId"
+  ],
+  "title": "ThreadInputOnlyPolicyReadResponse",
+  "type": "object"
+}

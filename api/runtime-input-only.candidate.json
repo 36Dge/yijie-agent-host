@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "mode": "local_candidate",
+  "release": false,
+  "authority": "yijie-codex canonical stable schema; no Host-defined native DTO",
+  "active_base_commit": "b2b20e2fc4a0c94834f34d8cc459e488a1b56277",
+  "runtime_source": {
+    "repository": "https://github.com/36Dge/yijie-codex.git",
+    "full_commit": "fb79b1d53501ec90084b584af5fdbe221c7a25aa"
+  },
+  "upstream": {
+    "commit": "5d1fbf26c43abc65a203928b2e31561cb039e06d",
+    "tag": "rust-v0.144.6",
+    "url": "https://github.com/openai/codex.git"
+  },
+  "methods": [
+    "thread/inputOnlyPolicy/read"
+  ],
+  "experimental_api": false,
+  "runtime_artifact": {
+    "binary": "codex",
+    "reportedVersion": "codex-cli 0.144.6",
+    "sha256": "bd7d26205e2d735dcac0f35fc089a7b30a5c18a54586b94a2c7f624f2f5b7672",
+    "sizeBytes": 356184808,
+    "target": "aarch64-apple-darwin",
+    "version": "0.144.6"
+  },
+  "runtime_manifest_sha256": "14d4073de87be137cf39f770c091b8ab62a7c34933bc49dc50f12b4ddd3a494a",
+  "runtime_schema": {
+    "experimentalApi": false,
+    "schemaFileCount": 269,
+    "schemaTreeSha256": "34d353815dc8d800cb432a876d5b43350511f63b91ad9766f861e8bc8290cc92",
+    "transport": "stdio"
+  },
+  "native_sources": [
+    {
+      "path": ".yijie/patches/0001-feat-126-filter-persistent-diagnostics.patch",
+      "sha256": "6b337a02caf064c6819fab5c7367a485004c85cce0d42acb06fa6d5003e599a0"
+    },
+    {
+      "path": ".yijie/patches/0002-feat-136-unified-exec-pre-emitter-command-lifecycle.patch",
+      "sha256": "43de168e1443f4b9ca60d7f61e3de2daf20e1cfea14d2e196d28ba417bf3e06d"
+    },
+    {
+      "path": ".yijie/patches/input-only/0003-input-only-execution.patch",
+      "sha256": "c340b6fc17419bcdc1ff45eebe3da40e5fde740c029102eb7a188f6b14eb41d8"
+    },
+    {
+      "path": "scripts/build-input-only.sh",
+      "sha256": "2c22db3856854431cd8340c98a008fcb1fdfd46b9d82809ccfb96abb5cc2681a"
+    },
+    {
+      "path": "scripts/write-runtime-manifest.py",
+      "sha256": "1d453ce35466468d26db5f7eda2bfd8df31e81e36c67ba79407a96664378126e"
+    },
+    {
+      "path": ".yijie/upstream.env",
+      "sha256": "33caf5655c94738bbdac3f4691d227b210ba7c470e78243a3a75ce87805bbe04"
+    },
+    {
+      "path": "scripts/runtime-env.sh",
+      "sha256": "5f646e8e011a3b7f7dedfecc0c502d855106fedd09f07b76186b969dc8f7b359"
+    },
+    {
+      "path": "scripts/canonicalize-json.py",
+      "sha256": "731735e5bbfd985264874272083e2f397de7dc172e5ef6beecefe0532a362970"
+    },
+    {
+      "path": "scripts/verify-release-lock-drift.py",
+      "sha256": "56b7e3351d0cb7ea1fe2cde08076777074b8e6038e26338153d59c1603d94a2c"
+    },
+    {
+      "path": "scripts/runtime_manifest.py",
+      "sha256": "1f4d32eb03440288f4bd3d386a3c6a3b363ec6b976fe32dcf13b6e81a1a7aea0"
+    },
+    {
+      "path": ".yijie/schemas/input-only-app-server/generated-json-schema/ClientRequest.json",
+      "sha256": "edb4f4bc6f532a5b00b5b384ac8372efdb3ccda2778948949e7f2d884c33d631"
+    },
+    {
+      "path": ".yijie/schemas/input-only-app-server/generated-json-schema/v2/ThreadInputOnlyPolicyReadParams.json",
+      "sha256": "c9fb6bcbab669a0fc0a460274947a07a2bf6213c17a698513cb66e225f75d201"
+    },
+    {
+      "path": ".yijie/schemas/input-only-app-server/generated-json-schema/v2/ThreadInputOnlyPolicyReadResponse.json",
+      "sha256": "b17e3771df1f9027f6caf96ae250d17649a334e0de4a524ecab4673745074898"
+    },
+    {
+      "path": ".yijie/build/input-only/aarch64-apple-darwin/runtime-manifest.json",
+      "sha256": "14d4073de87be137cf39f770c091b8ab62a7c34933bc49dc50f12b4ddd3a494a"
+    }
+  ],
+  "generators": [
+    {
+      "path": "scripts/generate-runtime-input-only.mjs",
+      "sha256": "808cd01aab1283da4c2bbd6bed6937c9314c63cc3b88d7a0084a2c6ad45a3b34"
+    },
+    {
+      "path": "scripts/sync-runtime-input-only.mjs",
+      "sha256": "6fdecb6db2095ccfda9739d50a4e543f840180b6020a1169718b758456cebf8f"
+    },
+    {
+      "path": "scripts/scheduled-consumer-source.mjs",
+      "sha256": "69e7fa6b1b4371d1d6c9456fe68b9ede76cc3a0896253597428729f531fde015"
+    }
+  ],
+  "generated": [
+    {
+      "path": "sdks/go/openapi/runtime-input-only/types.gen.go",
+      "sha256": "4c5dcf2b892bc5f86dcb8b613e19842b081f90ea38cadba7a84b30256114ff00"
+    },
+    {
+      "path": "sdks/jsonschema/runtime-input-only/request.schema.json",
+      "sha256": "c9fb6bcbab669a0fc0a460274947a07a2bf6213c17a698513cb66e225f75d201"
+    },
+    {
+      "path": "sdks/jsonschema/runtime-input-only/response.schema.json",
+      "sha256": "b17e3771df1f9027f6caf96ae250d17649a334e0de4a524ecab4673745074898"
+    }
+  ],
+  "source_commit": "ccbae065f0294db25562c90cd4d39cf112129d23",
+  "source_lock_path": "compatibility/runtime-input-only/source.lock.json"
+}

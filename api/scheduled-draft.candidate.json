@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "contract_version": "0.1.0",
+  "mode": "local_candidate",
+  "release": false,
+  "base_commit": "db4458fe94572c4df41a114005d54a049bb79b1f",
+  "sources": [
+    {
+      "path": "jsonschema/scheduled-tasks/draft-execution-v1.schema.json",
+      "sha256": "071a15a9db131148ca1d82896da1fb198696fd340a210df802e65d7694335ba8"
+    },
+    {
+      "path": "jsonschema/scheduled-tasks/plan-draft-v1.schema.json",
+      "sha256": "267efaf2f7ba9ada27f7494c9042473c6775b7d9eeecab4f3673cc84d0814171"
+    },
+    {
+      "path": "openapi/scheduled-plan-draft/scheduled-plan-draft.yaml",
+      "sha256": "bb0e63ef235ef0f20ef5226632eb92887a2b5dbbd073472976ef01ba3469427f"
+    },
+    {
+      "path": "scripts/generate-scheduled-draft.mjs",
+      "sha256": "ccd015ec694b681248db12ed267d363cf7810a0bf047f5d01a7085e15d8a758f"
+    },
+    {
+      "path": "scripts/sync-scheduled-draft.mjs",
+      "sha256": "80affa494f6e0129b907d90fc9cf1081aaf42de45e409c70ebf388bd2fab54c1"
+    },
+    {
+      "path": "scripts/scheduled-consumer-source.mjs",
+      "sha256": "69e7fa6b1b4371d1d6c9456fe68b9ede76cc3a0896253597428729f531fde015"
+    },
+    {
+      "path": "scripts/scheduled-schema-source.mjs",
+      "sha256": "4afa5abda0bb8fd76a3c01759605a8b1f3c59f5548ac93587750e07cd08f406c"
+    }
+  ],
+  "generated": [
+    {
+      "path": "sdks/rust/scheduled-draft/types.gen.rs",
+      "sha256": "6fb73f144d0c12159c0eeea1ca0b039956a9e1655a798c8c05cb9eed601e55ee"
+    },
+    {
+      "path": "sdks/typescript/src/jsonschema/scheduled-draft.gen.ts",
+      "sha256": "77171f77a5f9ddcb088a997aad749ff16092e4bb5b5d3ece7e280ea4de50f521"
+    },
+    {
+      "path": "sdks/go/openapi/scheduled-draft/types.gen.go",
+      "sha256": "834b5ebef2989b099d8101f636c6f60a3f66181f89751233c69a218a97994a21"
+    },
+    {
+      "path": "sdks/jsonschema/scheduled-draft.schema.json",
+      "sha256": "176451e4ad3d515f42bc16ad4a348dc6fcabd4d42aa7f24f5926b285f19d3279"
+    },
+    {
+      "path": "sdks/jsonschema/scheduled-draft-output.schema.json",
+      "sha256": "f7844573f4a65e9b9493a1a5039ce6688e7e3a077279133bd6be30795cdde2e5"
+    }
+  ],
+  "source_commit": "ccbae065f0294db25562c90cd4d39cf112129d23",
+  "source_lock_path": "compatibility/scheduled-draft/source.lock.json"
+}

@@ -200,6 +200,7 @@ type syntheticTerminalBarrier struct {
 }
 
 type Service struct {
+	draftDirectory       func(string) (string, error)
 	runtime              Runtime
 	store                *Store
 	events               *EventHub
@@ -215,13 +216,14 @@ type Service struct {
 	fixedReasoningEffort string
 	logger               *slog.Logger
 
-	pendingMu      sync.Mutex
-	notificationMu sync.Mutex
-	pending        map[string][]pendingNotification
-	pendingCount   int
-	syntheticMu    sync.Mutex
-	syntheticTurns map[string]*syntheticTerminalBarrier
-	terminalMu     sync.Mutex
+	draftOperationMu sync.Mutex // serializes explicit draft resume with draft turn admission
+	pendingMu        sync.Mutex
+	notificationMu   sync.Mutex
+	pending          map[string][]pendingNotification
+	pendingCount     int
+	syntheticMu      sync.Mutex
+	syntheticTurns   map[string]*syntheticTerminalBarrier
+	terminalMu       sync.Mutex
 
 	v5ItemsMu       sync.Mutex
 	v5Items         map[v5ItemKey]*v5ItemState
@@ -310,6 +312,9 @@ func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Lo
 }
 
 func (s *Service) StartSession(ctx context.Context, input StartSessionInput) (Record, error) {
+	return s.startSession(ctx, input, nil)
+}
+func (s *Service) startSession(ctx context.Context, input StartSessionInput, draft *draftIdentity) (Record, error) {
 	if err := requireUUID("task_id", input.TaskID); err != nil {
 		return Record{}, err
 	}
@@ -326,6 +331,13 @@ func (s *Service) StartSession(ctx context.Context, input StartSessionInput) (Re
 		AgentSessionID: sessionID,
 		Cwd:            cwd,
 		Trace:          input.Trace,
+	}
+	if draft != nil {
+		record.Purpose = purposeDraft
+		record.DraftWorkspaceID = draft.workspace
+		record.DraftPolicyVersion = 1
+		record.DraftSchemaVersion = 1
+		ctx = codex.WithScheduledDraft(ctx, draft.workspace)
 	}
 	if err := s.store.Reserve(record); err != nil {
 		return Record{}, err
@@ -365,12 +377,24 @@ func (s *Service) StartSession(ctx context.Context, input StartSessionInput) (Re
 }
 
 func (s *Service) ResumeSession(ctx context.Context, sessionID string, trace TraceContext) (Record, error) {
+	return s.resumeSession(ctx, sessionID, trace, false)
+}
+func (s *Service) resumeSession(ctx context.Context, sessionID string, trace TraceContext, draft bool) (Record, error) {
 	if err := requireUUID("agent_session_id", sessionID); err != nil {
 		return Record{}, err
 	}
 	record, err := s.store.Get(sessionID)
 	if err != nil {
 		return Record{}, err
+	}
+	if (record.Purpose == purposeDraft) != draft {
+		return Record{}, ErrDraftPurpose
+	}
+	if draft {
+		if e := s.draftCwdMatches(record); e != nil {
+			return Record{}, e
+		}
+		ctx = codex.WithScheduledDraft(ctx, record.DraftWorkspaceID)
 	}
 	if record.State == StateCleaning || record.CleanupOperationID != "" {
 		return Record{}, ErrSessionNotUsable
@@ -380,7 +404,9 @@ func (s *Service) ResumeSession(ctx context.Context, sessionID string, trace Tra
 	}
 	thread, err := s.runtime.ResumeThread(ctx, record.CodexThreadID)
 	if err != nil {
-		_, _ = s.store.MarkFailed(sessionID, "thread_resume_failed")
+		if !draft {
+			_, _ = s.store.MarkFailed(sessionID, "thread_resume_failed")
+		}
 		return Record{}, fmt.Errorf("%w: %v", ErrRuntimeRequest, err)
 	}
 	if !validUUID(thread.ID) || thread.ID != record.CodexThreadID {
@@ -436,6 +462,9 @@ func (s *Service) StartTurn(ctx context.Context, input StartTurnInput) (codex.Tu
 	}
 	if input.ReasoningEffort != "" && input.ReasoningEffort != "none" && input.ReasoningEffort != "high" {
 		return codex.TurnInfo{}, fmt.Errorf("%w: reasoning effort must be none or high", ErrInvalidArgument)
+	}
+	if err := s.requireOrdinaryPurpose(input.AgentSessionID); err != nil {
+		return codex.TurnInfo{}, err
 	}
 	if err := s.requireNoRuntimeApproval(input.AgentSessionID); err != nil {
 		return codex.TurnInfo{}, err

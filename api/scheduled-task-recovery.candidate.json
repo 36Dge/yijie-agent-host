@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "contract_version": "0.1.0",
+  "mode": "local_candidate",
+  "release": false,
+  "repository": "https://github.com/36Dge/yijie-contracts.git",
+  "base_commit": "db4458fe94572c4df41a114005d54a049bb79b1f",
+  "sources": [
+    {
+      "path": "openapi/scheduled-task-recovery/scheduled-task-recovery.yaml",
+      "sha256": "47a1d7f4e5e858116d9f0b80faf86a0e1e5936dfab1ebf6673c9579e5246e9e2"
+    },
+    {
+      "path": "jsonschema/scheduled-tasks/plan-draft-v1.schema.json",
+      "sha256": "267efaf2f7ba9ada27f7494c9042473c6775b7d9eeecab4f3673cc84d0814171"
+    },
+    {
+      "path": "scripts/generate-scheduled-task-recovery.mjs",
+      "sha256": "b384eeaceaca8419dab4d062e8bf797702f965dd70a8fd2ce0a03f3726051305"
+    },
+    {
+      "path": "scripts/sync-scheduled-task-recovery.mjs",
+      "sha256": "eccba702fa2d70b68807e3288c082d9834fe400dec5122f14bdc2022980965f3"
+    },
+    {
+      "path": "scripts/scheduled-consumer-source.mjs",
+      "sha256": "69e7fa6b1b4371d1d6c9456fe68b9ede76cc3a0896253597428729f531fde015"
+    },
+    {
+      "path": "go.mod",
+      "sha256": "4bd3ff739f9383a42d641a0cbfcf17d812bf2c260c19be379effff5c528bfc35"
+    },
+    {
+      "path": "go.sum",
+      "sha256": "0bb3ffbefa7ef6a6507a59feed3708cf92ac542e4c9911241eb2d9f4a7604b36"
+    }
+  ],
+  "generated": [
+    {
+      "path": "sdks/go/openapi/scheduled-task-recovery/types.gen.go",
+      "sha256": "03a35f5c9c16db1eb272b2ab7020ac08466deb5c716dc364f492f7a21c9a7f6d"
+    },
+    {
+      "path": "sdks/jsonschema/scheduled-task-recovery.schema.json",
+      "sha256": "0b790fc93d6037efe4802c1822a6a0d2a979dbbab427f019658b5b3413277f5b"
+    },
+    {
+      "path": "sdks/rust/scheduled-task-recovery/types.gen.rs",
+      "sha256": "a0f8812a804440f3ecd259e5bac3c4136d7a0f3e2a6433408b0e5bdeabd29b3d"
+    }
+  ],
+  "generators": {
+    "rust": "source-local closed recovery validation v1",
+    "go": "oapi-codegen/v2@v2.7.2",
+    "jsonschema": "source-local deterministic projection v1"
+  },
+  "source_commit": "ccbae065f0294db25562c90cd4d39cf112129d23",
+  "source_lock_path": "compatibility/scheduled-task-recovery/source.lock.json",
+  "consumer": "yijie-agent-host",
+  "copies": [
+    {
+      "source": "openapi/scheduled-task-recovery/scheduled-task-recovery.yaml",
+      "target": "api/openapi/scheduled-task-recovery.yaml"
+    },
+    {
+      "source": "sdks/go/openapi/scheduled-task-recovery/types.gen.go",
+      "target": "internal/contracts/scheduledrecovery/types.gen.go"
+    },
+    {
+      "source": "sdks/jsonschema/scheduled-task-recovery.schema.json",
+      "target": "api/schemas/scheduled-task-recovery.schema.json"
+    }
+  ]
+}

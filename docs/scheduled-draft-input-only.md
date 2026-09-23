@@ -1,0 +1,13 @@
+# FEAT-155 draft qualification
+
+The draft flow stays on the original Manager, stdio transport, thread/turn operations and operation mutex. Native purpose checks and persistent draft ownership remain prerequisites; a policy receipt alone never authorizes an ordinary task to resume a draft.
+
+The candidate's exact binary and manifest pins come from Contracts' native Runtime projection. `ScheduledDraftReady` checks that artifact, active managed generation, provider configuration authority and incompatible capability flags. Start/resume verify the actual native `thread/inputOnlyPolicy/read` receipt, including thread/cwd, version, empty filesystem roots, instruction sources and tools, disabled tool network and extension contributors. Every turn rechecks the receipt and generation. Shutdown invalidates readiness; cold resume obtains new proof. No Boolean test flag grants qualification.
+
+Only explicit text reaches the fixed output schema. Runtime itself closes inherited file instructions, role definitions, remote thread configuration, skills, hooks, plugins, MCP, tools and non-text output; the Host's prompt and feature projection are not the security boundary. Provider network and the Runtime's own state persistence remain required and distinct from tool network/filesystem permission.
+
+Build the sibling Runtime with `make input-only-build`, generate and sync `runtime-input-only` in Contracts, then consume the new candidate with existing explicit artifact paths. Old artifacts remain supported for ordinary behavior and unavailable for drafts. Default Desktop activation and user-data migration are separate work. Stop new draft production on rollback, retain compatible readers/history, and use normal Manager shutdown; do not force-kill a process that has not stopped.
+
+`TestFEAT155DraftNativeQualificationAndNormalReopen` runs the actual pinned native process and original Host transport with owned temporary data. It distinguishes normal native create/turn/reopen/resume and ordinary-session coexistence from the loopback text Provider fixture. It does not qualify MiniMax schema support or consume the real-model budget. Focused receipt tests check schema compatibility, not native qualification.
+
+B3B consumes this exact artifact from the original native entry. Its same-generation empty-thread resume shortcut is limited to a retained start receipt before any turn attempt and still rechecks actual policy. It cannot reconstruct a cold empty rollout. B3B real-process evidence contains zero model turns; report31 separates this from report29's loopback-provider qualification fixture.

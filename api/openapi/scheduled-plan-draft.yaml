@@ -1,0 +1,232 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Scheduled draft fixed-purpose local API",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:{port}",
+      "variables": {
+        "port": {
+          "default": "3000"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "LocalBearer": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "LocalBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "paths": {
+    "/v1/scheduled-plan-draft-sessions": {
+      "post": {
+        "operationId": "createScheduledDraftSession",
+        "responses": {
+          "200": {
+            "description": "Native receipt; no plan saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/SessionReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Closed failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/CreateRequest"
+              }
+            }
+          }
+        },
+        "summary": "Create a fixed-purpose draft session"
+      }
+    },
+    "/v1/scheduled-plan-draft-sessions/{agent_session_id}/resume": {
+      "post": {
+        "operationId": "resumeScheduledDraftSession",
+        "responses": {
+          "200": {
+            "description": "Native receipt; no plan saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/SessionReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Closed failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/ResumeRequest"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_session_id",
+            "required": true,
+            "schema": {
+              "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/Identity"
+            }
+          }
+        ],
+        "summary": "Resume an existing fixed-purpose draft session"
+      }
+    },
+    "/v1/scheduled-plan-draft-sessions/{agent_session_id}/turns": {
+      "post": {
+        "operationId": "startScheduledDraftTurn",
+        "responses": {
+          "200": {
+            "description": "Native receipt; no plan saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/TurnReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Closed failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/TurnRequest"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_session_id",
+            "required": true,
+            "schema": {
+              "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/Identity"
+            }
+          }
+        ],
+        "summary": "Submit text to an existing draft session"
+      }
+    },
+    "/v1/scheduled-plan-draft-capability": {
+      "get": {
+        "operationId": "readScheduledDraftCapability",
+        "responses": {
+          "200": {
+            "description": "Native receipt; no plan saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/Capability"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Closed failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Read native draft qualification"
+      }
+    },
+    "/v1/scheduled-plan-draft-session-mappings/{task_id}": {
+      "get": {
+        "operationId": "readScheduledDraftMapping",
+        "responses": {
+          "200": {
+            "description": "Native receipt; no plan saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/RecoveryMapping"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Closed failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Read persisted draft purpose and mapping without Runtime I/O",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "$ref": "https://schemas.yijie.ai/scheduled-tasks/draft-execution/v1#/$defs/Identity"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

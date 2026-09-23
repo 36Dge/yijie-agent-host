@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ScheduledPlanDraftV1",
+  "description": "Bounded proposal only. Native validates trimmed content, supported IANA timezone, future dates/DST, resolves user-selected target IDs and authorization. Model cannot supply IDs, directories, scope, grant or save result. Candidate is not a saved plan. No execution or arbitrary outputSchema passthrough in phase one.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "missing_fields",
+        "question"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "needs_clarification"
+        },
+        "missing_fields": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "maxItems": 6,
+          "items": {
+            "enum": [
+              "name",
+              "content",
+              "frequency",
+              "time",
+              "time_zone",
+              "target"
+            ]
+          }
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "name",
+        "content",
+        "schedule",
+        "target"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "candidate"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10000
+        },
+        "schedule": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "frequency",
+            "time_zone",
+            "local_time"
+          ],
+          "properties": {
+            "frequency": {
+              "enum": [
+                "once",
+                "daily",
+                "weekdays",
+                "weekly"
+              ]
+            },
+            "time_zone": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "local_time": {
+              "type": "string",
+              "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+            },
+            "local_date": {
+              "type": "string",
+              "format": "date"
+            },
+            "weekdays": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 7,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 7
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "frequency": {
+                    "const": "once"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "local_date"
+                ],
+                "properties": {
+                  "local_date": {
+                    "$ref": "#/oneOf/1/properties/schedule/properties/local_date"
+                  }
+                }
+              },
+              "else": {
+                "properties": {
+                  "local_date": false
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "frequency": {
+                    "const": "weekly"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "weekdays"
+                ],
+                "properties": {
+                  "weekdays": {
+                    "$ref": "#/oneOf/1/properties/schedule/properties/weekdays"
+                  }
+                }
+              },
+              "else": {
+                "properties": {
+                  "weekdays": false
+                }
+              }
+            }
+          ]
+        },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode"
+          ],
+          "properties": {
+            "mode": {
+              "enum": [
+                "dedicated_chat",
+                "new_chat_each_run",
+                "existing_chat"
+              ]
+            },
+            "existing_chat_label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "const": "existing_chat"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "existing_chat_label"
+                ],
+                "properties": {
+                  "existing_chat_label": {
+                    "$ref": "#/oneOf/1/properties/target/properties/existing_chat_label"
+                  }
+                }
+              },
+              "else": {
+                "properties": {
+                  "existing_chat_label": false
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
