@@ -118,6 +118,6 @@
       "sha256": "b17e3771df1f9027f6caf96ae250d17649a334e0de4a524ecab4673745074898"
     }
   ],
-  "source_commit": "ccbae065f0294db25562c90cd4d39cf112129d23",
+  "source_commit": "54be9314dce5319b049dc0a236800fd1a1fdd7a1",
   "source_lock_path": "compatibility/runtime-input-only/source.lock.json"
 }

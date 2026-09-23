@@ -17,4 +17,4 @@
 
 ## FEAT-155 本地版本固化
 
-本地消费来源固定为Contracts `ccbae065f0294db25562c90cd4d39cf112129d23`，原生input-only来源固定为Runtime `fb79b1d53501ec90084b584af5fdbe221c7a25aa`。四份`api/*.candidate.json`通过同源sync生成`source_commit/source_lock_path`，从Git对象验证源lock及生成物；旧`base_commit`仍是生成比较基线。`release:false`、普通Store5和显式候选Store6保持。此前D4源码/Runtime产物字节保持，未因固定来源改变wire、审批或出站行为。
+本地消费来源固定为Contracts `54be9314dce5319b049dc0a236800fd1a1fdd7a1`，原生input-only来源固定为Runtime `fb79b1d53501ec90084b584af5fdbe221c7a25aa`。四份`api/*.candidate.json`通过同源sync生成`source_commit/source_lock_path`，从Git对象验证源lock及生成物；旧`base_commit`仍是生成比较基线。`release:false`、普通Store5和显式候选Store6保持。此前D4源码/Runtime产物字节保持，未因固定来源改变wire、审批或出站行为。

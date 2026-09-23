@@ -54,7 +54,7 @@
     "go": "oapi-codegen/v2@v2.7.2",
     "jsonschema": "source-local deterministic projection v1"
   },
-  "source_commit": "ccbae065f0294db25562c90cd4d39cf112129d23",
+  "source_commit": "54be9314dce5319b049dc0a236800fd1a1fdd7a1",
   "source_lock_path": "compatibility/scheduled-task-recovery/source.lock.json",
   "consumer": "yijie-agent-host",
   "copies": [
