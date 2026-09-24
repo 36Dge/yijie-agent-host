@@ -48,11 +48,14 @@ func (m *Manager) scheduledDraftGeneration() (string, error) {
 		m.artifact.BinarySHA256 == inputonly.RuntimeBinarySHA256 &&
 		m.artifact.ManifestSHA256 == inputonly.RuntimeManifestSHA256 &&
 		m.config.MiniMax.Enabled && m.usesNativeConfigLayers() &&
-		!m.config.DynamicToolsEnabled && !m.config.CommandApprovalEnabled
+		!m.config.CommandApprovalEnabled
 	m.mu.Unlock()
 	if !ready || generation == "" || m.validateManagedProviderAuthority(authority) != nil {
 		return "", errDraftUnqualified
 	}
+	// Ordinary threads may retain the existing image tool. Draft start/resume
+	// never register dynamic tools, and each draft turn still requires the native
+	// input-only receipt to prove an empty tool surface for this exact thread.
 	return generation, nil
 }
 

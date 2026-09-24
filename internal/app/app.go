@@ -314,7 +314,7 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if err != nil {
 		return Config{}, err
 	}
-	if candidate != nil && (fakeProfile.Enabled || imageGeneration || feat137CommandApproval) {
+	if candidate != nil && (fakeProfile.Enabled || feat137CommandApproval) {
 		return Config{}, errors.New("scheduled candidate is incompatible with alternate execution profiles")
 	}
 	return Config{

@@ -30,3 +30,5 @@ B3B原生候选部署描述只选择Store6和受管scope目录，必须先核对
 4B显式本地验收的草案start/resume复用原固定计数Provider通道，request/stream retries均为0；计数服务不可用不退回直连。只继承Provider地址与重试配置，不继承普通权限验收的auto_review.policy。input-only、never、精确产物、工作目录、当前generation和每轮权限回执保持，Store6和公共wire不变。单批计数上限来自已批准验收预算，不是产品运行授权或完整Provider/D4通过结论。
 
 固定输出schema同时作为受限线程的显式baseInstructions传给原生start/resume；这是结构化输出指引，不是任务文件/skills/MCP继承或权限证明。旧developer历史可能保持原文，因此不依赖修改该历史来更新指引。Provider返回仍须由Desktop对完整原生事实严格校验，不能以提示词替代schema或放宽input-only限制。
+
+FEAT-155日常入口经Owner明确授权后复用原数据目录及Store6兼容迁移。普通图片能力与受限草案共用同一Runtime；全局dynamic-tool协商不构成草案工具权限，草案每轮仍须取得原生空工具、无继承和input-only证据。普通图片回调只接受原image turn绑定。启动选择不是计划执行grant，不放宽固定产物、有限授权、审批或零重发边界。
