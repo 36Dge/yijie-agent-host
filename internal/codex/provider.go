@@ -61,11 +61,19 @@ type ManagedReasoningProfile uint8
 const (
 	ManagedReasoningProfileDefault ManagedReasoningProfile = iota
 	ManagedReasoningProfileHighRaw
+	// NativeHighRaw uses the same provider settings with the current native
+	// permissions path. The legacy HighRaw isolation rules remain unchanged.
+	ManagedReasoningProfileNativeHighRaw
 )
 
 func (p ManagedReasoningProfile) validate(miniMaxEnabled, dynamicToolsEnabled bool) error {
 	switch p {
 	case ManagedReasoningProfileDefault:
+		return nil
+	case ManagedReasoningProfileNativeHighRaw:
+		if !miniMaxEnabled {
+			return errors.New("native reasoning requires the MiniMax provider")
+		}
 		return nil
 	case ManagedReasoningProfileHighRaw:
 		if !miniMaxEnabled {
@@ -237,7 +245,7 @@ func miniMaxManagedConfigForAuthority(
 		"model_reasoning_effort = \"none\"",
 		"model_reasoning_summary = \"none\"",
 	}
-	if profile == ManagedReasoningProfileHighRaw {
+	if profile == ManagedReasoningProfileHighRaw || profile == ManagedReasoningProfileNativeHighRaw {
 		reasoningLines = []string{
 			"model_reasoning_effort = \"high\"",
 			"model_reasoning_summary = \"none\"",

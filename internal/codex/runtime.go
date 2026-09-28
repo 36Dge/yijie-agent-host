@@ -139,6 +139,9 @@ func (c Config) validate() error {
 	if err := c.ManagedReasoningProfile.validate(c.MiniMax.Enabled, c.DynamicToolsEnabled); err != nil {
 		return err
 	}
+	if c.ManagedReasoningProfile == ManagedReasoningProfileNativeHighRaw && (!c.RuntimePermissionsEnabled || c.CommandApprovalEnabled || c.FakeResponses.Enabled) {
+		return errors.New("native reasoning requires current native Runtime permissions")
+	}
 	if c.DynamicToolsEnabled && !c.MiniMax.Enabled {
 		return errors.New("Runtime dynamic tools require the MiniMax provider")
 	}

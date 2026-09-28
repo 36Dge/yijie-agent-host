@@ -190,7 +190,14 @@ func (s *Service) startTurnV2(ctx context.Context, input StartTurnV2Input, draft
 		)
 		return codex.TurnInfo{}, err
 	}
-	turn, err := runtime.StartTurnV2(codex.WithClientUserMessageID(ctx, input.OperationID), record.CodexThreadID, runtimeInputs, normalizedEffort)
+	// Keep the request digest above stable across deployment configuration
+	// changes. Accepted retries must return their original Turn, not conflict
+	// or dispatch again merely because daily reasoning was enabled.
+	effectiveEffort := normalizedEffort
+	if s.nativeReasoning {
+		effectiveEffort = "high"
+	}
+	turn, err := runtime.StartTurnV2(codex.WithClientUserMessageID(ctx, input.OperationID), record.CodexThreadID, runtimeInputs, effectiveEffort)
 	if err != nil {
 		s.clearImageTurn(record.CodexThreadID)
 		s.abortSyntheticTerminalBarrier(input.AgentSessionID)

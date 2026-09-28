@@ -214,6 +214,7 @@ type Service struct {
 	syntheticArtifacts   bool
 	rawReasoning         bool
 	fixedReasoningEffort string
+	nativeReasoning      bool
 	logger               *slog.Logger
 
 	draftOperationMu sync.Mutex // serializes explicit draft resume with draft turn admission
@@ -272,6 +273,15 @@ func WithV6Approvals(events *EventHub, acknowledgementTimeout time.Duration) Ser
 
 func WithRawReasoningProjection(enabled bool) ServiceOption {
 	return func(service *Service) { service.rawReasoning = enabled }
+}
+
+// WithNativeReasoning selects daily high reasoning and the existing native
+// projection without exposing any of the legacy versioned event routes.
+func WithNativeReasoning() ServiceOption {
+	return func(service *Service) {
+		service.nativeReasoning = true
+		service.rawReasoning = true
+	}
 }
 
 func WithFixedReasoningEffort(effort string) ServiceOption {
@@ -485,6 +495,9 @@ func (s *Service) StartTurn(ctx context.Context, input StartTurnInput) (codex.Tu
 	effectiveEffort := input.ReasoningEffort
 	if s.fixedReasoningEffort != "" {
 		effectiveEffort = s.fixedReasoningEffort
+	}
+	if s.nativeReasoning {
+		effectiveEffort = "high"
 	}
 	turn, err := s.runtime.StartTurn(ctx, record.CodexThreadID, input.Input, effectiveEffort)
 	if err != nil {

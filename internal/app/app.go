@@ -41,6 +41,7 @@ type Config struct {
 	ParentPID                      int
 	Runtime                        codex.Config
 	RawReasoningV2Enabled          bool
+	NativeReasoningEnabled         bool
 	FEAT134StreamingEnabled        bool
 	FEAT136CommandToolItemsEnabled bool
 	FEAT137CommandApprovalEnabled  bool
@@ -289,6 +290,13 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if feat134Streaming {
 		runtimeConfig.ManagedReasoningProfile = codex.ManagedReasoningProfileHighRaw
 	}
+	nativeReasoning, err := loadNativeReasoningProfile(environment, hostHome, runtimeConfig)
+	if err != nil {
+		return Config{}, err
+	}
+	if nativeReasoning {
+		runtimeConfig.ManagedReasoningProfile = codex.ManagedReasoningProfileNativeHighRaw
+	}
 	feat126ProjectDirectory := ""
 	if fakeProfile.Enabled {
 		feat126ProjectDirectory, err = validateFEAT126ProjectAuthority(
@@ -326,6 +334,7 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		ParentPID:                      parentPID,
 		Runtime:                        runtimeConfig,
 		RawReasoningV2Enabled:          rawV2,
+		NativeReasoningEnabled:         nativeReasoning,
 		FEAT134StreamingEnabled:        feat134Streaming,
 		FEAT136CommandToolItemsEnabled: feat136CommandToolItems,
 		FEAT137CommandApprovalEnabled:  feat137CommandApproval,
@@ -343,6 +352,25 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		FEAT126ProjectDir:              feat126ProjectDirectory,
 		Skills:                         skillFeature,
 	}, nil
+}
+
+func loadNativeReasoningProfile(environment, hostHome string, runtimeConfig codex.Config) (bool, error) {
+	enabled, err := exactBoolEnv("YIJIE_NATIVE_REASONING_ENABLED")
+	if err != nil || !enabled {
+		return false, err
+	}
+	if environment != "local" || os.Getenv("YIJIE_ENV") != "local" || os.Getenv("YIJIE_LOCAL_PROFILE") != "demo_fast" ||
+		!runtimeConfig.RuntimePermissionsEnabled || !runtimeConfig.MiniMax.Enabled || runtimeConfig.FakeResponses.Enabled || runtimeConfig.CommandApprovalEnabled {
+		return false, errors.New("native reasoning requires the explicit local demo_fast native MiniMax profile")
+	}
+	if !canonicalAbsolutePath(hostHome) || !canonicalAbsolutePath(runtimeConfig.CodexHome) {
+		return false, errors.New("native reasoning requires separate canonical absolute Host and Runtime homes")
+	}
+	sameAuthority, authorityErr := samePhysicalAuthorityAllowMissing(hostHome, runtimeConfig.CodexHome)
+	if authorityErr != nil || sameAuthority {
+		return false, errors.New("native reasoning cannot verify separate Host and Runtime homes")
+	}
+	return true, nil
 }
 
 func loadFEAT134StreamingProfile(environment, hostHome string, runtimeConfig codex.Config) (bool, error) {

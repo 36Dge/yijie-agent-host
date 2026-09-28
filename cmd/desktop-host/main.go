@@ -74,6 +74,9 @@ func run(logger *slog.Logger) error {
 			return err
 		}
 		serviceOptions := make([]session.ServiceOption, 0, 7)
+		if config.NativeReasoningEnabled {
+			serviceOptions = append(serviceOptions, session.WithNativeReasoning())
+		}
 		if config.FEAT134StreamingEnabled {
 			serviceOptions = append(serviceOptions,
 				session.WithV4Events(session.NewEventHubVersion(session.EventSchemaVersionV4, 512, 64)),
