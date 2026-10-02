@@ -43,6 +43,8 @@ const (
 )
 
 type Config struct {
+	ChatModelsEnabled             bool
+	KimiAPIKey                    string
 	BinaryPath                    string
 	ManifestPath                  string
 	CodexHome                     string
@@ -120,6 +122,17 @@ func (c Config) validate() error {
 	}
 	if c.StderrTailBytes < 1024 {
 		return errors.New("runtime stderr tail size must be at least 1024 bytes")
+	}
+	if c.ChatModelsEnabled && (!c.RuntimePermissionsEnabled || !c.MiniMax.Enabled || c.CommandApprovalEnabled || c.FakeResponses.Enabled) {
+		return errors.New("chat models require the local native permissions profile")
+	}
+	if !c.ChatModelsEnabled && c.KimiAPIKey != "" {
+		return errors.New("Kimi key configured while chat models are disabled")
+	}
+	if c.KimiAPIKey != "" {
+		if err := (MiniMaxConfig{Enabled: true, APIKey: c.KimiAPIKey}).validate(); err != nil {
+			return errors.New("Kimi key is invalid")
+		}
 	}
 	if err := c.MiniMax.validate(); err != nil {
 		return err
@@ -382,6 +395,15 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 			m.status.Model = MiniMaxModel
 		}
 	}
+	if providerErr == nil && m.config.ChatModelsEnabled {
+		var extra []string
+		extra, providerErr = prepareChatModelLayer(authority)
+		if providerErr == nil {
+			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
+			m.status.ModelProvider = "kimi"
+			m.status.Model = "kimi-k3"
+		}
+	}
 	if providerErr == nil && m.config.FakeResponses.Enabled {
 		providerErr = prepareFakeResponsesCodexHome(authority, m.config.FakeResponses)
 		if providerErr == nil {
@@ -487,6 +509,11 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 }
 
 func (m *Manager) validateManagedProviderAuthority(authority *managedCodexHomeAuthority) error {
+	if m.config.ChatModelsEnabled {
+		if err := validateChatModelLayer(authority); err != nil {
+			return err
+		}
+	}
 	if !m.config.MiniMax.Enabled {
 		return nil
 	}
@@ -667,6 +694,9 @@ func (m *Manager) startProcess() (io.WriteCloser, io.ReadCloser, *exec.Cmd, *tai
 		miniMaxKey,
 		m.config.DeterministicApprovalProducerEnabled,
 	)
+	if m.config.ChatModelsEnabled && m.config.KimiAPIKey != "" {
+		cmd.Env = append(cmd.Env, KimiRuntimeEnvKey+"="+m.config.KimiAPIKey)
+	}
 	if m.config.Sorftime.Enabled {
 		// Use the existing native HTTP proxy support for the current system
 		// HTTPS route. Keep the normal provider and loopback routes direct.
@@ -979,11 +1009,12 @@ func runtimeEnvironment(
 	deterministicApprovalProducer bool,
 ) []string {
 	blocked := map[string]struct{}{
-		"OPENAI_API_KEY":                        {},
-		"CODEX_API_KEY":                         {},
-		"CODEX_ACCESS_TOKEN":                    {},
-		"CHATGPT_ACCESS_TOKEN":                  {},
-		"MINIMAX_API_KEY":                       {},
+		"OPENAI_API_KEY":       {},
+		"CODEX_API_KEY":        {},
+		"CODEX_ACCESS_TOKEN":   {},
+		"CHATGPT_ACCESS_TOKEN": {},
+		"MINIMAX_API_KEY":      {},
+		"KIMI_API_KEY":         {}, "MOONSHOT_API_KEY": {}, "YIJIE_KIMI_API_KEY": {}, "YIJIE_KIMI_API_KEY_FILE": {},
 		"MINIMAX_API_KEY_FILE":                  {},
 		"YIJIE_MINIMAX_API_KEY":                 {},
 		"YIJIE_MINIMAX_API_KEY_FILE":            {},

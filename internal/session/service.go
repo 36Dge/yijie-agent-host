@@ -200,6 +200,7 @@ type syntheticTerminalBarrier struct {
 }
 
 type Service struct {
+	modelOperationMu     sync.Mutex
 	draftDirectory       func(string) (string, error)
 	runtime              Runtime
 	store                *Store
@@ -325,6 +326,11 @@ func (s *Service) StartSession(ctx context.Context, input StartSessionInput) (Re
 	return s.startSession(ctx, input, nil)
 }
 func (s *Service) startSession(ctx context.Context, input StartSessionInput, draft *draftIdentity) (Record, error) {
+	s.modelOperationMu.Lock()
+	defer s.modelOperationMu.Unlock()
+	if err := s.checkModelRequest(ctx, Record{}); err != nil {
+		return Record{}, err
+	}
 	if err := requireUUID("task_id", input.TaskID); err != nil {
 		return Record{}, err
 	}
@@ -341,6 +347,11 @@ func (s *Service) startSession(ctx context.Context, input StartSessionInput, dra
 		AgentSessionID: sessionID,
 		Cwd:            cwd,
 		Trace:          input.Trace,
+	}
+	if id := codex.ModelProfileID(ctx); id != "" {
+		record.ModelProfile = id
+		record.ModelRevision = 1
+		record.ModelSelectionState = "ready"
 	}
 	if draft != nil {
 		record.Purpose = purposeDraft
@@ -365,7 +376,12 @@ func (s *Service) startSession(ctx context.Context, input StartSessionInput, dra
 		_, _ = s.store.MarkFailed(sessionID, "provider_identity_limit_exceeded")
 		return Record{}, fmt.Errorf("%w: managed provider identity", ErrEventLimitExceeded)
 	}
-	if thread.Model != codex.MiniMaxModel || thread.ModelProvider != codex.MiniMaxProviderID {
+	expectedModel, expectedProvider := codex.MiniMaxModel, codex.MiniMaxProviderID
+	if id := codex.ModelProfileID(ctx); id != "" {
+		p, _ := codex.ModelProfile(id)
+		expectedModel, expectedProvider = p.Model, p.Provider
+	}
+	if thread.Model != expectedModel || thread.ModelProvider != expectedProvider {
 		_, _ = s.store.MarkFailed(sessionID, "provider_identity_mismatch")
 		return Record{}, fmt.Errorf("%w: thread/start returned an unexpected model provider identity", ErrRuntimeRequest)
 	}
@@ -390,11 +406,16 @@ func (s *Service) ResumeSession(ctx context.Context, sessionID string, trace Tra
 	return s.resumeSession(ctx, sessionID, trace, false)
 }
 func (s *Service) resumeSession(ctx context.Context, sessionID string, trace TraceContext, draft bool) (Record, error) {
+	s.modelOperationMu.Lock()
+	defer s.modelOperationMu.Unlock()
 	if err := requireUUID("agent_session_id", sessionID); err != nil {
 		return Record{}, err
 	}
 	record, err := s.store.Get(sessionID)
 	if err != nil {
+		return Record{}, err
+	}
+	if err := s.checkModelRequest(ctx, record); err != nil {
 		return Record{}, err
 	}
 	if (record.Purpose == purposeDraft) != draft {
@@ -427,7 +448,12 @@ func (s *Service) resumeSession(ctx context.Context, sessionID string, trace Tra
 		_, _ = s.store.MarkFailed(sessionID, "provider_identity_limit_exceeded")
 		return Record{}, fmt.Errorf("%w: managed provider identity", ErrEventLimitExceeded)
 	}
-	if thread.Model != codex.MiniMaxModel || thread.ModelProvider != codex.MiniMaxProviderID {
+	expectedModel, expectedProvider := codex.MiniMaxModel, codex.MiniMaxProviderID
+	if id := codex.ModelProfileID(ctx); id != "" {
+		p, _ := codex.ModelProfile(id)
+		expectedModel, expectedProvider = p.Model, p.Provider
+	}
+	if thread.Model != expectedModel || thread.ModelProvider != expectedProvider {
 		_, _ = s.store.MarkFailed(sessionID, "provider_identity_mismatch")
 		return Record{}, fmt.Errorf("%w: thread/resume returned an unexpected model provider identity", ErrRuntimeRequest)
 	}
@@ -464,6 +490,13 @@ func (s *Service) GetSession(sessionID string) (Record, error) {
 }
 
 func (s *Service) StartTurn(ctx context.Context, input StartTurnInput) (codex.TurnInfo, error) {
+	s.modelOperationMu.Lock()
+	defer s.modelOperationMu.Unlock()
+	if r, e := s.store.Get(input.AgentSessionID); e != nil {
+		return codex.TurnInfo{}, e
+	} else if e = s.checkModelRequest(ctx, r); e != nil {
+		return codex.TurnInfo{}, e
+	}
 	if err := requireUUID("agent_session_id", input.AgentSessionID); err != nil {
 		return codex.TurnInfo{}, err
 	}

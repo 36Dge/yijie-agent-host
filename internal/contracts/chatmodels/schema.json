@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.yijie.ai/chat/model-selection/v1",
+  "title": "FEAT-156 local model selection",
+  "x-model-profiles": [
+    {
+      "profile_id": "kimi-k3-max-v1",
+      "label": "Kimi K3",
+      "provider": "kimi",
+      "model": "kimi-k3",
+      "effort": "max",
+      "context_window": 1048576
+    },
+    {
+      "profile_id": "minimax-m3-high-v1",
+      "label": "MiniMax M3",
+      "provider": "minimax",
+      "model": "MiniMax-M3",
+      "effort": "high",
+      "context_window": 1000000
+    }
+  ],
+  "$defs": {
+    "ProfileId": {
+      "type": "string",
+      "enum": [
+        "kimi-k3-max-v1",
+        "minimax-m3-high-v1"
+      ]
+    },
+    "CanonicalId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "Revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "SelectionState": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "switching",
+        "unknown"
+      ]
+    },
+    "ModelDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id",
+        "label",
+        "provider",
+        "model",
+        "effort",
+        "context_window"
+      ],
+      "properties": {
+        "profile_id": {
+          "$ref": "#/$defs/ProfileId"
+        },
+        "label": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "effort": {
+          "type": "string"
+        },
+        "context_window": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "ModelAvailability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "available",
+        "reason"
+      ],
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/ModelDefinition"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "not_configured",
+            "runtime_unavailable"
+          ]
+        }
+      }
+    },
+    "Catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "default_profile",
+        "models"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "default_profile": {
+          "$ref": "#/$defs/ProfileId"
+        },
+        "models": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/ModelAvailability"
+          }
+        }
+      }
+    },
+    "Selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "agent_session_id",
+        "state",
+        "revision"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "agent_session_id": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "state": {
+          "$ref": "#/$defs/SelectionState"
+        },
+        "revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/ProfileId"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/CanonicalId"
+        }
+      }
+    },
+    "SelectRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "operation_id",
+        "expected_revision",
+        "profile_id"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "operation_id": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/ProfileId"
+        }
+      }
+    },
+    "Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "code"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 1
+        },
+        "code": {
+          "type": "string",
+          "enum": [
+            "invalid_request",
+            "unauthorized",
+            "not_found",
+            "busy",
+            "revision_conflict",
+            "request_conflict",
+            "model_unavailable",
+            "selection_unknown",
+            "runtime_unavailable"
+          ]
+        }
+      }
+    }
+  }
+}

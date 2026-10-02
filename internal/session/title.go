@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/36Dge/yijie-agent-host/internal/codex"
 	"github.com/rivo/uniseg"
 	"golang.org/x/text/unicode/norm"
 )
@@ -54,8 +55,12 @@ func (s *Service) GenerateTitle(ctx context.Context, sessionID, operationID, inp
 	if input == "" || len([]byte(input)) > 8<<10 {
 		return TitleResult{}, ErrInvalidArgument
 	}
-	if _, err := s.store.Get(sessionID); err != nil {
+	record, err := s.store.Get(sessionID)
+	if err != nil {
 		return TitleResult{}, err
+	}
+	if record.ModelProfile != "" {
+		ctx = codex.WithModelProfile(ctx, record.ModelProfile)
 	}
 	digestBytes := sha256.Sum256([]byte(input))
 	digest := hex.EncodeToString(digestBytes[:])

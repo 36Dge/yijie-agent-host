@@ -256,6 +256,19 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	runtimeConfig.CommandApprovalEnabled = feat137CommandApproval
 	// FEAT-152 uses the retained native Runtime, independently of retired v6.
 	runtimeConfig.RuntimePermissionsEnabled = environment == "local" && os.Getenv("YIJIE_LOCAL_PROFILE") == "demo_fast" && os.Getenv("YIJIE_RUNTIME_PERMISSIONS_ENABLED") == "true" && runtimeConfig.MiniMax.Enabled
+	if os.Getenv("YIJIE_CHAT_MODELS_ENABLED") == "true" {
+		if !runtimeConfig.RuntimePermissionsEnabled {
+			return Config{}, errors.New("chat models require local demo native permissions")
+		}
+		key, err := loadKimiAPIKey()
+		if err != nil {
+			return Config{}, err
+		}
+		runtimeConfig.ChatModelsEnabled = true
+		runtimeConfig.KimiAPIKey = key
+	} else if os.Getenv("YIJIE_KIMI_API_KEY") != "" || os.Getenv("YIJIE_KIMI_API_KEY_FILE") != "" {
+		return Config{}, errors.New("Kimi credentials require explicit chat model configuration")
+	}
 	if os.Getenv(codex.SorftimeEnabledEnv) != "" || os.Getenv(codex.SorftimeSecretEnv) != "" || os.Getenv(codex.SorftimeProxyEnv) != "" {
 		if os.Getenv(codex.SorftimeEnabledEnv) != "true" || !runtimeConfig.RuntimePermissionsEnabled || runtimeConfig.FakeResponses.Enabled {
 			return Config{}, errors.New("Sorftime requires the explicit local demo profile")
@@ -877,6 +890,9 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 				mux.Handle("POST /v6/agent-sessions/{agent_session_id}/approvals/{approval_request_id}/decision", handler.authorize(http.HandlerFunc(handler.decideApprovalV6)))
 			}
 		}
+	}
+	if config.Environment == "local" && config.Runtime.RuntimePermissionsEnabled {
+		registerChatModels(mux, &sessionHandler{service: sessions, apiToken: apiToken}, config.Runtime.ChatModelsEnabled)
 	}
 	registerSkillRoutes(mux, config.Skills, handlerOptions.skillService, apiToken)
 	return mux

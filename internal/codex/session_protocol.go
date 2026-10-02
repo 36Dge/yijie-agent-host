@@ -148,11 +148,12 @@ func imageGenerationToolSpec() dynamicToolSpec {
 }
 
 type ThreadInfo struct {
-	ID             string
-	RuntimeSession string
-	Model          string
-	ModelProvider  string
-	Turns          []TurnInfo
+	ReasoningEffort string
+	ID              string
+	RuntimeSession  string
+	Model           string
+	ModelProvider   string
+	Turns           []TurnInfo
 }
 
 type TurnInfo struct {
@@ -216,6 +217,7 @@ type turnWire struct {
 }
 
 type threadResponse struct {
+	ReasoningEffort   string          `json:"reasoningEffort"`
 	Thread            threadWire      `json:"thread"`
 	Model             string          `json:"model"`
 	ModelProvider     string          `json:"modelProvider"`
@@ -513,6 +515,10 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 	if err := m.validateSorftimeConfig(ctx, cwd); err != nil {
 		return ThreadInfo{}, err
 	}
+	selected, err := m.modelForContext(ctx)
+	if err != nil {
+		return ThreadInfo{}, err
+	}
 	params := struct {
 		Model                 string            `json:"model"`
 		ModelProvider         string            `json:"modelProvider"`
@@ -525,8 +531,8 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		Ephemeral             bool              `json:"ephemeral"`
 		DynamicTools          []dynamicToolSpec `json:"dynamicTools,omitempty"`
 	}{
-		Model:                 MiniMaxModel,
-		ModelProvider:         MiniMaxProviderID,
+		Model:                 selected.Model,
+		ModelProvider:         selected.Provider,
 		Cwd:                   cwd,
 		ApprovalPolicy:        m.sessionApprovalPolicy(),
 		Sandbox:               SessionSandbox,
@@ -557,9 +563,15 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		}
 		params.DynamicTools = []dynamicToolSpec{imageGenerationToolSpec()}
 	}
+	if m.config.ChatModelsEnabled {
+		params.Config = applyModelConfig(params.Config, selected)
+	}
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadStart, params, &response); err != nil {
 		return ThreadInfo{}, err
+	}
+	if ModelProfileID(ctx) != "" && (response.Model != selected.Model || response.ModelProvider != selected.Provider || response.ReasoningEffort != selected.Effort) {
+		return ThreadInfo{}, errors.New("effective model profile mismatch")
 	}
 	thread, err := validateThreadResponse(response)
 	if err != nil {
@@ -596,6 +608,8 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 		return ThreadInfo{}, errors.New("Codex thread id is required")
 	}
 	type resumeParams struct {
+		Model                 string         `json:"model,omitempty"`
+		ModelProvider         string         `json:"modelProvider,omitempty"`
 		ThreadID              string         `json:"threadId"`
 		ApprovalPolicy        *string        `json:"approvalPolicy,omitempty"`
 		Sandbox               *string        `json:"sandbox,omitempty"`
@@ -625,9 +639,21 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 		}
 		params.Config["approvals_reviewer"] = "user"
 	}
+	selected, err := m.modelForContext(ctx)
+	if err != nil {
+		return ThreadInfo{}, err
+	}
+	if ModelProfileID(ctx) != "" {
+		params.Model = selected.Model
+		params.ModelProvider = selected.Provider
+		params.Config = applyModelConfig(params.Config, selected)
+	}
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadResume, params, &response); err != nil {
 		return ThreadInfo{}, err
+	}
+	if ModelProfileID(ctx) != "" && (response.Model != selected.Model || response.ModelProvider != selected.Provider || response.ReasoningEffort != selected.Effort) {
+		return ThreadInfo{}, errors.New("effective model profile mismatch")
 	}
 	thread, err := validateThreadResponse(response)
 	if err != nil {
@@ -744,7 +770,7 @@ func (m *Manager) StartTurnV2(
 	if reasoningEffort == "" {
 		reasoningEffort = "none"
 	}
-	if reasoningEffort != "none" && reasoningEffort != "high" {
+	if reasoningEffort != "none" && reasoningEffort != "high" && !(reasoningEffort == "max" && m.config.ChatModelsEnabled && ModelProfileID(ctx) == "kimi-k3-max-v1") {
 		return TurnInfo{}, errors.New("reasoning effort must be none or high")
 	}
 	wireInputs := make([]any, 0, len(inputs))
@@ -929,10 +955,11 @@ func validateThreadResponse(response threadResponse) (ThreadInfo, error) {
 		turns = append(turns, TurnInfo{ID: turn.ID, Status: turn.Status})
 	}
 	return ThreadInfo{
-		ID:             response.Thread.ID,
-		RuntimeSession: response.Thread.SessionID,
-		Model:          response.Model,
-		ModelProvider:  response.ModelProvider,
-		Turns:          turns,
+		ID:              response.Thread.ID,
+		RuntimeSession:  response.Thread.SessionID,
+		Model:           response.Model,
+		ReasoningEffort: response.ReasoningEffort,
+		ModelProvider:   response.ModelProvider,
+		Turns:           turns,
 	}, nil
 }

@@ -16,7 +16,6 @@ import (
 	"github.com/36Dge/yijie-agent-host/internal/app"
 	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
-	inputonly "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeinputonly"
 	"github.com/36Dge/yijie-agent-host/internal/imagegen"
 	"github.com/36Dge/yijie-agent-host/internal/security"
 	"github.com/36Dge/yijie-agent-host/internal/session"
@@ -59,10 +58,13 @@ func run(logger *slog.Logger) error {
 			// The descriptor alone is not an execution capability. Pin the real
 			// candidate before any Store6 writer is opened.
 			artifact, checkErr := codex.VerifyArtifact(context.Background(), config.Runtime.BinaryPath, config.Runtime.ManifestPath, config.Runtime.RequestTimeout)
-			if checkErr != nil || artifact.BinarySHA256 != inputonly.RuntimeBinarySHA256 || artifact.ManifestSHA256 != inputonly.RuntimeManifestSHA256 {
+			if checkErr != nil || !artifact.SupportsInputOnly() {
 				return errors.New("scheduled candidate Runtime artifact is unqualified")
 			}
 			storeOptions = append(storeOptions, session.WithScheduledDraftStorage())
+		}
+		if config.Runtime.ChatModelsEnabled {
+			storeOptions = append(storeOptions, session.WithChatModelStorage())
 		}
 		sessionStore, err = session.OpenStore(config.HostHome, storeOptions...)
 		if err != nil {

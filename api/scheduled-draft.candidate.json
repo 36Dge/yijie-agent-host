@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "contract_version": "0.1.0",
-  "mode": "local_candidate",
+  "mode": "local_worktree_candidate",
   "release": false,
-  "base_commit": "ccbae065f0294db25562c90cd4d39cf112129d23",
+  "base_commit": "54be9314dce5319b049dc0a236800fd1a1fdd7a1",
   "sources": [
     {
       "path": "jsonschema/scheduled-tasks/draft-execution-v1.schema.json",
@@ -19,19 +19,23 @@
     },
     {
       "path": "scripts/generate-scheduled-draft.mjs",
-      "sha256": "72bedaa8a09eb8aeab4eebefdd72c9c177d7b3e0225dbc2b1bc5a50ee65ba8ac"
+      "sha256": "9ef2ea82ee8d2ddf30664bd6ee3092a2869347b49b8ab91630e5d01f3c896682"
     },
     {
       "path": "scripts/sync-scheduled-draft.mjs",
-      "sha256": "80affa494f6e0129b907d90fc9cf1081aaf42de45e409c70ebf388bd2fab54c1"
+      "sha256": "dd63d73a2f9abea74a6486f043cbfe937fcc3d00356238656531d50e3f06c3f9"
     },
     {
       "path": "scripts/scheduled-consumer-source.mjs",
       "sha256": "69e7fa6b1b4371d1d6c9456fe68b9ede76cc3a0896253597428729f531fde015"
     },
     {
+      "path": "scripts/chat-model-consumer-source.mjs",
+      "sha256": "9930c321840c103b21afa2dcaa8f04d039297e76c30dffb8b18a9096a61546ed"
+    },
+    {
       "path": "scripts/scheduled-schema-source.mjs",
-      "sha256": "4afa5abda0bb8fd76a3c01759605a8b1f3c59f5548ac93587750e07cd08f406c"
+      "sha256": "833e22e5c80967d01a0b4f690dacedaffdafd5a1d1c82736fec257b76feaf8ba"
     }
   ],
   "generated": [
@@ -56,6 +60,6 @@
       "sha256": "f7844573f4a65e9b9493a1a5039ce6688e7e3a077279133bd6be30795cdde2e5"
     }
   ],
-  "source_commit": "54be9314dce5319b049dc0a236800fd1a1fdd7a1",
+  "feature": "FEAT-156",
   "source_lock_path": "compatibility/scheduled-draft/source.lock.json"
 }

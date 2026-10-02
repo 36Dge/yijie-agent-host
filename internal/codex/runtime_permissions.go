@@ -407,11 +407,17 @@ func (m *Manager) verificationProviderConfig() map[string]any {
 	if !m.config.RuntimePermissionsEnabled || m.config.PermissionVerificationBaseURL == "" {
 		return nil
 	}
-	return map[string]any{
+	config := map[string]any{
 		"model_providers.minimax.base_url":            m.config.PermissionVerificationBaseURL,
 		"model_providers.minimax.request_max_retries": 0,
 		"model_providers.minimax.stream_max_retries":  0,
 	}
+	if m.config.ChatModelsEnabled {
+		config["model_providers.kimi.base_url"] = m.config.PermissionVerificationBaseURL
+		config["model_providers.kimi.request_max_retries"] = 0
+		config["model_providers.kimi.stream_max_retries"] = 0
+	}
+	return config
 }
 
 func (m *Manager) permissionVerificationConfig() map[string]any {

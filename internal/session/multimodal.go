@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -101,6 +102,8 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 	return s.startTurnV2(ctx, input, false)
 }
 func (s *Service) startTurnV2(ctx context.Context, input StartTurnV2Input, draft bool) (codex.TurnInfo, error) {
+	s.modelOperationMu.Lock()
+	defer s.modelOperationMu.Unlock()
 	if err := requireUUID("agent_session_id", input.AgentSessionID); err != nil {
 		return codex.TurnInfo{}, err
 	}
@@ -150,7 +153,18 @@ func (s *Service) startTurnV2(ctx context.Context, input StartTurnV2Input, draft
 	if err != nil {
 		return codex.TurnInfo{}, err
 	}
+	selectedID := codex.ModelProfileID(ctx)
+	if selectedID != "" {
+		p, valid := codex.ModelProfile(selectedID)
+		if !valid {
+			return codex.TurnInfo{}, ErrInvalidArgument
+		}
+		normalizedEffort = p.Effort
+	}
 	digestEffort := normalizedEffort
+	if selectedID != "" {
+		digestEffort += "\x00model-profile-v1:" + selectedID
+	}
 	if draft {
 		digestEffort += "\x00scheduled-plan-draft/1/policy/1/" + recordPurpose.DraftWorkspaceID
 	}
@@ -161,11 +175,26 @@ func (s *Service) startTurnV2(ctx context.Context, input StartTurnV2Input, draft
 	if err != nil {
 		return codex.TurnInfo{}, err
 	}
-	operation, record, err := s.store.PrepareTurnOperation(
+	if original, e := s.store.TurnOperation(input.AgentSessionID, input.OperationID); e == nil {
+		if original.ModelProfile != selectedID || !hmac.Equal([]byte(original.InputDigest), []byte(inputDigest)) {
+			return codex.TurnInfo{}, ErrTurnOperationConflict
+		}
+		if original.State == TurnOperationStateAccepted {
+			return codex.TurnInfo{ID: original.TurnID}, nil
+		}
+		return codex.TurnInfo{}, ErrTurnOperationPending
+	} else if !errors.Is(e, ErrNotFound) {
+		return codex.TurnInfo{}, e
+	}
+	if err := s.checkModelRequest(ctx, recordPurpose); err != nil {
+		return codex.TurnInfo{}, err
+	}
+	operation, record, err := s.store.prepareModelTurnOperation(
 		input.AgentSessionID,
 		input.OperationID,
 		inputDigest,
 		input.Trace,
+		selectedID,
 		s.requireNoRuntimeApprovalForThread,
 	)
 	if err != nil {
@@ -194,7 +223,7 @@ func (s *Service) startTurnV2(ctx context.Context, input StartTurnV2Input, draft
 	// changes. Accepted retries must return their original Turn, not conflict
 	// or dispatch again merely because daily reasoning was enabled.
 	effectiveEffort := normalizedEffort
-	if s.nativeReasoning {
+	if s.nativeReasoning && selectedID == "" {
 		effectiveEffort = "high"
 	}
 	turn, err := runtime.StartTurnV2(codex.WithClientUserMessageID(ctx, input.OperationID), record.CodexThreadID, runtimeInputs, effectiveEffort)

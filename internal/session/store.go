@@ -68,10 +68,14 @@ type TraceContext struct {
 }
 
 type Record struct {
-	Purpose            string `json:"purpose,omitempty"`
-	DraftWorkspaceID   string `json:"draft_workspace_id,omitempty"`
-	DraftPolicyVersion int64  `json:"draft_policy_version,omitempty"`
-	DraftSchemaVersion int64  `json:"draft_schema_version,omitempty"`
+	ModelProfile            string `json:"model_profile,omitempty"`
+	ModelRevision           int64  `json:"model_revision,omitempty"`
+	ModelSelectionState     string `json:"model_selection_state,omitempty"`
+	ModelSelectionOperation string `json:"model_selection_operation,omitempty"`
+	Purpose                 string `json:"purpose,omitempty"`
+	DraftWorkspaceID        string `json:"draft_workspace_id,omitempty"`
+	DraftPolicyVersion      int64  `json:"draft_policy_version,omitempty"`
+	DraftSchemaVersion      int64  `json:"draft_schema_version,omitempty"`
 	// Operational provenance is additive. Absent fields on legacy records prove nothing.
 	NativeRevision       uint64 `json:"native_revision,omitempty"`
 	NativeTerminalTurnID string `json:"native_terminal_turn_id,omitempty"`
@@ -102,6 +106,7 @@ const (
 )
 
 type TurnOperation struct {
+	ModelProfile  string    `json:"model_profile,omitempty"`
 	SchemaVersion int       `json:"schema_version"`
 	SessionID     string    `json:"session_id"`
 	OperationID   string    `json:"operation_id"`
@@ -113,6 +118,7 @@ type TurnOperation struct {
 }
 
 type Store struct {
+	modelWriter             bool
 	draftWriter             bool
 	db                      *bolt.DB
 	receiptKey              [32]byte
@@ -220,10 +226,10 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 		}
 		metadata := tx.Bucket(metadataBucket)
 		version := metadata.Get(storeSchemaVersionKey)
-		if version != nil && string(version) != "1" && string(version) != "2" && string(version) != "3" && string(version) != "4" && string(version) != storeSchemaVersion && string(version) != "6" {
+		if version != nil && string(version) != "1" && string(version) != "2" && string(version) != "3" && string(version) != "4" && string(version) != storeSchemaVersion && string(version) != "6" && string(version) != "7" {
 			return fmt.Errorf("unsupported Agent Host store schema version %q", version)
 		}
-		if version == nil || (string(version) != storeSchemaVersion && string(version) != "6") {
+		if version == nil || (string(version) != storeSchemaVersion && string(version) != "6" && string(version) != "7") {
 			if err := metadata.Put(storeSchemaVersionKey, []byte(storeSchemaVersion)); err != nil {
 				return err
 			}
@@ -236,6 +242,9 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 			return err
 		}
 		if err := store.prepareDraftFormat(tx); err != nil {
+			return err
+		}
+		if err := store.prepareModelFormat(tx); err != nil {
 			return err
 		}
 		return purgeExpiredCleanupReceipts(tx, time.Now().UTC())
@@ -774,6 +783,9 @@ func (s *Store) PrepareTurnOperation(
 	trace TraceContext,
 	admission ...func(string) error,
 ) (TurnOperation, Record, error) {
+	return s.prepareModelTurnOperation(sessionID, operationID, inputDigest, trace, "", admission...)
+}
+func (s *Store) prepareModelTurnOperation(sessionID, operationID, inputDigest string, trace TraceContext, modelProfile string, admission ...func(string) error) (TurnOperation, Record, error) {
 	if !isCanonicalNonZeroUUID(operationID) || !validTurnOperationDigest(inputDigest) {
 		return TurnOperation{}, Record{}, fmt.Errorf("%w: turn operation identity is invalid", ErrInvalidArgument)
 	}
@@ -822,6 +834,7 @@ func (s *Store) PrepareTurnOperation(
 		}
 		now := time.Now().UTC()
 		operation = TurnOperation{
+			ModelProfile:  modelProfile,
 			SchemaVersion: 1,
 			SessionID:     sessionID,
 			OperationID:   operationID,

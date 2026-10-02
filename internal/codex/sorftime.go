@@ -242,12 +242,12 @@ func (m *Manager) validateSorftimeConfig(ctx context.Context, cwd string) error 
 	if err := m.request(ctx, "config/read", params, &response); err != nil {
 		return errors.New("native Sorftime configuration unavailable")
 	}
-	return validateSorftimeEffectiveConfig(response.Config, m.sorftimeEnabled())
+	return validateSorftimeEffectiveConfig(response.Config, m.sorftimeEnabled(), m.config.ChatModelsEnabled)
 }
 
 // Compare the fixed Runtime's serialized effective configuration, including
 // its native defaults, rather than the shape of the input TOML.
-func validateSorftimeEffectiveConfig(config map[string]json.RawMessage, enabled bool) error {
+func validateSorftimeEffectiveConfig(config map[string]json.RawMessage, enabled bool, chatModels ...bool) error {
 	decode := func(key string, target any) bool { return json.Unmarshal(config[key], target) == nil }
 	if !enabled {
 		var servers map[string]map[string]any
@@ -289,9 +289,13 @@ func validateSorftimeEffectiveConfig(config map[string]json.RawMessage, enabled 
 	if features["tool_call_mcp_elicitation"] != true {
 		return errors.New("stable native MCP elicitation is unavailable")
 	}
+	exclude := []any{SorftimeSecretEnv, SorftimeEnabledEnv, MiniMaxRuntimeEnvKey}
+	if len(chatModels) > 0 && chatModels[0] {
+		exclude = append(exclude, KimiRuntimeEnvKey, "MOONSHOT_API_KEY", "YIJIE_KIMI_API_KEY", "YIJIE_KIMI_API_KEY_FILE")
+	}
 	var environment map[string]any
 	if !decode("shell_environment_policy", &environment) || !reflect.DeepEqual(environment, map[string]any{
-		"inherit": "core", "exclude": []any{SorftimeSecretEnv, SorftimeEnabledEnv, MiniMaxRuntimeEnvKey}, "set": map[string]any{},
+		"inherit": "core", "exclude": exclude, "set": map[string]any{},
 		"ignore_default_excludes": nil, "include_only": nil, "experimental_use_profile": nil,
 	}) {
 		return errors.New("native credential environment isolation mismatch")

@@ -1,5 +1,7 @@
 # Security Policy
 
+FEAT-156仅在local/demo_fast启用受管双模型profile：Kimi K3固定max，MiniMax M3保留high。Kimi凭据从独立环境或owner-only普通文件读取，只注入受管Runtime，排除工具子进程环境；不进入renderer、bbolt、事件或日志。profile/model/provider/effort由闭集目录和持久快照核对，不接受任意URL或密钥。模型切换继续校验scope、revision、空闲状态和原操作回执；计划模型变化必须重新审阅，旧grant/run摘要不改。Runtime0004/0005只接受精确产物，input-only空工具集、沙箱和权限审批保持，错误或未知结果不自动换模型或重发。实际本地资格见元仓FEAT-156验收包，非生产发布。
+
 FEAT-155只读恢复仅在精确local/demo_fast注册，保持既有owner-only loopback bearer；不把可变Trace tenant/user视为资源授权，Desktop native须在消费时校验本地scope。返回当前Host实例不能作为历史执行generation或终止证明；unknown不重投。详细边界见[只读恢复](docs/scheduled-task-recovery.md)。
 
 `yijie-agent-host` 不直接持有电商平台 token。所有高风险工具调用必须经过策略检查、用户审批和审计日志。

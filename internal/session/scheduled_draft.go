@@ -27,7 +27,7 @@ func WithScheduledDraftStorage() StoreOption {
 }
 func (s *Store) prepareDraftFormat(tx *bolt.Tx) error {
 	v := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
-	if v == "6" {
+	if v == "6" || v == "7" {
 		return tx.Bucket(sessionsBucket).ForEach(func(_, b []byte) error {
 			var r Record
 			if json.Unmarshal(b, &r) != nil {
@@ -71,7 +71,7 @@ func (s *Store) prepareDraftFormat(tx *bolt.Tx) error {
 }
 func validateStoredPurpose(tx *bolt.Tx, r *Record) error {
 	v := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
-	if v != "6" {
+	if v != "6" && v != "7" {
 		if (r.Purpose != "" && r.Purpose != purposeOrdinary) || r.DraftWorkspaceID != "" || r.DraftSchemaVersion != 0 || r.DraftPolicyVersion != 0 {
 			return ErrDraftPurpose
 		}
@@ -93,7 +93,8 @@ func validateStoredPurpose(tx *bolt.Tx, r *Record) error {
 	return nil
 }
 func validatePurposeWrite(tx *bolt.Tx, r Record) error {
-	if r.Purpose == purposeDraft && string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey)) != "6" {
+	version := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
+	if r.Purpose == purposeDraft && version != "6" && version != "7" {
 		return ErrDraftStorageDisabled
 	}
 	if e := validateStoredPurpose(tx, &r); e != nil {

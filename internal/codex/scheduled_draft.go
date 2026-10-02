@@ -45,8 +45,7 @@ func (m *Manager) scheduledDraftGeneration() (string, error) {
 	generation, authority := m.runtimeGeneration, m.codexHomeAuthority
 	ready := m.status.Ready && m.started && !m.shutdownRequested && m.client != nil && authority != nil &&
 		m.cmd != nil && m.cmd.Process != nil &&
-		m.artifact.BinarySHA256 == inputonly.RuntimeBinarySHA256 &&
-		m.artifact.ManifestSHA256 == inputonly.RuntimeManifestSHA256 &&
+		m.artifact.SupportsInputOnly() &&
 		m.config.MiniMax.Enabled && m.usesNativeConfigLayers() &&
 		!m.config.CommandApprovalEnabled
 	m.mu.Unlock()
@@ -147,6 +146,15 @@ func (m *Manager) startDraftThreadLocked(ctx context.Context, cwd, thread string
 	if e != nil {
 		return ThreadInfo{}, e
 	}
+	selected, err := m.modelForContext(ctx)
+	if err != nil {
+		return ThreadInfo{}, err
+	}
+	if ModelProfileID(ctx) != "" {
+		params["model"] = selected.Model
+		params["modelProvider"] = selected.Provider
+		params["config"] = applyModelConfig(params["config"].(map[string]any), selected)
+	}
 	method := RuntimeMethodThreadStart
 	if thread != "" {
 		method = RuntimeMethodThreadResume
@@ -159,9 +167,16 @@ func (m *Manager) startDraftThreadLocked(ctx context.Context, cwd, thread string
 }
 
 func (m *Manager) acceptDraftThreadResponse(ctx context.Context, cwd, thread, generation string, response threadResponse) (ThreadInfo, error) {
+	selected, err := m.modelForContext(ctx)
+	if err != nil {
+		return ThreadInfo{}, err
+	}
+	if ModelProfileID(ctx) != "" && response.ReasoningEffort != selected.Effort {
+		return ThreadInfo{}, errDraftUnqualified
+	}
 	info, e := validateThreadResponse(response)
 	if e != nil || response.Thread.Cwd != cwd || (thread != "" && info.ID != thread) ||
-		response.Model != MiniMaxModel || response.ModelProvider != MiniMaxProviderID ||
+		response.Model != selected.Model || response.ModelProvider != selected.Provider ||
 		response.ApprovalPolicy != "never" || response.ApprovalsReviewer != "user" {
 		return ThreadInfo{}, errDraftUnqualified
 	}
@@ -232,7 +247,15 @@ func (m *Manager) startDraftTurnLocked(ctx context.Context, thread string, input
 	proof.turnAttempted = true
 	m.draftProofs[thread] = proof
 	m.mu.Unlock()
-	if e := m.request(ctx, RuntimeMethodTurnStart, scheduledDraftTurnParams(ctx, thread, inputs), &response); e != nil {
+	params := scheduledDraftTurnParams(ctx, thread, inputs)
+	if ModelProfileID(ctx) != "" {
+		p, e := m.modelForContext(ctx)
+		if e != nil {
+			return TurnInfo{}, e
+		}
+		params["effort"] = p.Effort
+	}
+	if e := m.request(ctx, RuntimeMethodTurnStart, params, &response); e != nil {
 		return TurnInfo{}, e
 	}
 	return response.Turn, nil

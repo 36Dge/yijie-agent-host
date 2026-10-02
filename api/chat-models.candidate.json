@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "contract_version": "0.1.0",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "base_commit": "54be9314dce5319b049dc0a236800fd1a1fdd7a1",
+  "sources": [
+    {
+      "path": "jsonschema/chat/model-selection-v1.schema.json",
+      "sha256": "15586a03e7873bc7c913ea89162cc60d8354effb8c475045920ce609f949169b"
+    },
+    {
+      "path": "scripts/generate-chat-models.mjs",
+      "sha256": "4ac1167e6af9a23f24787729eecea7094c3c89b976ed44eae60d531d298daab1"
+    },
+    {
+      "path": "openapi/chat-models/chat-models.yaml",
+      "sha256": "02007d3e0307e656edec154004dfe5323ef7335d1bbeb395f71e28fb78560609"
+    }
+  ],
+  "generated": [
+    {
+      "path": "sdks/go/openapi/chat-models/types.gen.go",
+      "sha256": "4ca2a482e18f83d5bea751f86ca89fa16c5fcc43371e7dbef2d087a8e7747f6b"
+    },
+    {
+      "path": "sdks/rust/chat-models/types.gen.rs",
+      "sha256": "cea1e6dd5eaf6ecc9952c2fc1375b19f814c24f31cca07e6a5989fbe52bc18bb"
+    },
+    {
+      "path": "sdks/typescript/src/jsonschema/chat-models.gen.ts",
+      "sha256": "05d87f500c7fb5ce915d30f5f42cbfbcfcacbea88d725d1e4799a06aa8933e52"
+    },
+    {
+      "path": "sdks/jsonschema/chat-models.schema.json",
+      "sha256": "15586a03e7873bc7c913ea89162cc60d8354effb8c475045920ce609f949169b"
+    }
+  ]
+}

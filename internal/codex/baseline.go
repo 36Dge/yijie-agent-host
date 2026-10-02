@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	chatmodels "github.com/36Dge/yijie-agent-host/internal/contracts/runtimechatmodels"
 	inputonly "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeinputonly"
 )
 
@@ -153,7 +154,24 @@ func VerifyArtifact(ctx context.Context, binaryPath, manifestPath string, timeou
 			patches: patches, schemaFileCount: inputonly.RuntimeSchemaFileCount,
 		}
 	}
+	if digest == chatmodels.RuntimeManifestSHA256 {
+		var patches []ManifestPatch
+		if err := json.Unmarshal([]byte(chatmodels.RuntimePatchManifest), &patches); err != nil {
+			return ArtifactInfo{}, errors.New("chat-model artifact authority unavailable")
+		}
+		policy = artifactPolicy{
+			runtimeSHA256: chatmodels.RuntimeBinarySHA256, runtimeSize: chatmodels.RuntimeBinarySize,
+			manifestSHA256: chatmodels.RuntimeManifestSHA256, schemaTreeSHA256: chatmodels.RuntimeSchemaTreeSHA256,
+			patches: patches, schemaFileCount: chatmodels.RuntimeSchemaFileCount,
+		}
+	}
 	return verifyArtifactWithPolicy(ctx, binaryPath, manifestPath, timeout, policy)
+}
+
+// SupportsInputOnly accepts only the two exact reviewed artifact pairs.
+func (a ArtifactInfo) SupportsInputOnly() bool {
+	return (a.BinarySHA256 == inputonly.RuntimeBinarySHA256 && a.ManifestSHA256 == inputonly.RuntimeManifestSHA256) ||
+		(a.BinarySHA256 == chatmodels.RuntimeBinarySHA256 && a.ManifestSHA256 == chatmodels.RuntimeManifestSHA256)
 }
 
 func verifyArtifactWithPolicy(
