@@ -33,20 +33,22 @@ func (s *Service) ListRuntimeApprovals(sessionID string) ([]codex.RuntimeApprova
 	if !ok {
 		return nil, ErrSessionNotUsable
 	}
-	requests := runtime.ListRuntimeApprovals(record.CodexThreadID)
-	for i := range requests {
-		requests[i] = safeRuntimeApproval(requests[i])
+	requests := make([]codex.RuntimeApproval, 0)
+	for _, request := range runtime.ListRuntimeApprovals(record.CodexThreadID) {
+		if request.Kind != "mcp_market" {
+			requests = append(requests, safeRuntimeApproval(request))
+		}
 	}
 	return requests, nil
 }
 
 func (s *Service) DecideRuntimeApproval(ctx context.Context, sessionID, id, decision string) (codex.RuntimeApproval, error) {
-	if err := s.requireOrdinaryPurpose(sessionID); err != nil {
-		return codex.RuntimeApproval{}, err
-	}
 	record, err := s.GetSession(sessionID)
 	if err != nil {
 		return codex.RuntimeApproval{}, err
+	}
+	if record.Purpose != purposeOrdinary && record.Purpose != purposeMarket {
+		return codex.RuntimeApproval{}, ErrMarketPurpose
 	}
 	if !validUUID(id) {
 		return codex.RuntimeApproval{}, ErrInvalidArgument

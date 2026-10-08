@@ -242,6 +242,19 @@ func (m *Manager) validateSorftimeConfig(ctx context.Context, cwd string) error 
 	if err := m.request(ctx, "config/read", params, &response); err != nil {
 		return errors.New("native Sorftime configuration unavailable")
 	}
+	if m.MarketEnabled() {
+		if err := validateMarketEffectiveIsolation(response.Config); err != nil {
+			return err
+		}
+		// The extra carrier exclusion belongs to the independent market layer.
+		// Validate it first, then retain the original exact Sorftime comparison.
+		var environment map[string]any
+		_ = json.Unmarshal(response.Config["shell_environment_policy"], &environment)
+		exclude := environment["exclude"].([]any)
+		environment["exclude"] = exclude[:len(exclude)-1]
+		encoded, _ := json.Marshal(environment)
+		response.Config["shell_environment_policy"] = encoded
+	}
 	return validateSorftimeEffectiveConfig(response.Config, m.sorftimeEnabled(), m.config.ChatModelsEnabled)
 }
 

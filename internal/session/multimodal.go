@@ -104,6 +104,10 @@ func (s *Service) StartTurnV2(ctx context.Context, input StartTurnV2Input) (code
 func (s *Service) startTurnV2(ctx context.Context, input StartTurnV2Input, draft bool) (codex.TurnInfo, error) {
 	s.modelOperationMu.Lock()
 	defer s.modelOperationMu.Unlock()
+	return s.startTurnV2Locked(ctx, input, draft)
+}
+
+func (s *Service) startTurnV2Locked(ctx context.Context, input StartTurnV2Input, draft bool) (codex.TurnInfo, error) {
 	if err := requireUUID("agent_session_id", input.AgentSessionID); err != nil {
 		return codex.TurnInfo{}, err
 	}
@@ -113,6 +117,9 @@ func (s *Service) startTurnV2(ctx context.Context, input StartTurnV2Input, draft
 	recordPurpose, e := s.store.Get(input.AgentSessionID)
 	if e != nil {
 		return codex.TurnInfo{}, e
+	}
+	if (recordPurpose.Purpose == purposeMarket) != isMarketSubmission(ctx) {
+		return codex.TurnInfo{}, ErrMarketPurpose
 	}
 	if (recordPurpose.Purpose == purposeDraft) != draft {
 		return codex.TurnInfo{}, ErrDraftPurpose
@@ -170,6 +177,9 @@ func (s *Service) startTurnV2(ctx context.Context, input StartTurnV2Input, draft
 	}
 	if input.PermissionMode != "" {
 		digestEffort += "\x00permission-mode:" + string(input.PermissionMode)
+	}
+	if digest, ok := ctx.Value(marketDigestKey{}).(string); ok {
+		digestEffort += "\x00market-submission-v1:" + digest
 	}
 	inputDigest, err := s.store.turnV2InputDigest(input.ContentBlocks, digestEffort)
 	if err != nil {

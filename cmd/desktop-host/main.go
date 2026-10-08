@@ -23,9 +23,18 @@ import (
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logOutput := os.Stdout
+	marketMode := os.Getenv("YIJIE_MARKET_CONNECTORS_ENABLED") == "true"
+	if marketMode {
+		logOutput = os.Stderr
+	}
+	logger := slog.New(slog.NewJSONHandler(logOutput, nil))
 	if err := run(logger); err != nil {
-		logProcessFailure(logger, err, os.Getenv("YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED") == "true")
+		if marketMode {
+			logger.Error("yijie-agent-host stopped", "failure_code", "market_host_stopped")
+		} else {
+			logProcessFailure(logger, err, os.Getenv("YIJIE_FEAT126_S10_TEST_PROFILE_ENABLED") == "true")
+		}
 		os.Exit(1)
 	}
 }
@@ -66,6 +75,9 @@ func run(logger *slog.Logger) error {
 		if config.Runtime.ChatModelsEnabled {
 			storeOptions = append(storeOptions, session.WithChatModelStorage())
 		}
+		if config.Runtime.Market.Manifest != "" {
+			storeOptions = append(storeOptions, session.WithMarketStorage())
+		}
 		sessionStore, err = session.OpenStore(config.HostHome, storeOptions...)
 		if err != nil {
 			return err
@@ -75,7 +87,10 @@ func run(logger *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		serviceOptions := make([]session.ServiceOption, 0, 7)
+		serviceOptions := make([]session.ServiceOption, 0, 8)
+		if config.Runtime.Market.Manifest != "" {
+			serviceOptions = append(serviceOptions, session.WithMarketAuthority(config.InstanceNonce))
+		}
 		if config.NativeReasoningEnabled {
 			serviceOptions = append(serviceOptions, session.WithNativeReasoning())
 		}
@@ -190,10 +205,22 @@ func run(logger *slog.Logger) error {
 		go skillService.Run(runtimeCtx)
 	}
 	go func() {
+		if config.MarketProviderOnly {
+			if err := runtime.StartMarketProvider(runtimeCtx); err != nil {
+				logger.Error("market provider unavailable", "failure_code", "market_worker_unavailable")
+			}
+			return
+		}
 		if err := runtime.Start(runtimeCtx); err != nil {
 			logger.Error("Codex Runtime unavailable", "failure_code", runtime.Snapshot().FailureCode)
 		}
 	}()
+	var marketControlErrors <-chan error
+	if config.Runtime.Market.Manifest != "" {
+		controlErrors := make(chan error, 1)
+		marketControlErrors = controlErrors
+		go func() { controlErrors <- app.ServeMarketControl(runtimeCtx, os.Stdin, os.Stdout, sessionService) }()
+	}
 
 	serverErrors := make(chan error, 1)
 	go func() {
@@ -212,7 +239,11 @@ func run(logger *slog.Logger) error {
 	}
 
 	var serveErr error
+	controlEnded := false
 	select {
+	case <-marketControlErrors:
+		controlEnded = true
+		logger.Info("Native market control closed", "state", "stopping")
 	case <-stop:
 	case <-parentExited:
 		if config.FEAT126TestParentPID != 0 {
@@ -226,7 +257,16 @@ func run(logger *slog.Logger) error {
 		}
 	}
 
+	if marketControlErrors != nil {
+		sessionService.CloseMarketAuthority(context.Background())
+		// Close our original reader to release a waiting Scan on normal exit.
+		// No signal or replacement process is used to manufacture an exit.
+		_ = os.Stdin.Close()
+	}
 	shutdownErr := shutdownHost(server, runtime, cancelRuntime, config.Runtime.ShutdownTimeout)
+	if marketControlErrors != nil && !controlEnded {
+		<-marketControlErrors
+	}
 	return errors.Join(serveErr, shutdownErr)
 }
 

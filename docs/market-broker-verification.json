@@ -1,0 +1,230 @@
+{
+  "feature": "FEAT-157",
+  "date": "2026-10-07",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "repository_base_commit": "a5bd6c2e7a619768eafaa63bcca7f774d1134bd3",
+  "checks": [
+    {
+      "command": "make market-broker-test",
+      "result": "PASS",
+      "tests": 6,
+      "race": true,
+      "includes_capacity_helper_subcases": 6
+    },
+    {
+      "command": "YIJIE_MARKET_BROKER_TEST_MANIFEST=<canonical Connectors current.json> make market-broker-integration",
+      "result": "PASS",
+      "tests": 4,
+      "race": true,
+      "normal_exit_code_zero": 5,
+      "capacity_termination_subcases": [
+        "revoke",
+        "shutdown"
+      ]
+    },
+    {
+      "command": "make lint",
+      "result": "PASS"
+    },
+    {
+      "command": "git diff --check",
+      "result": "PASS"
+    }
+  ],
+  "retained_attempts": [
+    {
+      "attempt": 1,
+      "result": "FAIL_BEFORE_SPAWN",
+      "reason": "Canonical manifest added qualificationOnly:false; closed Host manifest reader initially rejected the undeclared field. No child was created."
+    },
+    {
+      "attempt": 2,
+      "result": "PASS",
+      "normal_worker_exits": 2
+    },
+    {
+      "attempt": 3,
+      "result": "PASS",
+      "normal_worker_exits": 2,
+      "purpose": "Final focused checks after docs and tests stabilized."
+    },
+    {
+      "attempt": 4,
+      "result": "PASS",
+      "worker_sha256": "8a008f9db2251023bd9c025748f9987cc413e4a57593f20e3ea822cc752d4042",
+      "normal_worker_exits": 3,
+      "purpose": "Required-null new-thread source revision: original lifecycle plus nonempty unqualified and new-thread dual-ID binding."
+    },
+    {
+      "attempt": 5,
+      "result": "PASS",
+      "worker_sha256": "506735c6a176b7648efa861b0c95aca547ce71eb6fc91133c16a299bb1bfe77f",
+      "normal_worker_exits": 3,
+      "purpose": "Final product worker after shared synthetic readonly annotation correction; all 5 unit and 3 canonical lifecycle race tests, lint and diff checks passed."
+    },
+    {
+      "attempt": 6,
+      "result": "PASS",
+      "worker_sha256": "685ce16cda2aceb92d50c9c0f39aaed2577662874448fe6b0c2d57e11fafa681",
+      "normal_worker_exits": 3,
+      "purpose": "Final actual Runtime-qualified worker metadata adapter. Only canonical owner integration and source-sync rerun; preceding Host unit/lint evidence remains unchanged."
+    },
+    {
+      "attempt": 7,
+      "result": "PASS",
+      "worker_sha256": "f36db7e719175d4a60b7f0133776704cfe5d30faaf930f8981f75dff4322f415",
+      "normal_worker_exits": 5,
+      "purpose": "Capacity termination P2 fix and final worker cancellation semantics. Existing 3 plus new capacity test (revoke/shutdown each an independent real worker), 6 Host unit tests, lint/source-sync/diff checks passed. Each capacity worker received 1024 acknowledged normal mutation receipts before the termination request."
+    }
+  ],
+  "artifact": {
+    "schemaVersion": 1,
+    "candidateOnly": true,
+    "binary": "/Users/jack/Downloads/Personal_Info/CrossBSD/yijie-connectors/bin/market-worker/f36db7e719175d4a60b7f0133776704cfe5d30faaf930f8981f75dff4322f415/yijie-mcp-worker",
+    "sha256": "f36db7e719175d4a60b7f0133776704cfe5d30faaf930f8981f75dff4322f415",
+    "sizeBytes": 48862256,
+    "codexSource": "7fd463bcef07f37b0211acd9f62b9f93ea0a4b12",
+    "externalCallsEnabled": false,
+    "qualificationOnly": false
+  },
+  "artifact_manifest_sha256": "c8b0d63b41062e48118c73445aee1f2b244de2c8085db70f192fde6766e29712",
+  "scope": {
+    "actual_canonical_connectors_worker": true,
+    "ordinary_synthetic_scope_thread_turn_data": true,
+    "actual_native_grant": false,
+    "actual_runtime_turn_binding": false,
+    "real_platform_calls": 0,
+    "model_calls": 0,
+    "oauth_calls": 0,
+    "runtime_new_capability_injected": false,
+    "public_route_registered": false,
+    "all_real_services_qualified": false
+  },
+  "implementation_review": [
+    "One control gate covers frame write/read, strict typed response decoding and complete correlation checks before the next request can write.",
+    "Shutdown/EOF permanently close admission; cancellation before startup or while queued does not create a child.",
+    "Canonical artifact admission requires explicit qualificationOnly=false and rejects the dedicated qualification executable.",
+    "Existing Runtime assembly only removes the ambient internal capability name; it does not grant a new generation capability.",
+    "New thread preparation carries explicit null intent before thread/start; real thread and Turn IDs bind together. Existing-thread nullable fields are compared by value, and accepted prepare replay returns current bound observation without renewal.",
+    "Final read-only review confirmed actual call registration before owner query/decision, immutable frozen arguments, both native and control acceptance before single consumption, and final expiry/revocation checks. Official rmcp context.meta supplies correlation only; owner bind remains authority.",
+    "P2 fixed: a validated capacity_exceeded response to revoke/shutdown retires the owner through normal EOF under the same control gate while preserving the typed error. Other actions/errors do not retire. Both actions passed a real canonical worker normal capacity-boundary test, preserving closed admission and exit0 without fake executables or fault injection."
+  ],
+  "not_run": [
+    {
+      "item": "Process failure/fault injection and forced-exit scenarios",
+      "reason": "User forbids destructive process/fault injection, executable replacement, permission sabotage and attack fixtures.",
+      "impact": "Real stalled-process STOP_PENDING behavior was not fault-injection-qualified; ordinary lifecycle and static bounded-wait/retained-owner logic are covered."
+    },
+    {
+      "item": "Native-to-Host grant, actual Runtime carrier injection, real OAuth/provider execution and product D4",
+      "reason": "The trusted versioned product path and provider qualifications are not yet implemented.",
+      "impact": "No product execution gate may be opened based on these synthetic control tests."
+    }
+  ],
+  "source_sha256": [
+    {
+      "path": "Makefile",
+      "sha256": "78f837a1e70acb827336ee29629bd879b75fea60b3c07f115fc4f3e224e56acb"
+    },
+    {
+      "path": "README.md",
+      "sha256": "f0cb880ff1ad33fa9b25298f824f95c688fe62b8eb2173ab2c5032b491d5d893"
+    },
+    {
+      "path": "SECURITY.md",
+      "sha256": "a8798ba9cbafec5dcd7a89f6f6ca0aec4b34fe9524f071a4e5148e1b15f4be91"
+    },
+    {
+      "path": "internal/codex/runtime.go",
+      "sha256": "ef8c8ca6d132e42065c8ce3a11b14be6ca596607149ee295ef305c061036520b"
+    },
+    {
+      "path": "internal/codex/market_environment_test.go",
+      "sha256": "0e2580f3ae596af6ad4b484afd455b4b79e17862a4b61ce49eea1985078ff500"
+    },
+    {
+      "path": "docs/market-broker-control.md",
+      "sha256": "d3331210e9a6310172025087e45b9ed5744c12450ced4d81bb932b1f588c1928"
+    },
+    {
+      "path": "api/market-broker-control.candidate.json",
+      "sha256": "8ff010fadaeae9e7580f89af8d2529ee35a00ec5cb583c4e47a8972d25a41dae"
+    },
+    {
+      "path": "api/market-broker-control.schema.json",
+      "sha256": "898c1bd1600433145202f1b2592d55a15bff1c805ab1b7a3581cf3b485177645"
+    },
+    {
+      "path": "internal/marketbroker/artifact.go",
+      "sha256": "2a9637547a05b1cd6372b1ab9bc710623e5db56ed4021df7afd6f37b4a8d44ea"
+    },
+    {
+      "path": "internal/marketbroker/client.go",
+      "sha256": "dd283adf1af16f1820e8086e48eedd3f144c70aca256ad253ab75875fdcd1e89"
+    },
+    {
+      "path": "internal/marketbroker/owner.go",
+      "sha256": "6bc982b6c0cfebb4e3b4dcf8bc30b7d7113033634c6c3fef21a79d59f1c8aec4"
+    },
+    {
+      "path": "internal/marketbroker/owner_integration_test.go",
+      "sha256": "6b0d3a2eb82b3f3b3df9fb97b1b73a34211a04e195058caf2b672c8ad1dc4d25"
+    },
+    {
+      "path": "internal/marketbroker/owner_test.go",
+      "sha256": "681af81ee239c4ff8d262db8ce32b8585c077eba6123e86c32a70f3f7cfdc68e"
+    },
+    {
+      "path": "internal/contracts/marketbrokercontrol/types.gen.go",
+      "sha256": "0b4e3d77ade91443127c2903011854d6b94a7450253f54727ea4d52375a394fd"
+    },
+    {
+      "path": "internal/contracts/marketconnectors/types.gen.go",
+      "sha256": "b61b73ccc18fa70bf48f9d99cd0ad970b88858f1e8c0c5c107f58a21c985a40f"
+    },
+    {
+      "path": "internal/contracts/marketselection/digest.gen.go",
+      "sha256": "0fc07d0600a6c213ab11170438914fdb074810b5f98fab33f4e4448b0255db5f"
+    },
+    {
+      "path": "internal/contracts/marketselection/snapshot.gen.go",
+      "sha256": "525cf023dd494c9b0bb76dda3af14aa19afeeb6c0a62bf7bfc1fb665764a4854"
+    }
+  ],
+  "total_actual_owner_worker_processes": 18,
+  "all_actual_owner_workers_exited_normally": true,
+  "reviewed_upstream_source_sha256": [
+    {
+      "path": "../yijie-connectors/worker/src/broker.rs",
+      "sha256": "790e2b3e855f20358afc6e5de1461156f0672bd73c40e21c0522448a7c533e73"
+    },
+    {
+      "path": "../yijie-connectors/worker/src/gateway.rs",
+      "sha256": "b758843030fbe4e74e5fd95166eedc03ae72f9bb28b7ce24becc6fc5f7ded473"
+    }
+  ],
+  "source_continuity": [
+    {
+      "path": "../yijie-connectors/worker/src/gateway.rs",
+      "previous_tested_source_sha256": "fdae2e2ff4edeb1097f7a8b45c7c3307bcf576d20329c05234d98f379cefc033",
+      "current_source_sha256": "b758843030fbe4e74e5fd95166eedc03ae72f9bb28b7ce24becc6fc5f7ded473",
+      "change": "Clippy-only nested if-let / cancellation.is_cancelled check combined into an equivalent let-chain. Lock, evaluation order, consume and return remain unchanged.",
+      "verification": "Reversing just the exact formatting/code transformation reconstructed the complete prior source SHA byte-for-byte; actual canonical binary bytes were hashed and matched both unchanged manifests.",
+      "binary": [
+        {
+          "manifest": "../yijie-connectors/bin/market-worker/current.json",
+          "sha256": "f36db7e719175d4a60b7f0133776704cfe5d30faaf930f8981f75dff4322f415",
+          "bytes_unchanged": true
+        },
+        {
+          "manifest": "../yijie-connectors/bin/market-broker-qualification/current.json",
+          "sha256": "68d4e5c98d3ce46fc9703133f20bb8c2dc3e697ef6792219ec182f2893fb4fea",
+          "bytes_unchanged": true
+        }
+      ],
+      "tests_rerun": false,
+      "additional_child_processes": 0
+    }
+  ]
+}

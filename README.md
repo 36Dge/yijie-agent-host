@@ -1,5 +1,7 @@
 # yijie-agent-host
 
+FEAT-157 本地候选已接 Native 独占控制管道、版本化 market 提交/审批/结果与 Store8；单一 Host-owned worker 负责 OAuth 和 Gateway，真实 Runtime generation 才获得内部能力。非空选集仅支持请求批准。Tushare 真实工具资格仍需授权后的 metadata 确认，其余服务不因此可执行。来源、正常验证及限制见[产品接线记录](docs/market-product-integration.md)。
+
 FEAT-155新增独立local/demo_fast只读恢复候选：task→session映射及session+operation投递事实查询，复用既有Store、不调用Runtime。来源、权限、未知语义和定向检查见[阶段一说明](docs/scheduled-task-recovery.md)。尚未接入Desktop调度或发布。
 
 FEAT-137 已由 Owner 永久终止，未完成验收。生产入口拒绝旧审批/D4 producer 开关；现行 Runtime 使用保留的 FEAT-136 双补丁制品，维持 `read-only/never`。退役来源：Contracts `4d3f967938dde1c86ca34003a0a5628717f96262` 的 `docs/retirements/FEAT-137.json`。旧 v6 实现与四补丁测试材料仅作历史保留。

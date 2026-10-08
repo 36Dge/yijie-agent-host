@@ -105,3 +105,25 @@ scheduled-recovery-check:
 
 scheduled-recovery-test:
 	go test -race ./internal/session ./internal/app -run '^(TestFEAT155RecoveryStoreReadOnlyReopenAndSessionAssociation|TestFEAT155RecoveryHTTPProducerAndResponderProvenance|TestFEAT155RecoveryHTTPAuthorityAndMissingFacts|TestFEAT155RecoveryExactLocalRegistration)$$' -count=1
+
+# FEAT-157 local candidate. The focused checks do not invoke real provider
+# authentication, model calls, process faults or replacement executables.
+.PHONY: market-broker-check market-broker-test market-broker-integration
+market-broker-check:
+	node ../yijie-contracts/scripts/sync-market-broker.mjs --consumer=agent-host --check
+
+market-broker-test: market-broker-check
+	go test -race ./internal/marketbroker ./internal/codex -run '^(TestMarketOwnerClosedBeforeStart|TestMarketOwnerPreCancelledDoesNotStart|TestMarketOwnerQueuedCancellationDoesNotWrite|TestMarketRuntimeCapabilityScrubAndRedaction|TestMarketRuntimeCarrierRequiresExactLiveOwnerGeneration|TestMarketTerminationCapacityRetiresOnlyTerminationActions|TestFEAT157RuntimeEnvironmentDropsAmbientBrokerCapability)$$' -count=1
+
+market-broker-integration: market-broker-check
+	@test -n "$(YIJIE_MARKET_BROKER_TEST_MANIFEST)" || (echo "Set the canonical Connectors worker manifest path" >&2; exit 2)
+	go test -race ./internal/marketbroker -run '^TestMarketOwnerCanonical(ControlLifecycle|NonemptyUnqualifiedAndEOF|NewThreadPreparation|CapacityTermination|ProviderStartupReusesOneChild)$$' -count=1 -v
+
+.PHONY: market-product-test
+market-product-test: market-broker-check
+	go test -race ./internal/session ./internal/codex -run '^TestFEAT157' -count=1
+	go test -race ./internal/app -run '^TestMarket' -count=1
+
+.PHONY: market-daily-host-test
+market-daily-host-test: market-broker-check
+	go test -race ./internal/marketbroker ./internal/session ./internal/codex -run '^(TestMarketDeploymentProfilesRemainExplicit|TestFEAT157MarketNewTurnAcceptedReplayContinuationAndModelClear|TestFEAT157MarketExplicitAdoptionAndReadAfterRevocation|TestFEAT157MarketToolProjectionKeepsNativeIdentityWithoutGuessingCall|TestFEAT157MarketGrantRevocationAndShutdownRemainReducing|TestFEAT157MarketSubmitSharesOneBoundedDeadline|TestFEAT157MarketCancelledSubmissionDoesNotEnterRuntime|TestFEAT157MarketStore8PreservesOrdinaryAndReadsWithFeatureOff|TestFEAT157MarketApprovalNeverUsesLegacyDecisionAuthority)$$' -count=1

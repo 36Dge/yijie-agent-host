@@ -68,6 +68,8 @@ type TraceContext struct {
 }
 
 type Record struct {
+	MarketScopeHash         string `json:"market_scope_hash,omitempty"`
+	MarketLocalSessionID    string `json:"market_local_session_id,omitempty"`
 	ModelProfile            string `json:"model_profile,omitempty"`
 	ModelRevision           int64  `json:"model_revision,omitempty"`
 	ModelSelectionState     string `json:"model_selection_state,omitempty"`
@@ -118,6 +120,7 @@ type TurnOperation struct {
 }
 
 type Store struct {
+	marketWriter            bool
 	modelWriter             bool
 	draftWriter             bool
 	db                      *bolt.DB
@@ -226,10 +229,10 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 		}
 		metadata := tx.Bucket(metadataBucket)
 		version := metadata.Get(storeSchemaVersionKey)
-		if version != nil && string(version) != "1" && string(version) != "2" && string(version) != "3" && string(version) != "4" && string(version) != storeSchemaVersion && string(version) != "6" && string(version) != "7" {
+		if version != nil && string(version) != "1" && string(version) != "2" && string(version) != "3" && string(version) != "4" && string(version) != storeSchemaVersion && string(version) != "6" && string(version) != "7" && string(version) != "8" {
 			return fmt.Errorf("unsupported Agent Host store schema version %q", version)
 		}
-		if version == nil || (string(version) != storeSchemaVersion && string(version) != "6" && string(version) != "7") {
+		if version == nil || (string(version) != storeSchemaVersion && string(version) != "6" && string(version) != "7" && string(version) != "8") {
 			if err := metadata.Put(storeSchemaVersionKey, []byte(storeSchemaVersion)); err != nil {
 				return err
 			}
@@ -245,6 +248,9 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 			return err
 		}
 		if err := store.prepareModelFormat(tx); err != nil {
+			return err
+		}
+		if err := store.prepareMarketFormat(tx); err != nil {
 			return err
 		}
 		return purgeExpiredCleanupReceipts(tx, time.Now().UTC())
@@ -719,6 +725,9 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) Reserve(record Record) error {
+	if record.Purpose == purposeMarket && !s.marketWriter {
+		return ErrMarketPurpose
+	}
 	if record.Purpose == "" {
 		record.Purpose = purposeOrdinary
 	}

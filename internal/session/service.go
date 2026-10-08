@@ -200,6 +200,7 @@ type syntheticTerminalBarrier struct {
 }
 
 type Service struct {
+	market               *marketAuthority
 	modelOperationMu     sync.Mutex
 	draftDirectory       func(string) (string, error)
 	runtime              Runtime
@@ -414,6 +415,9 @@ func (s *Service) resumeSession(ctx context.Context, sessionID string, trace Tra
 	record, err := s.store.Get(sessionID)
 	if err != nil {
 		return Record{}, err
+	}
+	if record.Purpose == purposeMarket {
+		return Record{}, ErrMarketPurpose
 	}
 	if err := s.checkModelRequest(ctx, record); err != nil {
 		return Record{}, err

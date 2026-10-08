@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/36Dge/yijie-agent-host/internal/marketbroker"
 	"github.com/google/uuid"
 )
 
@@ -43,6 +44,7 @@ const (
 )
 
 type Config struct {
+	Market                        MarketConfig
 	ChatModelsEnabled             bool
 	KimiAPIKey                    string
 	BinaryPath                    string
@@ -96,6 +98,12 @@ func (c Config) Configured() bool {
 }
 
 func (c Config) validate() error {
+	if err := c.Market.validate(); err != nil {
+		return err
+	}
+	if c.Market.enabled() && !c.ChatModelsEnabled {
+		return errors.New("market connectors require the managed chat model profile")
+	}
 	if c.BinaryPath == "" || c.ManifestPath == "" || c.CodexHome == "" {
 		return errors.New("runtime binary, manifest, and CODEX_HOME must all be configured")
 	}
@@ -188,6 +196,7 @@ type Status struct {
 }
 
 type Manager struct {
+	market              marketRuntimeState
 	permissionCallbacks runtimeApprovalCallbacks
 	sorftime            sorftimeRuntimeState
 	config              Config
@@ -276,6 +285,10 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 	}
 	if err := m.config.validate(); err != nil {
 		m.fail("runtime_config_invalid")
+		return err
+	}
+	if err := m.StartMarketProvider(lifecycleCtx); err != nil {
+		m.fail("market_worker_unavailable")
 		return err
 	}
 	m.mu.Lock()
@@ -411,6 +424,13 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 			m.status.Model = MiniMaxModel
 		}
 	}
+	if providerErr == nil && m.MarketEnabled() {
+		var extra []string
+		extra, providerErr = marketNativeLayerArguments()
+		if providerErr == nil {
+			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
+		}
+	}
 	if providerErr == nil {
 		providerErr = authority.applyFEAT137ExecPolicy(m.config.CommandApprovalEnabled, rulePlan)
 	}
@@ -494,6 +514,21 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 	if err := client.Notify(requestCtx, "initialized", struct{}{}); err != nil {
 		abortErr := m.abortStartup("initialized_notification_failed")
 		return errors.Join(fmt.Errorf("notify app-server initialized: %w", err), abortErr)
+	}
+
+	if m.MarketEnabled() {
+		if err := m.StartMarketBroker(requestCtx); err != nil {
+			return errors.Join(err, m.abortStartup("market_worker_unavailable"))
+		}
+		var marketConfig struct {
+			Config map[string]json.RawMessage `json:"config"`
+		}
+		if err := client.Request(requestCtx, "config/read", map[string]any{"includeLayers": false}, &marketConfig); err != nil {
+			return errors.Join(errors.New("market native isolation unavailable"), m.abortStartup("market_isolation_unavailable"))
+		}
+		if err := validateMarketEffectiveIsolation(marketConfig.Config); err != nil {
+			return errors.Join(err, m.abortStartup("market_isolation_mismatch"))
+		}
 	}
 
 	m.mu.Lock()
@@ -585,7 +620,7 @@ func (m *Manager) RuntimeEvidence(runID, nonce, profile string) (RuntimeEvidence
 	}, nil
 }
 
-func (m *Manager) Shutdown(ctx context.Context) error {
+func (m *Manager) Shutdown(ctx context.Context) (returnErr error) {
 	m.mu.Lock()
 	m.shutdownRequested = true
 	startDone := m.startDone
@@ -599,6 +634,16 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	m.mu.Unlock()
 	if startupCancel != nil {
 		startupCancel()
+	}
+	// Broker admission closes before Runtime EOF. STOP_PENDING is mapped to
+	// the existing bounded graceful-wait contract; ownership is retained.
+	if err := m.closeMarketBroker(ctx); err != nil {
+		if errors.Is(err, marketbroker.ErrStopPending) {
+			return context.DeadlineExceeded
+		}
+		// A reaped worker's unsuccessful exit does not excuse leaving the
+		// still-owned Runtime alive. Finish its normal EOF lifecycle as well.
+		defer func() { returnErr = errors.Join(returnErr, err) }()
 	}
 	if started && startDone != nil {
 		select {
@@ -715,6 +760,11 @@ func (m *Manager) startProcess() (io.WriteCloser, io.ReadCloser, *exec.Cmd, *tai
 		}
 		cmd.Env = append(cmd.Env, SorftimeSecretEnv+"="+m.config.Sorftime.Token)
 	}
+	var environmentErr error
+	cmd.Env, environmentErr = m.marketRuntimeEnvironment(cmd.Env)
+	if environmentErr != nil {
+		return nil, nil, nil, nil, environmentErr
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("open runtime stdin: %w", err)
@@ -757,6 +807,13 @@ func (m *Manager) waitForExit(cmd *exec.Cmd) {
 	if approvalHandler != nil && generation != "" {
 		approvalHandler.HandleCommandApprovalGenerationClosed(generation)
 	}
+	if m.MarketEnabled() {
+		ctx, cancel := context.WithTimeout(context.Background(), m.config.ShutdownTimeout)
+		if closeErr := m.closeMarketBroker(ctx); closeErr != nil {
+			m.logger.Warn("market generation cleanup pending", "failure_code", "market_cleanup_pending")
+		}
+		cancel()
+	}
 	if exitDone != nil {
 		close(exitDone)
 	}
@@ -792,6 +849,7 @@ func (m *Manager) handleClientFailure(err error) {
 func (m *Manager) handleNotification(method string, params json.RawMessage) {
 	m.observeSorftimeStartup(method, params)
 	m.handlePermissionNotification(method, params)
+	m.observeMarketNotification(method, params)
 	m.logger.Debug("Codex Runtime notification", "method", method)
 	if method == RuntimeNotificationServerRequestResolved {
 		fields, err := decodeUniqueJSONObject(params, map[string]struct{}{"requestId": {}, "threadId": {}})
@@ -1008,6 +1066,9 @@ func runtimeEnvironment(
 	miniMaxAPIKey string,
 	deterministicApprovalProducer bool,
 ) []string {
+	// Market data capabilities are generated by a specific worker owner. An
+	// ambient value must never enter an ordinary or later Runtime generation.
+	current = marketbroker.ScrubRuntimeCapability(current)
 	blocked := map[string]struct{}{
 		"OPENAI_API_KEY":       {},
 		"CODEX_API_KEY":        {},

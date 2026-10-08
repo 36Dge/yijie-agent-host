@@ -33,6 +33,7 @@ const (
 )
 
 type Config struct {
+	MarketProviderOnly             bool
 	Environment                    string
 	ScheduledRecoveryEnabled       bool
 	ScheduledCandidate             *ScheduledCandidateConfig
@@ -338,7 +339,7 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if candidate != nil && (fakeProfile.Enabled || feat137CommandApproval) {
 		return Config{}, errors.New("scheduled candidate is incompatible with alternate execution profiles")
 	}
-	return Config{
+	config := Config{
 		ScheduledCandidate:             candidate,
 		Environment:                    environment,
 		ScheduledRecoveryEnabled:       scheduledRecoveryEnabled(),
@@ -364,7 +365,11 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		FEAT126TestProfile:             feat126TestProfileName(fakeProfile),
 		FEAT126ProjectDir:              feat126ProjectDirectory,
 		Skills:                         skillFeature,
-	}, nil
+	}
+	if err := loadMarketProfile(&config); err != nil {
+		return Config{}, err
+	}
+	return config, nil
 }
 
 func loadNativeReasoningProfile(environment, hostHome string, runtimeConfig codex.Config) (bool, error) {
@@ -893,6 +898,9 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 	}
 	if config.Environment == "local" && config.Runtime.RuntimePermissionsEnabled {
 		registerChatModels(mux, &sessionHandler{service: sessions, apiToken: apiToken}, config.Runtime.ChatModelsEnabled)
+	}
+	if config.Runtime.Market.Manifest != "" {
+		registerMarketRoutes(mux, sessions, apiToken, config.InstanceNonce)
 	}
 	registerSkillRoutes(mux, config.Skills, handlerOptions.skillService, apiToken)
 	return mux
@@ -1849,53 +1857,7 @@ func reasoningEffortV2(value *agenthostcontract.StartTurnV2RequestReasoningEffor
 }
 
 func mapTurnV2ContentBlocks(blocks []agenthostcontract.StartTurnV2ContentBlock) ([]session.TurnContentBlock, error) {
-	mapped := make([]session.TurnContentBlock, 0, len(blocks))
-	for _, block := range blocks {
-		raw, err := block.MarshalJSON()
-		if err != nil {
-			return nil, err
-		}
-		discriminator, err := block.Discriminator()
-		if err != nil {
-			return nil, err
-		}
-		switch discriminator {
-		case session.ContentBlockText:
-			var value agenthostcontract.StartTurnV2TextBlock
-			if err := strictDecodeJSON(raw, &value); err != nil || string(value.Type) != discriminator {
-				return nil, errors.New("invalid text content block")
-			}
-			mapped = append(mapped, session.TurnContentBlock{Type: discriminator, Text: value.Text})
-		case session.ContentBlockImage:
-			var value agenthostcontract.StartTurnV2ImageBlock
-			if err := strictDecodeJSON(raw, &value); err != nil || string(value.Type) != discriminator {
-				return nil, errors.New("invalid image content block")
-			}
-			mapped = append(mapped, session.TurnContentBlock{Type: discriminator, Image: &session.TurnImageBlock{
-				AttachmentID: value.AttachmentId.String(),
-				MediaType:    string(value.MediaType),
-				SizeBytes:    value.SizeBytes,
-				SHA256:       value.Sha256,
-				DataURL:      value.DataUrl,
-			}})
-		case session.ContentBlockFile:
-			var value agenthostcontract.StartTurnV2FileBlock
-			if err := strictDecodeJSON(raw, &value); err != nil || string(value.Type) != discriminator {
-				return nil, errors.New("invalid file content block")
-			}
-			mapped = append(mapped, session.TurnContentBlock{Type: discriminator, File: &session.TurnFileBlock{
-				AttachmentID:  value.AttachmentId.String(),
-				Name:          value.Name,
-				MediaType:     string(value.MediaType),
-				SizeBytes:     value.SizeBytes,
-				SHA256:        value.Sha256,
-				ContextChunks: append([]string(nil), value.ContextChunks...),
-			}})
-		default:
-			return nil, errors.New("unsupported content block discriminator")
-		}
-	}
-	return mapped, nil
+	return session.MapTurnV2ContentBlocks(blocks)
 }
 
 func strictDecodeJSON(raw []byte, destination any) error {

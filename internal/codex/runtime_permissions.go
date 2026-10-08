@@ -61,6 +61,7 @@ type RuntimeApproval struct {
 }
 
 type runtimeApprovalCallback struct {
+	market                                 *marketApprovalCallback
 	view                                   RuntimeApproval
 	threadID, turnID, requestKey, decision string
 	permissions                            json.RawMessage
@@ -122,7 +123,7 @@ func (m *Manager) DecideRuntimeApproval(ctx context.Context, threadID, id, decis
 			break
 		}
 	}
-	if entry == nil {
+	if entry == nil || entry.market != nil {
 		c.mu.Unlock()
 		return RuntimeApproval{}, errors.New("runtime approval not found")
 	}
@@ -178,6 +179,9 @@ func (m *Manager) finishRuntimeApproval(entry *runtimeApprovalCallback, err erro
 			entry.view.Status = "cancelled"
 		} else {
 			entry.view.Status = "rejected"
+		}
+		if entry.market != nil {
+			entry.market.view.State = marketApprovalState(entry.view.Status)
 		}
 		entry.permissions = nil
 		entry.guardian = nil

@@ -1,0 +1,484 @@
+{
+  "feature": "FEAT-157",
+  "date": "2026-10-07",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "repository_base_commit": "a5bd6c2e7a619768eafaa63bcca7f774d1134bd3",
+  "previous_phase_evidence": "docs/market-broker-verification.json",
+  "checks": [
+    {
+      "command": "make market-product-test",
+      "result": "PASS",
+      "race": true,
+      "normal_in_process_tests": 10,
+      "note": "7 session/codex plus 3 app; no real model/provider calls."
+    },
+    {
+      "command": "go test -race ./internal/session -run '^TestFEAT157Market' -count=1",
+      "result": "PASS",
+      "normal_in_process_tests": 5,
+      "purpose": "Final known-expired grant check moved before pending ledger; no native mutation is claimed unknown before admission."
+    },
+    {
+      "command": "make market-broker-test",
+      "result": "PASS",
+      "race": true,
+      "tests": 7
+    },
+    {
+      "command": "node ../yijie-contracts/scripts/sync-market-host.mjs --consumer=agent-host --check",
+      "result": "PASS"
+    },
+    {
+      "command": "node ../yijie-contracts/scripts/sync-market-provider.mjs --consumer=agent-host --check",
+      "result": "PASS"
+    },
+    {
+      "command": "make lint",
+      "result": "PASS",
+      "includes": [
+        "gofmt inventory",
+        "go vet ./...",
+        "bash -n scripts/*.sh"
+      ]
+    },
+    {
+      "command": "git diff --check",
+      "result": "PASS"
+    },
+    {
+      "command": "go test -race ./internal/session ./internal/codex ./internal/app -run <11 exact ordinary model/permission/Sorftime/market transport test names> -count=1",
+      "result": "PASS",
+      "tests": 11,
+      "note": "Final app EOF reader/join plus existing ordinary model selection, accepted replay, draft preservation, native approval and fixed Sorftime configuration regressions. No process/provider/model calls."
+    }
+  ],
+  "retained_attempts": [
+    {
+      "result": "FAIL_BEFORE_SPAWN",
+      "attempted_cases": 6,
+      "worker_sha256": "978f72979e7c30658ef654a5c8e7bfa4bb8b58bbb3c6d641a3506a89527ab332",
+      "reason": "Ordinary Go TempDir did not satisfy private Host home mode guard; all failed before spawn. Corrected test setup by normally creating a new 0700 host-home, without chmod or changing existing permissions."
+    },
+    {
+      "result": "PASS",
+      "worker_sha256": "978f72979e7c30658ef654a5c8e7bfa4bb8b58bbb3c6d641a3506a89527ab332",
+      "top_level_tests": 5,
+      "normal_worker_exits": 6,
+      "race": true
+    },
+    {
+      "result": "PASS",
+      "worker_sha256": "f52d2f51109b6ce7779866b034cd0dbb8567f8683700453e98ca1b7164752e5e",
+      "top_level_tests": 5,
+      "normal_worker_exits": 6,
+      "race": true,
+      "cases": [
+        "ControlLifecycle",
+        "NonemptyUnqualifiedAndEOF",
+        "NewThreadPreparation",
+        "CapacityTermination/revoke",
+        "CapacityTermination/shutdown",
+        "ProviderStartupReusesOneChild"
+      ]
+    },
+    {
+      "result": "PASS",
+      "worker_sha256": "f52d2f51109b6ce7779866b034cd0dbb8567f8683700453e98ca1b7164752e5e",
+      "top_level_tests": 1,
+      "normal_worker_exits": 1,
+      "race": true,
+      "case": "ProviderStartupReusesOneChild",
+      "purpose": "Final product v2 requires private library home; exact normal same-child path verified after the precondition was added."
+    }
+  ],
+  "phase_normal_worker_exits": 13,
+  "previous_phase_normal_worker_exits": 18,
+  "cumulative_normal_worker_exits": 31,
+  "worker_manifest": {
+    "schemaVersion": 2,
+    "candidateOnly": true,
+    "binary": "/Users/jack/Downloads/Personal_Info/CrossBSD/yijie-connectors/bin/market-worker/f52d2f51109b6ce7779866b034cd0dbb8567f8683700453e98ca1b7164752e5e/yijie-mcp-worker",
+    "sha256": "f52d2f51109b6ce7779866b034cd0dbb8567f8683700453e98ca1b7164752e5e",
+    "sizeBytes": 76629120,
+    "codexSource": "7fd463bcef07f37b0211acd9f62b9f93ea0a4b12",
+    "externalCallsEnabled": true,
+    "qualificationOnly": false,
+    "providerProfile": "tushare-oauth-v1"
+  },
+  "worker_manifest_sha256": "cac201d0f249e6630585ae9a3a1d00c306e61cbe896b907afa5086ad5a971846",
+  "source_sha256": {
+    "Makefile": "8fa0eace0945ada3ecfabe5485a9ad3ec0d53e76514c2fc9ef299f1bb749d994",
+    "cmd/desktop-host/main.go": "8eacdf353fd7908f6b79f64f59fd25931669de4f2045baf8e8bf2239dce52440",
+    "internal/app/app.go": "1f61645f5962cccdc63dd8ebdbb616d5c151d8d69518a9a2aefd81a54e552f67",
+    "internal/app/market_config.go": "2566a24ebbd2542a7e467d4a6cf5d364030a2cd36eb65b5c9ced9a19c61f435d",
+    "internal/app/market_control.go": "11c4a155681c676ffde9963500d93c42fb13f297bff53be6ba7db6cc76a1c19c",
+    "internal/app/market_http.go": "1e506a3318d8f48d8e6d89ece221bfa6d22c1ec167e52e98d1297f9125475de7",
+    "internal/app/market_test.go": "b9e035275d66b2004f0b193a4a92679daf0c5224393e6963f92adf18a31a1547",
+    "internal/codex/market_approvals.go": "6abf118ec297c33d831a391b5100e34555df27ced7c4b7534ae7a05ecb2a2532",
+    "internal/codex/market_approvals_test.go": "476ab0531a8d8b834eac1e300f22b89ba7438f377b10d645981f35e140f3c039",
+    "internal/codex/market_environment_test.go": "0e2580f3ae596af6ad4b484afd455b4b79e17862a4b61ce49eea1985078ff500",
+    "internal/codex/market_runtime.go": "4d8c35ee6c5d4f1e3659809f2e25ff71842583774f0cf4a0f0bdd609e03d456e",
+    "internal/codex/market_turns.go": "afdddeffd3a11af9cd34691dceda0470e491ec96cfe913a609a3f8843c7a0c7d",
+    "internal/codex/runtime.go": "a60be89fcf617786d3975455283bf83912011a5b704410b8f4ec671df132d0a0",
+    "internal/codex/runtime_permissions.go": "c64ddb96dce2d7607c3179241ea3ceca71ea03755d8d3f69d1a9e54d0b2895a6",
+    "internal/codex/session_protocol.go": "3bf87f27a42f7b9479dabbb5f19aa19060229f745c591d04240a895af0170a2f",
+    "internal/codex/sorftime.go": "4d9df6dc2cd0e88a5f61d45f68a8706accc13ff82d7b512b38f72339e9f52824",
+    "internal/contracts/marketbrokercontrol/types.gen.go": "90f6b01a5713eaacfb2dd3c81b6e94cca77505a922d47368f40a4300a504e383",
+    "internal/contracts/marketconnectors/types.gen.go": "b61b73ccc18fa70bf48f9d99cd0ad970b88858f1e8c0c5c107f58a21c985a40f",
+    "internal/contracts/markethost/types.gen.go": "ef34065db58ef13a85b1a499365c6669f283213ae44c357fec2d66b4f185882a",
+    "internal/contracts/marketprovider/types.gen.go": "0a377486d34273ba339f829f03c8e4401bd96e90ec97fd6cece67f62fccde551",
+    "internal/contracts/marketselection/digest.gen.go": "0fc07d0600a6c213ab11170438914fdb074810b5f98fab33f4e4448b0255db5f",
+    "internal/contracts/marketselection/snapshot.gen.go": "525cf023dd494c9b0bb76dda3af14aa19afeeb6c0a62bf7bfc1fb665764a4854",
+    "internal/marketbroker/artifact.go": "f5334c40b7fa51629dd1e031bc5f32fceb0dfb85348d9b34c309f07bcefc8090",
+    "internal/marketbroker/client.go": "06b56dc4ebfa81773cf09c8657a72cb3ec54838f7b14e9b98ddb6abb685e6b5b",
+    "internal/marketbroker/library_home.go": "6b32a894dcf6b0d3c430271bfbc686914159491955e0a31a5d678b406bfdb69d",
+    "internal/marketbroker/owner.go": "d0f5e29295cbf3aa067145489c6b91655389d0d418c7a8710e7e05c87603827d",
+    "internal/marketbroker/owner_integration_test.go": "2c93fb2be5ff38dedcbdb9a640a0c66348e4b258a5d94521e90bcd2ce7839385",
+    "internal/marketbroker/owner_test.go": "7aab0840fa78d61a100fbf2af6986ecf4c491563887236a263d05a7196ecb513",
+    "internal/marketbroker/provider.go": "8b25bd709e5b9a20dfa1e5d1b572dd0d4776b9ad268b4a7a1e0708ba036dcd3e",
+    "internal/session/chat_models.go": "c61915a9a0c2d569290669a812ec08d0b37694d7181910821e2a231516737954",
+    "internal/session/content_blocks.go": "54a00e4802e3a6f1df88a770558b3a0be27726a8b1d6b5d11de5c1b49cf0084c",
+    "internal/session/market_authority.go": "2a376541463fe6835af4c57d106b84cd08464c5b5c5f0040f703dd30a82a460f",
+    "internal/session/market_ledger.go": "e7dedb10c9fb1928e95209ac9720812277b153f23765ddf1332f1fe7649a4e0e",
+    "internal/session/market_observe.go": "f241d4cd79deae8f30eeaea41ef45a8c5fed62c194479aa281428e5f670ee1cb",
+    "internal/session/market_provider.go": "23d78730645a143b105d8773f29729d6df5b4e3c437fe6eb00d568ea5d22e00c",
+    "internal/session/market_storage.go": "b227c51e6d9df4c79f4eab13abab17801e4977ac07385336904099d80cc4eef6",
+    "internal/session/market_storage_test.go": "37b7bda36746ced2804f78107f9f209a461c039beda50a0f41c88fea45a962d5",
+    "internal/session/market_submit.go": "cafa6f926bde2441e608c964bb80e1067f3c653faad75f5f25b2166f8a312fc1",
+    "internal/session/market_submit_test.go": "843f854173d30791b3b40a8b6587197e0aa1f311c36f0ee586e885d32c5918ba",
+    "internal/session/multimodal.go": "e62ab3c8ba3a3b2dc3a799488f83f482bcf23df1f34f03bf3389a4dacd04bbb1",
+    "internal/session/runtime_permissions.go": "bf1140a14245dd6e269dbb8ae7a15b3d79f707bdb527effa218a76ac59000ee6",
+    "internal/session/scheduled_draft.go": "ab35f711fa07d3576c39c9e8b25f1775453a52e50b6ac6ede762587ceddd35a9",
+    "internal/session/service.go": "9cf9cf7266767bc3613b0bb49cb95352d4497cd023a33c9d0c2415a782f912ff",
+    "internal/session/store.go": "a660042dfc40e21381e279fbbfbebc2bbd873946f30f893a1dd1392d579a891c"
+  },
+  "candidate_sources": {
+    "market-broker-control.candidate.json": {
+      "schema_version": 1,
+      "contract_version": "0.2.0",
+      "feature": "FEAT-157",
+      "mode": "local_worktree_candidate",
+      "release": false,
+      "base_commit": "1a213ac8383e95ac6ec69363937687904fa3591c",
+      "sources": [
+        {
+          "path": "compatibility/market-broker-control/wire.schema.json",
+          "sha256": "4ac1608b3515f98b548f0eab05049f218776ffe992c00e746ea27dffa32f1c39"
+        },
+        {
+          "path": "compatibility/market-broker-control/control.json",
+          "sha256": "d3b6655afb0ad5031b42a182811d28ec6863c2c38ef10de29e525cb735779d54"
+        },
+        {
+          "path": "openapi/market-connectors/market-connectors.yaml",
+          "sha256": "236c785b16127ced0a53e3aa6ddd8b76856375385578e091e09fdeddfae7ae02"
+        },
+        {
+          "path": "compatibility/market-selection/wire.schema.json",
+          "sha256": "09305bd815d63b4067daf88f74d0aa06bea97a222e70f66be9bc04c6dc4b2387"
+        },
+        {
+          "path": "compatibility/market-selection/native-ipc.json",
+          "sha256": "4ba2b7076ce4c2ee40b738c24f1aea11ea36688317baeb9d8647e32df9adc0dd"
+        },
+        {
+          "path": "jsonschema/chat/model-selection-v1.schema.json",
+          "sha256": "15586a03e7873bc7c913ea89162cc60d8354effb8c475045920ce609f949169b"
+        },
+        {
+          "path": "jsonschema/chat/message.schema.json",
+          "sha256": "3f277898f8204e02a400053cd56bec3b0eeb37ed2c50db3a6347e7fec61ddf34"
+        },
+        {
+          "path": "scripts/market-broker-source.mjs",
+          "sha256": "e318fb578301d87fa7018dcd6ed7f241216635c30a2c6dd3027d38fffac5aae9"
+        },
+        {
+          "path": "scripts/market-broker-codegen.mjs",
+          "sha256": "d4218c6515c669f4a80a4f48f857bdd20d0509345fdb184df1da355c97856221"
+        },
+        {
+          "path": "scripts/generate-market-broker.mjs",
+          "sha256": "affd7d086c9fa95a451a8090d5b9b4204c6bda2bd3a53c070bf4885108fd169a"
+        },
+        {
+          "path": "scripts/sync-market-broker.mjs",
+          "sha256": "7b7cfef1085e4a6ce25d54726695b1776e134668176a0eab9ffb6baea138937c"
+        },
+        {
+          "path": "scripts/market-selection-source.mjs",
+          "sha256": "14457544ce6d0940ce491b8edcce35a159a169d0bdf0ea4fc69c191724dcd171"
+        },
+        {
+          "path": "scripts/generate-market-selection.mjs",
+          "sha256": "ee292694c1045d20ad57e2565747cd4a3b5ad317b0da47b2062b9af6ef624b17"
+        },
+        {
+          "path": "sdks/rust/market-selection/types.gen.rs",
+          "sha256": "3fcad526aa914804c893ca986ddef69fd62bdcc50752d6b2c4c7cb66b4fa0162"
+        },
+        {
+          "path": "sdks/go/market-selection/digest.gen.go",
+          "sha256": "a66b8d812e293d49bbc2a6568610b22a9971562d5f540e91985ff86a81ca478c"
+        },
+        {
+          "path": "compatibility/market-selection/source.lock.json",
+          "sha256": "2c017958b4dc565b5237ca533eceb65a603b23274659c3fe026e2bc917f4a85b"
+        },
+        {
+          "path": "compatibility/market-connectors/source.lock.json",
+          "sha256": "ba3901f993fcada605eba30189479bf6a562e6e882cdd83b0a46ab8bd567fbdb"
+        },
+        {
+          "path": "pnpm-lock.yaml",
+          "sha256": "57eece158a0405a85ea9b8fd2c382af130e4248897b67af587878737bbf86313"
+        }
+      ],
+      "generated": [
+        {
+          "path": "sdks/rust/market-selection/portable.gen.rs",
+          "sha256": "902f396bac10b7ea109629a6cd6cca49cff393335a902455e31b7ced238c09c5"
+        },
+        {
+          "path": "sdks/go/market-selection/snapshot.gen.go",
+          "sha256": "0a1ed20e461fa3030c5d36bffeef812955df848b63f77adf311d2d1cbbb4881f"
+        },
+        {
+          "path": "sdks/rust/market-broker-control/types.gen.rs",
+          "sha256": "72fef5ddbb940e80cb26f5f61a1611f51d7b9b402e67f2b8a9dba10c2094d889"
+        },
+        {
+          "path": "sdks/go/market-broker-control/types.gen.go",
+          "sha256": "20b3a35b36bb92fd6288bcb5ce3e247662916f03f27d58738161ef50c3b57aed"
+        },
+        {
+          "path": "sdks/jsonschema/market-broker-control.schema.json",
+          "sha256": "01fcd78b11eabb72029f00e90e62f93378798f30ee8277dabe9d92af2daf9597"
+        }
+      ],
+      "consumer": "agent-host",
+      "projection": "Go imports are mechanically rewritten to the consumer-local generated authority; Rust bytes unchanged",
+      "consumer_generated": [
+        {
+          "source": "sdks/go/market-broker-control/types.gen.go",
+          "path": "internal/contracts/marketbrokercontrol/types.gen.go",
+          "sha256": "90f6b01a5713eaacfb2dd3c81b6e94cca77505a922d47368f40a4300a504e383"
+        },
+        {
+          "source": "sdks/go/market-selection/snapshot.gen.go",
+          "path": "internal/contracts/marketselection/snapshot.gen.go",
+          "sha256": "525cf023dd494c9b0bb76dda3af14aa19afeeb6c0a62bf7bfc1fb665764a4854"
+        },
+        {
+          "source": "sdks/go/market-selection/digest.gen.go",
+          "path": "internal/contracts/marketselection/digest.gen.go",
+          "sha256": "0fc07d0600a6c213ab11170438914fdb074810b5f98fab33f4e4448b0255db5f"
+        },
+        {
+          "source": "sdks/go/market-connectors/types.gen.go",
+          "path": "internal/contracts/marketconnectors/types.gen.go",
+          "sha256": "b61b73ccc18fa70bf48f9d99cd0ad970b88858f1e8c0c5c107f58a21c985a40f"
+        },
+        {
+          "source": "sdks/jsonschema/market-broker-control.schema.json",
+          "path": "api/market-broker-control.schema.json",
+          "sha256": "01fcd78b11eabb72029f00e90e62f93378798f30ee8277dabe9d92af2daf9597"
+        }
+      ]
+    },
+    "market-host.candidate.json": {
+      "schema_version": 1,
+      "contract_version": "0.1.0",
+      "feature": "FEAT-157",
+      "mode": "local_worktree_candidate",
+      "release": false,
+      "base_commit": "1a213ac8383e95ac6ec69363937687904fa3591c",
+      "sources": [
+        {
+          "path": "compatibility/market-host/wire.schema.json",
+          "sha256": "69269de7cfdeae2fba37f748f199a71e9c59b227ff1a4a8511cde4fed6f2e13a"
+        },
+        {
+          "path": "compatibility/market-host/transport.json",
+          "sha256": "c84eb75c2267da30f4bc4b84146d88bdd1cc973b46b48aaeef63af75ded84a78"
+        },
+        {
+          "path": "openapi/market-connectors/market-connectors.yaml",
+          "sha256": "236c785b16127ced0a53e3aa6ddd8b76856375385578e091e09fdeddfae7ae02"
+        },
+        {
+          "path": "compatibility/market-selection/wire.schema.json",
+          "sha256": "09305bd815d63b4067daf88f74d0aa06bea97a222e70f66be9bc04c6dc4b2387"
+        },
+        {
+          "path": "jsonschema/chat/model-selection-v1.schema.json",
+          "sha256": "15586a03e7873bc7c913ea89162cc60d8354effb8c475045920ce609f949169b"
+        },
+        {
+          "path": "compatibility/market-broker-control/wire.schema.json",
+          "sha256": "4ac1608b3515f98b548f0eab05049f218776ffe992c00e746ea27dffa32f1c39"
+        },
+        {
+          "path": "openapi/runtime-permissions-v2/runtime-permissions-v2.yaml",
+          "sha256": "2ab3f2b9db2f6f8cb9485c3fb0028dd7e66dd1859e22e6a5c06edb55d02bda74"
+        },
+        {
+          "path": "openapi/agent-host/agent-host.yaml",
+          "sha256": "8716d11ebae140d7c2cec72f6528bbd39ac5976c898c28e0044bec71fb004083"
+        },
+        {
+          "path": "compatibility/market-provider/wire.schema.json",
+          "sha256": "b53865a33d3d44181e2e3918c162d0798cd1927024309606af28a14fbbd0ff80"
+        },
+        {
+          "path": "compatibility/market-host/native-ipc.json",
+          "sha256": "e4e663fcc63cadf29b0cfeb5f1197ef58539405b4d773474513218ae91411af1"
+        },
+        {
+          "path": "scripts/market-host-source.mjs",
+          "sha256": "c71844c2819ca5fef2acff76ccf3b6895cab2fdf98c19a6c8e6fa290c512a96e"
+        },
+        {
+          "path": "scripts/generate-market-host.mjs",
+          "sha256": "d945eed12006574829c970c408d1e86939b1aa250944b7447b93696db466ca3b"
+        },
+        {
+          "path": "scripts/market-broker-codegen.mjs",
+          "sha256": "d4218c6515c669f4a80a4f48f857bdd20d0509345fdb184df1da355c97856221"
+        },
+        {
+          "path": "scripts/sync-market-host.mjs",
+          "sha256": "ac586e489b0b21818642beec11f3ec32493c197435130e49a8b88bfa2db97772"
+        },
+        {
+          "path": "pnpm-lock.yaml",
+          "sha256": "57eece158a0405a85ea9b8fd2c382af130e4248897b67af587878737bbf86313"
+        }
+      ],
+      "generated": [
+        {
+          "path": "sdks/rust/market-host/types.gen.rs",
+          "sha256": "67acc42c4eac6d8614c1e6dddbd26cc2bca1246bba4b1f94f2751ea0d4d8fba3"
+        },
+        {
+          "path": "sdks/go/market-host/types.gen.go",
+          "sha256": "0ef2b854277ea37421ba01287b0b9690d4271cba95ce78bf5313bf8bbc0a7740"
+        },
+        {
+          "path": "sdks/jsonschema/market-host.schema.json",
+          "sha256": "9820d5a111b0a029abc5beac0cb20942cc62c9cde202dc3a2b7e86a3d6b8b121"
+        },
+        {
+          "path": "sdks/typescript/src/domain/market-host-native.generated.ts",
+          "sha256": "650b63de73eaf597e073ad6d4d58ba21428ca464242446283b788d705b4f86b0"
+        },
+        {
+          "path": "sdks/typescript/src/api/generated/market-host-native-validator.gen.js",
+          "sha256": "3332db165a1a318e25e28142aa4b36e37b9566cfe758db512ba80eff35e4cdf9"
+        },
+        {
+          "path": "sdks/typescript/src/api/generated/market-host-native-validator.gen.d.ts",
+          "sha256": "908f473991900ceef91860f4526a54048a3e531418991cef8ebfa3fd3fde6918"
+        },
+        {
+          "path": "sdks/jsonschema/market-host-native.schema.json",
+          "sha256": "95ae2f8d337a372d2e9f017f0a3241a90b67f1e6759a743fe120a0f5e488a63f"
+        }
+      ],
+      "consumer": "agent-host",
+      "consumer_generated": [
+        {
+          "source": "sdks/go/market-host/types.gen.go",
+          "path": "internal/contracts/markethost/types.gen.go",
+          "sha256": "ef34065db58ef13a85b1a499365c6669f283213ae44c357fec2d66b4f185882a"
+        },
+        {
+          "source": "sdks/jsonschema/market-host.schema.json",
+          "path": "api/market-host.schema.json",
+          "sha256": "9820d5a111b0a029abc5beac0cb20942cc62c9cde202dc3a2b7e86a3d6b8b121"
+        }
+      ]
+    },
+    "market-provider.candidate.json": {
+      "schema_version": 1,
+      "contract_version": "0.1.0",
+      "feature": "FEAT-157",
+      "mode": "local_worktree_candidate",
+      "release": false,
+      "base_commit": "1a213ac8383e95ac6ec69363937687904fa3591c",
+      "sources": [
+        {
+          "path": "compatibility/market-provider/wire.schema.json",
+          "sha256": "b53865a33d3d44181e2e3918c162d0798cd1927024309606af28a14fbbd0ff80"
+        },
+        {
+          "path": "compatibility/market-provider/transport.json",
+          "sha256": "2c62633420cad07abed7ea8d3823d3a726eb25fbb710ef440f39c6350b35885e"
+        },
+        {
+          "path": "openapi/market-connectors/market-connectors.yaml",
+          "sha256": "236c785b16127ced0a53e3aa6ddd8b76856375385578e091e09fdeddfae7ae02"
+        },
+        {
+          "path": "compatibility/market-broker-control/wire.schema.json",
+          "sha256": "4ac1608b3515f98b548f0eab05049f218776ffe992c00e746ea27dffa32f1c39"
+        },
+        {
+          "path": "scripts/market-host-source.mjs",
+          "sha256": "c71844c2819ca5fef2acff76ccf3b6895cab2fdf98c19a6c8e6fa290c512a96e"
+        },
+        {
+          "path": "scripts/generate-market-provider.mjs",
+          "sha256": "bc92a0164becd9392c96e18bcc5bc7192026654664cd06d38629774caeebb318"
+        },
+        {
+          "path": "scripts/market-broker-codegen.mjs",
+          "sha256": "d4218c6515c669f4a80a4f48f857bdd20d0509345fdb184df1da355c97856221"
+        },
+        {
+          "path": "scripts/sync-market-provider.mjs",
+          "sha256": "7c1c278e756d234726c98b7bef26d432e64919cef2eaa6a091fce5f66a7bd36f"
+        },
+        {
+          "path": "pnpm-lock.yaml",
+          "sha256": "57eece158a0405a85ea9b8fd2c382af130e4248897b67af587878737bbf86313"
+        }
+      ],
+      "generated": [
+        {
+          "path": "sdks/rust/market-provider/types.gen.rs",
+          "sha256": "32c7c07635acc2c40ecfe7eb7772e7c86db325202f06ae770ba0260c40086e94"
+        },
+        {
+          "path": "sdks/go/market-provider/types.gen.go",
+          "sha256": "2d31238b78e8c0914c57a746b7ba1eeafe257fcc4b36f66cb02f13c87a4c279c"
+        },
+        {
+          "path": "sdks/jsonschema/market-provider.schema.json",
+          "sha256": "aad29b1d3293c3ec5ddc046e40ac87b3c0fbb3ee166c5b61dac04452a4fe4457"
+        }
+      ],
+      "consumer": "agent-host",
+      "consumer_generated": [
+        {
+          "source": "sdks/go/market-provider/types.gen.go",
+          "path": "internal/contracts/marketprovider/types.gen.go",
+          "sha256": "0a377486d34273ba339f829f03c8e4401bd96e90ec97fd6cece67f62fccde551"
+        },
+        {
+          "source": "sdks/jsonschema/market-provider.schema.json",
+          "path": "api/market-provider.schema.json",
+          "sha256": "aad29b1d3293c3ec5ddc046e40ac87b3c0fbb3ee166c5b61dac04452a4fe4457"
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "No real OAuth sign-in, provider credential or paid-model call in these Host checks.",
+    "Tushare authorization/metadata capability does not mean financial tool execution is qualified; other 50 services remain unavailable.",
+    "No malicious fixture, process force-kill, executable impersonation, permission damage, attack injection or legacy fault-injection full suite.",
+    "Prior Runtime/Gateway run06 is separately scoped local synthetic evidence, not new Host/Native end-to-end execution proof.",
+    "Public application startup/UI evidence belongs to parent repository evidence and is not fabricated here."
+  ]
+}

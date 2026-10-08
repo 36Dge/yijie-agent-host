@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	broker "github.com/36Dge/yijie-agent-host/internal/contracts/marketbrokercontrol"
 )
 
 const (
@@ -297,6 +299,9 @@ func (m *Manager) SetCommandApprovalHandler(handler CommandApprovalHandler) erro
 
 func (m *Manager) handleServerRequest(ctx context.Context, request serverRequest) serverRequestResult {
 	if request.method == "mcpServer/elicitation/request" {
+		if result, handled := m.handleMarketElicitation(ctx, request); handled {
+			return result
+		}
 		return m.handleSorftimeElicitation(ctx, request)
 	}
 	if m.config.RuntimePermissionsEnabled {
@@ -512,8 +517,10 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 	if err := validateWorkspace(cwd); err != nil {
 		return ThreadInfo{}, err
 	}
-	if err := m.validateSorftimeConfig(ctx, cwd); err != nil {
-		return ThreadInfo{}, err
+	if marketPreparedFrom(ctx) == nil {
+		if err := m.validateSorftimeConfig(ctx, cwd); err != nil {
+			return ThreadInfo{}, err
+		}
 	}
 	selected, err := m.modelForContext(ctx)
 	if err != nil {
@@ -544,7 +551,7 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		params.BaseInstructions = &instructions
 		params.Config = m.permissionVerificationConfig()
 	}
-	if m.sorftimeEnabled() {
+	if m.sorftimeEnabled() && marketPreparedFrom(ctx) == nil {
 		params.ApprovalPolicy = "on-request"
 		params.Sandbox = "workspace-write"
 		if params.Config == nil {
@@ -558,13 +565,24 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 			return ThreadInfo{}, errors.New("dynamic tool handler is not configured")
 		}
 		params.DeveloperInstructions += " The Host-owned generate_image dynamic tool is explicitly allowed in this read-only session and does not modify the workspace. It is the only permitted tool. Call generate_image exactly once only when the user explicitly asks to generate a new image, or to generate from the current turn's single character reference image. Never call it for ordinary image viewing or analysis, and never invent image output."
-		if m.sorftimeEnabled() {
+		if m.sorftimeEnabled() || marketPreparedFrom(ctx) != nil {
 			params.DeveloperInstructions = strings.Replace(params.DeveloperInstructions, "It is the only permitted tool.", "It is the only permitted dynamic tool.", 1)
 		}
 		params.DynamicTools = []dynamicToolSpec{imageGenerationToolSpec()}
 	}
 	if m.config.ChatModelsEnabled {
 		params.Config = applyModelConfig(params.Config, selected)
+	}
+	if prepared := marketPreparedFrom(ctx); prepared != nil {
+		if params.Config == nil {
+			params.Config = make(map[string]any)
+		}
+		for key, value := range prepared.Config {
+			params.Config[key] = value
+		}
+		if len(prepared.Snapshot.Selection) > 0 {
+			params.Config["approvals_reviewer"] = "user"
+		}
 	}
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadStart, params, &response); err != nil {
@@ -577,8 +595,10 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 	if err != nil {
 		return ThreadInfo{}, err
 	}
-	if err := m.rememberSorftimeThread(response); err != nil {
-		return ThreadInfo{}, err
+	if marketPreparedFrom(ctx) == nil {
+		if err := m.rememberSorftimeThread(response); err != nil {
+			return ThreadInfo{}, err
+		}
 	}
 	return thread, nil
 }
@@ -593,7 +613,7 @@ func (m *Manager) ResumeThread(ctx context.Context, threadID string) (ThreadInfo
 }
 
 func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo, error) {
-	if m.sorftime.configured {
+	if m.sorftime.configured && marketPreparedFrom(ctx) == nil {
 		var origin struct {
 			Thread threadWire `json:"thread"`
 		}
@@ -630,7 +650,7 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 			params.Config = m.permissionVerificationConfig()
 		}
 	}
-	if m.sorftimeEnabled() {
+	if m.sorftimeEnabled() && marketPreparedFrom(ctx) == nil {
 		policy, sandbox := "on-request", "workspace-write"
 		params.ApprovalPolicy = &policy
 		params.Sandbox = &sandbox
@@ -648,6 +668,17 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 		params.ModelProvider = selected.Provider
 		params.Config = applyModelConfig(params.Config, selected)
 	}
+	if prepared := marketPreparedFrom(ctx); prepared != nil {
+		if params.Config == nil {
+			params.Config = make(map[string]any)
+		}
+		for key, value := range prepared.Config {
+			params.Config[key] = value
+		}
+		if len(prepared.Snapshot.Selection) > 0 {
+			params.Config["approvals_reviewer"] = "user"
+		}
+	}
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadResume, params, &response); err != nil {
 		return ThreadInfo{}, err
@@ -662,11 +693,13 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	if thread.ID != threadID {
 		return ThreadInfo{}, errors.New("thread/resume returned an unexpected thread id")
 	}
-	if err := m.validateSorftimeConfig(ctx, response.Thread.Cwd); err != nil {
-		return ThreadInfo{}, err
-	}
-	if err := m.rememberSorftimeThread(response); err != nil {
-		return ThreadInfo{}, err
+	if marketPreparedFrom(ctx) == nil {
+		if err := m.validateSorftimeConfig(ctx, response.Thread.Cwd); err != nil {
+			return ThreadInfo{}, err
+		}
+		if err := m.rememberSorftimeThread(response); err != nil {
+			return ThreadInfo{}, err
+		}
 	}
 	return thread, nil
 }
@@ -703,7 +736,7 @@ func (m *Manager) StartTurn(
 ) (TurnInfo, error) {
 	m.sorftime.operation.Lock()
 	defer m.sorftime.operation.Unlock()
-	if m.sorftimeEnabled() {
+	if m.sorftimeEnabled() && marketPreparedFrom(ctx) == nil {
 		return TurnInfo{}, errors.New("Sorftime requires the native permission-turn entry")
 	}
 
@@ -813,7 +846,7 @@ func (m *Manager) StartTurnV2(
 		params.ApprovalsReviewer = &reviewer
 		params.SandboxPolicy = sandbox
 	}
-	if m.sorftimeEnabled() {
+	if m.sorftimeEnabled() && marketPreparedFrom(ctx) == nil {
 		mode, ok := ctx.Value(permissionContextKey{}).(PermissionMode)
 		if !ok {
 			return TurnInfo{}, errors.New("Sorftime requires an explicit permission mode")
@@ -828,7 +861,7 @@ func (m *Manager) StartTurnV2(
 	m.sorftime.mu.Lock()
 	prior, known := m.sorftime.threads[threadID]
 	m.sorftime.mu.Unlock()
-	if m.sorftimeEnabled() {
+	if m.sorftimeEnabled() && marketPreparedFrom(ctx) == nil {
 		m.sorftime.mu.Lock()
 		verified := m.sorftime.verified[threadID]
 		m.sorftime.mu.Unlock()
@@ -842,8 +875,10 @@ func (m *Manager) StartTurnV2(
 		}
 	}
 
-	if err := m.verifySorftimeCatalog(ctx, threadID); err != nil {
-		return TurnInfo{}, err
+	if marketPreparedFrom(ctx) == nil {
+		if err := m.verifySorftimeCatalog(ctx, threadID); err != nil {
+			return TurnInfo{}, err
+		}
 	}
 	var response turnStartResponse
 	if err := m.request(ctx, RuntimeMethodTurnStart, params, &response); err != nil {
@@ -852,6 +887,11 @@ func (m *Manager) StartTurnV2(
 	if response.Turn.ID == "" {
 		return TurnInfo{}, errors.New("turn/start response omitted turn id")
 	}
+	if marketPreparedFrom(ctx) != nil {
+		if err := m.BindMarketTurn(ctx, threadID, response.Turn.ID); err != nil {
+			return TurnInfo{}, err
+		}
+	}
 	return TurnInfo{ID: response.Turn.ID, Status: response.Turn.Status}, nil
 }
 
@@ -859,10 +899,20 @@ func (m *Manager) InterruptTurn(ctx context.Context, threadID, turnID string) er
 	if threadID == "" || turnID == "" {
 		return errors.New("Codex thread id and turn id are required")
 	}
-	return m.request(ctx, RuntimeMethodTurnInterrupt, struct {
+	var marketErr error
+	m.market.mu.Lock()
+	if state := m.market.turns[threadID]; state != nil && state.turn == turnID {
+		marketErr = m.revokeMarketStateLocked(ctx, state, broker.RevokeReasonUserCancelled)
+	}
+	m.market.mu.Unlock()
+	err := m.request(ctx, RuntimeMethodTurnInterrupt, struct {
 		ThreadID string `json:"threadId"`
 		TurnID   string `json:"turnId"`
 	}{ThreadID: threadID, TurnID: turnID}, &struct{}{})
+	if marketErr == nil {
+		return err
+	}
+	return errors.Join(marketErr, err)
 }
 
 func (m *Manager) DeleteThread(ctx context.Context, threadID string) error {

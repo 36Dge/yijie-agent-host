@@ -27,7 +27,7 @@ func WithScheduledDraftStorage() StoreOption {
 }
 func (s *Store) prepareDraftFormat(tx *bolt.Tx) error {
 	v := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
-	if v == "6" || v == "7" {
+	if v == "6" || v == "7" || v == "8" {
 		return tx.Bucket(sessionsBucket).ForEach(func(_, b []byte) error {
 			var r Record
 			if json.Unmarshal(b, &r) != nil {
@@ -71,7 +71,10 @@ func (s *Store) prepareDraftFormat(tx *bolt.Tx) error {
 }
 func validateStoredPurpose(tx *bolt.Tx, r *Record) error {
 	v := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
-	if v != "6" && v != "7" {
+	if err := validateMarketRecord(*r, v); err != nil {
+		return err
+	}
+	if v != "6" && v != "7" && v != "8" {
 		if (r.Purpose != "" && r.Purpose != purposeOrdinary) || r.DraftWorkspaceID != "" || r.DraftSchemaVersion != 0 || r.DraftPolicyVersion != 0 {
 			return ErrDraftPurpose
 		}
@@ -87,6 +90,8 @@ func validateStoredPurpose(tx *bolt.Tx, r *Record) error {
 		if !isCanonicalNonZeroUUID(r.DraftWorkspaceID) || r.DraftPolicyVersion != 1 || r.DraftSchemaVersion != 1 {
 			return ErrDraftPurpose
 		}
+	case purposeMarket:
+		return validateMarketRecord(*r, v)
 	default:
 		return ErrDraftPurpose
 	}
@@ -94,7 +99,7 @@ func validateStoredPurpose(tx *bolt.Tx, r *Record) error {
 }
 func validatePurposeWrite(tx *bolt.Tx, r Record) error {
 	version := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
-	if r.Purpose == purposeDraft && version != "6" && version != "7" {
+	if r.Purpose == purposeDraft && version != "6" && version != "7" && version != "8" {
 		return ErrDraftStorageDisabled
 	}
 	if e := validateStoredPurpose(tx, &r); e != nil {
@@ -108,7 +113,7 @@ func validatePurposeWrite(tx *bolt.Tx, r Record) error {
 		if e := validateStoredPurpose(tx, &p); e != nil {
 			return e
 		}
-		if p.Purpose != r.Purpose || p.DraftWorkspaceID != r.DraftWorkspaceID || p.DraftSchemaVersion != r.DraftSchemaVersion || p.DraftPolicyVersion != r.DraftPolicyVersion {
+		if p.Purpose != r.Purpose || p.DraftWorkspaceID != r.DraftWorkspaceID || p.DraftSchemaVersion != r.DraftSchemaVersion || p.DraftPolicyVersion != r.DraftPolicyVersion || p.MarketScopeHash != r.MarketScopeHash || p.MarketLocalSessionID != r.MarketLocalSessionID {
 			return ErrDraftPurpose
 		}
 	}

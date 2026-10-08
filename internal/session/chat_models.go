@@ -34,13 +34,16 @@ func (s *Store) prepareModelFormat(tx *bolt.Tx) error {
 		return ErrModelUnavailable
 	}
 	v := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
-	if v != "6" && v != "7" {
+	if v != "6" && v != "7" && v != "8" {
 		return ErrModelUnavailable
 	}
 	if _, e := tx.CreateBucketIfNotExists(modelOperationsBucket); e != nil {
 		return e
 	}
-	return tx.Bucket(metadataBucket).Put(storeSchemaVersionKey, []byte("7"))
+	if v != "8" {
+		return tx.Bucket(metadataBucket).Put(storeSchemaVersionKey, []byte("7"))
+	}
+	return nil
 }
 func (s *Service) ChatModelsEnabled() bool {
 	r, ok := s.runtime.(modelRuntime)
@@ -217,6 +220,19 @@ func (s *Service) SelectChatModel(ctx context.Context, sessionID string, request
 	}
 	if operation.Complete {
 		return operation.Result, nil
+	}
+	if record.Purpose == purposeMarket {
+		managed, ok := s.runtime.(interface {
+			ClearMarketConfiguration(context.Context, string, string) (*codex.MarketPrepared, error)
+		})
+		if !ok {
+			return wire.Selection{}, ErrMarketPurpose
+		}
+		clear, e := managed.ClearMarketConfiguration(ctx, record.CodexThreadID, record.Cwd)
+		if e != nil {
+			return wire.Selection{}, ErrModelUnknown
+		}
+		ctx = codex.WithMarketPrepared(ctx, clear)
 	}
 	ctx = codex.WithModelProfile(ctx, string(request.ProfileId))
 	if record.Purpose == purposeDraft {
