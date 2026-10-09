@@ -30,7 +30,7 @@ func (v Selection) Validate() error {
 	if v == nil {
 		return errors.New("null broker collection")
 	}
-	if len(v) > 51 {
+	if len(v) > 58 {
 		return errors.New("invalid broker collection")
 	}
 	for _, item := range v {

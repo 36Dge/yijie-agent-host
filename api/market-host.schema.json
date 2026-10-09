@@ -331,7 +331,7 @@
         },
         "services": {
           "type": "array",
-          "maxItems": 51,
+          "maxItems": 58,
           "items": {
             "$ref": "#/$defs/ServiceBinding"
           }
@@ -1561,7 +1561,7 @@
         },
         "selectionDisplay": {
           "type": "array",
-          "maxItems": 51,
+          "maxItems": 58,
           "items": {
             "$ref": "#/$defs/SelectionDisplay"
           }
@@ -1721,7 +1721,7 @@
         },
         "selectionDisplay": {
           "type": "array",
-          "maxItems": 51,
+          "maxItems": 58,
           "items": {
             "$ref": "#/$defs/SelectionDisplay"
           }
@@ -1731,7 +1731,7 @@
     },
     "Selection": {
       "type": "array",
-      "maxItems": 51,
+      "maxItems": 58,
       "uniqueItems": true,
       "items": {
         "$ref": "#/$defs/SelectionRef"

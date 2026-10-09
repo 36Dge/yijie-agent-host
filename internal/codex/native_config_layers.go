@@ -44,13 +44,16 @@ func validateNativeProjectConfig(content []byte) error {
 func nativeManagedTemplates(home string) ([][]byte, error) {
 	var values [][]byte
 	for _, profile := range []ManagedReasoningProfile{ManagedReasoningProfileDefault, ManagedReasoningProfileHighRaw} {
-		for _, mcp := range []bool{true, false} {
-			value, err := miniMaxManagedConfigForRuntime(home, profile, false, mcp)
-			if err != nil {
-				return nil, err
-			}
-			values = append(values, value)
+		current, err := miniMaxManagedConfigForRuntime(home, profile, false)
+		if err != nil {
+			return nil, err
 		}
+		legacy, err := legacySorftimeManagedConfig(home, profile)
+		if err != nil {
+			return nil, err
+		}
+		// Longer historical prefix first, so native project suffix stays exact.
+		values = append(values, legacy, current)
 	}
 	return values, nil
 }
@@ -95,8 +98,8 @@ func (a *managedCodexHomeAuthority) preflightNativeProjectConfig(legacy [][]byte
 	}, nil
 }
 
-func prepareNativeLayeredConfig(a *managedCodexHomeAuthority, profile ManagedReasoningProfile, mcp bool) ([]string, error) {
-	config, err := miniMaxManagedConfigForRuntime(a.path, profile, false, mcp)
+func prepareNativeLayeredConfig(a *managedCodexHomeAuthority, profile ManagedReasoningProfile) ([]string, error) {
+	config, err := miniMaxManagedConfigForRuntime(a.path, profile, false)
 	if err != nil {
 		return nil, err
 	}

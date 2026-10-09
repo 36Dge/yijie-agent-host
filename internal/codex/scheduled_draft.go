@@ -34,8 +34,8 @@ type scheduledDraftProof struct {
 // Artifact capability is only a prerequisite. Every start/resume/turn also
 // checks live native policy and the current managed configuration authority.
 func (m *Manager) ScheduledDraftReady() bool {
-	m.sorftime.operation.Lock()
-	defer m.sorftime.operation.Unlock()
+	m.threadOperation.Lock()
+	defer m.threadOperation.Unlock()
 	_, err := m.scheduledDraftGeneration()
 	return err == nil
 }
@@ -132,8 +132,8 @@ func (m *Manager) scheduledDraftThreadParams(cwd, thread string) (map[string]any
 	return params, nil
 }
 func (m *Manager) startDraftThread(ctx context.Context, cwd, thread string) (ThreadInfo, error) {
-	m.sorftime.operation.Lock()
-	defer m.sorftime.operation.Unlock()
+	m.threadOperation.Lock()
+	defer m.threadOperation.Unlock()
 	return m.startDraftThreadLocked(ctx, cwd, thread)
 }
 
@@ -192,8 +192,8 @@ func (m *Manager) acceptDraftThreadResponse(ctx context.Context, cwd, thread, ge
 	return info, nil
 }
 func (m *Manager) resumeDraftThread(ctx context.Context, thread string) (ThreadInfo, error) {
-	m.sorftime.operation.Lock()
-	defer m.sorftime.operation.Unlock()
+	m.threadOperation.Lock()
+	defer m.threadOperation.Unlock()
 	generation, err := m.scheduledDraftGeneration()
 	if err != nil {
 		return ThreadInfo{}, errDraftUnqualified
@@ -223,8 +223,8 @@ func (m *Manager) resumeDraftThread(ctx context.Context, thread string) (ThreadI
 	return m.startDraftThreadLocked(ctx, response.Thread.Cwd, thread)
 }
 func (m *Manager) startDraftTurn(ctx context.Context, thread string, inputs []any) (TurnInfo, error) {
-	m.sorftime.operation.Lock()
-	defer m.sorftime.operation.Unlock()
+	m.threadOperation.Lock()
+	defer m.threadOperation.Unlock()
 	return m.startDraftTurnLocked(ctx, thread, inputs)
 }
 

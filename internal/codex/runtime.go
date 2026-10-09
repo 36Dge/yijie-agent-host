@@ -57,7 +57,6 @@ type Config struct {
 	WriteQueueDepth               int
 	StderrTailBytes               int
 	MiniMax                       MiniMaxConfig
-	Sorftime                      SorftimeConfig
 	FakeResponses                 FakeResponsesConfig
 	ManagedReasoningProfile       ManagedReasoningProfile
 	DynamicToolsEnabled           bool
@@ -145,12 +144,6 @@ func (c Config) validate() error {
 	if err := c.MiniMax.validate(); err != nil {
 		return err
 	}
-	if err := c.Sorftime.validate(c.RuntimePermissionsEnabled, c.MiniMax.Enabled); err != nil {
-		return err
-	}
-	if c.Sorftime.Enabled && c.CommandApprovalEnabled {
-		return errors.New("Sorftime cannot use retired approvals")
-	}
 	if err := c.FakeResponses.validate(); err != nil {
 		return err
 	}
@@ -198,7 +191,7 @@ type Status struct {
 type Manager struct {
 	market              marketRuntimeState
 	permissionCallbacks runtimeApprovalCallbacks
-	sorftime            sorftimeRuntimeState
+	threadOperation     sync.Mutex // Shared starts, model changes and scheduled operations.
 	config              Config
 	logger              *slog.Logger
 
@@ -233,9 +226,8 @@ func NewManager(config Config, logger *slog.Logger) *Manager {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &Manager{
-		config:   config,
-		sorftime: sorftimeRuntimeState{configured: config.Sorftime.Enabled, enabled: config.Sorftime.Enabled, threads: make(map[string]string), verified: make(map[string]bool), startup: make(map[string]string), catalogAttempted: make(map[string]bool), catalogVerified: make(map[string]bool), changed: make(chan struct{})},
-		logger:   logger,
+		config: config,
+		logger: logger,
 		status: Status{
 			State:           StateNotConfigured,
 			Transport:       ExpectedTransport,
@@ -394,13 +386,12 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 	rulePlan, providerErr := authority.preflightFEAT137ExecPolicy()
 	if providerErr == nil && m.config.MiniMax.Enabled {
 		if m.usesNativeConfigLayers() {
-			m.nativeConfigArgs, providerErr = prepareNativeLayeredConfig(authority, m.config.ManagedReasoningProfile, m.config.Sorftime.Enabled)
+			m.nativeConfigArgs, providerErr = prepareNativeLayeredConfig(authority, m.config.ManagedReasoningProfile)
 		} else {
 			providerErr = prepareMiniMaxCodexHomeForAuthority(
 				authority,
 				m.config.ManagedReasoningProfile,
 				m.config.CommandApprovalEnabled,
-				m.config.Sorftime.Enabled,
 			)
 		}
 		if providerErr == nil {
@@ -563,7 +554,6 @@ func (m *Manager) validateManagedProviderAuthority(authority *managedCodexHomeAu
 		m.config.CodexHome,
 		m.config.ManagedReasoningProfile,
 		m.config.CommandApprovalEnabled,
-		m.config.Sorftime.Enabled,
 	)
 	if err != nil {
 		return err
@@ -742,24 +732,6 @@ func (m *Manager) startProcess() (io.WriteCloser, io.ReadCloser, *exec.Cmd, *tai
 	if m.config.ChatModelsEnabled && m.config.KimiAPIKey != "" {
 		cmd.Env = append(cmd.Env, KimiRuntimeEnvKey+"="+m.config.KimiAPIKey)
 	}
-	if m.config.Sorftime.Enabled {
-		// Use the existing native HTTP proxy support for the current system
-		// HTTPS route. Keep the normal provider and loopback routes direct.
-		clean := cmd.Env[:0]
-		for _, entry := range cmd.Env {
-			name, _, _ := strings.Cut(entry, "=")
-			switch strings.ToUpper(name) {
-			case "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY":
-				continue
-			}
-			clean = append(clean, entry)
-		}
-		cmd.Env = clean
-		if m.config.Sorftime.HTTPSProxy != "" {
-			cmd.Env = append(cmd.Env, "HTTPS_PROXY="+m.config.Sorftime.HTTPSProxy, "NO_PROXY=api.minimaxi.com,127.0.0.1,localhost")
-		}
-		cmd.Env = append(cmd.Env, SorftimeSecretEnv+"="+m.config.Sorftime.Token)
-	}
 	var environmentErr error
 	cmd.Env, environmentErr = m.marketRuntimeEnvironment(cmd.Env)
 	if environmentErr != nil {
@@ -847,7 +819,6 @@ func (m *Manager) handleClientFailure(err error) {
 }
 
 func (m *Manager) handleNotification(method string, params json.RawMessage) {
-	m.observeSorftimeStartup(method, params)
 	m.handlePermissionNotification(method, params)
 	m.observeMarketNotification(method, params)
 	m.logger.Debug("Codex Runtime notification", "method", method)

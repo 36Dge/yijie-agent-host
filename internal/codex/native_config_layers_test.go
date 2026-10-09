@@ -20,13 +20,16 @@ func TestFEAT144NativeRootMigrationPreservesTrustBytes(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer a.Close()
-		legacy, _ := miniMaxManagedConfigForRuntime(home, ManagedReasoningProfileDefault, false, initialMcp)
+		legacy, _ := miniMaxManagedConfigForRuntime(home, ManagedReasoningProfileDefault, false)
+		if initialMcp {
+			legacy, _ = legacySorftimeManagedConfig(home, ManagedReasoningProfileDefault)
+		}
 		native := []byte("\n[projects.\"/ordinary project\"]\ntrust_level = \"trusted\"\n\n[projects.\"/另一个项目\"]\ntrust_level = \"untrusted\"\n")
 		if err := os.WriteFile(filepath.Join(home, "config.toml"), append(legacy, native...), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		for _, enabled := range []bool{true, false, false} {
-			args, err := prepareNativeLayeredConfig(a, ManagedReasoningProfileDefault, enabled)
+		for range 3 {
+			args, err := prepareNativeLayeredConfig(a, ManagedReasoningProfileDefault)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -34,7 +37,7 @@ func TestFEAT144NativeRootMigrationPreservesTrustBytes(t *testing.T) {
 			if !bytes.Equal(current, native) {
 				t.Fatal("native trust records were rewritten")
 			}
-			expected, _ := miniMaxManagedConfigForRuntime(home, ManagedReasoningProfileDefault, false, enabled)
+			expected, _ := miniMaxManagedConfigForRuntime(home, ManagedReasoningProfileDefault, false)
 			if err := a.validateNativeLayeredConfig(expected); err != nil {
 				t.Fatal(err)
 			}
@@ -49,7 +52,7 @@ func TestFEAT144NativeRootMigrationPreservesTrustBytes(t *testing.T) {
 			if err := toml.Unmarshal([]byte(strings.Join(lines, "\n")), &reconstructed); err != nil {
 				t.Fatal("native argument values are not valid TOML")
 			}
-			if reconstructed["projects"] != nil || reconstructed["model"] != MiniMaxModel {
+			if reconstructed["projects"] != nil || reconstructed["mcp_servers"] != nil || reconstructed["model"] != MiniMaxModel {
 				t.Fatal("managed arguments invented trust or lost model configuration")
 			}
 			var source map[string]any
@@ -78,7 +81,7 @@ func TestFEAT144NativeRootRejectsUnownedConfiguration(t *testing.T) {
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := prepareNativeLayeredConfig(a, ManagedReasoningProfileDefault, false); err == nil {
+		if _, err := prepareNativeLayeredConfig(a, ManagedReasoningProfileDefault); err == nil {
 			t.Fatal("unowned or unsupported native configuration accepted")
 		}
 		actual, _ := os.ReadFile(path)
@@ -98,10 +101,10 @@ func TestFEAT144NativeManagedFileStillRequiresExactSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	if _, err := prepareNativeLayeredConfig(a, ManagedReasoningProfileDefault, false); err != nil {
+	if _, err := prepareNativeLayeredConfig(a, ManagedReasoningProfileDefault); err != nil {
 		t.Fatal(err)
 	}
-	config, _ := miniMaxManagedConfigForRuntime(home, ManagedReasoningProfileDefault, false, false)
+	config, _ := miniMaxManagedConfigForRuntime(home, ManagedReasoningProfileDefault, false)
 	if err := a.validateManagedFileExact(managedNativeConfigName, append(config, '\n')); err == nil {
 		t.Fatal("managed template validation became semantic instead of exact")
 	}
@@ -115,20 +118,15 @@ func TestPinnedRuntimeFEAT144NativeTrustSurvivesRestart(t *testing.T) {
 	home := integrationPrivateTempDir(t)
 	config := integrationConfig(binary, manifest, home, "ordinary-configuration-only")
 	config.RuntimePermissionsEnabled = true
-	// initialize/config/read do not start a native MCP client. No thread is
-	// created until the normal deactivation has cleared this entire profile.
-	config.Sorftime = SorftimeConfig{Enabled: true, Token: "ordinary-configuration-only"}
+	// Ordinary native start/reopen, no model or external MCP operations.
 	manager := NewManager(config, nil)
 	if err := manager.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	defer shutdownIntegrationManager(t, manager, config.ShutdownTimeout)
-	if err := manager.validateSorftimeConfig(context.Background(), ""); err != nil {
-		t.Fatal(err)
-	}
 	active, restarted, err := manager.PrepareMcpPermissionScope(context.Background(), PermissionAuto)
-	if err != nil || active || !restarted || !manager.Snapshot().Ready {
-		t.Fatalf("normal deactivation/restart failed: %v", err)
+	if err != nil || active || restarted || !manager.Snapshot().Ready {
+		t.Fatalf("retired compatibility scope changed Runtime: %v", err)
 	}
 	workspace := t.TempDir()
 	for _, mode := range []PermissionMode{PermissionAsk, PermissionAuto, PermissionFull} {
@@ -157,7 +155,6 @@ func TestPinnedRuntimeFEAT144NativeTrustSurvivesRestart(t *testing.T) {
 		t.Fatal("native project trust was not saved")
 	}
 	shutdownIntegrationManager(t, manager, config.ShutdownTimeout)
-	config.Sorftime = SorftimeConfig{}
 	second := NewManager(config, nil)
 	if err := second.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -166,8 +163,5 @@ func TestPinnedRuntimeFEAT144NativeTrustSurvivesRestart(t *testing.T) {
 	after, _ := os.ReadFile(filepath.Join(home, "config.toml"))
 	if !bytes.Equal(before, after) {
 		t.Fatal("normal reopen changed native trust bytes")
-	}
-	if err := second.validateSorftimeConfig(context.Background(), ""); err != nil {
-		t.Fatal(err)
 	}
 }

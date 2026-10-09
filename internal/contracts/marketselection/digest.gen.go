@@ -17,7 +17,7 @@ func CanonicalSelectionBytes(turnOperationID string, refs []SelectionRef) ([]byt
 	if err := market.CanonicalId(turnOperationID).Validate(); err != nil {
 		return nil, err
 	}
-	if len(refs) > 51 {
+	if len(refs) > 58 {
 		return nil, errors.New("too many connector references")
 	}
 	sorted := append([]SelectionRef(nil), refs...)

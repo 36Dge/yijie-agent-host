@@ -153,7 +153,6 @@ func prepareMiniMaxCodexHomeForAuthority(
 	authority *managedCodexHomeAuthority,
 	profile ManagedReasoningProfile,
 	commandApprovalEnabled bool,
-	sorftimeEnabled ...bool,
 ) error {
 	if err := profile.validate(true, false); err != nil {
 		return err
@@ -165,8 +164,7 @@ func prepareMiniMaxCodexHomeForAuthority(
 	if err != nil {
 		return err
 	}
-	sorftime := len(sorftimeEnabled) == 1 && sorftimeEnabled[0]
-	config, err := miniMaxManagedConfigForRuntime(authority.path, profile, commandApprovalEnabled, sorftime)
+	config, err := miniMaxManagedConfigForRuntime(authority.path, profile, commandApprovalEnabled)
 	if err != nil {
 		return err
 	}
@@ -190,11 +188,11 @@ func prepareMiniMaxCodexHomeForAuthority(
 	if err != nil {
 		return err
 	}
-	defaultMcpConfig, err := miniMaxManagedConfigForRuntime(authority.path, ManagedReasoningProfileDefault, false, true)
+	defaultMcpConfig, err := legacySorftimeManagedConfig(authority.path, ManagedReasoningProfileDefault)
 	if err != nil {
 		return err
 	}
-	highRawMcpConfig, err := miniMaxManagedConfigForRuntime(authority.path, ManagedReasoningProfileHighRaw, false, true)
+	highRawMcpConfig, err := legacySorftimeManagedConfig(authority.path, ManagedReasoningProfileHighRaw)
 	if err != nil {
 		return err
 	}

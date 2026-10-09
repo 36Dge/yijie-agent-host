@@ -123,7 +123,7 @@ func (m *Manager) DecideRuntimeApproval(ctx context.Context, threadID, id, decis
 			break
 		}
 	}
-	if entry == nil || entry.market != nil {
+	if entry == nil || entry.market != nil || entry.view.Kind == "mcp" || entry.view.Mcp != nil {
 		c.mu.Unlock()
 		return RuntimeApproval{}, errors.New("runtime approval not found")
 	}

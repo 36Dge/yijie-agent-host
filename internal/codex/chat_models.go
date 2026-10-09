@@ -142,8 +142,8 @@ func validateChatModelLayer(a *managedCodexHomeAuthority) error {
 // SwitchThread uses only the fixed native lifecycle. It never sends a prompt,
 // forks a thread, kills a process or rewrites native history.
 func (m *Manager) SwitchThread(ctx context.Context, threadID string) (ThreadInfo, error) {
-	m.sorftime.operation.Lock()
-	defer m.sorftime.operation.Unlock()
+	m.threadOperation.Lock()
+	defer m.threadOperation.Unlock()
 	if !m.ModelAvailable(ModelProfileID(ctx)) {
 		return ThreadInfo{}, errors.New("selected model is unavailable")
 	}

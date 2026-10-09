@@ -179,7 +179,7 @@ func (v Submission) Validate() error {
 	if v.Services == nil {
 		return errors.New("null broker collection")
 	}
-	if len(v.Services) > 51 {
+	if len(v.Services) > 58 {
 		return errors.New("invalid broker collection")
 	}
 	for _, item := range v.Services {
@@ -3131,7 +3131,7 @@ func (v NativeObservation) Validate() error {
 	if v.SelectionDisplay == nil {
 		return errors.New("null broker collection")
 	}
-	if len(v.SelectionDisplay) > 51 {
+	if len(v.SelectionDisplay) > 58 {
 		return errors.New("invalid broker collection")
 	}
 	for _, item := range v.SelectionDisplay {
@@ -3558,7 +3558,7 @@ func (v ObservedTurn) Validate() error {
 	if v.SelectionDisplay == nil {
 		return errors.New("null broker collection")
 	}
-	if len(v.SelectionDisplay) > 51 {
+	if len(v.SelectionDisplay) > 58 {
 		return errors.New("invalid broker collection")
 	}
 	for _, item := range v.SelectionDisplay {

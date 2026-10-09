@@ -22,7 +22,7 @@ func TestNativeDailyReasoningPreservesManagedConfigurationAndRollback(t *testing
 		t.Fatal(err)
 	}
 	for _, profile := range []ManagedReasoningProfile{ManagedReasoningProfileDefault, ManagedReasoningProfileNativeHighRaw, ManagedReasoningProfileDefault} {
-		args, err := prepareNativeLayeredConfig(authority, profile, false)
+		args, err := prepareNativeLayeredConfig(authority, profile)
 		if err != nil {
 			t.Fatal(err)
 		}

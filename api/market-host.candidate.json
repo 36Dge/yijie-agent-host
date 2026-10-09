@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contract_version": "0.1.0",
+  "contract_version": "0.2.0",
   "feature": "FEAT-157",
   "mode": "local_worktree_candidate",
   "release": false,
@@ -8,19 +8,19 @@
   "sources": [
     {
       "path": "compatibility/market-host/wire.schema.json",
-      "sha256": "828f946606168f68c46b0ae3fc9365b12f062fc425bdbc0c87213073b524fe0d"
+      "sha256": "5e533a9a9d42c2d8906fb930678732f472d8c527bc26acc416be97f8943cc3a8"
     },
     {
       "path": "compatibility/market-host/transport.json",
-      "sha256": "b70b21b452cf3e1a8d0f13149094834bda9c29cc6fd644fb82f7af86bea5c4a5"
+      "sha256": "d7f51b5d303fc705277c11376485668dd3f682dcaaab83c3bd7054480f84da92"
     },
     {
       "path": "openapi/market-connectors/market-connectors.yaml",
-      "sha256": "5e83116f339df103157270ec82818b2f03981d2ad8b04e4517c0162e3e1afb13"
+      "sha256": "d91f5a3ccbc1bf3ac1791b54fa6bbee3b7474372f19ca84fb1d4556b73f0eb0a"
     },
     {
       "path": "compatibility/market-selection/wire.schema.json",
-      "sha256": "09305bd815d63b4067daf88f74d0aa06bea97a222e70f66be9bc04c6dc4b2387"
+      "sha256": "5b08f6c0e1d3622cb4abbc1f3dcd5a077ad2a2ecbd03914db149d394d5a8b5ce"
     },
     {
       "path": "jsonschema/chat/model-selection-v1.schema.json",
@@ -48,11 +48,11 @@
     },
     {
       "path": "scripts/market-host-source.mjs",
-      "sha256": "99e00f01814ad00ff95e67eb5e6be5ef29cba01b49bdaa04ff6d7ba5244e6642"
+      "sha256": "d10c9462544a3cacefd245715ab76b9c08331f9715c6f1f95c04a71498c74bdc"
     },
     {
       "path": "scripts/generate-market-host.mjs",
-      "sha256": "d945eed12006574829c970c408d1e86939b1aa250944b7447b93696db466ca3b"
+      "sha256": "7fa0316f477f6eb45a6343315c9059af6d8ad1dced29f5ee1858185b09398afe"
     },
     {
       "path": "scripts/market-broker-codegen.mjs",
@@ -70,23 +70,23 @@
   "generated": [
     {
       "path": "sdks/rust/market-host/types.gen.rs",
-      "sha256": "fd60fa1deb4de3a42f6bc648b3e54cc82253a4962d32d0c4fad6ba475a36d3c5"
+      "sha256": "a2f99d8234b6d08d019bb21befe281f3972f9cb4f7db5fbea2d5995c6e9494eb"
     },
     {
       "path": "sdks/go/market-host/types.gen.go",
-      "sha256": "8d1849bf4fb8a164f67427276a9460a3d8d3a2cc379789dba2243e26b67a9c40"
+      "sha256": "c182581d00c3c72f502c242f60bc88781eb07cb10fca6d3e61e90e427ab5d8c7"
     },
     {
       "path": "sdks/jsonschema/market-host.schema.json",
-      "sha256": "572979e89d1bfd32cdea0d6968ee4f9c19d2e033d82a6ebfa7a6e2f24dcb5eee"
+      "sha256": "ade365d01cafd130e3f762a42a0c8f5cd07bbb565f23729ef9b9634aeabb9b0d"
     },
     {
       "path": "sdks/typescript/src/domain/market-host-native.generated.ts",
-      "sha256": "8c2b17f5aad70f4f972a14dc26f8ab22bb1eca3545f62556e087c831e42d1d24"
+      "sha256": "524ce317ab588a4baa81fce4d9fc2d1636e33c035f66da0d9baff8d7a9ace3fb"
     },
     {
       "path": "sdks/typescript/src/api/generated/market-host-native-validator.gen.js",
-      "sha256": "42eb7d64da0631f703d8f697cfaa663671761d61e46bff6dbb17ec6066373dc4"
+      "sha256": "35131dc0dc3150f191f2cb3a33cb5082376a4990a3b4815e0fb06ce069783ba9"
     },
     {
       "path": "sdks/typescript/src/api/generated/market-host-native-validator.gen.d.ts",
@@ -94,7 +94,7 @@
     },
     {
       "path": "sdks/jsonschema/market-host-native.schema.json",
-      "sha256": "8eb379b06a102e61f1327cb74e16c60ca5342d952141276078e79d31a3d85e4f"
+      "sha256": "a76a4126c6efa3949af9c46f2f844c013acb36ea12707a9fcb47d734fba46e90"
     }
   ],
   "consumer": "agent-host",
@@ -102,12 +102,12 @@
     {
       "source": "sdks/go/market-host/types.gen.go",
       "path": "internal/contracts/markethost/types.gen.go",
-      "sha256": "09863570137599ba827bb7fc130864f853ba27def585ddbcd17eff710dbb5e5f"
+      "sha256": "43258035c248658c70b25f11b0965cf02c6215b7e1ff90b7bd2de804ee0b9a34"
     },
     {
       "source": "sdks/jsonschema/market-host.schema.json",
       "path": "api/market-host.schema.json",
-      "sha256": "572979e89d1bfd32cdea0d6968ee4f9c19d2e033d82a6ebfa7a6e2f24dcb5eee"
+      "sha256": "ade365d01cafd130e3f762a42a0c8f5cd07bbb565f23729ef9b9634aeabb9b0d"
     }
   ]
 }

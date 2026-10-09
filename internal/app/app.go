@@ -270,16 +270,10 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	} else if os.Getenv("YIJIE_KIMI_API_KEY") != "" || os.Getenv("YIJIE_KIMI_API_KEY_FILE") != "" {
 		return Config{}, errors.New("Kimi credentials require explicit chat model configuration")
 	}
-	if os.Getenv(codex.SorftimeEnabledEnv) != "" || os.Getenv(codex.SorftimeSecretEnv) != "" || os.Getenv(codex.SorftimeProxyEnv) != "" {
-		if os.Getenv(codex.SorftimeEnabledEnv) != "true" || !runtimeConfig.RuntimePermissionsEnabled || runtimeConfig.FakeResponses.Enabled {
-			return Config{}, errors.New("Sorftime requires the explicit local demo profile")
-		}
-		runtimeConfig.Sorftime = codex.SorftimeConfig{Enabled: true, Token: os.Getenv(codex.SorftimeSecretEnv), HTTPSProxy: os.Getenv(codex.SorftimeProxyEnv)}
-		// Remove ambient inheritance after the explicit in-memory handoff.
-		_ = os.Unsetenv(codex.SorftimeSecretEnv)
-		_ = os.Unsetenv(codex.SorftimeEnabledEnv)
-		_ = os.Unsetenv(codex.SorftimeProxyEnv)
-	}
+	// Retired credentials are scrubbed, never copied into Host or Runtime state.
+	_ = os.Unsetenv(codex.SorftimeSecretEnv)
+	_ = os.Unsetenv(codex.SorftimeEnabledEnv)
+	_ = os.Unsetenv(codex.SorftimeProxyEnv)
 	if value := os.Getenv("YIJIE_PERMISSION_VERIFICATION_BASE_URL"); value != "" {
 		// Fixed loopback meter only; the meter forwards to the normal MiniMax
 		// endpoint and never changes model request or response bodies.

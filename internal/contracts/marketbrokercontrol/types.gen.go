@@ -2823,8 +2823,8 @@ func DecodeRequest(b []byte) (any, error) {
 	}
 }
 
-const GenericMaxToolsPerService = 256
-const GenericMaxToolsPerSelection = 256
+const GenericMaxToolsPerService = 512
+const GenericMaxToolsPerSelection = 512
 const GenericMaxSchemaBytes = 65536
 const GenericMaxSchemasBytes = 2097152
 const GenericMaxReviewArgumentsBytes = 16384
