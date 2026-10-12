@@ -200,6 +200,7 @@ type syntheticTerminalBarrier struct {
 }
 
 type Service struct {
+	expertResources      ExpertResources
 	market               *marketAuthority
 	modelOperationMu     sync.Mutex
 	draftDirectory       func(string) (string, error)

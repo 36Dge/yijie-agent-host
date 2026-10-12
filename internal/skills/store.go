@@ -563,6 +563,12 @@ func (s *Service) commitStateOperation(record *operationRecord, state State) err
 func (s *Service) finishStateOperation(record *operationRecord, state State, operationErr error, keep bool) error {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
+	return s.finishStateOperationLocked(record, state, operationErr, keep)
+}
+
+// Caller holds opMu. Explicit recovery uses the same journal commit while
+// keeping the closed-owner check and terminal transition atomic with reservation.
+func (s *Service) finishStateOperationLocked(record *operationRecord, state State, operationErr error, keep bool) error {
 	if !keep {
 		delete(s.operations, record.ID)
 		if s.operationDB != nil {

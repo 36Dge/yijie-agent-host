@@ -58,6 +58,15 @@ func run(logger *slog.Logger) error {
 	var artifactStore *artifact.Store
 	var skillService *skills.Service
 	var apiToken string
+	if config.ExpertsEnabled {
+		// Verify and open the real managed resources before the opt-in schema 10
+		// writer. Ordinary launch keeps its original initialization order.
+		skillService, err = configuredSkillService(config, runtime)
+		if err != nil {
+			return err
+		}
+		defer skillService.Close()
+	}
 	if config.HostHome != "" {
 		storeOptions := make([]session.StoreOption, 0, 1)
 		if config.FEAT126ProjectDir != "" {
@@ -76,7 +85,10 @@ func run(logger *slog.Logger) error {
 			storeOptions = append(storeOptions, session.WithChatModelStorage())
 		}
 		if config.Runtime.Market.Manifest != "" {
-			storeOptions = append(storeOptions, session.WithMarketStorage())
+			storeOptions = append(storeOptions, session.WithMarketStorage(), session.WithExpertStorageReader())
+		}
+		if config.ExpertsEnabled {
+			storeOptions = append(storeOptions, session.WithExpertStorage())
 		}
 		sessionStore, err = session.OpenStore(config.HostHome, storeOptions...)
 		if err != nil {
@@ -88,6 +100,9 @@ func run(logger *slog.Logger) error {
 			return err
 		}
 		serviceOptions := make([]session.ServiceOption, 0, 8)
+		if config.ExpertsEnabled {
+			serviceOptions = append(serviceOptions, session.WithExpertResources(skillService))
+		}
 		if config.Runtime.Market.Manifest != "" {
 			serviceOptions = append(serviceOptions, session.WithMarketAuthority(config.InstanceNonce))
 		}
@@ -163,12 +178,8 @@ func run(logger *slog.Logger) error {
 			}
 		}
 	}
-	if config.Skills.Enabled() {
-		skillService, err = skills.NewService(skills.Config{
-			BundleRoot:  config.Skills.BundleRoot,
-			ManagedRoot: config.Skills.InstallRoot,
-			Runtime:     runtime,
-		})
+	if config.Skills.Enabled() && skillService == nil {
+		skillService, err = configuredSkillService(config, runtime)
 		if err != nil {
 			return err
 		}
@@ -268,6 +279,14 @@ func run(logger *slog.Logger) error {
 		<-marketControlErrors
 	}
 	return errors.Join(serveErr, shutdownErr)
+}
+
+func configuredSkillService(config app.Config, runtime skills.Runtime) (*skills.Service, error) {
+	value := skills.Config{BundleRoot: config.Skills.BundleRoot, ManagedRoot: config.Skills.InstallRoot, Runtime: runtime}
+	if config.ExpertsEnabled {
+		value.ExpertCatalogDigest = skills.ReviewedExpertCatalogDigest
+	}
+	return skills.NewService(value)
 }
 
 type httpShutdowner interface {

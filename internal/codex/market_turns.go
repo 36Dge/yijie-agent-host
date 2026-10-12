@@ -265,11 +265,34 @@ func (m *Manager) marketDisabledServers(ctx context.Context, cwd string) (map[st
 			return nil, errors.New("market MCP inventory unavailable")
 		}
 	}
-	servers := make(map[string]any, len(inherited)+1)
-	for name := range inherited {
-		servers[name] = map[string]any{"enabled": false}
+	m.market.mu.Lock()
+	gateway := m.market.gatewayURL
+	m.market.mu.Unlock()
+	return disabledMarketServers(inherited, gateway)
+}
+
+func disabledMarketServers(inherited map[string]json.RawMessage, gateway string) (map[string]any, error) {
+	if gateway == "" {
+		return nil, errors.New("market gateway configuration unavailable")
 	}
-	servers[marketServerName] = map[string]any{"enabled": false}
+	servers := make(map[string]any, len(inherited)+1)
+	for name, raw := range inherited {
+		var server map[string]any
+		if json.Unmarshal(raw, &server) != nil || server == nil {
+			return nil, errors.New("market MCP inventory unavailable")
+		}
+		// Native configuration validates transport before considering enabled.
+		// Keep each inherited transport intact while disabling its execution.
+		server["enabled"] = false
+		servers[name] = server
+	}
+	if _, exists := servers[marketServerName]; !exists {
+		// A fresh thread has no prior managed transport to merge into. Use the
+		// current owned loopback gateway, with no capability path or credential,
+		// solely to form a valid disabled native MCP entry. Disabled entries are
+		// not initialized and cannot issue a gateway or provider request.
+		servers[marketServerName] = map[string]any{"url": gateway, "enabled": false}
+	}
 	return servers, nil
 }
 

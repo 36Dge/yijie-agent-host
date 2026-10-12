@@ -33,6 +33,7 @@ const (
 )
 
 type Config struct {
+	ExpertsEnabled                 bool
 	MarketProviderOnly             bool
 	Environment                    string
 	ScheduledRecoveryEnabled       bool
@@ -361,6 +362,9 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		Skills:                         skillFeature,
 	}
 	if err := loadMarketProfile(&config); err != nil {
+		return Config{}, err
+	}
+	if err := loadExpertProfile(&config); err != nil {
 		return Config{}, err
 	}
 	return config, nil

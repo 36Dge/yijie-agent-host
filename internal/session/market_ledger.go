@@ -3,17 +3,20 @@ package session
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
 	"time"
 
+	expert "github.com/36Dge/yijie-agent-host/internal/contracts/experts"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
 	bolt "go.etcd.io/bbolt"
 )
 
 type marketOperation struct {
-	Version      int                    `json:"version"`
-	ScopeHash    string                 `json:"scope_hash"`
-	IntentDigest string                 `json:"intent_digest"`
-	Receipt      wire.SubmissionReceipt `json:"receipt"`
+	ExpertSnapshot *expert.TurnExpertSnapshot `json:"expert_snapshot,omitempty"`
+	Version        int                        `json:"version"`
+	ScopeHash      string                     `json:"scope_hash"`
+	IntentDigest   string                     `json:"intent_digest"`
+	Receipt        wire.SubmissionReceipt     `json:"receipt"`
 }
 
 func (s *Store) readMarketOperation(operation string) (marketOperation, error) {
@@ -27,7 +30,7 @@ func (s *Store) readMarketOperation(operation string) (marketOperation, error) {
 		if raw == nil {
 			return ErrNotFound
 		}
-		if json.Unmarshal(raw, &out) != nil || out.Version != 1 || out.Receipt.Validate() != nil {
+		if json.Unmarshal(raw, &out) != nil || !validMarketOperation(out) {
 			return ErrMarketPurpose
 		}
 		return nil
@@ -45,7 +48,7 @@ func (s *Store) beginMarketOperation(record Record, operation marketOperation, a
 			return ErrMarketPurpose
 		}
 		for _, key := range []wire.CanonicalId{operation.Receipt.SubmissionOperationId, operation.Receipt.TurnOperationId} {
-			if bucket.Get([]byte(key)) != nil {
+			if bucket.Get([]byte(key)) != nil || (tx.Bucket(expertOperationsBucket) != nil && tx.Bucket(expertOperationsBucket).Get([]byte(key)) != nil) {
 				return ErrTurnOperationConflict
 			}
 			if tx.Bucket(turnOperationsBucket).Get(turnOperationKey(record.AgentSessionID, string(key))) != nil || tx.Bucket(modelOperationsBucket).Get(turnOperationKey(record.AgentSessionID, string(key))) != nil || tx.Bucket(cleanupOperationsBucket).Get([]byte(key)) != nil {
@@ -65,6 +68,7 @@ func (s *Store) beginMarketOperation(record Record, operation marketOperation, a
 			return err
 		}
 		old, err := s.loadRecord(tx, record.AgentSessionID)
+		isNew := errors.Is(err, ErrNotFound)
 		if errors.Is(err, ErrNotFound) {
 			if adopt || expectedRevision != 0 || tx.Bucket(tasksBucket).Get([]byte(record.TaskID)) != nil {
 				return ErrTaskExists
@@ -102,6 +106,9 @@ func (s *Store) beginMarketOperation(record Record, operation marketOperation, a
 				return ErrMarketPurpose
 			}
 		}
+		if err := s.bindExpertSubmission(tx, record, operation, isNew); err != nil {
+			return err
+		}
 		raw, err := json.Marshal(operation)
 		if err != nil {
 			return err
@@ -117,13 +124,16 @@ func (s *Store) beginMarketOperation(record Record, operation marketOperation, a
 }
 
 func (s *Store) finishMarketOperation(operation marketOperation) error {
+	if !validMarketOperation(operation) {
+		return ErrExpertContext
+	}
 	return s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(marketOperationsBucket)
 		if b == nil {
 			return ErrMarketPurpose
 		}
 		var old marketOperation
-		if json.Unmarshal(b.Get([]byte(operation.Receipt.TurnOperationId)), &old) != nil || old.IntentDigest != operation.IntentDigest || old.ScopeHash != operation.ScopeHash {
+		if json.Unmarshal(b.Get([]byte(operation.Receipt.TurnOperationId)), &old) != nil || old.IntentDigest != operation.IntentDigest || old.ScopeHash != operation.ScopeHash || old.Version != operation.Version || !reflect.DeepEqual(old.ExpertSnapshot, operation.ExpertSnapshot) {
 			return ErrTurnOperationConflict
 		}
 		encoded, err := json.Marshal(operation)
@@ -165,14 +175,20 @@ func (s *Service) ReadMarketOperation(task, operation string) (wire.SubmissionRe
 	if err != nil {
 		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeSessionNotFound)
 	}
-	if entry.ScopeHash != owner || string(entry.Receipt.TaskId) != task || string(entry.Receipt.TurnOperationId) != operation {
+	if entry.ExpertSnapshot != nil || entry.ScopeHash != owner || string(entry.Receipt.TaskId) != task || string(entry.Receipt.TurnOperationId) != operation {
 		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeAuthorityMismatch)
 	}
 	return s.reconcileMarketReceipt(entry), nil
 }
 
 func (s *Store) marketNoPendingTurns(sessionID string) error {
+	return s.marketNoPendingTurnsExcept(sessionID, "")
+}
+func (s *Store) marketNoPendingTurnsExcept(sessionID, recoveringOperation string) error {
 	return s.db.View(func(tx *bolt.Tx) error {
+		if e := noPendingExpertOrMarketExcept(tx, sessionID, recoveringOperation); e != nil {
+			return e
+		}
 		return tx.Bucket(turnOperationsBucket).ForEach(func(_, raw []byte) error {
 			var op TurnOperation
 			if json.Unmarshal(raw, &op) != nil {

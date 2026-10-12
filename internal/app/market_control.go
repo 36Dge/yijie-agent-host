@@ -7,8 +7,8 @@ import (
 	"errors"
 	"io"
 	"sync"
-	"time"
 
+	expert "github.com/36Dge/yijie-agent-host/internal/contracts/experts"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
 	provider "github.com/36Dge/yijie-agent-host/internal/contracts/marketprovider"
 	"github.com/36Dge/yijie-agent-host/internal/session"
@@ -42,7 +42,7 @@ func routeMarketControl(ctx context.Context, service MarketControlService, frame
 	if json.Unmarshal(route["requestId"], &id) == nil && id.Validate() == nil {
 		requestID = &id
 	}
-	if method != "grant_register" && len(frame) > wire.MaxSmallControlFrameBytes {
+	if method != "grant_register" && method != "expert_grant_register" && len(frame) > wire.MaxSmallControlFrameBytes {
 		return nil, requestID, errMarketControlRequest
 	}
 	switch method {
@@ -110,7 +110,7 @@ func routeMarketControl(ctx context.Context, service MarketControlService, frame
 		data, err := service.MarketProviderControl(ctx, request.Method, request.RequestId, request.Payload)
 		return wire.ProbeResponse{SchemaVersion: 1, RequestId: request.RequestId, Data: data}, requestID, err
 	default:
-		return nil, requestID, errMarketControlRequest
+		return routeExpertControl(ctx, service, frame, method, requestID)
 	}
 }
 
@@ -177,7 +177,7 @@ func ServeMarketControl(ctx context.Context, input io.ReadCloser, output io.Writ
 			return ctx.Err()
 		case frame = <-frames:
 		}
-		requestContext, cancel := context.WithTimeout(readerContext, 5*time.Second)
+		requestContext, cancel := context.WithTimeout(readerContext, expertControlTimeout(frame))
 		completed := make(chan controlResult, 1)
 		go func() {
 			value, id, err := routeMarketControl(requestContext, service, frame)
@@ -205,6 +205,13 @@ func ServeMarketControl(ctx context.Context, input io.ReadCloser, output io.Writ
 				code = wire.ErrorCodeInvalidRequest
 			}
 			value = wire.Error{SchemaVersion: 1, RequestId: id, Code: code, Retryable: false}
+			if isExpertControlFrame(frame) {
+				ec := session.ExpertFailureCode(err)
+				if errors.Is(err, errMarketControlRequest) {
+					ec = expert.ErrorCodeInvalidRequest
+				}
+				value = expert.Error{SchemaVersion: 1, RequestId: id, Code: ec, Retryable: false}
+			}
 		} else if value == nil || value.Validate() != nil {
 			value = wire.Error{SchemaVersion: 1, RequestId: id, Code: wire.ErrorCodeTemporarilyUnavailable, Retryable: false}
 		}

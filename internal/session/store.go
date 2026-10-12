@@ -120,6 +120,8 @@ type TurnOperation struct {
 }
 
 type Store struct {
+	expertWriter            bool
+	expertReader            bool
 	marketWriter            bool
 	modelWriter             bool
 	draftWriter             bool
@@ -229,10 +231,10 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 		}
 		metadata := tx.Bucket(metadataBucket)
 		version := metadata.Get(storeSchemaVersionKey)
-		if version != nil && string(version) != "1" && string(version) != "2" && string(version) != "3" && string(version) != "4" && string(version) != storeSchemaVersion && string(version) != "6" && string(version) != "7" && string(version) != "8" {
+		if version != nil && string(version) != "1" && string(version) != "2" && string(version) != "3" && string(version) != "4" && string(version) != storeSchemaVersion && string(version) != "6" && string(version) != "7" && string(version) != "8" && !((store.expertWriter || store.expertReader) && (string(version) == "9" || string(version) == "10")) {
 			return fmt.Errorf("unsupported Agent Host store schema version %q", version)
 		}
-		if version == nil || (string(version) != storeSchemaVersion && string(version) != "6" && string(version) != "7" && string(version) != "8") {
+		if version == nil || (string(version) != storeSchemaVersion && string(version) != "6" && string(version) != "7" && string(version) != "8" && string(version) != "9" && string(version) != "10") {
 			if err := metadata.Put(storeSchemaVersionKey, []byte(storeSchemaVersion)); err != nil {
 				return err
 			}
@@ -251,6 +253,9 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 			return err
 		}
 		if err := store.prepareMarketFormat(tx); err != nil {
+			return err
+		}
+		if err := store.prepareExpertFormat(tx); err != nil {
 			return err
 		}
 		return purgeExpiredCleanupReceipts(tx, time.Now().UTC())
@@ -489,6 +494,20 @@ func (s *Store) BeginCleanup(operationID, sessionID string) (CleanupOperation, e
 		if record.ActiveTurnID != "" || record.State == StateActive || record.State == StateStarting || record.CleanupOperationID != "" {
 			return ErrTurnActive
 		}
+		// A pending expert apply may be between its durable receipt and the
+		// normal same-thread resume. Cleanup must not remove that thread while
+		// leaving a successful expert receipt possible. This transaction also
+		// serializes with beginExpertOperation's existing cleanup check.
+		binding, bindingErr := readExpertBinding(tx, sessionID)
+		if bindingErr == nil && binding.PendingOperation != "" {
+			return ErrTurnActive
+		}
+		if bindingErr != nil && !errors.Is(bindingErr, ErrNotFound) {
+			return bindingErr
+		}
+		if bucket := tx.Bucket(expertOperationsBucket); bucket != nil && bucket.Get([]byte(operationID)) != nil {
+			return ErrCleanupConflict
+		}
 		now := time.Now().UTC()
 		operation = CleanupOperation{
 			SchemaVersion: 1, OperationID: operationID, SessionHash: s.keyedSessionHash(sessionID),
@@ -562,6 +581,14 @@ func (s *Store) DeleteSessionWithReceipt(operationID, sessionID string) error {
 				return ErrCleanupConflict
 			}
 			return nil
+		}
+		// Native cleanup has confirmed the same thread was deleted. Release only
+		// this live adapter binding; immutable operation receipts remain, and
+		// unresolved submission references still independently retain resources.
+		if bindings := tx.Bucket(expertBindingsBucket); bindings != nil {
+			if err := bindings.Delete([]byte(sessionID)); err != nil {
+				return err
+			}
 		}
 		if err := tx.Bucket(tasksBucket).Delete([]byte(record.TaskID)); err != nil {
 			return err

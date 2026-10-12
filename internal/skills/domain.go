@@ -120,6 +120,10 @@ type Config struct {
 	ManagedRoot string
 	Runtime     Runtime
 	Now         func() time.Time
+	// Exact manifest digest from the reviewed local asset source authority.
+	// It is private process assembly, never a renderer or HTTP request value.
+	// Empty keeps expert resources unavailable while ordinary Skills work.
+	ExpertCatalogDigest string
 }
 
 // HandleRuntimeNotification validates and coalesces skills/changed without

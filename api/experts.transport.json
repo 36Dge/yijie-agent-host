@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "contract_id": "experts/1",
+  "contract_version": "0.1.0",
+  "wire_authority": "compatibility/experts/wire.schema.json",
+  "control_transport": "existing_native_owned_stdio_jsonl",
+  "handshake_authority": "compatibility/market-host/transport.json",
+  "commands": [
+    {
+      "method": "expert_apply_binding",
+      "request": "ApplyRequest",
+      "response": "ApplyResponse"
+    },
+    {
+      "method": "expert_operation_read",
+      "request": "PrivateOperationReadRequest",
+      "response": "PrivateOperationReadResponse"
+    },
+    {
+      "method": "expert_grant_register",
+      "request": "PrivateGrantRequest",
+      "response": "PrivateGrantResponse"
+    },
+    {
+      "method": "expert_submit",
+      "request": "PrivateSubmitRequest",
+      "response": "PrivateSubmitResponse"
+    },
+    {
+      "method": "expert_submission_read",
+      "request": "SubmissionReadRequest",
+      "response": "SubmissionReadResponse"
+    },
+    {
+      "method": "expert_status",
+      "request": "PrivateStatusRequest",
+      "response": "PrivateStatusResponse"
+    },
+    {
+      "method": "expert_resources_prepare",
+      "request": "PrivateResourcePrepareRequest",
+      "response": "PrivateResourcePrepareResponse"
+    },
+    {
+      "method": "expert_resources_remove",
+      "request": "PrivateResourceRemoveRequest",
+      "response": "PrivateResourceRemoveResponse"
+    },
+    {
+      "method": "expert_resources_operation_read",
+      "request": "PrivateResourceReadRequest",
+      "response": "PrivateResourceReadResponse"
+    },
+    {
+      "method": "expert_binding_recover",
+      "request": "PrivateBindingRecoverRequest",
+      "response": "PrivateBindingRecoverResponse"
+    },
+    {
+      "method": "expert_resources_recover",
+      "request": "PrivateResourceRecoverRequest",
+      "response": "PrivateResourceRecoverResponse"
+    }
+  ],
+  "snapshot_digest": {
+    "version": 1,
+    "algorithm": "sha256",
+    "domain": "yijie.expert-snapshot/v1",
+    "encoding": "ASCII with actual LF; lower-case hex",
+    "lines": [
+      "domain",
+      "canonical actual turnOperationId",
+      "decimal bindingRevision",
+      "none OR expert",
+      "when expert: expertId",
+      "when expert: version",
+      "when expert: archiveSha256",
+      "when expert: roleSha256",
+      "when expert: knowledgeManifestSha256"
+    ],
+    "trailingLf": true
+  },
+  "semantics": {
+    "scope": "exact local demo_fast only; existing identity/tenant/chat/plugin permissions; no new auth",
+    "authority": "Same owned pipe/hello and Host instance/Native epoch matching as market-host. Renderer never sends hashes, roles, paths or scope. Structurally valid fields are not authority.",
+    "draft": "No pre-created empty native thread. Draft-only binding stays Native until first accepted send. expert_apply_binding requires a true owned existing rollout; no synthetic thread UUID.",
+    "binding": "CAS on expectedBindingRevision under shared session/model/thread operation lock; new revision expected+1. Pending send, running turn, pending approval/input, cleanup or unknown outbox/apply forbids changes. Read original operation; no replacement on uncertainty.",
+    "submission": "Versioned wrapper references original complete market submission plus TurnExpertSnapshot. Same operation and full typed wrapper replay original receipt before any apply/prepare/Runtime work. Private snapshot turnOperationId must match original market snapshot. Do not dispatch wrapper via legacy bare submit.",
+    "grant": "Reuse existing grant lifetime, revocation, epoch and one-use enforcement. expert_submit consumes only expert_grant_register grants; ordinary submit cannot consume them and vice versa. No added HTTP endpoint or parallel pipe.",
+    "composition": "Full model intent, permissionMode, market snapshot plus expert revision form combined intent. Apply does not renew prior-turn market capabilities or grant tools. Every subsequent submit freezes current expert or explicit none. Model/permission/market switches preserve the same confirmed expert reference.",
+    "resources": "Use managed bundle/receipt. Expert resources do not enter global Skill roots. No caller paths/role text. Retain referenced immutable bytes; if existing core cannot retain versions, block referenced upgrades/removal.",
+    "rollback": "Keep old ordinary family unchanged, feature-off readers do not downgrade expert outboxes. Preserve compatible readers/history and original unknown states; no forced exit, DB downgrade or automatic resend.",
+    "result": "Host applied receipt is protocol evidence, not Runtime checksum echo or model-quality PASS. Native validates actual existing thread identity and lifecycle qualification before success.",
+    "timeouts": "Per-method bounded budgets on the existing serial pipe; Native response wait exceeds Host method budget. expert_submit includes the existing 20s submission deadline plus at most 5s normal settlement. Expiry preserves unknown intent; no replacement operation, automatic retry, process respawn or forced termination.",
+    "resource_operations": "Managed core install/uninstall and original durable operation receipt, serialized with binding/submission under the same Native admission and Host model-operation locks. Prepare/remove use trusted current scope and exact catalog selection; Native forbids removal referenced by any retained binding/submission, Host also checks live references. Reads never reinstall or resubmit. Original completed receipt is replayed before current admission or resource state. No renderer paths, role text, digests or grant authority.",
+    "status": "Read-only, current-owned-scope status reports the verified catalog digest and actual configured expert adapter support. Native matches its pinned catalog, never infers execution readiness from a UI flag or a guessed missing-operation error.",
+    "explicit_recovery": "Only a deliberate recover command may reconcile an unsettled original operation. Renderer supplies original operation identity only; Native loads its immutable generated request and supplies current authority separately. Current write authorization, original scope/intent identity, shared admission locks and normal idle/approval/outbox guards are mandatory. Binding recovery re-applies the exact original composition to the same verified existing thread, preserving original receipt identity and revision; it cannot renew turn grants or send a turn. Resource recovery never installs/removes: it observes the original managed-core journal or durably rejects a provably unstarted core operation while excluding an active owner. Missing original Host binding intent requires the same original revision/thread admission; missing resource intent is never success. Completed original receipts replay first. Read/reopen/repeated set or prepare remain query-only. A recovery timeout or guard rejection keeps the original unknown state; no new operation, blanket unlock, database reset, automatic retry or security override."
+  },
+  "knowledge_digest": {
+    "version": 1,
+    "algorithm": "sha256",
+    "domain": "yijie.expert-knowledge/v1",
+    "encoding": "UTF-8: domain + LF + decimal resource count + LF; sort resources by ASCII id; for each field append decimal UTF-8 byte length + ASCII colon + exact UTF-8 bytes; append LF after each resource",
+    "fields": [
+      "id",
+      "title",
+      "path",
+      "sha256",
+      "bytes",
+      "content_version",
+      "content_status"
+    ],
+    "sort": "id ASCII ascending",
+    "uniqueKey": "id",
+    "bytesField": "bytes is canonical unsigned decimal text",
+    "trailingLf": true
+  },
+  "method_timeout_ms": {
+    "expert_apply_binding": 20000,
+    "expert_operation_read": 5000,
+    "expert_grant_register": 5000,
+    "expert_submit": 25000,
+    "expert_submission_read": 5000,
+    "expert_status": 5000,
+    "expert_resources_prepare": 25000,
+    "expert_resources_remove": 25000,
+    "expert_resources_operation_read": 5000,
+    "expert_binding_recover": 20000,
+    "expert_resources_recover": 25000
+  },
+  "native_response_timeout_ms": 30000
+}

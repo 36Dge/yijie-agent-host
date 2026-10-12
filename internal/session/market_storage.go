@@ -29,7 +29,7 @@ func WithMarketStorage() StoreOption {
 
 func (s *Store) prepareMarketFormat(tx *bolt.Tx) error {
 	v := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
-	if v == "8" {
+	if v == "8" || v == "9" || v == "10" {
 		if tx.Bucket(marketOperationsBucket) == nil {
 			return ErrMarketPurpose
 		}
@@ -55,7 +55,7 @@ func validateMarketRecord(record Record, version string) error {
 		return nil
 	}
 	digest, err := hex.DecodeString(record.MarketScopeHash)
-	if version != "8" || err != nil || len(digest) != 32 || hex.EncodeToString(digest) != record.MarketScopeHash || !isCanonicalNonZeroUUID(record.MarketLocalSessionID) {
+	if (version != "8" && version != "9" && version != "10") || err != nil || len(digest) != 32 || hex.EncodeToString(digest) != record.MarketScopeHash || !isCanonicalNonZeroUUID(record.MarketLocalSessionID) {
 		return ErrMarketPurpose
 	}
 	if record.DraftWorkspaceID != "" || record.DraftSchemaVersion != 0 || record.DraftPolicyVersion != 0 {

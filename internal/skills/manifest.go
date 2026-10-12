@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	contractschema "github.com/36Dge/yijie-agent-host/api/jsonschema"
+	expertwire "github.com/36Dge/yijie-agent-host/internal/contracts/experts"
 	"github.com/dlclark/regexp2"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -46,22 +47,24 @@ type BundleSource struct {
 }
 
 type ManifestSkill struct {
-	ID               string       `json:"id"`
-	RuntimeName      string       `json:"runtime_name"`
-	Category         string       `json:"category"`
-	Order            int          `json:"order"`
-	DisplayName      string       `json:"display_name"`
-	Description      string       `json:"description"`
-	Version          string       `json:"version"`
-	CatalogEntryMode string       `json:"catalog_entry_mode"`
-	Entrypoint       string       `json:"entrypoint"`
-	Icon             SkillIcon    `json:"icon"`
-	Risk             SkillRisk    `json:"risk"`
-	Provenance       Provenance   `json:"provenance"`
-	License          License      `json:"license"`
-	Capabilities     Capabilities `json:"capabilities"`
-	Archive          Archive      `json:"archive"`
-	Release          Release      `json:"release"`
+	AssetKind        string                     `json:"asset_kind,omitempty"`
+	Expert           *expertwire.ExpertMetadata `json:"expert,omitempty"`
+	ID               string                     `json:"id"`
+	RuntimeName      string                     `json:"runtime_name"`
+	Category         string                     `json:"category"`
+	Order            int                        `json:"order"`
+	DisplayName      string                     `json:"display_name"`
+	Description      string                     `json:"description"`
+	Version          string                     `json:"version"`
+	CatalogEntryMode string                     `json:"catalog_entry_mode"`
+	Entrypoint       string                     `json:"entrypoint"`
+	Icon             SkillIcon                  `json:"icon"`
+	Risk             SkillRisk                  `json:"risk"`
+	Provenance       Provenance                 `json:"provenance"`
+	License          License                    `json:"license"`
+	Capabilities     Capabilities               `json:"capabilities"`
+	Archive          Archive                    `json:"archive"`
+	Release          Release                    `json:"release"`
 }
 
 type SkillIcon struct {
@@ -175,7 +178,17 @@ func loadCatalog(bundleRoot string) (catalog, error) {
 	byID := make(map[string]ManifestSkill, len(manifest.Skills))
 	runtimeNames := make(map[string]struct{}, len(manifest.Skills))
 	archivePaths := make(map[string]struct{}, len(manifest.Skills))
+	expertIDs := make(map[string]struct{})
 	for _, skill := range manifest.Skills {
+		if isExpertResource(skill) {
+			if manifest.SchemaVersion != 3 || manifest.DistributionChannel != "local-development" || skill.Expert == nil {
+				return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("expert resources require the versioned local manifest"))
+			}
+			if _, duplicate := expertIDs[string(skill.Expert.ExpertId)]; duplicate {
+				return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("duplicate expert identity"))
+			}
+			expertIDs[string(skill.Expert.ExpertId)] = struct{}{}
+		}
 		if _, exists := byID[skill.ID]; exists {
 			return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("duplicate Skill id"))
 		}
@@ -196,9 +209,7 @@ func loadCatalog(bundleRoot string) (catalog, error) {
 			archivePaths[skill.Archive.Path] = struct{}{}
 		}
 		if skill.Release.CatalogStatus == "installable" {
-			if mode != "bundled" || skill.Entrypoint != "SKILL.md" || skill.Archive.Path == "" ||
-				skill.Provenance.ReviewStatus != "verified" || skill.License.RedistributionStatus != "verified" ||
-				(skill.License.AuthorizationScope != "local-development" && skill.License.AuthorizationScope != "desktop-distribution") {
+			if !installableSkill(skill) {
 				return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("installable Skill is not a verified bundled entry"))
 			}
 		} else if mode == "catalog-only" && (skill.Entrypoint != "" || skill.Archive.Path != "" || skill.Release.BlockedReason == "") {
@@ -213,14 +224,26 @@ func loadCatalog(bundleRoot string) (catalog, error) {
 
 func compiledManifestSchema(version int) (*jsonschema.Schema, error) {
 	manifestSchemasOnce.Do(func() {
-		manifestSchemas = make(map[int]*jsonschema.Schema, 2)
+		manifestSchemas = make(map[int]*jsonschema.Schema, 3)
 		for schemaVersion, source := range map[int][]byte{
 			1: contractschema.SkillBundleManifestV1,
 			2: contractschema.SkillBundleManifestV2,
+			3: []byte(expertwire.SkillBundleManifestV3SchemaJSON),
 		} {
 			compiler := jsonschema.NewCompiler()
 			compiler.UseRegexpEngine(compileECMAScriptRegexp)
 			compiler.AssertFormat()
+			if schemaVersion == 3 {
+				dependency, err := jsonschema.UnmarshalJSON(strings.NewReader(expertwire.SkillBundleManifestV2SchemaJSON))
+				if err != nil {
+					manifestSchemasErr = err
+					return
+				}
+				if err := compiler.AddResource("https://contracts.yijie.ai/skills/skill-bundle-manifest-v2.schema.json", dependency); err != nil {
+					manifestSchemasErr = err
+					return
+				}
+			}
 			resource := fmt.Sprintf("https://contracts.yijie.ai/skills/skill-bundle-manifest-v%d.schema.json", schemaVersion)
 			schemaDocument, err := jsonschema.UnmarshalJSON(bytes.NewReader(source))
 			if err != nil {

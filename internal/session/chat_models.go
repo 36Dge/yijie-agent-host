@@ -34,13 +34,13 @@ func (s *Store) prepareModelFormat(tx *bolt.Tx) error {
 		return ErrModelUnavailable
 	}
 	v := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
-	if v != "6" && v != "7" && v != "8" {
+	if v != "6" && v != "7" && v != "8" && v != "9" && v != "10" {
 		return ErrModelUnavailable
 	}
 	if _, e := tx.CreateBucketIfNotExists(modelOperationsBucket); e != nil {
 		return e
 	}
-	if v != "8" {
+	if v != "8" && v != "9" && v != "10" {
 		return tx.Bucket(metadataBucket).Put(storeSchemaVersionKey, []byte("7"))
 	}
 	return nil
@@ -143,9 +143,39 @@ func (s *Service) SelectChatModel(ctx context.Context, sessionID string, request
 	}
 	s.modelOperationMu.Lock()
 	defer s.modelOperationMu.Unlock()
+	// Replay terminal evidence before consulting mutable expert resources or
+	// binding readiness. Keep this read before the transaction that records a
+	// new switching intent so failed preparation cannot change session state.
+	key := turnOperationKey(sessionID, request.OperationId)
+	var prior modelOperation
+	if err := s.store.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(modelOperationsBucket)
+		if bucket == nil {
+			return ErrModelUnavailable
+		}
+		data := bucket.Get(key)
+		if data == nil {
+			return nil
+		}
+		if json.Unmarshal(data, &prior) != nil {
+			return ErrModelUnknown
+		}
+		if prior.Request != request {
+			return ErrTurnOperationConflict
+		}
+		return nil
+	}); err != nil {
+		return wire.Selection{}, err
+	}
+	if prior.Complete {
+		return prior.Result, nil
+	}
+	ctx, expertErr := s.contextForStoredExpert(ctx, sessionID)
+	if expertErr != nil {
+		return wire.Selection{}, expertErr
+	}
 	var record Record
 	var operation modelOperation
-	key := turnOperationKey(sessionID, request.OperationId)
 	err := s.store.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(modelOperationsBucket)
 		if b == nil {
@@ -196,6 +226,12 @@ func (s *Service) SelectChatModel(ctx context.Context, sessionID string, request
 			return nil
 		}); e != nil {
 			return e
+		}
+		if e = noPendingExpertOrMarket(tx, sessionID); e != nil {
+			return e
+		}
+		if b := tx.Bucket(expertOperationsBucket); b != nil && b.Get([]byte(request.OperationId)) != nil {
+			return ErrTurnOperationConflict
 		}
 		operation.Request = request
 		operation.Result = modelSelection(record)

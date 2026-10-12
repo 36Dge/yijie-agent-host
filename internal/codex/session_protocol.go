@@ -571,6 +571,11 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 			params.Config["approvals_reviewer"] = "user"
 		}
 	}
+	params.BaseInstructions, err = m.expertBaseInstructions(ctx, params.BaseInstructions)
+	if err != nil {
+		return ThreadInfo{}, err
+	}
+	params.Config = expertThreadConfig(ctx, params.Config)
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadStart, params, &response); err != nil {
 		return ThreadInfo{}, err
@@ -641,6 +646,11 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 			params.Config["approvals_reviewer"] = "user"
 		}
 	}
+	params.BaseInstructions, err = m.expertBaseInstructions(ctx, params.BaseInstructions)
+	if err != nil {
+		return ThreadInfo{}, err
+	}
+	params.Config = expertThreadConfig(ctx, params.Config)
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadResume, params, &response); err != nil {
 		return ThreadInfo{}, err

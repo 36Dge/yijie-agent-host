@@ -55,12 +55,18 @@ func (s *Service) lockMarketModelOperation(ctx context.Context) error {
 // SubmitMarket accepts only an opaque reference established on the owned Native
 // channel. The durable intent is checked before any admission, resume or dispatch.
 func (s *Service) SubmitMarket(ctx context.Context, input wire.SubmitPayload) (wire.SubmissionReceipt, error) {
+	return s.submitMarket(ctx, input, false)
+}
+func (s *Service) submitMarket(ctx context.Context, input wire.SubmitPayload, expertFamily bool) (wire.SubmissionReceipt, error) {
 	if input.Validate() != nil {
 		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeInvalidRequest)
 	}
 	grant, err := s.marketGrant(string(input.GrantRef), string(input.TurnOperationId))
 	if err != nil {
 		return wire.SubmissionReceipt{}, err
+	}
+	if (grant.expertSnapshot != nil) != expertFamily {
+		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeAuthorityMismatch)
 	}
 	ctx, cancel := context.WithTimeout(ctx, marketSubmissionBudget)
 	defer cancel()
@@ -139,6 +145,15 @@ func (s *Service) SubmitMarket(ctx context.Context, input wire.SubmitPayload) (w
 		record.Purpose, record.MarketScopeHash, record.MarketLocalSessionID = purposeMarket, grant.scopeHash, string(submission.LocalSessionId)
 		thread = &record.CodexThreadID
 	}
+	if err = s.store.checkExpertSubmission(record, grant.expertSnapshot, thread == nil); err != nil {
+		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeRequestConflict)
+	}
+	if grant.expertSnapshot != nil {
+		ctx, err = s.contextForExpert(ctx, grant.expertSnapshot.Expert)
+		if err != nil {
+			return wire.SubmissionReceipt{}, err
+		}
+	}
 	prepared, err := runtime.PrepareMarket(ctx, grant.scope, submission, record.AgentSessionID, thread)
 	if err != nil {
 		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeExecutionUnavailable)
@@ -162,7 +177,10 @@ func (s *Service) SubmitMarket(ctx context.Context, input wire.SubmitPayload) (w
 	sessionID := wire.CanonicalId(record.AgentSessionID)
 	generation := process.RuntimeGeneration
 	receipt := wire.SubmissionReceipt{HostInstanceId: process.HostInstanceId, RuntimeGeneration: &generation, TaskId: submission.TaskId, LocalSessionId: submission.LocalSessionId, SubmissionOperationId: submission.SubmissionOperationId, TurnOperationId: submission.Snapshot.TurnOperationId, SelectionDigest: submission.Snapshot.SelectionDigest, State: wire.SubmissionStatePending, AgentSessionId: &sessionID, ProfileId: submission.Intent.ProfileId, ModelRevision: record.ModelRevision}
-	operation := marketOperation{Version: 1, ScopeHash: grant.scopeHash, IntentDigest: grant.digest, Receipt: receipt}
+	operation := marketOperation{Version: 1, ScopeHash: grant.scopeHash, IntentDigest: grant.digest, Receipt: receipt, ExpertSnapshot: cloneExpertSnapshot(grant.expertSnapshot)}
+	if grant.expertSnapshot != nil {
+		operation.Version = 2
+	}
 	if err = s.store.beginMarketOperation(record, operation, adopt, submission.Intent.ExpectedRevision); err != nil {
 		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeRequestConflict)
 	}

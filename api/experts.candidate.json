@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "contract_version": "0.1.0",
+  "feature": "FEAT-158",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "base_commit": "35e0949c95d7a59ca5480715c225766dcc822056",
+  "sources": [
+    {
+      "path": "compatibility/experts/wire.schema.json",
+      "sha256": "e6003536e353d0bb289fb485d305f20f82c0eda1e273523ebc009105d4c0def8"
+    },
+    {
+      "path": "compatibility/experts/native-ipc.json",
+      "sha256": "e7922b6304ddbabca8c4055e4d05d07868b3642a18c5368850388c5a66f6dae1"
+    },
+    {
+      "path": "compatibility/experts/transport.json",
+      "sha256": "659eeb00f68f7bcea0293c7d919f66bf31a6747ac46135699578cd8f6109c7cb"
+    },
+    {
+      "path": "openapi/market-connectors/market-connectors.yaml",
+      "sha256": "d91f5a3ccbc1bf3ac1791b54fa6bbee3b7474372f19ca84fb1d4556b73f0eb0a"
+    },
+    {
+      "path": "jsonschema/skills/skill-bundle-manifest-v3.schema.json",
+      "sha256": "4d1af5f41d66fe38faa18eb9c0630fa06845b3871f65f1619785ae06d3011b65"
+    },
+    {
+      "path": "jsonschema/skills/skill-bundle-manifest-v2.schema.json",
+      "sha256": "39a898111ba3dcae2f369fdcb571a2e892830d1d0a57c90ab6210a0ab897a649"
+    },
+    {
+      "path": "compatibility/market-broker-control/wire.schema.json",
+      "sha256": "f6aa66d748a925a3c34be53237d2f539ad5fd1c493a920748c34f1de7a341fdf"
+    },
+    {
+      "path": "compatibility/market-selection/wire.schema.json",
+      "sha256": "5b08f6c0e1d3622cb4abbc1f3dcd5a077ad2a2ecbd03914db149d394d5a8b5ce"
+    },
+    {
+      "path": "openapi/runtime-permissions-v2/runtime-permissions-v2.yaml",
+      "sha256": "2ab3f2b9db2f6f8cb9485c3fb0028dd7e66dd1859e22e6a5c06edb55d02bda74"
+    },
+    {
+      "path": "compatibility/market-host/wire.schema.json",
+      "sha256": "5e533a9a9d42c2d8906fb930678732f472d8c527bc26acc416be97f8943cc3a8"
+    },
+    {
+      "path": "jsonschema/chat/model-selection-v1.schema.json",
+      "sha256": "15586a03e7873bc7c913ea89162cc60d8354effb8c475045920ce609f949169b"
+    },
+    {
+      "path": "openapi/agent-host/agent-host.yaml",
+      "sha256": "8716d11ebae140d7c2cec72f6528bbd39ac5976c898c28e0044bec71fb004083"
+    },
+    {
+      "path": "compatibility/market-provider/wire.schema.json",
+      "sha256": "0d7d4d852133aa2c75a298a0ee12c857d68a75a34aa28797a32757ea97a10819"
+    },
+    {
+      "path": "jsonschema/chat/message.schema.json",
+      "sha256": "3f277898f8204e02a400053cd56bec3b0eeb37ed2c50db3a6347e7fec61ddf34"
+    },
+    {
+      "path": "scripts/experts-source.mjs",
+      "sha256": "1a81abc7329e79c4acbe8fc05a65837efbeb4fea2926bca4f1d15fbbd59706bd"
+    },
+    {
+      "path": "scripts/generate-experts.mjs",
+      "sha256": "654633135aef4a527ee8fc5a8d1e8b5ccf235037100024af0d59c261d042b217"
+    },
+    {
+      "path": "scripts/market-broker-codegen.mjs",
+      "sha256": "d4218c6515c669f4a80a4f48f857bdd20d0509345fdb184df1da355c97856221"
+    },
+    {
+      "path": "scripts/sync-experts.mjs",
+      "sha256": "70eaec4d67ca7deb03228066f5db481489e738267a4212875f913d0413a00ff0"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "57eece158a0405a85ea9b8fd2c382af130e4248897b67af587878737bbf86313"
+    }
+  ],
+  "generated": [
+    {
+      "path": "sdks/rust/experts/types.gen.rs",
+      "sha256": "8246e64dbebbf4a7564ae5e8776152bedf5f8b600e3a655976e78c87576b9df5"
+    },
+    {
+      "path": "sdks/go/experts/types.gen.go",
+      "sha256": "c7f0903c92d309c81d314defd73e91572788b8108dfc1d97de56ee1118e84884"
+    },
+    {
+      "path": "sdks/jsonschema/experts.schema.json",
+      "sha256": "f632e6bd98e05282885393a5f3ae3998d8b1fa40ffc92070d8f4372b95d9065e"
+    },
+    {
+      "path": "sdks/go/experts/bundle_schemas.gen.go",
+      "sha256": "cd219c0cb851702147850dfb7a1f276c37ed785688d601fb3ed328a9311c258c"
+    },
+    {
+      "path": "sdks/typescript/src/domain/experts.generated.ts",
+      "sha256": "38bcd9fd3477c0274b6e464ad46be2c731963838e8a2c4d92b52c0de2447bb5a"
+    },
+    {
+      "path": "sdks/typescript/src/api/generated/experts-validator.gen.js",
+      "sha256": "3620d399f83bbb0e39738da63f126940f84c099dd796aaa6cbca24886d491fb4"
+    },
+    {
+      "path": "sdks/typescript/src/api/generated/experts-validator.gen.d.ts",
+      "sha256": "a576483d56c62b61edcc4c05b3685c01e170b80079da68de53ceb0c5fe6c1f69"
+    },
+    {
+      "path": "sdks/jsonschema/experts-native.schema.json",
+      "sha256": "cb8337e865fdcd7b4d7ccf5569e696107ec7c908b98dd7282653610686ad8f6b"
+    },
+    {
+      "path": "fixtures/experts/digest-vectors.json",
+      "sha256": "3f2c0df58f7c95d1a15158baac1ce0af0066e10162263b153d9dc182dbda3e3a"
+    },
+    {
+      "path": "fixtures/experts/knowledge-digest-vectors.json",
+      "sha256": "eeb1da21976fb472be85e95dce71e62d5a07f55ac078b2e19601025a468e284c"
+    },
+    {
+      "path": "sdks/javascript/experts/canonical.gen.mjs",
+      "sha256": "a7ee6c00cd33741143e6733a934c8d596e9bb6a620911dd70894abccb84be0d8"
+    }
+  ],
+  "consumer": "agent-host",
+  "consumer_generated": [
+    {
+      "source": "sdks/go/experts/types.gen.go",
+      "path": "internal/contracts/experts/types.gen.go",
+      "sha256": "b292618ce07864912b0a361f3c17f1c114d8d1192a4a9d213f993b1bdc2416af"
+    },
+    {
+      "source": "sdks/go/experts/bundle_schemas.gen.go",
+      "path": "internal/contracts/experts/bundle_schemas.gen.go",
+      "sha256": "cd219c0cb851702147850dfb7a1f276c37ed785688d601fb3ed328a9311c258c"
+    },
+    {
+      "source": "sdks/jsonschema/experts.schema.json",
+      "path": "api/experts.schema.json",
+      "sha256": "f632e6bd98e05282885393a5f3ae3998d8b1fa40ffc92070d8f4372b95d9065e"
+    },
+    {
+      "source": "jsonschema/skills/skill-bundle-manifest-v3.schema.json",
+      "path": "api/jsonschema/skill-bundle-manifest-v3.schema.json",
+      "sha256": "4d1af5f41d66fe38faa18eb9c0630fa06845b3871f65f1619785ae06d3011b65"
+    },
+    {
+      "source": "jsonschema/skills/skill-bundle-manifest-v2.schema.json",
+      "path": "api/jsonschema/skill-bundle-manifest-v2.schema.json",
+      "sha256": "39a898111ba3dcae2f369fdcb571a2e892830d1d0a57c90ab6210a0ab897a649"
+    },
+    {
+      "source": "compatibility/experts/transport.json",
+      "path": "api/experts.transport.json",
+      "sha256": "659eeb00f68f7bcea0293c7d919f66bf31a6747ac46135699578cd8f6109c7cb"
+    }
+  ]
+}

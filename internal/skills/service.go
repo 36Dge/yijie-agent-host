@@ -38,6 +38,7 @@ type Service struct {
 	mu                           sync.Mutex
 	opMu                         sync.Mutex
 	bundleRoot                   string
+	expertCatalogDigest          string
 	managedRoot                  string
 	bundle                       *os.Root
 	managed                      *os.Root
@@ -101,6 +102,9 @@ func NewService(config Config) (*Service, error) {
 		return nil, errorWithCode(CodeScanFailed, err)
 	}
 	initialCatalog, err := loadCatalog(bundleRoot)
+	if err == nil {
+		err = validateExpertCatalogAuthority(initialCatalog, config.ExpertCatalogDigest)
+	}
 	if err != nil {
 		bundle.Close()
 		managed.Close()
@@ -117,20 +121,21 @@ func NewService(config Config) (*Service, error) {
 		now = time.Now
 	}
 	service := &Service{
-		bundleRoot:       bundleRoot,
-		managedRoot:      managedRoot,
-		bundle:           bundle,
-		managed:          managed,
-		state:            state,
-		runtime:          config.Runtime,
-		now:              now,
-		changed:          make(chan struct{}, 1),
-		mutation:         make(chan struct{}, 1),
-		operations:       make(map[string]*operationRecord),
-		operationDeletes: make(map[string]struct{}),
-		operationCatalog: initialCatalog,
-		syncManaged:      syncRoot,
-		syncSkill:        syncRoot,
+		bundleRoot:          bundleRoot,
+		expertCatalogDigest: config.ExpertCatalogDigest,
+		managedRoot:         managedRoot,
+		bundle:              bundle,
+		managed:             managed,
+		state:               state,
+		runtime:             config.Runtime,
+		now:                 now,
+		changed:             make(chan struct{}, 1),
+		mutation:            make(chan struct{}, 1),
+		operations:          make(map[string]*operationRecord),
+		operationDeletes:    make(map[string]struct{}),
+		operationCatalog:    initialCatalog,
+		syncManaged:         syncRoot,
+		syncSkill:           syncRoot,
 	}
 	if err := service.loadOperations(); err != nil {
 		service.Close()
@@ -255,7 +260,7 @@ func (s *Service) installLocked(ctx context.Context, input InstallInput, record 
 	if err := s.recoverTransactionsLocked(); err != nil {
 		return State{}, err
 	}
-	catalog, err := loadCatalog(s.bundleRoot)
+	catalog, err := s.loadCurrentCatalog()
 	if err != nil {
 		return State{}, err
 	}
@@ -276,6 +281,13 @@ func (s *Service) installLocked(ctx context.Context, input InstallInput, record 
 	}
 
 	previous := inspectInstallation(s.managed, skill)
+	if isExpertResource(skill) && !expertResourceMutationAllowed(ctx, skill.ID, "prepare") && previous.exists &&
+		(!previous.valid || previous.receipt.Version != skill.Version || previous.receipt.ArchiveSHA256 != skill.Archive.SHA256) {
+		// Expert references will be owned by the versioned session adapter. Until
+		// that adapter proves references released, ordinary Skill HTTP mutations
+		// cannot replace bytes that a frozen expert submission may still need.
+		return State{}, errorWithCode(CodeBusy, errors.New("expert resource replacement requires released references"))
+	}
 	if previous.valid && previous.receipt.Version == skill.Version && previous.receipt.ArchiveSHA256 == skill.Archive.SHA256 {
 		snapshot, err := s.reconcileCatalogLocked(ctx, catalog)
 		if err != nil {
@@ -359,7 +371,7 @@ func (s *Service) installLocked(ctx context.Context, input InstallInput, record 
 	if syncErr != nil {
 		rollbackErr := s.rollbackInstallLocked(skill.ID, failedName, backupName, hadPrevious)
 		if rollbackErr == nil {
-			rollbackErr = s.reconcileRollbackLocked(catalog)
+			rollbackErr = s.reconcileRollbackLocked(catalog, expertResourceRollbackTimeout(ctx))
 		}
 		if rollbackErr != nil {
 			return State{}, errorWithCode(CodeInstallFailed, errors.New("installation rollback failed"))
@@ -370,7 +382,7 @@ func (s *Service) installLocked(ctx context.Context, input InstallInput, record 
 	if err := s.commitStateOperation(record, state); err != nil {
 		rollbackErr := s.rollbackInstallLocked(skill.ID, failedName, backupName, hadPrevious)
 		if rollbackErr == nil {
-			rollbackErr = s.reconcileRollbackLocked(catalog)
+			rollbackErr = s.reconcileRollbackLocked(catalog, expertResourceRollbackTimeout(ctx))
 		}
 		if rollbackErr != nil {
 			return State{}, errorWithCode(CodeInstallFailed, errors.New("installation rollback failed"))
@@ -425,13 +437,16 @@ func (s *Service) setEnabledLocked(ctx context.Context, input EnabledInput, reco
 	if err := s.recoverTransactionsLocked(); err != nil {
 		return State{}, err
 	}
-	catalog, err := loadCatalog(s.bundleRoot)
+	catalog, err := s.loadCurrentCatalog()
 	if err != nil {
 		return State{}, err
 	}
 	skill, err := manifestSkill(catalog, input.SkillID)
 	if err != nil {
 		return State{}, err
+	}
+	if isExpertResource(skill) && !input.Enabled {
+		return State{}, errorWithCode(CodeBusy, errors.New("expert resource disable requires released references"))
 	}
 	if _, err := s.reconcileCatalogLocked(ctx, catalog); err != nil {
 		return State{}, err
@@ -514,13 +529,16 @@ func (s *Service) uninstallLocked(ctx context.Context, input UninstallInput, rec
 	if err := s.recoverTransactionsLocked(); err != nil {
 		return State{}, err
 	}
-	catalog, err := loadCatalog(s.bundleRoot)
+	catalog, err := s.loadCurrentCatalog()
 	if err != nil {
 		return State{}, err
 	}
 	skill, err := manifestSkill(catalog, input.SkillID)
 	if err != nil {
 		return State{}, err
+	}
+	if isExpertResource(skill) && !expertResourceMutationAllowed(ctx, skill.ID, "remove") {
+		return State{}, errorWithCode(CodeBusy, errors.New("expert resource removal requires released references"))
 	}
 	if _, err := s.reconcileCatalogLocked(ctx, catalog); err != nil {
 		return State{}, err
@@ -544,23 +562,23 @@ func (s *Service) uninstallLocked(ctx context.Context, input UninstallInput, rec
 	// A valid Skill is disabled and confirmed absent from the model-visible
 	// projection before its directory is moved. Unsafe/corrupt paths are never
 	// sent to Runtime and are removed from the root before the forced reload.
-	if installed.valid {
+	if installed.valid && !isExpertResource(skill) {
 		if _, ok := safeEntrypointPath(s.managedRoot, s.managed, skill); ok {
 			entrypoint := filepath.Join(s.managedRoot, skill.ID, skill.Entrypoint)
 			_, installations := inspectCatalog(s.managed, catalog)
 			roots, rootsErr := s.runtimeRootsLocked(catalog, installations)
 			if rootsErr != nil {
-				return State{}, s.rollbackUninstallLocked(catalog, record, "", skill.ID, false, rootsErr)
+				return State{}, s.rollbackUninstallLocked(ctx, catalog, record, "", skill.ID, false, rootsErr)
 			}
 			if err := s.setRuntimeRootsLocked(ctx, roots); err != nil {
-				return State{}, s.rollbackUninstallLocked(catalog, record, "", skill.ID, false, err)
+				return State{}, s.rollbackUninstallLocked(ctx, catalog, record, "", skill.ID, false, err)
 			}
 			if _, err := s.runtime.WriteSkillConfig(ctx, entrypoint, false); err != nil {
 				cause := errorWithCode(CodeRuntimeSyncFailed, err)
-				return State{}, s.rollbackUninstallLocked(catalog, record, "", skill.ID, false, cause)
+				return State{}, s.rollbackUninstallLocked(ctx, catalog, record, "", skill.ID, false, cause)
 			}
 			if err := s.confirmRuntimeDisabled(ctx, entrypoint, skill.RuntimeName); err != nil {
-				return State{}, s.rollbackUninstallLocked(catalog, record, "", skill.ID, false, err)
+				return State{}, s.rollbackUninstallLocked(ctx, catalog, record, "", skill.ID, false, err)
 			}
 		}
 	}
@@ -568,22 +586,22 @@ func (s *Service) uninstallLocked(ctx context.Context, input UninstallInput, rec
 	_ = s.managed.RemoveAll(trashName)
 	if err := s.managed.Rename(skill.ID, trashName); err != nil {
 		cause := errorWithCode(CodeUninstallFailed, err)
-		return State{}, s.rollbackUninstallLocked(catalog, record, trashName, skill.ID, false, cause)
+		return State{}, s.rollbackUninstallLocked(ctx, catalog, record, trashName, skill.ID, false, cause)
 	}
 	if err := s.syncManagedRoot(); err != nil {
 		cause := errorWithCode(CodeUninstallFailed, err)
-		return State{}, s.rollbackUninstallLocked(catalog, record, trashName, skill.ID, true, cause)
+		return State{}, s.rollbackUninstallLocked(ctx, catalog, record, trashName, skill.ID, true, cause)
 	}
 	if err := s.updateOperationPhase(record, "filesystem_committed", true, installed.enabled); err != nil {
-		return State{}, s.rollbackUninstallLocked(catalog, record, trashName, skill.ID, true, err)
+		return State{}, s.rollbackUninstallLocked(ctx, catalog, record, trashName, skill.ID, true, err)
 	}
 	snapshot, syncErr := s.reconcileCatalogLocked(ctx, catalog)
 	if syncErr != nil {
-		return State{}, s.rollbackUninstallLocked(catalog, record, trashName, skill.ID, true, syncErr)
+		return State{}, s.rollbackUninstallLocked(ctx, catalog, record, trashName, skill.ID, true, syncErr)
 	}
 	state := stateByID(snapshot, skill.ID)
 	if err := s.commitStateOperation(record, state); err != nil {
-		return State{}, s.rollbackUninstallLocked(catalog, record, trashName, skill.ID, true, err)
+		return State{}, s.rollbackUninstallLocked(ctx, catalog, record, trashName, skill.ID, true, err)
 	}
 	// Runtime confirmation is also the uninstall commit point. Trash cleanup is
 	// retryable garbage collection; reporting failure after the target is gone
@@ -642,7 +660,7 @@ func (s *Service) reconcileLocked(ctx context.Context) (Snapshot, error) {
 	if err := s.recoverTransactionsLocked(); err != nil {
 		return Snapshot{}, err
 	}
-	catalog, err := loadCatalog(s.bundleRoot)
+	catalog, err := s.loadCurrentCatalog()
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -715,6 +733,10 @@ func (s *Service) syncRuntimeLocked(
 	expectedPathByID := make(map[string]string, len(catalog.manifest.Skills))
 	for _, skill := range catalog.manifest.Skills {
 		installed := installations[skill.ID]
+		if isExpertResource(skill) {
+			desired[skill.ID] = false
+			continue
+		}
 		enabled := installed.valid && installed.enabled && installableSkill(skill)
 		desired[skill.ID] = enabled
 		entrypoint := filepath.Join(s.managedRoot, skill.ID, skill.Entrypoint)
@@ -777,7 +799,7 @@ func (s *Service) syncRuntimeLocked(
 func (s *Service) runtimeRootsLocked(catalog catalog, installations map[string]installation) ([]string, error) {
 	roots := make([]string, 0, len(catalog.manifest.Skills))
 	for _, skill := range catalog.manifest.Skills {
-		if !installations[skill.ID].valid {
+		if isExpertResource(skill) || !installations[skill.ID].valid {
 			continue
 		}
 		entrypoint, safe := safeEntrypointPath(s.managedRoot, s.managed, skill)
@@ -842,6 +864,7 @@ func (s *Service) finishRollbackLocked(record *operationRecord, cause error) err
 }
 
 func (s *Service) rollbackUninstallLocked(
+	ctx context.Context,
 	current catalog,
 	record *operationRecord,
 	trashName string,
@@ -854,14 +877,18 @@ func (s *Service) rollbackUninstallLocked(
 			return errorWithCode(CodeUninstallFailed, errors.Join(errors.New("uninstall rollback failed"), cause, err))
 		}
 	}
-	if err := s.reconcileRollbackLocked(current); err != nil {
+	if err := s.reconcileRollbackLocked(current, expertResourceRollbackTimeout(ctx)); err != nil {
 		return errorWithCode(CodeUninstallFailed, errors.Join(errors.New("uninstall Runtime rollback failed"), cause, err))
 	}
 	return s.finishRollbackLocked(record, cause)
 }
 
-func (s *Service) reconcileRollbackLocked(current catalog) error {
-	rollbackContext, cancel := context.WithTimeout(context.Background(), rollbackRuntimeTimeout)
+func (s *Service) reconcileRollbackLocked(current catalog, budgets ...time.Duration) error {
+	timeout := rollbackRuntimeTimeout
+	if len(budgets) > 0 && budgets[0] > 0 && budgets[0] < timeout {
+		timeout = budgets[0]
+	}
+	rollbackContext, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	_, err := s.reconcileCatalogLocked(rollbackContext, current)
 	return err
@@ -1138,6 +1165,12 @@ func capabilityReadiness(skill ManifestSkill) string {
 }
 
 func installableSkill(skill ManifestSkill) bool {
+	if isExpertResource(skill) {
+		return skill.Expert != nil && skill.Release.CatalogStatus == "installable" &&
+			catalogEntryMode(skill) == "bundled" && skill.Entrypoint == "SKILL.md" && skill.Archive.Path != "" &&
+			skill.Provenance.ReviewStatus == "verified" && skill.License.AuthorizationScope == "local-development" &&
+			skill.License.RedistributionStatus == "unverified"
+	}
 	return skill.Release.CatalogStatus == "installable" && catalogEntryMode(skill) == "bundled" &&
 		skill.Entrypoint == "SKILL.md" && skill.Archive.Path != "" &&
 		skill.Provenance.ReviewStatus == "verified" && skill.License.RedistributionStatus == "verified" &&

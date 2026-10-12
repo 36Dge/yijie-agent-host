@@ -1,0 +1,879 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "bundle_id",
+    "bundle_version",
+    "distribution_channel",
+    "source",
+    "skills"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 3
+    },
+    "bundle_id": {
+      "$ref": "skill-bundle-manifest-v2.schema.json#/properties/bundle_id"
+    },
+    "bundle_version": {
+      "$ref": "skill-bundle-manifest-v2.schema.json#/properties/bundle_version"
+    },
+    "distribution_channel": {
+      "$ref": "skill-bundle-manifest-v2.schema.json#/properties/distribution_channel"
+    },
+    "source": {
+      "$ref": "skill-bundle-manifest-v2.schema.json#/properties/source"
+    },
+    "skills": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry"
+          },
+          {
+            "$ref": "#/$defs/ordinaryEntry"
+          },
+          {
+            "$ref": "#/$defs/expertEntry"
+          }
+        ]
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.yijie.ai/skills/skill-bundle-manifest-v3.schema.json",
+  "title": "SkillBundleManifestV3",
+  "description": "FEAT-158 unreleased v3; V1/V2 unchanged. Ordinary entries retain v2 shape or explicit asset_kind=skill. Expert resources use the same archive mechanism without global Skill projection.",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "distribution_channel": {
+            "const": "desktop-release"
+          }
+        },
+        "required": [
+          "distribution_channel"
+        ]
+      },
+      "then": {
+        "properties": {
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "if": {
+                "properties": {
+                  "release": {
+                    "type": "object",
+                    "properties": {
+                      "catalog_status": {
+                        "const": "installable"
+                      }
+                    },
+                    "required": [
+                      "catalog_status"
+                    ]
+                  }
+                },
+                "required": [
+                  "release"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "license": {
+                    "type": "object",
+                    "properties": {
+                      "authorization_scope": {
+                        "const": "desktop-distribution"
+                      }
+                    },
+                    "required": [
+                      "authorization_scope"
+                    ]
+                  }
+                },
+                "required": [
+                  "license"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "skills": {
+            "type": "array",
+            "contains": {
+              "type": "object",
+              "properties": {
+                "asset_kind": {
+                  "const": "expert_resources"
+                }
+              },
+              "required": [
+                "asset_kind"
+              ]
+            }
+          }
+        },
+        "required": [
+          "skills"
+        ]
+      },
+      "then": {
+        "properties": {
+          "distribution_channel": {
+            "const": "local-development"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "knowledgeResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "path",
+        "sha256",
+        "bytes",
+        "content_version",
+        "content_status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$",
+          "maxLength": 80
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "path": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/relativeReference"
+        },
+        "sha256": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/sha256"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8388608
+        },
+        "content_version": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/semanticVersion"
+        },
+        "content_status": {
+          "type": "string",
+          "enum": [
+            "pending-review",
+            "reviewed-reference",
+            "conflicted",
+            "incomplete"
+          ]
+        }
+      }
+    },
+    "expertMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expert_id",
+        "source_id",
+        "platform",
+        "subtitle",
+        "tags",
+        "quick_prompts",
+        "knowledge_summary",
+        "role_resource",
+        "knowledge_resources",
+        "runtime_projection",
+        "local_use_authorization"
+      ],
+      "properties": {
+        "expert_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$"
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "subtitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          }
+        },
+        "quick_prompts": {
+          "type": "array",
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "knowledge_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "role_resource": {
+          "$ref": "#/$defs/roleResource"
+        },
+        "knowledge_resources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/knowledgeResource"
+          }
+        },
+        "runtime_projection": {
+          "type": "string",
+          "const": "expert_only"
+        },
+        "local_use_authorization": {
+          "$ref": "#/$defs/localUseAuthorization"
+        }
+      },
+      "description": "Expert-only product metadata, not a Codex Plugin manifest or tool grant. All resources are ordinary receipt-covered files in the same archive, not additional SKILL.md entrypoints. reviewed-reference is editorial/source completeness review, never verified current policy."
+    },
+    "ordinaryEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "runtime_name",
+        "category",
+        "order",
+        "display_name",
+        "description",
+        "version",
+        "icon",
+        "risk",
+        "provenance",
+        "license",
+        "capabilities",
+        "release",
+        "asset_kind"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/id"
+        },
+        "runtime_name": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/runtime_name"
+        },
+        "category": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/category"
+        },
+        "order": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/order"
+        },
+        "display_name": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/display_name"
+        },
+        "description": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/description"
+        },
+        "version": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/version"
+        },
+        "catalog_entry_mode": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/catalog_entry_mode"
+        },
+        "entrypoint": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/entrypoint"
+        },
+        "icon": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/icon"
+        },
+        "risk": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/risk"
+        },
+        "provenance": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/provenance"
+        },
+        "license": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/license"
+        },
+        "capabilities": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/capabilities"
+        },
+        "archive": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/archive"
+        },
+        "release": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/release"
+        },
+        "asset_kind": {
+          "type": "string",
+          "const": "skill"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "release": {
+                "type": "object",
+                "properties": {
+                  "catalog_status": {
+                    "const": "installable"
+                  }
+                },
+                "required": [
+                  "catalog_status"
+                ]
+              }
+            },
+            "required": [
+              "release"
+            ]
+          },
+          "then": {
+            "required": [
+              "entrypoint",
+              "archive"
+            ],
+            "properties": {
+              "entrypoint": {
+                "const": "SKILL.md"
+              },
+              "archive": {
+                "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/archive"
+              },
+              "provenance": {
+                "type": "object",
+                "properties": {
+                  "review_status": {
+                    "const": "verified"
+                  }
+                },
+                "required": [
+                  "review_status"
+                ]
+              },
+              "license": {
+                "type": "object",
+                "properties": {
+                  "redistribution_status": {
+                    "const": "verified"
+                  }
+                },
+                "required": [
+                  "redistribution_status"
+                ]
+              },
+              "release": {
+                "type": "object",
+                "properties": {
+                  "blocked_reason": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capabilities": {
+                "type": "object",
+                "properties": {
+                  "execution_mode": {
+                    "const": "model-only"
+                  }
+                },
+                "required": [
+                  "execution_mode"
+                ]
+              }
+            },
+            "required": [
+              "capabilities"
+            ]
+          },
+          "then": {
+            "properties": {
+              "capabilities": {
+                "type": "object",
+                "properties": {
+                  "network": {
+                    "const": "none"
+                  },
+                  "filesystem": {
+                    "const": "none"
+                  },
+                  "required_tools": {
+                    "type": "array",
+                    "maxItems": 0
+                  }
+                },
+                "required": [
+                  "network",
+                  "filesystem",
+                  "required_tools"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "catalog_entry_mode": {
+                "const": "catalog-only"
+              }
+            },
+            "required": [
+              "catalog_entry_mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "entrypoint": false,
+              "archive": false,
+              "release": {
+                "type": "object",
+                "properties": {
+                  "catalog_status": {
+                    "const": "blocked"
+                  },
+                  "blocked_reason": {
+                    "enum": [
+                      "source_unverified",
+                      "license_unverified",
+                      "distribution_not_authorized",
+                      "security_review_pending",
+                      "capability_unavailable",
+                      "maintenance_ended"
+                    ]
+                  }
+                },
+                "required": [
+                  "catalog_status",
+                  "blocked_reason"
+                ]
+              },
+              "license": {
+                "type": "object",
+                "properties": {
+                  "redistribution_status": {
+                    "enum": [
+                      "unverified",
+                      "blocked"
+                    ]
+                  },
+                  "authorization_scope": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "redistribution_status",
+                  "authorization_scope"
+                ]
+              }
+            }
+          },
+          "else": {
+            "required": [
+              "entrypoint",
+              "archive"
+            ],
+            "properties": {
+              "entrypoint": {
+                "const": "SKILL.md"
+              },
+              "archive": {
+                "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/archive"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "expertEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "runtime_name",
+        "category",
+        "order",
+        "display_name",
+        "description",
+        "version",
+        "icon",
+        "risk",
+        "provenance",
+        "license",
+        "capabilities",
+        "release",
+        "entrypoint",
+        "archive",
+        "asset_kind",
+        "expert"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/id"
+        },
+        "runtime_name": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/runtime_name"
+        },
+        "category": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/category"
+        },
+        "order": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/order"
+        },
+        "display_name": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/display_name"
+        },
+        "description": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/description"
+        },
+        "version": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/version"
+        },
+        "catalog_entry_mode": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/catalog_entry_mode"
+        },
+        "entrypoint": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/entrypoint"
+        },
+        "icon": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/icon"
+        },
+        "risk": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/risk"
+        },
+        "provenance": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/provenance"
+        },
+        "license": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/license"
+        },
+        "capabilities": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/capabilities"
+        },
+        "archive": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/archive"
+        },
+        "release": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/skillEntry/properties/release"
+        },
+        "asset_kind": {
+          "type": "string",
+          "const": "expert_resources"
+        },
+        "expert": {
+          "$ref": "#/$defs/expertMetadata"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "release": {
+                "type": "object",
+                "properties": {
+                  "catalog_status": {
+                    "const": "installable"
+                  }
+                },
+                "required": [
+                  "catalog_status"
+                ]
+              }
+            },
+            "required": [
+              "release"
+            ]
+          },
+          "then": {
+            "required": [
+              "entrypoint",
+              "archive"
+            ],
+            "properties": {
+              "entrypoint": {
+                "const": "SKILL.md"
+              },
+              "archive": {
+                "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/archive"
+              },
+              "provenance": {
+                "type": "object",
+                "properties": {
+                  "review_status": {
+                    "const": "verified"
+                  }
+                },
+                "required": [
+                  "review_status"
+                ]
+              },
+              "release": {
+                "type": "object",
+                "properties": {
+                  "blocked_reason": false
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "capabilities": {
+                "type": "object",
+                "properties": {
+                  "execution_mode": {
+                    "const": "model-only"
+                  }
+                },
+                "required": [
+                  "execution_mode"
+                ]
+              }
+            },
+            "required": [
+              "capabilities"
+            ]
+          },
+          "then": {
+            "properties": {
+              "capabilities": {
+                "type": "object",
+                "properties": {
+                  "network": {
+                    "const": "none"
+                  },
+                  "filesystem": {
+                    "const": "none"
+                  },
+                  "required_tools": {
+                    "type": "array",
+                    "maxItems": 0
+                  }
+                },
+                "required": [
+                  "network",
+                  "filesystem",
+                  "required_tools"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "catalog_entry_mode": {
+                "const": "catalog-only"
+              }
+            },
+            "required": [
+              "catalog_entry_mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "entrypoint": false,
+              "archive": false,
+              "release": {
+                "type": "object",
+                "properties": {
+                  "catalog_status": {
+                    "const": "blocked"
+                  },
+                  "blocked_reason": {
+                    "enum": [
+                      "source_unverified",
+                      "license_unverified",
+                      "distribution_not_authorized",
+                      "security_review_pending",
+                      "capability_unavailable",
+                      "maintenance_ended"
+                    ]
+                  }
+                },
+                "required": [
+                  "catalog_status",
+                  "blocked_reason"
+                ]
+              },
+              "license": {
+                "type": "object",
+                "properties": {
+                  "redistribution_status": {
+                    "enum": [
+                      "unverified",
+                      "blocked"
+                    ]
+                  },
+                  "authorization_scope": {
+                    "const": "none"
+                  }
+                },
+                "required": [
+                  "redistribution_status",
+                  "authorization_scope"
+                ]
+              }
+            }
+          },
+          "else": {
+            "required": [
+              "entrypoint",
+              "archive"
+            ],
+            "properties": {
+              "entrypoint": {
+                "const": "SKILL.md"
+              },
+              "archive": {
+                "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/archive"
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "catalog_entry_mode": {
+              "const": "bundled"
+            },
+            "release": {
+              "type": "object",
+              "properties": {
+                "catalog_status": {
+                  "const": "installable"
+                }
+              },
+              "required": [
+                "catalog_status"
+              ]
+            },
+            "capabilities": {
+              "type": "object",
+              "properties": {
+                "execution_mode": {
+                  "const": "tool-assisted"
+                },
+                "filesystem": {
+                  "const": "read"
+                },
+                "network": {
+                  "const": "none"
+                },
+                "required_tools": {
+                  "type": "array",
+                  "maxItems": 0
+                }
+              },
+              "required": [
+                "execution_mode",
+                "filesystem",
+                "network",
+                "required_tools"
+              ]
+            },
+            "license": {
+              "type": "object",
+              "properties": {
+                "authorization_scope": {
+                  "const": "local-development"
+                },
+                "redistribution_status": {
+                  "const": "unverified"
+                }
+              },
+              "required": [
+                "authorization_scope",
+                "redistribution_status"
+              ]
+            }
+          }
+        }
+      ],
+      "description": "Expert resources share managed archive/receipt installation and are excluded from global Skill projection. Empty required_tools means no additional named connector dependency; native file reading is declared filesystem=read and remains permission-controlled. Validate resource hashes, path uniqueness and receipt membership. expert.expert_id is the expert identity; id remains the managed installation identity. This first expert version is local-development only: authorization_scope=local-development and redistribution_status=unverified explicitly withhold redistribution approval. This does not relax any ordinary Skill or desktop-release entry."
+    },
+    "roleResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "bytes"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/relativeReference"
+        },
+        "sha256": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/sha256"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768
+        }
+      }
+    },
+    "localUseAuthorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "evidence_reference"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "local-use-authorized"
+        },
+        "evidence_reference": {
+          "$ref": "skill-bundle-manifest-v2.schema.json#/$defs/relativeReference"
+        }
+      },
+      "description": "Explicit Owner local-use evidence in the reviewed source tree; not redistribution or executable permission. Native/Host require the registered immutable/candidate source pin and content review, not only this string."
+    }
+  }
+}

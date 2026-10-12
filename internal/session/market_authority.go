@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	expert "github.com/36Dge/yijie-agent-host/internal/contracts/experts"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
 	"github.com/36Dge/yijie-agent-host/internal/marketbroker"
 	"github.com/google/uuid"
@@ -36,6 +37,7 @@ func MarketFailureCode(err error) wire.ErrorCode {
 }
 
 type marketGrant struct {
+	expertSnapshot    *expert.TurnExpertSnapshot
 	body              *wire.Submission
 	identity          wire.Submission // ContentBlocks omitted; never used as a new request.
 	scope             wire.ScopeBinding
@@ -141,6 +143,9 @@ func (a *marketAuthority) sweep() {
 }
 
 func (s *Service) RegisterMarketGrant(input wire.GrantRegisterPayload) (wire.GrantRegistration, error) {
+	return s.registerMarketGrant(input, nil)
+}
+func (s *Service) registerMarketGrant(input wire.GrantRegisterPayload, snapshot *expert.TurnExpertSnapshot) (wire.GrantRegistration, error) {
 	if !s.MarketEnabled() {
 		return wire.GrantRegistration{}, marketFail(wire.ErrorCodeNotReady)
 	}
@@ -150,17 +155,27 @@ func (s *Service) RegisterMarketGrant(input wire.GrantRegisterPayload) (wire.Gra
 	if input.Validate() != nil {
 		return wire.GrantRegistration{}, marketFail(wire.ErrorCodeInvalidRequest)
 	}
-	intent, err := s.marketHMAC("yijie.market-grant-registration/v1", input)
+	var registration any = input
+	var submission any = input.Submission
+	if snapshot != nil {
+		registration = expert.PrivateGrantPayload{OperationId: input.OperationId, HostInstanceId: input.HostInstanceId, Scope: input.Scope, Submission: expert.PrivateSubmission{Submission: input.Submission, ExpertSnapshot: *snapshot}}
+		submission = expert.PrivateSubmission{Submission: input.Submission, ExpertSnapshot: *snapshot}
+	}
+	intent, err := s.marketHMAC("yijie.market-grant-registration/v1", registration)
 	if err != nil {
 		return wire.GrantRegistration{}, err
 	}
 	stableOwner := s.marketScopeHash(input.Scope)
-	digest, err := s.marketHMAC("yijie.market-submission/v1", []any{stableOwner, input.Submission})
+	digest, err := s.marketHMAC("yijie.market-submission/v1", []any{stableOwner, submission})
 	if err != nil {
 		return wire.GrantRegistration{}, err
 	}
 	encoded, err := json.Marshal(input.Submission)
-	if err != nil || len(encoded) > wire.MaxControlFrameBytes {
+	accounted, accountErr := json.Marshal(submission)
+	if accountErr != nil {
+		return wire.GrantRegistration{}, marketFail(wire.ErrorCodeInvalidRequest)
+	}
+	if err != nil || len(accounted) > wire.MaxControlFrameBytes {
 		return wire.GrantRegistration{}, marketFail(wire.ErrorCodeInvalidRequest)
 	}
 	a := s.market
@@ -188,7 +203,7 @@ func (s *Service) RegisterMarketGrant(input wire.GrantRegisterPayload) (wire.Gra
 			active++
 		}
 	}
-	if len(a.receipts) >= wire.MaxControlReceipts || active >= wire.MaxPendingGrants || a.bytes+len(encoded) > wire.MaxGrantBytes {
+	if len(a.receipts) >= wire.MaxControlReceipts || active >= wire.MaxPendingGrants || a.bytes+len(accounted) > wire.MaxGrantBytes {
 		return wire.GrantRegistration{}, marketFail(wire.ErrorCodeCapacityExceeded)
 	}
 	remaining := time.Until(time.UnixMilli(int64(input.Scope.AuthorizationExpiresAtUnixMs)))
@@ -206,8 +221,8 @@ func (s *Service) RegisterMarketGrant(input wire.GrantRegisterPayload) (wire.Gra
 	identity.ContentBlocks = nil
 	id := wire.CanonicalId(uuid.NewString())
 	view := wire.GrantRegistration{GrantRef: id, HostInstanceId: a.instance, NativeProcessEpoch: input.Scope.NativeProcessEpoch, TurnOperationId: owned.Snapshot.TurnOperationId, SelectionDigest: owned.Snapshot.SelectionDigest, RemainingTtlMs: remaining.Milliseconds()}
-	a.grants[string(id)] = &marketGrant{body: &owned, identity: identity, scope: input.Scope, digest: digest, scopeHash: stableOwner, deadline: time.Now().Add(remaining), bytes: len(encoded), view: view}
-	a.bytes += len(encoded)
+	a.grants[string(id)] = &marketGrant{expertSnapshot: cloneExpertSnapshot(snapshot), body: &owned, identity: identity, scope: input.Scope, digest: digest, scopeHash: stableOwner, deadline: time.Now().Add(remaining), bytes: len(accounted), view: view}
+	a.bytes += len(accounted)
 	a.receipts[string(input.OperationId)] = marketControlReceipt{digest: intent, grant: string(id)}
 	return view, nil
 }
