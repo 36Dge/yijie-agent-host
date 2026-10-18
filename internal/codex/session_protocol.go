@@ -576,6 +576,7 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		return ThreadInfo{}, err
 	}
 	params.Config = expertThreadConfig(ctx, params.Config)
+	params.Config = m.artifactThreadConfig(params.Config)
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadStart, params, &response); err != nil {
 		return ThreadInfo{}, err
@@ -651,6 +652,7 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 		return ThreadInfo{}, err
 	}
 	params.Config = expertThreadConfig(ctx, params.Config)
+	params.Config = m.artifactThreadConfig(params.Config)
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadResume, params, &response); err != nil {
 		return ThreadInfo{}, err

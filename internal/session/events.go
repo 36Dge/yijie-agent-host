@@ -182,7 +182,7 @@ func NewEventHub(capacity, subscriberCapacity int) *EventHub {
 func NewEventHubVersion(schemaVersion, capacity, subscriberCapacity int) *EventHub {
 	if schemaVersion != EventSchemaVersionV2 && schemaVersion != EventSchemaVersionV3 &&
 		schemaVersion != EventSchemaVersionV4 && schemaVersion != EventSchemaVersionV5 &&
-		schemaVersion != EventSchemaVersionV6 && schemaVersion != 7 && schemaVersion != 8 {
+		schemaVersion != EventSchemaVersionV6 && schemaVersion != 7 && schemaVersion != 8 && schemaVersion != 9 {
 		schemaVersion = EventSchemaVersion
 	}
 	if capacity < 1 {

@@ -51,6 +51,7 @@ type Config struct {
 	CleanupV2Enabled               bool
 	MultimodalV2Enabled            bool
 	ArtifactV3Enabled              bool
+	ArtifactMediaEnabled           bool
 	ArtifactSynthetic              bool
 	ArtifactManifest               string
 	ImageGenerationEnabled         bool
@@ -351,6 +352,7 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		CleanupV2Enabled:               cleanupV2,
 		MultimodalV2Enabled:            multimodalV2,
 		ArtifactV3Enabled:              artifactV3,
+		ArtifactMediaEnabled:           artifactV3 && os.Getenv("YIJIE_ARTIFACT_MEDIA_ENABLED") == "true" && os.Getenv("YIJIE_ENV") == "local" && os.Getenv("YIJIE_LOCAL_PROFILE") == "demo_fast",
 		ArtifactSynthetic:              syntheticArtifact,
 		ArtifactManifest:               artifactManifest,
 		ImageGenerationEnabled:         imageGeneration,
@@ -864,6 +866,10 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 		}
 		if config.MultimodalV2Enabled {
 			mux.Handle("POST /v2/agent-sessions/{agent_session_id}/turns", handler.authorize(http.HandlerFunc(handler.startTurnV2)))
+		}
+		if config.ArtifactMediaEnabled {
+			mux.Handle("GET /v9/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.mediaEvents)))
+			mux.Handle("POST /internal/artifact-media/v1/publish", handler.authorize(http.HandlerFunc(handler.publishArtifact)))
 		}
 		if config.ArtifactV3Enabled {
 			if _, ok := sessions.(artifactSessionService); ok {

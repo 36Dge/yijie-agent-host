@@ -150,6 +150,9 @@ func run(logger *slog.Logger) error {
 				session.NewEventHubVersion(session.EventSchemaVersionV3, 512, 64), artifactStore, config.ArtifactSynthetic,
 			))
 		}
+		if config.ArtifactMediaEnabled {
+			serviceOptions = append(serviceOptions, session.WithArtifactMedia())
+		}
 		if config.ImageGenerationEnabled {
 			imageClient, imageErr := imagegen.NewMiniMaxClient(config.Runtime.MiniMax.APIKey)
 			if imageErr != nil {
@@ -197,6 +200,21 @@ func run(logger *slog.Logger) error {
 			}
 		}); err != nil {
 			return err
+		}
+	}
+
+	if config.ArtifactMediaEnabled {
+		executable, e := os.Executable()
+		if e != nil {
+			return e
+		}
+		adapter, e := artifact.StartAdapter(filepath.Join(filepath.Dir(executable), "yijie-artifact-mcp"), "http://127.0.0.1:"+config.Port, apiToken)
+		if e != nil {
+			return e
+		}
+		defer func() { _ = adapter.Stop(context.Background()) }()
+		if e = runtime.SetArtifactMCP(adapter.URL, adapter.Token); e != nil {
+			return e
 		}
 	}
 	server := &http.Server{

@@ -133,10 +133,16 @@ func (s *Service) publishV3(record Record, event Event) error {
 		if s.eventsV4 == nil {
 			return ErrSessionNotUsable
 		}
+		if err := s.publishMedia(record, event); err != nil {
+			return err
+		}
 		return s.publishV4(record, event)
 	}
 	decorateEvent(record, &event)
 	if _, err := s.eventsV3.Publish(event); err != nil {
+		return err
+	}
+	if err := s.publishMedia(record, event); err != nil {
 		return err
 	}
 	return s.publishV4(record, event)

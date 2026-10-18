@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "mode": "local_candidate",
+  "release": false,
+  "base_commit": "9743173474cb68f665044d3ac5765a0f18f16397",
+  "sources": [
+    {
+      "path": "jsonschema/artifact/media-v1.schema.json",
+      "sha256": "7106841e9a32272a12127fbcd43e14985b56fdcc87f1bd1ff15ffd6a5f9b666d"
+    },
+    {
+      "path": "jsonschema/agent/session-event-v3.schema.json",
+      "sha256": "87b1284056529bde8314e6cfa6ad1fb27ffefef50ea86033875fda795330939f"
+    },
+    {
+      "path": "scripts/generate-artifact-media.mjs",
+      "sha256": "9d6cffbc617e64e1e80be210ac64637b43951dd05724bcad8a16a9c30756ca6e"
+    }
+  ],
+  "generated": [
+    {
+      "path": "sdks/typescript/src/jsonschema/artifact-media-policy.gen.ts",
+      "sha256": "cfc02d48f91b28d65a65f515c27892c7a8d77b1376a248e1168f5eb21358bfca"
+    },
+    {
+      "path": "sdks/jsonschema/artifact-media-events-v9.schema.json",
+      "sha256": "c2c834a5bf2410c4ef6e8725a568432a76c661b2162b31ae32633e337ce32747"
+    },
+    {
+      "path": "sdks/go/artifactmedia/types.gen.go",
+      "sha256": "0937e4693723f59efa6bc09c92687924a79a20f9095da73ce4b55819282f0f05"
+    },
+    {
+      "path": "sdks/rust/artifactmedia/types.gen.rs",
+      "sha256": "895edbfc25794728222d98a033e2ba72102c609e714d4c3ed19caa14422e5c66"
+    },
+    {
+      "path": "sdks/typescript/src/jsonschema/artifact-media.gen.ts",
+      "sha256": "590dd13c12f07691c2eb1b0bf6dc6f80498313112029b04a2a02870f4ff52f07"
+    }
+  ]
+}

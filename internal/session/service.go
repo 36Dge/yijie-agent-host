@@ -158,6 +158,10 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 		s.artifacts.DeleteSession(sessionID)
 	}
 	s.clearImageSession(sessionID)
+	if s.media != nil {
+		s.media.events.DeleteSession(sessionID)
+		s.clearMediaRegistrations(sessionID + "/")
+	}
 	s.abortSyntheticTerminalBarrier(sessionID)
 
 	s.clearV5Session(sessionID)
@@ -200,6 +204,7 @@ type syntheticTerminalBarrier struct {
 }
 
 type Service struct {
+	media                *mediaAuthority
 	expertResources      ExpertResources
 	market               *marketAuthority
 	modelOperationMu     sync.Mutex
@@ -1219,7 +1224,7 @@ func (s *Service) finishSyntheticTurn(sessionID, turnID string) error {
 }
 
 func (s *Service) completeTerminal(record Record, terminal syntheticTerminal) error {
-	if s.syntheticArtifacts {
+	if s.syntheticArtifacts || s.media != nil {
 		s.terminalMu.Lock()
 		defer s.terminalMu.Unlock()
 		current, err := s.store.Get(record.AgentSessionID)
@@ -1238,6 +1243,7 @@ func (s *Service) completeTerminal(record Record, terminal syntheticTerminal) er
 	if err != nil {
 		return err
 	}
+	defer s.clearMediaRegistrations(record.AgentSessionID + "/" + terminal.turnID + "/")
 	if len(terminal.nativeParams) > 0 {
 		s.publishNativeNotification(RuntimeNotificationTurnCompleted, terminal.nativeParams)
 	}
@@ -1341,6 +1347,9 @@ func (s *Service) publish(record Record, event Event) error {
 			return err
 		}
 	}
+	if err := s.publishMedia(record, event); err != nil {
+		return err
+	}
 	return s.publishV4(record, event)
 }
 
@@ -1358,6 +1367,9 @@ func (s *Service) publishV2(record Record, event Event) error {
 		if _, err := s.eventsV3.Publish(event); err != nil {
 			return err
 		}
+	}
+	if err := s.publishMedia(record, event); err != nil {
+		return err
 	}
 	return s.publishV4(record, event)
 }

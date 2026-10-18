@@ -134,10 +134,24 @@ func (s *Service) ReadExpertSubmission(input expert.SubmissionReadPayload) (expe
 	if e := s.ValidateMarketScope(input.HostInstanceId, input.Scope, false); e != nil {
 		return expert.PrivateReceipt{}, e
 	}
+	if !s.modelOperationMu.TryLock() {
+		return expert.PrivateReceipt{}, expertFail(expert.ErrorCodeBusy)
+	}
+	defer s.modelOperationMu.Unlock()
 	owner := s.marketScopeHash(input.Scope)
 	op, e := s.store.readMarketOperation(string(input.TurnOperationId))
 	if e != nil {
-		return expert.PrivateReceipt{}, expertFail(expert.ErrorCodeNotFound)
+		// A missing receipt is distinct from an unreadable store. Retain the
+		// original task/session/scope binding before reporting actual absence.
+		if errors.Is(e, ErrNotFound) {
+			record, readErr := s.store.GetByTask(string(input.TaskId))
+			if readErr == nil && record.Purpose == purposeMarket && record.MarketScopeHash == owner && record.MarketLocalSessionID == string(input.LocalSessionId) && record.CodexThreadID != "" && record.CleanupOperationID == "" && record.State != StateCleaning {
+				if _, turnErr := s.store.TurnOperation(record.AgentSessionID, string(input.TurnOperationId)); errors.Is(turnErr, ErrNotFound) {
+					return expert.PrivateReceipt{}, expertFail(expert.ErrorCodeNotFound)
+				}
+			}
+		}
+		return expert.PrivateReceipt{}, expertFail(expert.ErrorCodeOutcomeUnknown)
 	}
 	if op.ExpertSnapshot == nil || op.ScopeHash != owner || op.Receipt.TaskId != input.TaskId || op.Receipt.LocalSessionId != input.LocalSessionId || op.Receipt.TurnOperationId != input.TurnOperationId {
 		return expert.PrivateReceipt{}, expertFail(expert.ErrorCodeContextInvalid)

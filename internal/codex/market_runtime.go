@@ -138,7 +138,7 @@ func (m *Manager) marketRuntimeEnvironment(current []string) ([]string, error) {
 }
 
 func marketExcludedEnvironment() []any {
-	return []any{SorftimeSecretEnv, SorftimeEnabledEnv, MiniMaxRuntimeEnvKey, KimiRuntimeEnvKey, "MOONSHOT_API_KEY", "YIJIE_KIMI_API_KEY", "YIJIE_KIMI_API_KEY_FILE", marketbroker.RuntimeCapabilityEnvironment}
+	return []any{ArtifactMCPTokenEnv, SorftimeSecretEnv, SorftimeEnabledEnv, MiniMaxRuntimeEnvKey, KimiRuntimeEnvKey, "MOONSHOT_API_KEY", "YIJIE_KIMI_API_KEY", "YIJIE_KIMI_API_KEY_FILE", marketbroker.RuntimeCapabilityEnvironment}
 }
 
 // This additional command-line layer leaves all existing provider/model source
@@ -156,7 +156,7 @@ memories = false
 tool_call_mcp_elicitation = true
 [shell_environment_policy]
 inherit = "core"
-exclude = ["YIJIE_FEAT144_SORFTIME_ACCOUNT_SK", "YIJIE_FEAT144_SORFTIME_ENABLED", "MINIMAX_API_KEY", "KIMI_API_KEY", "MOONSHOT_API_KEY", "YIJIE_KIMI_API_KEY", "YIJIE_KIMI_API_KEY_FILE", "YIJIE_MARKET_RUNTIME_CAPABILITY"]
+exclude = ["YIJIE_ARTIFACT_MCP_TOKEN", "YIJIE_FEAT144_SORFTIME_ACCOUNT_SK", "YIJIE_FEAT144_SORFTIME_ENABLED", "MINIMAX_API_KEY", "KIMI_API_KEY", "MOONSHOT_API_KEY", "YIJIE_KIMI_API_KEY", "YIJIE_KIMI_API_KEY_FILE", "YIJIE_MARKET_RUNTIME_CAPABILITY"]
 set = {}
 `))
 }

@@ -16,7 +16,7 @@
     },
     {
       "path": "compatibility/experts/transport.json",
-      "sha256": "659eeb00f68f7bcea0293c7d919f66bf31a6747ac46135699578cd8f6109c7cb"
+      "sha256": "831b574f6be5a164ff12e862c26d22c74a89df923672752b47dc1a9def7c5f36"
     },
     {
       "path": "openapi/market-connectors/market-connectors.yaml",
@@ -159,7 +159,7 @@
     {
       "source": "compatibility/experts/transport.json",
       "path": "api/experts.transport.json",
-      "sha256": "659eeb00f68f7bcea0293c7d919f66bf31a6747ac46135699578cd8f6109c7cb"
+      "sha256": "831b574f6be5a164ff12e862c26d22c74a89df923672752b47dc1a9def7c5f36"
     }
   ]
 }

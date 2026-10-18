@@ -189,6 +189,8 @@ type Status struct {
 }
 
 type Manager struct {
+	artifactMCPURL      string
+	artifactMCPToken    string
 	market              marketRuntimeState
 	permissionCallbacks runtimeApprovalCallbacks
 	threadOperation     sync.Mutex // Shared starts, model changes and scheduled operations.
@@ -737,6 +739,9 @@ func (m *Manager) startProcess() (io.WriteCloser, io.ReadCloser, *exec.Cmd, *tai
 	if environmentErr != nil {
 		return nil, nil, nil, nil, environmentErr
 	}
+	if m.artifactMCPToken != "" {
+		cmd.Env = append(cmd.Env, ArtifactMCPTokenEnv+"="+m.artifactMCPToken)
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("open runtime stdin: %w", err)
@@ -1041,6 +1046,7 @@ func runtimeEnvironment(
 	// ambient value must never enter an ordinary or later Runtime generation.
 	current = marketbroker.ScrubRuntimeCapability(current)
 	blocked := map[string]struct{}{
+		ArtifactMCPTokenEnv:    {},
 		"OPENAI_API_KEY":       {},
 		"CODEX_API_KEY":        {},
 		"CODEX_ACCESS_TOKEN":   {},

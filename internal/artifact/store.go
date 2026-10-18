@@ -10,8 +10,10 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -477,6 +479,8 @@ func mediaAllowed(kind, mediaType string, content []byte) bool {
 	switch kind {
 	case "image":
 		switch mediaType {
+		case "image/svg+xml":
+			return validSVG(content)
 		case "image/png":
 			return bytes.HasPrefix(content, []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
 		case "image/jpeg":
@@ -488,7 +492,7 @@ func mediaAllowed(kind, mediaType string, content []byte) bool {
 		return mediaType == "video/mp4" && len(content) >= 12 && string(content[4:8]) == "ftyp"
 	case "file":
 		switch mediaType {
-		case "text/plain", "text/csv":
+		case "text/html", "text/plain", "text/csv":
 			return utf8.Valid(content) && !bytes.Contains(content, []byte{0})
 		case "application/json":
 			return json.Valid(content)
@@ -518,4 +522,40 @@ func acknowledgementHash(value Acknowledgement) [32]byte {
 
 func artifactKey(sessionID, artifactID string) string {
 	return sessionID + "/" + artifactID
+}
+
+// XML parser, not regex/sanitizer; image-context WebKit owns SVG rendering.
+func validSVG(content []byte) bool {
+	if !utf8.Valid(content) || bytes.Contains(content, []byte{0}) {
+		return false
+	}
+	d := xml.NewDecoder(bytes.NewReader(content))
+	depth := 0
+	seen := false
+	for {
+		t, e := d.Token()
+		if e == io.EOF {
+			return seen && depth == 0
+		}
+		if e != nil {
+			return false
+		}
+		switch v := t.(type) {
+		case xml.Directive:
+			return false
+		case xml.StartElement:
+			if depth == 0 {
+				if seen || v.Name.Local != "svg" || v.Name.Space != "http://www.w3.org/2000/svg" {
+					return false
+				}
+				seen = true
+			}
+			depth++
+			if depth > 128 {
+				return false
+			}
+		case xml.EndElement:
+			depth--
+		}
+	}
 }

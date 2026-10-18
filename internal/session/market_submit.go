@@ -135,10 +135,22 @@ func (s *Service) submitMarket(ctx context.Context, input wire.SubmitPayload, ex
 		if record.ModelRevision != submission.Intent.ExpectedRevision || s.checkModelRequest(ctx, record) != nil {
 			return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeRevisionConflict)
 		}
-		if record.State != StateIdle || record.ActiveTurnID != "" || record.CleanupOperationID != "" || s.requireNoRuntimeApprovalForThread(record.CodexThreadID) != nil {
+		if record.CleanupOperationID != "" || s.requireNoRuntimeApprovalForThread(record.CodexThreadID) != nil {
 			return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeBusy)
 		}
 		if err = s.store.marketNoPendingTurns(record.AgentSessionID); err != nil {
+			return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeBusy)
+		}
+		if record.State == StateActive && record.ActiveTurnID != "" {
+			if err = s.store.checkExpertSubmission(record, grant.expertSnapshot, false); err != nil {
+				return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeRequestConflict)
+			}
+			record, err = s.reconcileMarketIdle(ctx, record)
+			if err != nil {
+				return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeBusy)
+			}
+		}
+		if record.State != StateIdle || record.ActiveTurnID != "" {
 			return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeBusy)
 		}
 		adopt = record.Purpose == purposeOrdinary

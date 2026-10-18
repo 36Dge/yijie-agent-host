@@ -37,6 +37,35 @@ func projectNativeMcp(wire nativeWireItem, out *native.NativeItem) {
 	} else {
 		diagnostic(native.IdentityUnavailable)
 	}
+	// This local tool has a closed, content-free receipt. Paths and file bytes
+	// remain in the ingestion authority, not the native display projection.
+	if wire.Server == "yijie_artifacts" && wire.Tool == "publish_artifact" {
+		out.ToolLabel = nativeString("登记聊天产物")
+		out.ArgumentsSummary = nativeString("接收本轮工作区生成的文件")
+		if len(wire.Result) > 0 && string(wire.Result) != "null" {
+			var result struct {
+				Content []struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"content"`
+				IsError bool `json:"isError"`
+			}
+			if json.Unmarshal(wire.Result, &result) == nil && !result.IsError && len(result.Content) == 1 {
+				var receipt struct {
+					ArtifactID string `json:"artifact_id"`
+					Status     string `json:"status"`
+				}
+				if json.Unmarshal([]byte(result.Content[0].Text), &receipt) == nil && isCanonicalNonZeroUUID(receipt.ArtifactID) && receipt.Status == "staged" {
+					display.ResultKind = native.Text
+					display.Texts = []native.NativeMcpText{{Index: 0, Text: "产物已登记"}}
+					out.ResultSummary = nativeString("产物已登记")
+					return
+				}
+			}
+			display.ResultKind = native.Omitted
+		}
+		return
+	}
 	out.ToolLabel = nativeString("工具调用")
 	if display.Server != nil && display.Tool != nil {
 		out.ToolLabel = nativeString(wire.Server + " / " + wire.Tool)

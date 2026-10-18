@@ -7,3 +7,5 @@ dist/
 coverage/
 *.log
 .local/
+
+artifact-mcp/target/

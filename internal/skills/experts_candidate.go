@@ -20,7 +20,8 @@ package skills
 // Data analysis and UI 0.1.0 append local EDA and interactive-page delivery.
 // Data analysis 0.1.1 fixes narrow wrapping. Data0.1.2/UI0.1.1 prevent helper import caches.
 // All prior 61 resources remain exact; no installation/history or integrity gates are replaced.
-const ReviewedExpertCatalogDigest = "1c5080790f6d7bd532f63b98514f39060f4a5c66013cee3b8fab0c7f74de8682"
+// FEAT-160 refreshes source/contract provenance only; all 75 resource entries and archives remain exact.
+const ReviewedExpertCatalogDigest = "8965847c8eed66ae70a35a8d215728e6dc003c8f119dcd8814050c0723e6c58c"
 
 func VerifyExpertCandidate(root string) error {
 	current, e := loadCatalog(root)
