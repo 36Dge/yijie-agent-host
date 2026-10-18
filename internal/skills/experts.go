@@ -71,7 +71,7 @@ func (s *Service) ResolveExpert(reference expertwire.ExpertRef) (ResolvedExpert,
 		return ResolvedExpert{}, err
 	}
 	for _, skill := range current.manifest.Skills {
-		if !isExpertResource(skill) || skill.Expert == nil || skill.Expert.ExpertId != string(reference.ExpertId) {
+		if !isExpertResource(skill) || skill.Expert == nil || skill.Expert.ExpertId != string(reference.ExpertId) || skill.Version != string(reference.Version) {
 			continue
 		}
 		return s.resolveExpertLocked(skill, reference)

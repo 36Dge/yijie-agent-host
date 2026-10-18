@@ -15,6 +15,8 @@ type ExpertDescriptor struct {
 	InstallationID  string
 	CatalogRevision string
 	Reference       expert.ExpertRef
+	// Exact reviewed references in different managed installation directories.
+	Coexisting []expert.ExpertRef
 }
 type expertResourcePermitKey struct{}
 type expertResourcePermit struct{ skillID, action string }
@@ -59,7 +61,7 @@ func (s *Service) DescribeExpert(selection expert.ExpertSelection) (ExpertDescri
 		return ExpertDescriptor{}, e
 	}
 	for _, entry := range current.manifest.Skills {
-		if !isExpertResource(entry) || entry.Expert == nil || entry.Expert.ExpertId != string(selection.ExpertId) {
+		if !isExpertResource(entry) || entry.Expert == nil || entry.Expert.ExpertId != string(selection.ExpertId) || entry.Version != string(selection.Version) {
 			continue
 		}
 		if entry.Version != string(selection.Version) {
@@ -73,7 +75,18 @@ func (s *Service) DescribeExpert(selection expert.ExpertSelection) (ExpertDescri
 		if reference.Validate() != nil {
 			return ExpertDescriptor{}, errorWithCode(CodeManifestInvalid, errors.New("expert identity unavailable"))
 		}
-		return ExpertDescriptor{InstallationID: entry.ID, CatalogRevision: current.revision, Reference: reference}, nil
+		coexisting := []expert.ExpertRef{}
+		for _, other := range current.manifest.Skills {
+			if other.ID == entry.ID || other.Expert == nil || other.Expert.ExpertId != entry.Expert.ExpertId {
+				continue
+			}
+			knowledge, err := expert.KnowledgeManifestDigest(other.Expert.KnowledgeResources)
+			if err != nil {
+				return ExpertDescriptor{}, errorWithCode(CodeManifestInvalid, err)
+			}
+			coexisting = append(coexisting, expert.ExpertRef{ExpertId: selection.ExpertId, Version: expert.Version(other.Version), ArchiveSha256: expert.Digest(other.Archive.SHA256), RoleSha256: expert.Digest(other.Expert.RoleResource.Sha256), KnowledgeManifestSha256: expert.Digest(knowledge)})
+		}
+		return ExpertDescriptor{InstallationID: entry.ID, CatalogRevision: current.revision, Reference: reference, Coexisting: coexisting}, nil
 	}
 	return ExpertDescriptor{}, errorWithCode(CodeNotFound, errors.New("expert selection unavailable"))
 }

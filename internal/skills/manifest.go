@@ -184,10 +184,11 @@ func loadCatalog(bundleRoot string) (catalog, error) {
 			if manifest.SchemaVersion != 3 || manifest.DistributionChannel != "local-development" || skill.Expert == nil {
 				return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("expert resources require the versioned local manifest"))
 			}
-			if _, duplicate := expertIDs[string(skill.Expert.ExpertId)]; duplicate {
+			identity := string(skill.Expert.ExpertId) + "@" + skill.Version
+			if _, duplicate := expertIDs[identity]; duplicate {
 				return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("duplicate expert identity"))
 			}
-			expertIDs[string(skill.Expert.ExpertId)] = struct{}{}
+			expertIDs[identity] = struct{}{}
 		}
 		if _, exists := byID[skill.ID]; exists {
 			return catalog{}, errorWithCode(CodeManifestInvalid, errors.New("duplicate Skill id"))

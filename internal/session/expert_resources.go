@@ -234,11 +234,11 @@ func (s *Service) mutateExpertResources(ctx context.Context, input expert.Privat
 	// independent live Host references, while the same operation mutex is held.
 	_, ready := resources.ResolveExpert(descriptor.Reference)
 	if action == "remove" || ready != nil {
-		referenced, e := s.store.expertResourceReferenced(string(input.Expert.ExpertId))
+		referenced, e := s.store.expertResourceReferenced(string(input.Expert.ExpertId), descriptor.Coexisting)
 		if e != nil {
 			return expert.ResourceOperation{}, expertFail(expert.ErrorCodeOperationPending)
 		}
-		if referenced || s.expertGrantReferences(string(input.Expert.ExpertId)) {
+		if referenced || s.expertGrantReferences(string(input.Expert.ExpertId), descriptor.Coexisting) {
 			return expert.ResourceOperation{}, expertFail(expert.ErrorCodeResourceInUse)
 		}
 	}
@@ -261,7 +261,7 @@ func (s *Service) mutateExpertResources(ctx context.Context, input expert.Privat
 	}
 	return s.observeExpertResourceOperation(operation, resources), nil
 }
-func (s *Service) expertGrantReferences(expertID string) bool {
+func (s *Service) expertGrantReferences(expertID string, coexisting []expert.ExpertRef) bool {
 	if s.market == nil {
 		return false
 	}
@@ -269,7 +269,7 @@ func (s *Service) expertGrantReferences(expertID string) bool {
 	defer s.market.mu.Unlock()
 	s.market.sweep()
 	for _, grant := range s.market.grants {
-		if grant.expertSnapshot != nil && grant.expertSnapshot.Expert != nil && string(grant.expertSnapshot.Expert.ExpertId) == expertID && !grant.revoked && (grant.inFlight || (grant.body != nil && time.Now().Before(grant.deadline))) {
+		if grant.expertSnapshot != nil && protectedExpertReference(grant.expertSnapshot.Expert, expertID, coexisting) && !grant.revoked && (grant.inFlight || (grant.body != nil && time.Now().Before(grant.deadline))) {
 			return true
 		}
 	}
