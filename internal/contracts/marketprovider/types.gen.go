@@ -1216,6 +1216,133 @@ func (v *TushareDailyArguments) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+type SuspendRequest struct {
+	SchemaVersion int64           `json:"schemaVersion"`
+	RequestId     CanonicalId     `json:"requestId"`
+	Method        string          `json:"method"`
+	Payload       ProviderPayload `json:"payload"`
+}
+
+func (v SuspendRequest) Validate() error {
+	if v.SchemaVersion != 1 {
+		return errors.New("invalid broker constant")
+	}
+	if err := v.RequestId.Validate(); err != nil {
+		return err
+	}
+	if string(v.Method) != "provider_suspend" {
+		return errors.New("invalid broker constant")
+	}
+	if err := v.Payload.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *SuspendRequest) UnmarshalJSON(b []byte) error {
+	type wire SuspendRequest
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil || raw == nil {
+		return errors.New("invalid broker object")
+	}
+	if _, ok := raw["schemaVersion"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["schemaVersion"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["requestId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["requestId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["method"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["method"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["payload"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["payload"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	var w wire
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&w); err != nil {
+		return errors.New("invalid broker object")
+	}
+	if err := d.Decode(new(any)); err != io.EOF {
+		return errors.New("invalid broker object")
+	}
+	x := SuspendRequest(w)
+	if err := x.Validate(); err != nil {
+		return err
+	}
+	*v = x
+	return nil
+}
+
+type SuspendResponse struct {
+	SchemaVersion int64          `json:"schemaVersion"`
+	RequestId     CanonicalId    `json:"requestId"`
+	Data          ProviderStatus `json:"data"`
+}
+
+func (v SuspendResponse) Validate() error {
+	if v.SchemaVersion != 1 {
+		return errors.New("invalid broker constant")
+	}
+	if err := v.RequestId.Validate(); err != nil {
+		return err
+	}
+	if err := v.Data.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *SuspendResponse) UnmarshalJSON(b []byte) error {
+	type wire SuspendResponse
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil || raw == nil {
+		return errors.New("invalid broker object")
+	}
+	if _, ok := raw["schemaVersion"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["schemaVersion"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["requestId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["requestId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["data"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["data"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	var w wire
+	d := json.NewDecoder(bytes.NewReader(b))
+	if err := d.Decode(&w); err != nil {
+		return errors.New("invalid broker object")
+	}
+	if err := d.Decode(new(any)); err != io.EOF {
+		return errors.New("invalid broker object")
+	}
+	x := SuspendResponse(w)
+	if err := x.Validate(); err != nil {
+		return err
+	}
+	*v = x
+	return nil
+}
+
 const MaxFrameBytes = 65536
 const MaxOperations = 64
 const MaxOAuthTtlMs = 300000

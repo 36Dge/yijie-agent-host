@@ -13,15 +13,18 @@ import os
 from pathlib import Path
 import threading
 import time
+from responses_stream_observer import ConversationStreamSummary, request_input_summary
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--port', type=int, default=18083)
 parser.add_argument('--ledger', type=Path, required=True)
-parser.add_argument('--key-file', type=Path, required=True)
+parser.add_argument('--key-file', type=Path)
 parser.add_argument('--kimi-key-file', type=Path, required=True)
 parser.add_argument('--limit', type=int, help='Optional batch ceiling within the approved ledger total.')
 parser.add_argument('--observe-tool-stream', action='store_true',
                     help='Record only tool argument byte counts/digests, never content.')
+parser.add_argument('--observe-conversation', action='store_true',
+                    help='Use a task-specific Kimi-only ledger; record only public message/source metadata, never text.')
 args = parser.parse_args()
 def read_key(path):
     import stat
@@ -35,14 +38,24 @@ def read_key(path):
         key=file.read(16385).strip()
     if not key or len(key)>16384 or any(c in key for c in ('\r','\n','\0')): raise SystemExit('Provider credential is unavailable.')
     return key
-providers={'MiniMax-M3':('api.minimaxi.com',read_key(args.key_file),'high'),'kimi-k3':('api.moonshot.cn',read_key(args.kimi_key_file),'max')}
 lock=threading.Lock()
 ledger=json.loads(args.ledger.read_text())
 authorization=ledger.get('authorization',{})
 approved_limit = authorization.get('max_http_requests')
 approved_images = authorization.get('max_image_understanding_requests')
-if (approved_limit, approved_images) not in ((24, 2), (40, 4), (50, 4)) or authorization.get('max_output_tokens_per_request')!=8192:
-    raise SystemExit('Explicit FEAT-156 authorization ledger is required.')
+if args.observe_conversation:
+    if (authorization.get('purpose') != 'conversation_observability' or
+            authorization.get('models') != ['kimi-k3'] or type(approved_limit) is not int or
+            not 1 <= approved_limit <= 8 or approved_images != 0 or
+            authorization.get('max_output_tokens_per_request') != 8192):
+        raise SystemExit('Explicit task-specific conversation verification ledger is required.')
+    providers = {'kimi-k3': ('api.moonshot.cn', read_key(args.kimi_key_file), 'max')}
+else:
+    if (approved_limit, approved_images) not in ((24, 2), (40, 4), (50, 4)) or authorization.get('max_output_tokens_per_request')!=8192:
+        raise SystemExit('Explicit FEAT-156 authorization ledger is required.')
+    if args.key_file is None:
+        raise SystemExit('The two-provider verification requires both credential sources.')
+    providers={'MiniMax-M3':('api.minimaxi.com',read_key(args.key_file),'high'),'kimi-k3':('api.moonshot.cn',read_key(args.kimi_key_file),'max')}
 if args.limit is None:
     args.limit = approved_limit
 if not 0 < args.limit <= approved_limit:
@@ -180,9 +193,16 @@ class Meter(http.server.BaseHTTPRequestHandler):
             ledger['real_http_requests']+=1
             if images: ledger['image_understanding_requests']+=1
             ledger['requests'].append(item)
+            if args.observe_conversation:
+                item['include'] = [v for v in body.get('include', []) if v in ('reasoning.encrypted_content', 'web_search_call.action.sources', 'web_search_call.results')]
+                item['instructions_sha256'] = hashlib.sha256(str(body.get('instructions', '')).encode()).hexdigest()
+                item['input_summary'] = request_input_summary(body.get('input'))
             save()
         connection = http.client.HTTPSConnection(provider[0], timeout=240)
         observer = ToolStreamSummary() if args.observe_tool_stream else None
+        conversation_observer = ConversationStreamSummary() if args.observe_conversation else None
+        forwarded = hashlib.sha256()
+        forwarded_bytes = 0
         try:
             headers = {k: v for k, v in self.headers.items() if k.lower() not in ('host', 'connection', 'content-length', 'transfer-encoding')}
             headers['Content-Length'] = str(len(payload))
@@ -201,7 +221,8 @@ class Meter(http.server.BaseHTTPRequestHandler):
                     message=re.sub(r'sk-[A-Za-z0-9_-]+','[redacted]',message)
                     with lock:
                         item['error_code']=str(detail.get('code',''))[:80]
-                        item['error_message']=message
+                        if not args.observe_conversation:
+                            item['error_message']=message
                         save()
                 except (ValueError,AttributeError): pass
                 self.send_response(result.status);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(failure)));self.end_headers();self.wfile.write(failure)
@@ -218,12 +239,20 @@ class Meter(http.server.BaseHTTPRequestHandler):
                     break
                 if observer is not None:
                     observer.feed(chunk)
+                if conversation_observer is not None:
+                    conversation_observer.feed(chunk)
                 self.wfile.write(chunk)
                 self.wfile.flush()
+                forwarded.update(chunk)
+                forwarded_bytes += len(chunk)
             with lock:
                 item['status'] = 'completed'
                 if observer is not None:
                     item['tool_stream'] = observer.summary()
+                if conversation_observer is not None:
+                    item['conversation_stream'] = conversation_observer.summary()
+                    item['forwarded_response_sha256'] = forwarded.hexdigest()
+                    item['forwarded_response_bytes'] = forwarded_bytes
                 save()
         except (OSError, http.client.HTTPException) as error:
             with lock:
@@ -232,6 +261,8 @@ class Meter(http.server.BaseHTTPRequestHandler):
                 item['transport_error_class'] = type(error).__name__
                 if observer is not None:
                     item['tool_stream'] = observer.summary()
+                if conversation_observer is not None:
+                    item['conversation_stream'] = conversation_observer.summary()
                 save()
             self.close_connection = True
         finally:

@@ -312,7 +312,7 @@ func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Lo
 		runtime:        runtime,
 		store:          store,
 		events:         events,
-		nativeEvents:   NewEventHubVersion(8, 512, 64),
+		nativeEvents:   NewEventHubVersion(11, 512, 64),
 		logger:         logger,
 		pending:        make(map[string][]pendingNotification),
 		syntheticTurns: make(map[string]*syntheticTerminalBarrier),

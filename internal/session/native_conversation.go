@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv2"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
 )
 
 const nativeTextLimit = 256 << 10
@@ -31,6 +31,8 @@ type nativeWireItem struct {
 	Tool             string          `json:"tool"`
 	Arguments        json.RawMessage `json:"arguments"`
 	Result           json.RawMessage `json:"result"`
+	Query            string          `json:"query"`
+	Action           json.RawMessage `json:"action"`
 }
 
 type nativeWireTurn struct {
@@ -168,6 +170,8 @@ func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) 
 		}
 	case native.McpToolCall:
 		projectNativeMcp(wire, &out)
+	case native.WebSearch:
+		projectNativeWebSearch(wire, &out)
 	}
 	return out, nil
 }
@@ -221,7 +225,7 @@ func projectNativeTurn(wire nativeWireTurn, cwd string, allowRawReasoning bool) 
 	return out
 }
 
-func (s *Service) ReadNativeThreadV2(ctx context.Context, sessionID string) (native.NativeThreadSnapshot, error) {
+func (s *Service) ReadNativeThreadV4(ctx context.Context, sessionID string) (native.NativeThreadSnapshot, error) {
 	if err := requireUUID("agent_session_id", sessionID); err != nil {
 		return native.NativeThreadSnapshot{}, err
 	}
@@ -246,7 +250,7 @@ func (s *Service) ReadNativeThreadV2(ctx context.Context, sessionID string) (nat
 	if json.Unmarshal(raw, &wire) != nil || wire.ID != record.CodexThreadID {
 		return native.NativeThreadSnapshot{}, ErrRuntimeRequest
 	}
-	out := native.NativeThreadSnapshot{SchemaVersion: 2, Source: native.RuntimeRead, ThreadId: wire.ID, Turns: []native.NativeTurn{}, Availability: native.NativeThreadSnapshotAvailabilityPartial}
+	out := native.NativeThreadSnapshot{SchemaVersion: 4, Source: native.RuntimeRead, ThreadId: wire.ID, Turns: []native.NativeTurn{}, Availability: native.NativeThreadSnapshotAvailabilityPartial}
 	for i, turn := range wire.Turns {
 		if i >= 1024 {
 			break

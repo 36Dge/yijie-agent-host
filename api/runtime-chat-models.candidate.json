@@ -3,7 +3,7 @@
   "feature": "FEAT-156",
   "mode": "local_worktree_candidate",
   "release": false,
-  "authority": "yijie-codex canonical artifact; unchanged runtime-input-only wire authority",
+  "authority": "yijie-codex canonical artifact/schema; optional search sources only, existing input-only methods unchanged",
   "runtime_source": {
     "repository": "https://github.com/36Dge/yijie-codex.git",
     "base_commit": "7fd463bcef07f37b0211acd9f62b9f93ea0a4b12"
@@ -24,16 +24,16 @@
   "runtime_artifact": {
     "binary": "codex",
     "reportedVersion": "codex-cli 0.144.6",
-    "sha256": "aad49041bd7d34c853fb55c274711e3cc810725720d2c097469822d310fb02f9",
-    "sizeBytes": 356210616,
+    "sha256": "9766d7e10d25327f0595964a19ad67e1e1c1db0c22e5a65f9af66b547ab316c6",
+    "sizeBytes": 355944760,
     "target": "aarch64-apple-darwin",
     "version": "0.144.6"
   },
-  "runtime_manifest_sha256": "8b86a1a661f50beda1e0a0c96f81ddbdf959a9a07c2e756cc4b9b0eabc053b27",
+  "runtime_manifest_sha256": "91f1e4ef729410931fa13a304097b482cdb33d0d73baeb1235dc881c6875d6ba",
   "runtime_schema": {
     "experimentalApi": false,
     "schemaFileCount": 269,
-    "schemaTreeSha256": "34d353815dc8d800cb432a876d5b43350511f63b91ad9766f861e8bc8290cc92",
+    "schemaTreeSha256": "d8c3265d8923ef4437203c0a2ded954549b4abc0c5079ecd6bcdf7c6da72f11e",
     "transport": "stdio"
   },
   "native_sources": [
@@ -58,16 +58,28 @@
       "sha256": "f1d6689f44056c252530ad940bb253e8a0ace60e810b88857440699ba908917e"
     },
     {
+      "path": ".yijie/patches/chat-models/0006-native-web-search-sources.patch",
+      "sha256": "8fdb9d2f7d7708a603a8d08906a4d3cd6ce098ca9165471f95cb0816ed6718ee"
+    },
+    {
       "path": ".yijie/upstream.env",
       "sha256": "33caf5655c94738bbdac3f4691d227b210ba7c470e78243a3a75ce87805bbe04"
     },
     {
       "path": "scripts/build-chat-model-stream-args.sh",
-      "sha256": "99baf7f08abe5d85c3231fe70654050437ed6bd130c4f16a49f53858e3285253"
+      "sha256": "cc26376eee6ecb8e4ffaa4c189b7425c67b6a528a0b70a88b32d6845b9dea584"
     },
     {
       "path": "scripts/write-chat-model-stream-runtime-manifest.py",
       "sha256": "37386848d94a071311c8c9a7889b4ba1accc2450fa4f6f520126586b28aa2b7c"
+    },
+    {
+      "path": "scripts/write-web-search-sources-runtime-manifest.py",
+      "sha256": "f608a75680efe32ee638d7756c4479e5a4c890bb66fc1f522c82627b30c270f2"
+    },
+    {
+      "path": "scripts/verify-web-search-sources-schema.py",
+      "sha256": "dc8bc8e01beaeba5cbbd923b316420ea375cb23a7d4ad68e992ca77d0a8103cd"
     },
     {
       "path": "scripts/write-runtime-manifest.py",
@@ -90,14 +102,14 @@
       "sha256": "56b7e3351d0cb7ea1fe2cde08076777074b8e6038e26338153d59c1603d94a2c"
     },
     {
-      "path": ".yijie/build/chat-models-stream-args/aarch64-apple-darwin/runtime-manifest.json",
-      "sha256": "8b86a1a661f50beda1e0a0c96f81ddbdf959a9a07c2e756cc4b9b0eabc053b27"
+      "path": ".yijie/build/chat-models-web-sources/aarch64-apple-darwin/runtime-manifest.json",
+      "sha256": "91f1e4ef729410931fa13a304097b482cdb33d0d73baeb1235dc881c6875d6ba"
     }
   ],
   "generators": [
     {
       "path": "scripts/generate-runtime-chat-models.mjs",
-      "sha256": "921e8afbb0e98eecb23589895c8d74a99162ccffec2bcf2803c608fb09307411"
+      "sha256": "556e4927fa46701ad1937972d52308d5c26d771b4786a5860a3925988653ded9"
     },
     {
       "path": "scripts/sync-runtime-chat-models.mjs",
@@ -111,7 +123,7 @@
   "generated": [
     {
       "path": "sdks/go/openapi/runtime-chat-models/artifact.gen.go",
-      "sha256": "01cc53ce5b900019ea9c303c9bc759cd79f83a7c2b648e3aa8200029c1a15702"
+      "sha256": "f47122794939d2ee90cdf4abc9cf57ca0b96c25ced3de6b1407a75d6c55c0ee0"
     }
   ],
   "source_lock_path": "compatibility/runtime-chat-models/source.lock.json"

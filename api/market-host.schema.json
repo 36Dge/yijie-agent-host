@@ -1729,6 +1729,53 @@
       },
       "description": "Read-only original turn identity and submitted display snapshot. Never an approval or execution grant."
     },
+    "SuspendRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "method",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "method": {
+          "type": "string",
+          "const": "provider_suspend"
+        },
+        "payload": {
+          "$ref": "#/$defs/ProviderPayload"
+        }
+      }
+    },
+    "SuspendResponse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/ProviderStatus"
+        }
+      }
+    },
     "Selection": {
       "type": "array",
       "maxItems": 58,

@@ -74,3 +74,7 @@ func (o *Owner) Forget(ctx context.Context, request provider.ForgetRequest) (pro
 func (o *Owner) Probe(ctx context.Context, request provider.ProbeRequest) (provider.ProbeResponse, error) {
 	return providerResponse(ctx, o, request, request.RequestId, func(r provider.ProbeResponse) bool { return providerMatches(r.Data, request.Payload) })
 }
+
+func (o *Owner) Suspend(ctx context.Context, request provider.SuspendRequest) (provider.SuspendResponse, error) {
+	return providerResponse(ctx, o, request, request.RequestId, func(r provider.SuspendResponse) bool { return providerMatches(r.Data, request.Payload) })
+}

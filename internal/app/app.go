@@ -1683,7 +1683,13 @@ type eventSubscriber func(string, string, uint64) (string, []session.Event, <-ch
 
 func (h *sessionHandler) streamEvents(w http.ResponseWriter, r *http.Request, subscribe eventSubscriber) {
 	writeEvent := func(event session.Event) error {
-		if strings.HasPrefix(r.URL.Path, "/v7/agent-sessions/") && event.SchemaVersion == 8 {
+		if strings.HasPrefix(r.URL.Path, "/v10/agent-sessions/") && event.SchemaVersion == 11 {
+			event = session.NativeEventV10(event)
+		}
+		if strings.HasPrefix(r.URL.Path, "/v8/agent-sessions/") && (event.SchemaVersion == 10 || event.SchemaVersion == 11) {
+			event = session.NativeEventV8(event)
+		}
+		if strings.HasPrefix(r.URL.Path, "/v7/agent-sessions/") && (event.SchemaVersion == 8 || event.SchemaVersion == 10 || event.SchemaVersion == 11) {
 			event = session.LegacyNativeEvent(event)
 		}
 		return writeSSEEvent(w, event)

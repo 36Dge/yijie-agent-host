@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv2"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
@@ -81,7 +81,7 @@ func TestFEAT144LegacyWireKeepsClosedShapeAndSharedIdentity(t *testing.T) {
 		t.Fatal("expected one native event")
 	}
 	for _, version := range []int{7, 8} {
-		event := events[0]
+		event := NativeEventV8(events[0])
 		path := "../../api/openapi/native-conversation-v2.yaml"
 		if version == 7 {
 			event = LegacyNativeEvent(event)

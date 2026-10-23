@@ -8,11 +8,11 @@
   "sources": [
     {
       "path": "compatibility/experts/wire.schema.json",
-      "sha256": "e6003536e353d0bb289fb485d305f20f82c0eda1e273523ebc009105d4c0def8"
+      "sha256": "34aeefd907613b12758eadc90ffd07d752ee6e8f7e2f3dbb920da212ff74b6f7"
     },
     {
       "path": "compatibility/experts/native-ipc.json",
-      "sha256": "e7922b6304ddbabca8c4055e4d05d07868b3642a18c5368850388c5a66f6dae1"
+      "sha256": "cff3a7dc758b2efed3642ab8131bd06e5118b13e5e0657a2573d64f6149db6e3"
     },
     {
       "path": "compatibility/experts/transport.json",
@@ -44,7 +44,7 @@
     },
     {
       "path": "compatibility/market-host/wire.schema.json",
-      "sha256": "5e533a9a9d42c2d8906fb930678732f472d8c527bc26acc416be97f8943cc3a8"
+      "sha256": "94d6482240876452d5aee37c03d12af2cf4ab53f865293d181eb62af1134c5b0"
     },
     {
       "path": "jsonschema/chat/model-selection-v1.schema.json",
@@ -56,7 +56,7 @@
     },
     {
       "path": "compatibility/market-provider/wire.schema.json",
-      "sha256": "0d7d4d852133aa2c75a298a0ee12c857d68a75a34aa28797a32757ea97a10819"
+      "sha256": "2b2fa207875b3fcdd7785da825320af159ab0b1dc111b894bfad4a3962658ad1"
     },
     {
       "path": "jsonschema/chat/message.schema.json",
@@ -86,7 +86,7 @@
   "generated": [
     {
       "path": "sdks/rust/experts/types.gen.rs",
-      "sha256": "8246e64dbebbf4a7564ae5e8776152bedf5f8b600e3a655976e78c87576b9df5"
+      "sha256": "a36837131f96c52fd1a360a6c7aec11f099ccf223afcd4a12b7de0c4c99980f3"
     },
     {
       "path": "sdks/go/experts/types.gen.go",
@@ -94,7 +94,7 @@
     },
     {
       "path": "sdks/jsonschema/experts.schema.json",
-      "sha256": "f632e6bd98e05282885393a5f3ae3998d8b1fa40ffc92070d8f4372b95d9065e"
+      "sha256": "f18f92715452182fdf80fd35d4753ca12c364e977c3b2152894108a621d37955"
     },
     {
       "path": "sdks/go/experts/bundle_schemas.gen.go",
@@ -102,19 +102,19 @@
     },
     {
       "path": "sdks/typescript/src/domain/experts.generated.ts",
-      "sha256": "38bcd9fd3477c0274b6e464ad46be2c731963838e8a2c4d92b52c0de2447bb5a"
+      "sha256": "21a4bafb263e40eb174855d53ef904e0b0ac7edab399933124bbf12b5d4eb424"
     },
     {
       "path": "sdks/typescript/src/api/generated/experts-validator.gen.js",
-      "sha256": "3620d399f83bbb0e39738da63f126940f84c099dd796aaa6cbca24886d491fb4"
+      "sha256": "57750357b055853a3e1d0e0da88ca596f020f3c1bcd62e2e2749bc3f7e9ce000"
     },
     {
       "path": "sdks/typescript/src/api/generated/experts-validator.gen.d.ts",
-      "sha256": "a576483d56c62b61edcc4c05b3685c01e170b80079da68de53ceb0c5fe6c1f69"
+      "sha256": "d7b303b0cea21d7ad88f4cdbb81578b929a8cb598393b5e44fc91667a4be0e3e"
     },
     {
       "path": "sdks/jsonschema/experts-native.schema.json",
-      "sha256": "cb8337e865fdcd7b4d7ccf5569e696107ec7c908b98dd7282653610686ad8f6b"
+      "sha256": "053fdccc1f345f98adf5a3b2efb8e3d66da73c018a39566856ff02bdb5e0c2ff"
     },
     {
       "path": "fixtures/experts/digest-vectors.json",
@@ -144,7 +144,7 @@
     {
       "source": "sdks/jsonschema/experts.schema.json",
       "path": "api/experts.schema.json",
-      "sha256": "f632e6bd98e05282885393a5f3ae3998d8b1fa40ffc92070d8f4372b95d9065e"
+      "sha256": "f18f92715452182fdf80fd35d4753ca12c364e977c3b2152894108a621d37955"
     },
     {
       "source": "jsonschema/skills/skill-bundle-manifest-v3.schema.json",

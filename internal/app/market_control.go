@@ -102,6 +102,13 @@ func routeMarketControl(ctx context.Context, service MarketControlService, frame
 		}
 		data, err := service.MarketProviderControl(ctx, request.Method, request.RequestId, request.Payload)
 		return wire.ForgetResponse{SchemaVersion: 1, RequestId: request.RequestId, Data: data}, requestID, err
+	case "provider_suspend":
+		var request wire.SuspendRequest
+		if json.Unmarshal(frame, &request) != nil {
+			return nil, requestID, errMarketControlRequest
+		}
+		data, err := service.MarketProviderControl(ctx, request.Method, request.RequestId, request.Payload)
+		return wire.SuspendResponse{SchemaVersion: 1, RequestId: request.RequestId, Data: data}, requestID, err
 	case "provider_probe":
 		var request wire.ProbeRequest
 		if json.Unmarshal(frame, &request) != nil {

@@ -46,3 +46,18 @@ bbolt schema 4 → 5：事务升级既有 schema 元数据，新增原生 revisi
 安全验证：`go test -race ./internal/session ./internal/app ./internal/codex -run '^TestFEAT132Native'`。包括原生实际 RPC + 内存 JSONL 管道、producer OpenAPI conformance、鉴权/no-store、最终值、原生 error、summary 索引和 resume。测试不替换 executable，不启动模型，不强杀进程。
 
 完整make test的旧binary/fault/attack fixture不能在本次运行，既有定向验证不等于完整Go测试集通过。2026-09-09真实local/demo_fast D4及后续日常入口验证已通过，实际累计19/25次文本、1/3次图片，日常复验未新增调用。Contracts来源已固定；Desktop的canonical FEAT-152整体Host pin已更新为`9e9d317f7e4ecff5f8aeec94fa467f9bede32139`及真实源摘要，并通过正常入口核验。完整证据与能力限制见元仓FEAT-132的02-verification.md和05-daily-entry-verification-2026-09-09.md；未发布或部署，不放宽来源和权限门禁。
+
+## 2026-10-23 搜索来源本地候选
+
+当前原生显示扩展为 history v4 / SSE v11，来源字段由 yijie-codex 的 canonical WebSearchAction
+提供，Contracts v4 定义安全显示投影。旧 history v1/v2/v3 和 SSE v7/v8/v10 按原格式返回，
+降级复制不修改共享缓冲、ID、顺序、终态或审批。新的来源是搜索命中，不是模型已引用的证据。
+
+来源最多 32 条，URL 上限 2048 字节、标题上限 512 字节。地址只允许 HTTP(S)，拒绝凭据和
+敏感模式；复用既有秘密检测器，保守筛选可能遗漏普通长 URL，不能将被过滤等同于确定含有秘密。
+过滤或截断使显示 availability=partial，不改变执行状态。命令输出的既有脱敏规则不变。
+URL 只作为惰性文本投影，没有新外部访问、重试、模型调用或搜索执行入口。
+
+普通指令中的公共进度现在是可选的；产品根据真实 Runtime 事件显示独立“执行进度”，模型不应
+使用 echo/true/printf 播报或触发额外响应。真实 commentary 和最终正文保持原文，不由 Host 编造。
+实现与真实结果见元仓 `docs/dev/dual-progress-resume-20261023.md`，属于未发布本地候选。

@@ -40,7 +40,7 @@ func (s *Service) MarketProviderControl(ctx context.Context, method string, requ
 	case "provider_auth_cancel":
 		r, err := owner.AuthCancel(ctx, provider.AuthCancelRequest{SchemaVersion: 1, RequestId: requestID, Method: method, Payload: payload})
 		return r.Data, err
-	case "provider_forget":
+	case "provider_forget", "provider_suspend":
 		installation := payload.Binding.Reference.InstallationId
 		result, e := s.RevokeMarketAuthority(ctx, wire.RevokeAuthorityPayload{OperationId: payload.OperationId, HostInstanceId: payload.HostInstanceId, Scope: payload.Scope, InstallationId: &installation, Reason: "installation_changed"})
 		if e != nil {
@@ -48,6 +48,10 @@ func (s *Service) MarketProviderControl(ctx context.Context, method string, requ
 		}
 		if result.Outcome != "admission_revoked" {
 			return provider.ProviderStatus{}, marketFail(wire.ErrorCodeCleanupPending)
+		}
+		if method == "provider_suspend" {
+			r, err := owner.Suspend(ctx, provider.SuspendRequest{SchemaVersion: 1, RequestId: requestID, Method: method, Payload: payload})
+			return r.Data, err
 		}
 		r, err := owner.Forget(ctx, provider.ForgetRequest{SchemaVersion: 1, RequestId: requestID, Method: method, Payload: payload})
 		return r.Data, err

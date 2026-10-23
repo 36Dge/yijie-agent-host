@@ -5,6 +5,8 @@ import (
 	"errors"
 	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversation"
 	nativev2 "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv2"
+	nativev3 "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv3"
+	nativev4 "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
 	"github.com/36Dge/yijie-agent-host/internal/session"
 	"net/http"
 )
@@ -19,6 +21,42 @@ func registerNativeConversation(mux *http.ServeMux, h *sessionHandler) {
 	service, ok := h.service.(nativeConversationService)
 	if !ok {
 		return
+	}
+	if current, ok := h.service.(interface {
+		ReadNativeThreadV4(context.Context, string) (nativev4.NativeThreadSnapshot, error)
+	}); ok {
+		mux.Handle("GET /v4/agent-sessions/{agent_session_id}/native-thread", h.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-store")
+			value, err := current.ReadNativeThreadV4(r.Context(), r.PathValue("agent_session_id"))
+			if err != nil {
+				writeSessionError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, value)
+		})))
+		mux.Handle("GET /v11/agent-sessions/{agent_session_id}/events", h.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("X-Yijie-Event-Schema-Version", "11")
+			h.streamEvents(w, r, service.SubscribeNativeEvents)
+		})))
+	}
+	if current, ok := h.service.(interface {
+		ReadNativeThreadV3(context.Context, string) (nativev3.NativeThreadSnapshot, error)
+	}); ok {
+		mux.Handle("GET /v3/agent-sessions/{agent_session_id}/native-thread", h.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-store")
+			value, err := current.ReadNativeThreadV3(r.Context(), r.PathValue("agent_session_id"))
+			if err != nil {
+				writeSessionError(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, value)
+		})))
+		mux.Handle("GET /v10/agent-sessions/{agent_session_id}/events", h.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("X-Yijie-Event-Schema-Version", "10")
+			h.streamEvents(w, r, service.SubscribeNativeEvents)
+		})))
 	}
 	mux.Handle("GET /v1/agent-sessions/{agent_session_id}/native-thread", h.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		value, err := service.ReadNativeThread(r.Context(), r.PathValue("agent_session_id"))

@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	legacy "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversation"
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv2"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
 )
 
 var nativeMcpIdentifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
@@ -192,6 +192,7 @@ func projectNativeMcp(wire nativeWireItem, out *native.NativeItem) {
 // Keep the retired wire family's closed shape. This adapter strips only the
 // v2 display extension; it never mutates the shared native event buffer.
 func LegacyNativeEvent(event Event) Event {
+	event = NativeEventV8(event)
 	event.SchemaVersion = 7
 	if event.Payload.Native == nil {
 		return event
@@ -223,7 +224,7 @@ func LegacyNativeEvent(event Event) Event {
 }
 
 func (s *Service) ReadNativeThread(ctx context.Context, sessionID string) (legacy.NativeThreadSnapshot, error) {
-	value, err := s.ReadNativeThreadV2(ctx, sessionID)
+	value, err := s.ReadNativeThreadV4(ctx, sessionID)
 	if err != nil {
 		return legacy.NativeThreadSnapshot{}, err
 	}

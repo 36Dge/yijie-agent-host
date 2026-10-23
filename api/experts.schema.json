@@ -2578,6 +2578,72 @@
         }
       }
     },
+    "DeveloperInfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expert",
+        "name"
+      ],
+      "properties": {
+        "expert": {
+          "$ref": "#/$defs/ExpertSelection"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Developer display name. Defaults to 易界 AI for the current native catalog; not a verification badge or third-party source attribution."
+        }
+      },
+      "description": "Read-only developer metadata for an exact catalog identity. No usage metrics, external URL, installation, binding, or persistence side effects."
+    },
+    "DeveloperReadRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "contextId",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "contextId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "payload": {
+          "$ref": "#/$defs/ExpertSelection"
+        }
+      }
+    },
+    "DeveloperReadResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/DeveloperInfo"
+        }
+      }
+    },
     "ReferencedRevision": {
       "type": "integer",
       "minimum": 1,
