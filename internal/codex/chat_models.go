@@ -24,6 +24,9 @@ func ModelProfileID(ctx context.Context) string {
 	return v
 }
 func ModelProfile(id string) (models.ModelDefinition, bool) {
+	if profile, ok := kimiK31Profile(id); ok {
+		return profile, true
+	}
 	for _, p := range models.Definitions() {
 		if string(p.ProfileId) == id {
 			return p, true
@@ -34,7 +37,7 @@ func ModelProfile(id string) (models.ModelDefinition, bool) {
 func (m *Manager) ChatModelsEnabled() bool { return m.config.ChatModelsEnabled }
 func (m *Manager) ModelAvailable(id string) bool {
 	p, ok := ModelProfile(id)
-	if !ok || !m.config.ChatModelsEnabled {
+	if !ok || !m.config.ChatModelsEnabled || (id == KimiK31ProfileID && !m.config.KimiK31Candidate) || (id == "kimi-k3-max-v1" && m.config.KimiK31Candidate) {
 		return false
 	}
 	if p.Provider == "kimi" {

@@ -106,6 +106,9 @@ func (s *Service) ReadChatModel(sessionID string) (wire.Selection, error) {
 func (s *Service) checkModelRequest(ctx context.Context, r Record) error {
 	id := codex.ModelProfileID(ctx)
 	if id == "" {
+		if s.ChatModelsV2Enabled() {
+			return ErrModelUnavailable
+		}
 		if r.ModelProfile != "" || r.ModelSelectionState != "" {
 			return ErrModelUnavailable
 		}

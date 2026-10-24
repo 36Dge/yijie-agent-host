@@ -46,6 +46,7 @@ const (
 type Config struct {
 	Market                        MarketConfig
 	ChatModelsEnabled             bool
+	KimiK31Candidate              bool
 	KimiAPIKey                    string
 	BinaryPath                    string
 	ManifestPath                  string
@@ -99,6 +100,9 @@ func (c Config) Configured() bool {
 func (c Config) validate() error {
 	if err := c.Market.validate(); err != nil {
 		return err
+	}
+	if c.KimiK31Candidate && (!c.ChatModelsEnabled || c.Market.enabled() || c.DynamicToolsEnabled) {
+		return errors.New("Kimi K3.1 candidate requires ordinary model chat; market and dynamic tools await qualification")
 	}
 	if c.Market.enabled() && !c.ChatModelsEnabled {
 		return errors.New("market connectors require the managed chat model profile")
@@ -333,6 +337,10 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 		m.fail("artifact_verification_failed")
 		return err
 	}
+	if m.config.KimiK31Candidate != artifact.SupportsKimiK31() {
+		m.fail("artifact_verification_failed")
+		return errors.New("Kimi candidate and Runtime artifact must match exactly")
+	}
 	m.setArtifact(artifact)
 	if err := m.startupBoundaryError(startupCtx); err != nil {
 		m.fail("startup_cancelled")
@@ -403,11 +411,18 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 	}
 	if providerErr == nil && m.config.ChatModelsEnabled {
 		var extra []string
-		extra, providerErr = prepareChatModelLayer(authority)
+		if m.config.KimiK31Candidate {
+			extra, providerErr = prepareKimiK31Layer(authority)
+		} else {
+			extra, providerErr = prepareChatModelLayer(authority)
+		}
 		if providerErr == nil {
 			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
 			m.status.ModelProvider = "kimi"
 			m.status.Model = "kimi-k3"
+			if m.config.KimiK31Candidate {
+				m.status.Model = "kimi-k3.1-pro"
+			}
 		}
 	}
 	if providerErr == nil && m.config.FakeResponses.Enabled {
@@ -538,7 +553,7 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 
 func (m *Manager) validateManagedProviderAuthority(authority *managedCodexHomeAuthority) error {
 	if m.config.ChatModelsEnabled {
-		if err := validateChatModelLayer(authority); err != nil {
+		if err := m.validateSelectedChatModelLayer(authority); err != nil {
 			return err
 		}
 	}

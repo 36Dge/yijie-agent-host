@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-164",
+  "release": false,
+  "mode": "immutable_local_candidate",
+  "source_commit": "b0060c8bc4fb924cec14d98b193c32c69482b7b7",
+  "source_lock_path": "compatibility/chat-models-v2/source.lock.json",
+  "source_lock_sha256": "0ad485abaf145bb8dd23541ea4af9bade30085a20db3556f988ceb7045d10d70",
+  "authority": {
+    "schema_version": 1,
+    "contract_version": "0.2.0",
+    "mode": "local_worktree_candidate",
+    "release": false,
+    "base_commit": "bedf4159b0fa22e24efe6c295f8b0d4845df56b7",
+    "sources": [
+      {
+        "path": "jsonschema/chat/model-selection-v1.schema.json",
+        "sha256": "15586a03e7873bc7c913ea89162cc60d8354effb8c475045920ce609f949169b"
+      },
+      {
+        "path": "jsonschema/chat/model-selection-v2.schema.json",
+        "sha256": "fa0ae10205dd9d0d2fead4366b67a03d21beda874f1fdb401e871390f72813af"
+      },
+      {
+        "path": "jsonschema/scheduled-tasks/draft-execution-v1.schema.json",
+        "sha256": "071a15a9db131148ca1d82896da1fb198696fd340a210df802e65d7694335ba8"
+      },
+      {
+        "path": "openapi/agent-host/agent-host.yaml",
+        "sha256": "8716d11ebae140d7c2cec72f6528bbd39ac5976c898c28e0044bec71fb004083"
+      },
+      {
+        "path": "openapi/chat-models-v2/chat-models-v2.yaml",
+        "sha256": "0593962a54386693c7ce1f86d108ac34d015f707569641b39c869b51db10e72f"
+      },
+      {
+        "path": "openapi/runtime-permissions/runtime-permissions.yaml",
+        "sha256": "0cd99d5ee3f7035bf43c0996648dc855f71a447595dcb61d903232d81b602a99"
+      },
+      {
+        "path": "scripts/generate-chat-models-v2.mjs",
+        "sha256": "46806979daed97b68afc6706df13dbd58a54e6c0b6e81c593c23bca357aa7880"
+      }
+    ],
+    "generated": [
+      {
+        "path": "sdks/go/openapi/chat-models-v2/types.gen.go",
+        "sha256": "be923ec69e9d4e70374b83ab2afa9d1c364bc57d0e052abd0e892d0fdce5b909"
+      },
+      {
+        "path": "sdks/rust/chat-models-v2/types.gen.rs",
+        "sha256": "310b7ebbe8331c584768b83b741b22817a6063dfa4ac8957ef261a9b1126e84d"
+      },
+      {
+        "path": "sdks/typescript/src/jsonschema/chat-models-v2.gen.ts",
+        "sha256": "ce0a620662864253170b702199d9854875ac411572c71c5585e140c73d406818"
+      },
+      {
+        "path": "sdks/jsonschema/chat-models-v2.schema.json",
+        "sha256": "fa0ae10205dd9d0d2fead4366b67a03d21beda874f1fdb401e871390f72813af"
+      },
+      {
+        "path": "sdks/openapi/chat-models-v2.bundle.json",
+        "sha256": "a398021462157c3836404a5337f5d64ee68509eea56e9fcc5098e5795819f20a"
+      }
+    ]
+  },
+  "copies": [
+    {
+      "repository": "yijie-agent-host",
+      "source": "sdks/go/openapi/chat-models-v2/types.gen.go",
+      "destination": "internal/contracts/chatmodelsv2/types.gen.go",
+      "sha256": "be923ec69e9d4e70374b83ab2afa9d1c364bc57d0e052abd0e892d0fdce5b909"
+    },
+    {
+      "repository": "yijie-agent-host",
+      "source": "sdks/jsonschema/chat-models-v2.schema.json",
+      "destination": "internal/contracts/chatmodelsv2/schema.json",
+      "sha256": "fa0ae10205dd9d0d2fead4366b67a03d21beda874f1fdb401e871390f72813af"
+    },
+    {
+      "repository": "yijie-agent-host",
+      "source": "jsonschema/chat/model-selection-v1.schema.json",
+      "destination": "internal/contracts/chatmodelsv2/legacy.schema.json",
+      "sha256": "15586a03e7873bc7c913ea89162cc60d8354effb8c475045920ce609f949169b"
+    },
+    {
+      "repository": "yijie-desktop",
+      "source": "sdks/rust/chat-models-v2/types.gen.rs",
+      "destination": "src-tauri/src/chat/models_v2_generated.rs",
+      "sha256": "310b7ebbe8331c584768b83b741b22817a6063dfa4ac8957ef261a9b1126e84d"
+    },
+    {
+      "repository": "yijie-desktop",
+      "source": "sdks/typescript/src/jsonschema/chat-models-v2.gen.ts",
+      "destination": "src/domain/chat-models-v2.generated.ts",
+      "sha256": "ce0a620662864253170b702199d9854875ac411572c71c5585e140c73d406818"
+    },
+    {
+      "repository": "yijie-desktop",
+      "source": "sdks/jsonschema/chat-models-v2.schema.json",
+      "destination": "contracts/chat-models-v2.schema.json",
+      "sha256": "fa0ae10205dd9d0d2fead4366b67a03d21beda874f1fdb401e871390f72813af"
+    },
+    {
+      "repository": "yijie-desktop",
+      "source": "jsonschema/chat/model-selection-v1.schema.json",
+      "destination": "contracts/chat-models-v1-history.schema.json",
+      "sha256": "15586a03e7873bc7c913ea89162cc60d8354effb8c475045920ce609f949169b"
+    }
+  ]
+}

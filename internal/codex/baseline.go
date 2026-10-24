@@ -16,6 +16,7 @@ import (
 
 	chatmodels "github.com/36Dge/yijie-agent-host/internal/contracts/runtimechatmodels"
 	inputonly "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeinputonly"
+	kimik31 "github.com/36Dge/yijie-agent-host/internal/contracts/runtimekimik31pro"
 )
 
 const (
@@ -165,12 +166,23 @@ func VerifyArtifact(ctx context.Context, binaryPath, manifestPath string, timeou
 			patches: patches, schemaFileCount: chatmodels.RuntimeSchemaFileCount,
 		}
 	}
+	if digest == kimik31.RuntimeManifestSHA256 {
+		var patches []ManifestPatch
+		if err := json.Unmarshal([]byte(kimik31.RuntimePatchManifest), &patches); err != nil {
+			return ArtifactInfo{}, errors.New("Kimi candidate artifact authority unavailable")
+		}
+		policy = artifactPolicy{runtimeSHA256: kimik31.RuntimeBinarySHA256, runtimeSize: kimik31.RuntimeBinarySize, manifestSHA256: kimik31.RuntimeManifestSHA256, schemaTreeSHA256: kimik31.RuntimeSchemaTreeSHA256, patches: patches, schemaFileCount: kimik31.RuntimeSchemaFileCount}
+	}
 	return verifyArtifactWithPolicy(ctx, binaryPath, manifestPath, timeout, policy)
 }
 
-// SupportsInputOnly accepts only the two exact reviewed artifact pairs.
+func (a ArtifactInfo) SupportsKimiK31() bool {
+	return a.BinarySHA256 == kimik31.RuntimeBinarySHA256 && a.ManifestSHA256 == kimik31.RuntimeManifestSHA256
+}
+
+// SupportsInputOnly accepts only exact reviewed artifact pairs.
 func (a ArtifactInfo) SupportsInputOnly() bool {
-	return (a.BinarySHA256 == inputonly.RuntimeBinarySHA256 && a.ManifestSHA256 == inputonly.RuntimeManifestSHA256) ||
+	return a.SupportsKimiK31() || (a.BinarySHA256 == inputonly.RuntimeBinarySHA256 && a.ManifestSHA256 == inputonly.RuntimeManifestSHA256) ||
 		(a.BinarySHA256 == chatmodels.RuntimeBinarySHA256 && a.ManifestSHA256 == chatmodels.RuntimeManifestSHA256)
 }
 

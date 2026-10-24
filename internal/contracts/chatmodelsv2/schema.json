@@ -1,0 +1,696 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.yijie.ai/chat/model-selection/v2",
+  "title": "FEAT-164 versioned model selection",
+  "x-model-profiles": [
+    {
+      "profile_id": "kimi-k3-1-pro-max-v1",
+      "label": "Kimi K3.1 Pro",
+      "provider": "kimi",
+      "model": "kimi-k3.1-pro",
+      "effort": "max",
+      "context_window": 1048576
+    },
+    {
+      "profile_id": "minimax-m3-high-v1",
+      "label": "MiniMax M3",
+      "provider": "minimax",
+      "model": "MiniMax-M3",
+      "effort": "high",
+      "context_window": 1000000
+    }
+  ],
+  "$defs": {
+    "ProfileId": {
+      "type": "string",
+      "enum": [
+        "kimi-k3-max-v1",
+        "kimi-k3-1-pro-max-v1",
+        "minimax-m3-high-v1"
+      ],
+      "description": "Known persisted identity. Recognition grants no execution authority; the K3 identity is retired."
+    },
+    "CanonicalId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "Revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "SelectionState": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "switching",
+        "unknown"
+      ]
+    },
+    "ModelDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id",
+        "label",
+        "provider",
+        "model",
+        "effort",
+        "context_window"
+      ],
+      "properties": {
+        "profile_id": {
+          "$ref": "#/$defs/ActiveProfileId"
+        },
+        "label": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "effort": {
+          "type": "string"
+        },
+        "context_window": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "profile_id": {
+              "const": "kimi-k3-1-pro-max-v1"
+            },
+            "label": {
+              "const": "Kimi K3.1 Pro"
+            },
+            "provider": {
+              "const": "kimi"
+            },
+            "model": {
+              "const": "kimi-k3.1-pro"
+            },
+            "effort": {
+              "const": "max"
+            },
+            "context_window": {
+              "const": 1048576
+            }
+          },
+          "required": [
+            "profile_id",
+            "label",
+            "provider",
+            "model",
+            "effort",
+            "context_window"
+          ]
+        },
+        {
+          "properties": {
+            "profile_id": {
+              "const": "minimax-m3-high-v1"
+            },
+            "label": {
+              "const": "MiniMax M3"
+            },
+            "provider": {
+              "const": "minimax"
+            },
+            "model": {
+              "const": "MiniMax-M3"
+            },
+            "effort": {
+              "const": "high"
+            },
+            "context_window": {
+              "const": 1000000
+            }
+          },
+          "required": [
+            "profile_id",
+            "label",
+            "provider",
+            "model",
+            "effort",
+            "context_window"
+          ]
+        }
+      ]
+    },
+    "ModelAvailability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "available",
+        "reason"
+      ],
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/ModelDefinition"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "not_configured",
+            "runtime_unavailable",
+            "activation_required"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "const": "ready"
+              }
+            },
+            "required": [
+              "reason"
+            ]
+          },
+          "then": {
+            "properties": {
+              "available": {
+                "const": true
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "available": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "default_profile",
+        "models"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "default_profile": {
+          "$ref": "#/$defs/ActiveProfileId",
+          "const": "kimi-k3-1-pro-max-v1"
+        },
+        "models": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/ModelAvailability"
+          },
+          "allOf": [
+            {
+              "contains": {
+                "properties": {
+                  "profile": {
+                    "properties": {
+                      "profile_id": {
+                        "const": "kimi-k3-1-pro-max-v1"
+                      }
+                    },
+                    "required": [
+                      "profile_id"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "profile"
+                ],
+                "type": "object"
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "properties": {
+                  "profile": {
+                    "properties": {
+                      "profile_id": {
+                        "const": "minimax-m3-high-v1"
+                      }
+                    },
+                    "required": [
+                      "profile_id"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "profile"
+                ],
+                "type": "object"
+              },
+              "minContains": 1,
+              "maxContains": 1
+            }
+          ]
+        }
+      }
+    },
+    "Selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "agent_session_id",
+        "state",
+        "revision",
+        "availability"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "agent_session_id": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "state": {
+          "$ref": "#/$defs/SelectionState"
+        },
+        "revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/ProfileId"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "availability": {
+          "$ref": "#/$defs/SelectionAvailability"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "profile_id": {
+                "const": "kimi-k3-max-v1"
+              }
+            },
+            "required": [
+              "profile_id"
+            ]
+          },
+          "then": {
+            "properties": {
+              "availability": {
+                "const": "retired"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "availability": {
+                "const": "ready"
+              }
+            },
+            "required": [
+              "availability"
+            ]
+          },
+          "then": {
+            "required": [
+              "profile_id"
+            ],
+            "properties": {
+              "profile_id": {
+                "$ref": "#/$defs/ActiveProfileId"
+              },
+              "state": {
+                "const": "ready"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "availability": {
+                "const": "retired"
+              }
+            },
+            "required": [
+              "availability"
+            ]
+          },
+          "then": {
+            "required": [
+              "profile_id"
+            ],
+            "properties": {
+              "profile_id": {
+                "const": "kimi-k3-max-v1"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "SelectRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "operation_id",
+        "expected_revision",
+        "profile_id"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "operation_id": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/ActiveProfileId"
+        }
+      }
+    },
+    "Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "code"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "code": {
+          "type": "string",
+          "enum": [
+            "invalid_request",
+            "unauthorized",
+            "not_found",
+            "busy",
+            "revision_conflict",
+            "request_conflict",
+            "model_unavailable",
+            "selection_unknown",
+            "runtime_unavailable",
+            "model_retired",
+            "activation_required"
+          ]
+        }
+      }
+    },
+    "ActiveProfileId": {
+      "type": "string",
+      "enum": [
+        "kimi-k3-1-pro-max-v1",
+        "minimax-m3-high-v1"
+      ],
+      "description": "Only these identities may be used for a new execution or selection target."
+    },
+    "SelectionAvailability": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "retired",
+        "not_configured",
+        "runtime_unavailable",
+        "activation_required",
+        "selection_unknown"
+      ],
+      "description": "Execution eligibility, independent of ready/switching/unknown application state. Retired is a known history identity."
+    },
+    "OperationRequestSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "operation_id",
+        "expected_revision",
+        "profile_id"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "operation_id": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/ProfileId"
+        }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "$ref": "https://schemas.yijie.ai/chat/model-selection/v1#/$defs/SelectRequest"
+            },
+            {
+              "$ref": "#/$defs/SelectRequest"
+            }
+          ]
+        }
+      ]
+    },
+    "ModelOperationState": {
+      "type": "string",
+      "enum": [
+        "prepared",
+        "applying",
+        "unknown",
+        "committed",
+        "cancelled"
+      ]
+    },
+    "ModelOperationReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "agent_session_id",
+        "operation_id",
+        "state",
+        "request"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "agent_session_id": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "state": {
+          "$ref": "#/$defs/ModelOperationState"
+        },
+        "request": {
+          "$ref": "#/$defs/OperationRequestSnapshot"
+        },
+        "result": {
+          "$ref": "#/$defs/SelectionResultSnapshot"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "committed"
+              }
+            },
+            "required": [
+              "state"
+            ]
+          },
+          "then": {
+            "required": [
+              "result"
+            ],
+            "properties": {
+              "result": {
+                "$ref": "#/$defs/SelectionResultSnapshot"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "request": {
+                "type": "object",
+                "properties": {
+                  "schema_version": {
+                    "const": 1
+                  }
+                },
+                "required": [
+                  "schema_version"
+                ]
+              }
+            },
+            "required": [
+              "request"
+            ]
+          },
+          "then": {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "schema_version": {
+                    "const": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "request": {
+                "type": "object",
+                "properties": {
+                  "schema_version": {
+                    "const": 2
+                  }
+                },
+                "required": [
+                  "schema_version"
+                ]
+              }
+            },
+            "required": [
+              "request"
+            ]
+          },
+          "then": {
+            "properties": {
+              "result": {
+                "type": "object",
+                "properties": {
+                  "schema_version": {
+                    "const": 2
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "description": "Read-only operation facts. A committed receipt never reapplies configuration; callers separately read the current selection. Receipt IDs and request IDs must match at the service boundary."
+    },
+    "RecoverRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "operation_id",
+        "expected_revision",
+        "profile_id"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": 2
+        },
+        "operation_id": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "expected_revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/ActiveProfileId"
+        }
+      },
+      "description": "Explicitly reapply the exact previously recorded active target. Not a read-only query. Match operation/session/thread/revision and all unrelated pending-work gates; committed operations only return their original receipt."
+    },
+    "SelectionResultSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "agent_session_id",
+        "state",
+        "revision"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ]
+        },
+        "agent_session_id": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "state": {
+          "$ref": "#/$defs/SelectionState"
+        },
+        "revision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/ProfileId"
+        },
+        "operation_id": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "availability": {
+          "$ref": "#/$defs/SelectionAvailability"
+        }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "$ref": "https://schemas.yijie.ai/chat/model-selection/v1#/$defs/Selection"
+            },
+            {
+              "$ref": "#/$defs/Selection"
+            }
+          ]
+        }
+      ],
+      "description": "Original committed result, preserving its schema version and fields. A legacy result is not upgraded or decorated with current availability. Read current Selection separately."
+    }
+  },
+  "x-family-version": "0.2.0"
+}

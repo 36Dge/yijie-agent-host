@@ -272,6 +272,12 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	} else if os.Getenv("YIJIE_KIMI_API_KEY") != "" || os.Getenv("YIJIE_KIMI_API_KEY_FILE") != "" {
 		return Config{}, errors.New("Kimi credentials require explicit chat model configuration")
 	}
+	if value := os.Getenv("YIJIE_KIMI_K31_PRO_CANDIDATE"); value != "" && value != "false" {
+		if value != "true" || !runtimeConfig.ChatModelsEnabled {
+			return Config{}, errors.New("Kimi K3.1 candidate requires explicit local model profile")
+		}
+		runtimeConfig.KimiK31Candidate = true
+	}
 	// Retired credentials are scrubbed, never copied into Host or Runtime state.
 	_ = os.Unsetenv(codex.SorftimeSecretEnv)
 	_ = os.Unsetenv(codex.SorftimeEnabledEnv)
@@ -901,7 +907,11 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 		}
 	}
 	if config.Environment == "local" && config.Runtime.RuntimePermissionsEnabled {
-		registerChatModels(mux, &sessionHandler{service: sessions, apiToken: apiToken}, config.Runtime.ChatModelsEnabled)
+		if config.Runtime.KimiK31Candidate {
+			registerChatModelsV2(mux, &sessionHandler{service: sessions, apiToken: apiToken})
+		} else {
+			registerChatModels(mux, &sessionHandler{service: sessions, apiToken: apiToken}, config.Runtime.ChatModelsEnabled)
+		}
 	}
 	if config.Runtime.Market.Manifest != "" {
 		registerMarketRoutes(mux, sessions, apiToken, config.InstanceNonce)

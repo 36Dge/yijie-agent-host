@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-164",
+  "release": false,
+  "mode": "immutable_local_candidate",
+  "source_commit": "b0060c8bc4fb924cec14d98b193c32c69482b7b7",
+  "source_lock_path": "compatibility/runtime-kimi-k31-pro/source.lock.json",
+  "source_lock_sha256": "e5e2250c27a93118ae1acbe68e7117bebd67ffae564d0956a27a82973f79e5ee",
+  "authority": {
+    "schema_version": 1,
+    "feature": "FEAT-164",
+    "mode": "local_worktree_candidate",
+    "release": false,
+    "authority": "yijie-codex canonical FEAT-164 candidate; new Kimi source predicate and retired-model request guard; app-server wire unchanged from retained web-sources artifact",
+    "runtime_source": {
+      "repository": "https://github.com/36Dge/yijie-codex.git",
+      "base_commit": "57753db451b29a49315ddcb6449ca146171c4de7"
+    },
+    "upstream": {
+      "commit": "5d1fbf26c43abc65a203928b2e31561cb039e06d",
+      "tag": "rust-v0.144.6",
+      "url": "https://github.com/openai/codex.git"
+    },
+    "methods": [
+      "thread/inputOnlyPolicy/read"
+    ],
+    "experimental_api": false,
+    "wire_authority": {
+      "path": "compatibility/runtime-input-only/source.lock.json",
+      "sha256": "1fa0510593ad1944838d34fc4ee490414766a16ec15faf26a08f3c262f3cbc4e"
+    },
+    "runtime_artifact": {
+      "binary": "codex",
+      "reportedVersion": "codex-cli 0.144.6",
+      "sha256": "bfb116b7bd79d11ffd593a0bf1b4be681f3081d6705a018a4a69665984e1ebc8",
+      "sizeBytes": 355892488,
+      "target": "aarch64-apple-darwin",
+      "version": "0.144.6"
+    },
+    "runtime_manifest_sha256": "27049195d89e4d283c09c8106197a4916457f41410ce5919bddd26aaf8c5ed7e",
+    "runtime_schema": {
+      "experimentalApi": false,
+      "schemaFileCount": 269,
+      "schemaTreeSha256": "d8c3265d8923ef4437203c0a2ded954549b4abc0c5079ecd6bcdf7c6da72f11e",
+      "transport": "stdio"
+    },
+    "native_sources": [
+      {
+        "path": ".yijie/patches/0001-feat-126-filter-persistent-diagnostics.patch",
+        "sha256": "6b337a02caf064c6819fab5c7367a485004c85cce0d42acb06fa6d5003e599a0"
+      },
+      {
+        "path": ".yijie/patches/0002-feat-136-unified-exec-pre-emitter-command-lifecycle.patch",
+        "sha256": "43de168e1443f4b9ca60d7f61e3de2daf20e1cfea14d2e196d28ba417bf3e06d"
+      },
+      {
+        "path": ".yijie/patches/input-only/0003-input-only-execution.patch",
+        "sha256": "c340b6fc17419bcdc1ff45eebe3da40e5fde740c029102eb7a188f6b14eb41d8"
+      },
+      {
+        "path": ".yijie/patches/chat-models/0004-feat-156-upstream-tool-choice.patch",
+        "sha256": "828f913fead29da08c015d73ef6c7102a8adf9afd3811ab5469891ec5efc2abf"
+      },
+      {
+        "path": ".yijie/patches/chat-models/0005-feat-156-terminal-tool-arguments.patch",
+        "sha256": "f1d6689f44056c252530ad940bb253e8a0ace60e810b88857440699ba908917e"
+      },
+      {
+        "path": ".yijie/patches/chat-models/0006-native-web-search-sources.patch",
+        "sha256": "8fdb9d2f7d7708a603a8d08906a4d3cd6ce098ca9165471f95cb0816ed6718ee"
+      },
+      {
+        "path": ".yijie/patches/chat-models/0007-feat-164-kimi-k31-pro.patch",
+        "sha256": "c666c066ec1235d016e7479805242d049def542b9f8c684970ac8e5b4cee8ae6"
+      },
+      {
+        "path": ".yijie/upstream.env",
+        "sha256": "33caf5655c94738bbdac3f4691d227b210ba7c470e78243a3a75ce87805bbe04"
+      },
+      {
+        "path": "scripts/build-kimi-k31-pro.sh",
+        "sha256": "8b26dd8a13765d4fc5e272f8ea1e17d57d69d66fbfff6987eb749604fe828f30"
+      },
+      {
+        "path": "scripts/write-kimi-k31-pro-runtime-manifest.py",
+        "sha256": "c4d336c53d9d504bd954a1f474bc888031b71409c4303b73124cb8c4ec9831c8"
+      },
+      {
+        "path": "scripts/write-chat-model-stream-runtime-manifest.py",
+        "sha256": "37386848d94a071311c8c9a7889b4ba1accc2450fa4f6f520126586b28aa2b7c"
+      },
+      {
+        "path": "scripts/write-web-search-sources-runtime-manifest.py",
+        "sha256": "f608a75680efe32ee638d7756c4479e5a4c890bb66fc1f522c82627b30c270f2"
+      },
+      {
+        "path": "scripts/verify-web-search-sources-schema.py",
+        "sha256": "dc8bc8e01beaeba5cbbd923b316420ea375cb23a7d4ad68e992ca77d0a8103cd"
+      },
+      {
+        "path": "scripts/write-runtime-manifest.py",
+        "sha256": "1d453ce35466468d26db5f7eda2bfd8df31e81e36c67ba79407a96664378126e"
+      },
+      {
+        "path": "scripts/runtime-env.sh",
+        "sha256": "5f646e8e011a3b7f7dedfecc0c502d855106fedd09f07b76186b969dc8f7b359"
+      },
+      {
+        "path": "scripts/runtime_manifest.py",
+        "sha256": "1f4d32eb03440288f4bd3d386a3c6a3b363ec6b976fe32dcf13b6e81a1a7aea0"
+      },
+      {
+        "path": "scripts/canonicalize-json.py",
+        "sha256": "731735e5bbfd985264874272083e2f397de7dc172e5ef6beecefe0532a362970"
+      },
+      {
+        "path": "scripts/verify-release-lock-drift.py",
+        "sha256": "56b7e3351d0cb7ea1fe2cde08076777074b8e6038e26338153d59c1603d94a2c"
+      },
+      {
+        "path": ".yijie/build/kimi-k31-pro-r1/aarch64-apple-darwin/runtime-manifest.json",
+        "sha256": "27049195d89e4d283c09c8106197a4916457f41410ce5919bddd26aaf8c5ed7e"
+      }
+    ],
+    "generators": [
+      {
+        "path": "scripts/generate-runtime-kimi-k31-pro.mjs",
+        "sha256": "e5df456683767fcc7170b07dc58cd1646df5cc2598fe250c5de3a07257f8e396"
+      }
+    ],
+    "generated": [
+      {
+        "path": "sdks/go/openapi/runtime-kimi-k31-pro/artifact.gen.go",
+        "sha256": "024970500801a63e2065e4a41bb15c918b20da4bc342e2d290ccd0e9ebc9a40a"
+      }
+    ]
+  },
+  "copies": [
+    {
+      "repository": "yijie-agent-host",
+      "source": "sdks/go/openapi/runtime-kimi-k31-pro/artifact.gen.go",
+      "destination": "internal/contracts/runtimekimik31pro/artifact.gen.go",
+      "sha256": "024970500801a63e2065e4a41bb15c918b20da4bc342e2d290ccd0e9ebc9a40a"
+    }
+  ]
+}

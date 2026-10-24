@@ -757,6 +757,10 @@ func (m *Manager) StartTurnV2(
 	m.threadOperation.Lock()
 	defer m.threadOperation.Unlock()
 
+	if id := ModelProfileID(ctx); id != "" && !m.ModelAvailable(id) {
+		return TurnInfo{}, errors.New("selected model is unavailable")
+	}
+
 	if threadID == "" {
 		return TurnInfo{}, errors.New("Codex thread id is required")
 	}
@@ -766,7 +770,7 @@ func (m *Manager) StartTurnV2(
 	if reasoningEffort == "" {
 		reasoningEffort = "none"
 	}
-	if reasoningEffort != "none" && reasoningEffort != "high" && !(reasoningEffort == "max" && m.config.ChatModelsEnabled && ModelProfileID(ctx) == "kimi-k3-max-v1") {
+	if reasoningEffort != "none" && reasoningEffort != "high" && !(reasoningEffort == "max" && m.config.ChatModelsEnabled && (ModelProfileID(ctx) == "kimi-k3-max-v1" || ModelProfileID(ctx) == KimiK31ProfileID)) {
 		return TurnInfo{}, errors.New("reasoning effort must be none or high")
 	}
 	wireInputs := make([]any, 0, len(inputs))
