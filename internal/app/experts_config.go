@@ -25,7 +25,7 @@ func loadExpertProfile(config *Config) error {
 	if filepath.Base(config.Skills.BundleRoot) != "skill-packages-experts" {
 		return errors.New("experts require the separate reviewed candidate resource slot")
 	}
-	if e := skills.VerifyExpertCandidate(config.Skills.BundleRoot); e != nil {
+	if e := skills.VerifyExpertCandidateForProfile(config.Skills.BundleRoot, config.Runtime.KimiK31Candidate); e != nil {
 		return errors.New("reviewed expert candidate resources are unavailable")
 	}
 	config.ExpertsEnabled = true

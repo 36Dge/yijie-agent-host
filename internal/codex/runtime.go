@@ -445,6 +445,13 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
 		}
 	}
+	if providerErr == nil && m.config.KimiK31Candidate {
+		var extra []string
+		extra, providerErr = m.kimiK31MeterArguments()
+		if providerErr == nil {
+			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
+		}
+	}
 	if providerErr == nil {
 		providerErr = authority.applyFEAT137ExecPolicy(m.config.CommandApprovalEnabled, rulePlan)
 	}

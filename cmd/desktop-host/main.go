@@ -305,7 +305,7 @@ func run(logger *slog.Logger) error {
 func configuredSkillService(config app.Config, runtime skills.Runtime) (*skills.Service, error) {
 	value := skills.Config{BundleRoot: config.Skills.BundleRoot, ManagedRoot: config.Skills.InstallRoot, Runtime: runtime}
 	if config.ExpertsEnabled {
-		value.ExpertCatalogDigest = skills.ReviewedExpertCatalogDigest
+		value.ExpertCatalogDigest = skills.ExpertCatalogDigestForProfile(config.Runtime.KimiK31Candidate)
 	}
 	return skills.NewService(value)
 }
