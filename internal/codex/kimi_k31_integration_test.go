@@ -43,6 +43,17 @@ func TestFEAT164NativeCandidateLifecycle(t *testing.T) {
 		if body["model"] != model || reasoning["effort"] != effort || body["tool_choice"] != "auto" {
 			t.Error("wire identity or tool choice differs")
 		}
+		if model == "kimi-k3.1-pro" {
+			include, ok := body["include"].([]any)
+			if !ok {
+				t.Error("native include is not an array")
+			}
+			for _, value := range include {
+				if value != "web_search_call.action.sources" && value != "web_search_call.results" {
+					t.Error("native Kimi request contains an undocumented include value")
+				}
+			}
+		}
 		id := fmt.Sprintf("feat164_%d", n)
 		item := map[string]any{"id": "message_" + id, "type": "message", "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "ordinary marker 164", "annotations": []any{}}}}
 		w.Header().Set("Content-Type", "text/event-stream")
