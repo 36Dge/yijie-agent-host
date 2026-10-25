@@ -77,6 +77,26 @@ func (s *Service) applyChatModelV2(ctx context.Context, sessionID string, reques
 	s.modelOperationMu.Lock()
 	defer s.modelOperationMu.Unlock()
 	var op modelOperationV2
+	// Terminal replay uses an actual read transaction. Even bbolt's metadata
+	// write counter must remain unchanged when a caller only replays a receipt.
+	priorErr := s.store.db.View(func(tx *bolt.Tx) error {
+		var err error
+		op, err = loadModelOperationV2(tx, sessionID, request.OperationId)
+		return err
+	})
+	if priorErr == nil {
+		if op.Request != request {
+			return wire.Selection{}, ErrTurnOperationConflict
+		}
+		if op.Stage == "committed" {
+			return *op.Result, nil
+		}
+		if !recovery {
+			return wire.Selection{}, ErrModelUnknown
+		}
+	} else if !errors.Is(priorErr, ErrNotFound) {
+		return wire.Selection{}, priorErr
+	}
 	var record Record
 	err := s.store.db.Update(func(tx *bolt.Tx) error {
 		var err error

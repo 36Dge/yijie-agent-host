@@ -55,6 +55,7 @@ func TestFEAT164V2SelectionAndTerminalReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt.paused, rt.ready = true, false
+	writesBeforeReplay := s.store.db.Stats().TxStats.Write
 	old, err := s.RecoverChatModelV2(context.Background(), testSessionID, modelV2Recover(r))
 	if err != nil || old.State != wire.ModelOperationStateCommitted || old.Result.Revision != 1 || rt.switches != 2 {
 		t.Fatal(old, err, rt.switches)
@@ -65,6 +66,9 @@ func TestFEAT164V2SelectionAndTerminalReceipt(t *testing.T) {
 	}
 	if _, err = s.SelectChatModelV2(context.Background(), testSessionID, r); err != nil || rt.switches != 2 {
 		t.Fatal(err, rt.switches)
+	}
+	if s.store.db.Stats().TxStats.Write != writesBeforeReplay {
+		t.Fatal("terminal replay opened a write transaction")
 	}
 }
 
