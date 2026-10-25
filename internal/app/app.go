@@ -278,6 +278,9 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		}
 		runtimeConfig.KimiK31Candidate = true
 	}
+	if err := loadKimiK31Activation(&runtimeConfig, os.Getenv); err != nil {
+		return Config{}, err
+	}
 	// Retired credentials are scrubbed, never copied into Host or Runtime state.
 	_ = os.Unsetenv(codex.SorftimeSecretEnv)
 	_ = os.Unsetenv(codex.SorftimeEnabledEnv)

@@ -159,6 +159,7 @@ func (m *Manager) startDraftThreadLocked(ctx context.Context, cwd, thread string
 	if thread != "" {
 		method = RuntimeMethodThreadResume
 	}
+	m.forgetKimiK31Thread(thread)
 	var response threadResponse
 	if e = m.request(ctx, method, params, &response); e != nil {
 		return ThreadInfo{}, e
@@ -189,9 +190,13 @@ func (m *Manager) acceptDraftThreadResponse(ctx context.Context, cwd, thread, ge
 	}
 	m.draftProofs[info.ID] = scheduledDraftProof{generation: generation, cwd: cwd, workspace: ctx.Value(scheduledDraftKey{}).(string), initial: info}
 	m.mu.Unlock()
+	m.bindKimiK31Thread(ctx, info)
 	return info, nil
 }
 func (m *Manager) resumeDraftThread(ctx context.Context, thread string) (ThreadInfo, error) {
+	if _, err := m.modelForContext(ctx); err != nil {
+		return ThreadInfo{}, err
+	}
 	m.threadOperation.Lock()
 	defer m.threadOperation.Unlock()
 	generation, err := m.scheduledDraftGeneration()

@@ -44,27 +44,29 @@ const (
 )
 
 type Config struct {
-	Market                        MarketConfig
-	ChatModelsEnabled             bool
-	KimiK31Candidate              bool
-	KimiAPIKey                    string
-	BinaryPath                    string
-	ManifestPath                  string
-	CodexHome                     string
-	StartupTimeout                time.Duration
-	RequestTimeout                time.Duration
-	ShutdownTimeout               time.Duration
-	MaxMessageBytes               int
-	WriteQueueDepth               int
-	StderrTailBytes               int
-	MiniMax                       MiniMaxConfig
-	FakeResponses                 FakeResponsesConfig
-	ManagedReasoningProfile       ManagedReasoningProfile
-	DynamicToolsEnabled           bool
-	CommandApprovalEnabled        bool
-	RuntimePermissionsEnabled     bool
-	PermissionVerificationBaseURL string
-	PermissionVerificationPolicy  string
+	Market                         MarketConfig
+	ChatModelsEnabled              bool
+	KimiK31Candidate               bool
+	KimiK31AllowManagedPredecessor bool
+	KimiK31ExecutionPaused         bool
+	KimiAPIKey                     string
+	BinaryPath                     string
+	ManifestPath                   string
+	CodexHome                      string
+	StartupTimeout                 time.Duration
+	RequestTimeout                 time.Duration
+	ShutdownTimeout                time.Duration
+	MaxMessageBytes                int
+	WriteQueueDepth                int
+	StderrTailBytes                int
+	MiniMax                        MiniMaxConfig
+	FakeResponses                  FakeResponsesConfig
+	ManagedReasoningProfile        ManagedReasoningProfile
+	DynamicToolsEnabled            bool
+	CommandApprovalEnabled         bool
+	RuntimePermissionsEnabled      bool
+	PermissionVerificationBaseURL  string
+	PermissionVerificationPolicy   string
 	// DeterministicApprovalProducerEnabled is a D4-only, Host-validated
 	// producer gate. It never changes the command approval authority or
 	// execution permissions and cannot be enabled without that authority.
@@ -100,6 +102,9 @@ func (c Config) Configured() bool {
 func (c Config) validate() error {
 	if err := c.Market.validate(); err != nil {
 		return err
+	}
+	if (c.KimiK31AllowManagedPredecessor || c.KimiK31ExecutionPaused) && !c.KimiK31Candidate {
+		return errors.New("Kimi activation settings require the explicit candidate")
 	}
 	if c.KimiK31Candidate && (!c.ChatModelsEnabled || c.Market.enabled() || c.DynamicToolsEnabled) {
 		return errors.New("Kimi K3.1 candidate requires ordinary model chat; market and dynamic tools await qualification")
@@ -225,6 +230,7 @@ type Manager struct {
 	titleCollectors        map[string]*titleCollector
 	pendingTitleStarts     int
 	draftProofs            map[string]scheduledDraftProof
+	kimiK31ThreadProfiles  map[string]string // guarded by threadOperation
 }
 
 func NewManager(config Config, logger *slog.Logger) *Manager {
@@ -412,7 +418,7 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 	if providerErr == nil && m.config.ChatModelsEnabled {
 		var extra []string
 		if m.config.KimiK31Candidate {
-			extra, providerErr = prepareKimiK31Layer(authority)
+			extra, providerErr = prepareKimiK31LayerWithPredecessor(authority, m.config.KimiK31AllowManagedPredecessor)
 		} else {
 			extra, providerErr = prepareChatModelLayer(authority)
 		}

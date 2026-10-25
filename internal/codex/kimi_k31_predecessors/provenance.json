@@ -1,0 +1,15 @@
+{
+  "source_commit": "5022435a6272263e66e46a41b7ed7c3f9fb6caf9",
+  "source_files": {
+    "internal/codex/chat_models.go": "902338b0ef903ced4960a7b888b228fbf1f376e73d442d539feb9bec0c86a8e1",
+    "internal/codex/provider.go": "f668e9ce9c73daa4ad1ba255227ea2e3ee433626fcae8a27c7415e4b362113dd",
+    "internal/contracts/chatmodels/types.gen.go": "4ca2a482e18f83d5bea751f86ca89fa16c5fcc43371e7dbef2d087a8e7747f6b"
+  },
+  "capture": "go test ./internal/codex -run ^TestFEAT164ExportPredecessor$ -count=1 -v; one-time capture before S1 edits; no Runtime/network",
+  "files": {
+    "v1-current.json": "c061c648f9d98115cdc5ae69ceb44b01fe0129c0006fc3f2f5b542e358a6e0fb",
+    "v1-early.json": "c97ca0d28865a0051ea8cbca5c8ede0f5e14436d21f29824c01e44bba8721b80",
+    "v1.toml.tpl": "b7f6080338431ae330cdf67958ef8f9d33a9145b1e4d18707845f9e3847a88bc"
+  },
+  "template_rule": "Only {{CATALOG_PATH}} is rendered using strconv.Quote of the canonical managed Home catalog path."
+}

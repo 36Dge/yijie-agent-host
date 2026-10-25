@@ -16,6 +16,20 @@ import (
 // Actual pinned Runtime, ordinary loopback Responses, no credentials or paid
 // mode. No executable substitute, fault injection, forced stop or user data.
 func TestFEAT164NativeCandidateLifecycle(t *testing.T) {
+	runFEAT164NativeLifecycle(t, false)
+}
+
+func TestFEAT164NativePredecessorAndPausedKimi(t *testing.T) {
+	runFEAT164NativeLifecycle(t, true)
+}
+
+func runFEAT164NativeLifecycle(t *testing.T, paused bool) {
+	t.Helper()
+	profiles := []string{KimiK31ProfileID, "minimax-m3-high-v1", KimiK31ProfileID}
+	if paused {
+		profiles = []string{"minimax-m3-high-v1"}
+	}
+
 	binary, manifest := integrationArtifactPaths(t)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -30,13 +44,13 @@ func TestFEAT164NativeCandidateLifecycle(t *testing.T) {
 			return
 		}
 		n := requests.Add(1)
-		if n > 3 {
+		if n > int64(len(profiles)) {
 			t.Error("extra model request")
 			w.WriteHeader(429)
 			return
 		}
 		model, effort := "kimi-k3.1-pro", "max"
-		if n == 2 {
+		if paused || n == 2 {
 			model, effort = "MiniMax-M3", "high"
 		}
 		reasoning, _ := body["reasoning"].(map[string]any)
@@ -88,6 +102,13 @@ func TestFEAT164NativeCandidateLifecycle(t *testing.T) {
 	config := integrationConfig(binary, manifest, home, "ordinary-minimax-fixture")
 	config.ChatModelsEnabled, config.KimiK31Candidate, config.RuntimePermissionsEnabled = true, true, true
 	config.KimiAPIKey = "ordinary-kimi-fixture"
+	config.KimiK31ExecutionPaused, config.KimiK31AllowManagedPredecessor = paused, paused
+	if paused {
+		old, _, configBytes := frozenKimiK31Predecessor(home)
+		writeS1File(t, home, chatModelsCatalogName, old)
+		writeS1File(t, home, chatModelsConfigName, configBytes)
+	}
+
 	config.PermissionVerificationBaseURL = "http://" + listener.Addr().String() + "/v1"
 	manager := NewManager(config, nil)
 	notifications := newIntegrationNotifications()
@@ -107,7 +128,7 @@ func TestFEAT164NativeCandidateLifecycle(t *testing.T) {
 		t.Fatal("candidate start", err)
 	}
 	var thread string
-	for i, profile := range []string{KimiK31ProfileID, "minimax-m3-high-v1", KimiK31ProfileID} {
+	for i, profile := range profiles {
 		ctx := WithPermissionMode(WithModelProfile(context.Background(), profile), PermissionAsk)
 		var info ThreadInfo
 		if i == 0 {
@@ -138,8 +159,38 @@ func TestFEAT164NativeCandidateLifecycle(t *testing.T) {
 	if _, err = manager.StartTurnV2(old, thread, []UserInput{input}, "max"); err == nil {
 		t.Fatal("retired turn accepted")
 	}
-	if requests.Load() != 3 {
+	for _, id := range []string{"", "kimi-k3-max-v1"} {
+		denied := WithModelProfile(context.Background(), id)
+		if _, err := manager.StartThread(denied, cwd); err == nil {
+			t.Fatal("nonactive start admitted")
+		}
+		if _, err := manager.ResumeThread(denied, thread); err == nil {
+			t.Fatal("nonactive resume admitted")
+		}
+		if _, err := manager.StartTurn(denied, thread, "ordinary", "high"); err == nil {
+			t.Fatal("nonactive legacy turn admitted")
+		}
+		if _, err := manager.GenerateTitle(denied, "ordinary title"); err == nil {
+			t.Fatal("nonactive title admitted")
+		}
+	}
+	if paused {
+		ctx := WithModelProfile(context.Background(), KimiK31ProfileID)
+		if _, err := manager.StartThread(ctx, cwd); err == nil {
+			t.Fatal("paused Kimi start admitted")
+		}
+		if _, err := manager.SwitchThread(ctx, thread); err == nil {
+			t.Fatal("paused Kimi switch admitted")
+		}
+		if _, err := manager.GenerateTitle(ctx, "ordinary title"); err == nil {
+			t.Fatal("paused Kimi title admitted")
+		}
+		if _, err := manager.ReadThread(context.Background(), thread); err != nil {
+			t.Fatal("pause blocked history", err)
+		}
+	}
+	if requests.Load() != int64(len(profiles)) {
 		t.Fatal("unexpected outbound count")
 	}
-	t.Log("3 loopback Responses; new Kimi/MiniMax/new Kimi; same thread; retired admission denied")
+	t.Logf("%d loopback Responses; paused=%v; retired/headerless admission denied; history and normal cleanup retained", requests.Load(), paused)
 }

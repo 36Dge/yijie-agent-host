@@ -588,6 +588,7 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 	if err != nil {
 		return ThreadInfo{}, err
 	}
+	m.bindKimiK31Thread(ctx, thread)
 	return thread, nil
 }
 
@@ -653,6 +654,7 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	}
 	params.Config = expertThreadConfig(ctx, params.Config)
 	params.Config = m.artifactThreadConfig(params.Config)
+	m.forgetKimiK31Thread(threadID)
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadResume, params, &response); err != nil {
 		return ThreadInfo{}, err
@@ -667,6 +669,7 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	if thread.ID != threadID {
 		return ThreadInfo{}, errors.New("thread/resume returned an unexpected thread id")
 	}
+	m.bindKimiK31Thread(ctx, thread)
 	return thread, nil
 }
 
@@ -702,6 +705,9 @@ func (m *Manager) StartTurn(
 ) (TurnInfo, error) {
 	m.threadOperation.Lock()
 	defer m.threadOperation.Unlock()
+	if err := m.admitKimiK31Turn(ctx, threadID, reasoningEffort); err != nil {
+		return TurnInfo{}, err
+	}
 
 	if threadID == "" {
 		return TurnInfo{}, errors.New("Codex thread id is required")
@@ -756,6 +762,9 @@ func (m *Manager) StartTurnV2(
 ) (TurnInfo, error) {
 	m.threadOperation.Lock()
 	defer m.threadOperation.Unlock()
+	if err := m.admitKimiK31Turn(ctx, threadID, reasoningEffort); err != nil {
+		return TurnInfo{}, err
+	}
 
 	if id := ModelProfileID(ctx); id != "" && !m.ModelAvailable(id) {
 		return TurnInfo{}, errors.New("selected model is unavailable")

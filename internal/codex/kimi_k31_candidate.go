@@ -3,8 +3,6 @@ package codex
 import (
 	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 
 	legacy "github.com/36Dge/yijie-agent-host/internal/contracts/chatmodels"
@@ -52,12 +50,11 @@ func kimiK31Config(home string) []byte {
 	return []byte(config)
 }
 func prepareKimiK31Layer(a *managedCodexHomeAuthority) ([]string, error) {
-	// Walking skeleton is fresh-home only. A daily managed home needs the later
-	// reviewed predecessor/retirement transaction, never an implicit migration.
-	for _, name := range []string{chatModelsCatalogName, chatModelsConfigName} {
-		if _, err := os.Lstat(filepath.Join(a.path, name)); err == nil || !os.IsNotExist(err) {
-			return nil, errors.New("Kimi candidate requires a fresh managed home")
-		}
+	return prepareKimiK31LayerWithPredecessor(a, false)
+}
+func prepareKimiK31LayerWithPredecessor(a *managedCodexHomeAuthority, allow bool) ([]string, error) {
+	if err := validateKimiK31Predecessor(a, allow); err != nil {
+		return nil, err
 	}
 	catalog, err := kimiK31Catalog()
 	if err != nil {
@@ -72,6 +69,9 @@ func prepareKimiK31Layer(a *managedCodexHomeAuthority) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !cp.existed && fp.existed {
+		return nil, errors.New("invalid managed model pair order")
+	}
 	for _, plan := range []managedFilePlan{cp, fp} {
 		if err = a.applyManagedFile(plan); err != nil {
 			return nil, err
@@ -82,6 +82,9 @@ func prepareKimiK31Layer(a *managedCodexHomeAuthority) ([]string, error) {
 func (m *Manager) validateSelectedChatModelLayer(a *managedCodexHomeAuthority) error {
 	if !m.config.KimiK31Candidate {
 		return validateChatModelLayer(a)
+	}
+	if err := validateKimiK31Predecessor(a, m.config.KimiK31AllowManagedPredecessor); err != nil {
+		return err
 	}
 	catalog, err := kimiK31Catalog()
 	if err != nil {

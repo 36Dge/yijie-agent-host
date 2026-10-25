@@ -13,6 +13,10 @@ func (s *Service) chatModelsV2Ready() bool {
 	r, ok := s.runtime.(interface{ ChatModelsV2Ready() bool })
 	return ok && r.ChatModelsV2Ready()
 }
+func (s *Service) modelActivationRequired(id string) bool {
+	r, ok := s.runtime.(interface{ ChatModelActivationRequired(string) bool })
+	return ok && r.ChatModelActivationRequired(id)
+}
 func (s *Service) ChatModelCatalogV2() wire.Catalog {
 	entries := make([]wire.ModelAvailability, 0, 2)
 	rt, ok := s.runtime.(modelRuntime)
@@ -22,6 +26,8 @@ func (s *Service) ChatModelCatalogV2() wire.Catalog {
 		reason := wire.ModelAvailabilityReasonNotConfigured
 		if available {
 			reason = wire.ModelAvailabilityReasonReady
+		} else if s.modelActivationRequired(string(p.ProfileId)) {
+			reason = wire.ModelAvailabilityReasonActivationRequired
 		} else if configured {
 			reason = wire.ModelAvailabilityReasonRuntimeUnavailable
 		}
@@ -59,6 +65,9 @@ func (s *Service) ReadChatModelV2(id string) (wire.Selection, error) {
 		out.Availability = wire.SelectionAvailabilityRetired
 	} else if out.State == wire.SelectionStateReady && profile != "" {
 		out.Availability = wire.SelectionAvailabilityNotConfigured
+		if s.modelActivationRequired(profile) {
+			out.Availability = wire.SelectionAvailabilityActivationRequired
+		}
 		if s.runtime.(modelRuntime).ModelAvailable(profile) {
 			out.Availability = wire.SelectionAvailabilityReady
 			if !s.chatModelsV2Ready() {

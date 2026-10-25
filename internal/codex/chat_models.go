@@ -37,7 +37,7 @@ func ModelProfile(id string) (models.ModelDefinition, bool) {
 func (m *Manager) ChatModelsEnabled() bool { return m.config.ChatModelsEnabled }
 func (m *Manager) ModelAvailable(id string) bool {
 	p, ok := ModelProfile(id)
-	if !ok || !m.config.ChatModelsEnabled || (id == KimiK31ProfileID && !m.config.KimiK31Candidate) || (id == "kimi-k3-max-v1" && m.config.KimiK31Candidate) {
+	if !ok || !m.config.ChatModelsEnabled || m.ChatModelActivationRequired(id) || (id == KimiK31ProfileID && !m.config.KimiK31Candidate) || (id == "kimi-k3-max-v1" && m.config.KimiK31Candidate) {
 		return false
 	}
 	if p.Provider == "kimi" {
@@ -48,6 +48,9 @@ func (m *Manager) ModelAvailable(id string) bool {
 func (m *Manager) modelForContext(ctx context.Context) (models.ModelDefinition, error) {
 	id := ModelProfileID(ctx)
 	if id == "" {
+		if m.config.KimiK31Candidate {
+			return models.ModelDefinition{}, errors.New("candidate requires an explicit active model")
+		}
 		p, _ := ModelProfile("minimax-m3-high-v1")
 		return p, nil
 	}
@@ -166,6 +169,7 @@ func (m *Manager) SwitchThread(ctx context.Context, threadID string) (ThreadInfo
 	if pending {
 		return ThreadInfo{}, errors.New("native thread has an approval")
 	}
+	m.forgetKimiK31Thread(threadID)
 	if err = m.request(ctx, RuntimeMethodThreadUnsubscribe, map[string]any{"threadId": threadID}, &struct{}{}); err != nil {
 		return ThreadInfo{}, err
 	}
