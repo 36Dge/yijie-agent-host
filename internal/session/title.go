@@ -79,6 +79,13 @@ func (s *Service) GenerateTitle(ctx context.Context, sessionID, operationID, inp
 		s.titleMu.Unlock()
 		return result, nil
 	}
+	// A queued title has only a session reference. In the candidate, a missing
+	// durable profile is not permission to infer a replacement model. Completed
+	// receipts above remain read-only even when execution is paused or retired.
+	if s.ChatModelsV2Enabled() && (record.ModelProfile == "" || s.checkModelRequest(ctx, record) != nil) {
+		s.titleMu.Unlock()
+		return TitleResult{}, ErrTitleUnavailable
+	}
 	s.titleOperations[key] = &titleOperation{inputSHA256: digest, pending: true}
 	s.titleMu.Unlock()
 
