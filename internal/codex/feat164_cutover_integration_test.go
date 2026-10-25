@@ -536,10 +536,17 @@ func TestFEAT164LoadedRetiredAgentGuard(t *testing.T) {
 		}
 	}
 	checkHistory(2)
-	if _, e := h.manager.ResumeThread(current, childID); e != nil {
+	// Already-loaded native threads ignore resume model overrides. Exercise the
+	// stable turn/start model field explicitly to verify same-session reset;
+	// Host cold migration is covered separately by LoadedLegacyGraphCutover.
+	var selectedTurn turnStartResponse
+	params := map[string]any{"threadId": childID, "model": "kimi-k3.1-pro", "effort": "max", "input": []any{map[string]any{"type": "text", "text": "Return one ordinary local note after this explicit new-model selection.", "text_elements": []any{}}}}
+	if e := h.manager.request(context.Background(), "turn/start", params, &selectedTurn); e != nil {
 		t.Fatal(e)
 	}
-	h.hostTurn(current, childID, "Return one ordinary local note after this explicit new-model selection.")
+	if status, _, e := h.notifications.waitForTurn(selectedTurn.Turn.ID, 30*time.Second); e != nil || status != "completed" {
+		t.Fatal("same-session explicitly selected native turn", status, e)
+	}
 	h.hostTurn(current, parent.ID, "Observe the same child's successful new-model completion.")
 	checkHistory(3)
 	if h.count() != 9 {
@@ -553,7 +560,7 @@ func TestFEAT164LoadedRetiredAgentGuard(t *testing.T) {
 	if h.count() != 9 {
 		t.Fatal("cold history read submitted model HTTP")
 	}
-	t.Log("three native retirement errors; both child waits errored; explicit same-child migration and parent wait completed; all failed history persists safely across normal restart; nine current-only loopback requests")
+	t.Log("three native retirement errors; both child waits errored; explicit same-child native model selection and parent wait completed; all failed history persists safely across normal restart; nine current-only loopback requests")
 }
 
 func TestFEAT164AutomaticCompaction(t *testing.T) {
