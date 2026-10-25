@@ -3,18 +3,18 @@
   "feature": "FEAT-164",
   "release": false,
   "mode": "immutable_local_candidate",
-  "source_commit": "f2819c66a2368aaff37216a46c48d5cd81df1747",
+  "source_commit": "1b357cce0575c492f3715b316ee5f254051acf80",
   "source_lock_path": "compatibility/runtime-kimi-k31-pro/source.lock.json",
-  "source_lock_sha256": "3d204e1cf11a7a108d636f37d112d8cc9e8ad46212b9cb867097714de6a4b89c",
+  "source_lock_sha256": "bec02925813e13a92342e6dcab8eb0f04b4732983e00c2f9e6e314827c8d3522",
   "authority": {
     "schema_version": 1,
     "feature": "FEAT-164",
     "mode": "local_worktree_candidate",
     "release": false,
-    "authority": "yijie-codex canonical FEAT-164 r2 candidate; new Kimi documented include enum, search source predicate and retired-model request guard; app-server wire unchanged from retained web-sources artifact",
+    "authority": "yijie-codex canonical FEAT-164 r4 candidate; native failed-agent terminal survives completion, sanitized existing ErrorEvent persists for history replay; app-server wire unchanged from retained r2; prior include/search/retirement protections retained",
     "runtime_source": {
       "repository": "https://github.com/36Dge/yijie-codex.git",
-      "base_commit": "074417e5e2f5f55704ea5e1777e7a22d514076b4"
+      "base_commit": "a28130abb13d0f99a00107cd513a653bae878b77"
     },
     "upstream": {
       "commit": "5d1fbf26c43abc65a203928b2e31561cb039e06d",
@@ -32,12 +32,12 @@
     "runtime_artifact": {
       "binary": "codex",
       "reportedVersion": "codex-cli 0.144.6",
-      "sha256": "6419b16c37a838a6a2543838d1ffc1a3a9afc070f26435f760dd8eb9e3b508a8",
-      "sizeBytes": 355910024,
+      "sha256": "3821bb6063825bdb0e30e367757117f7b3bc9bca84f0275cbdef9e9c660e1e5f",
+      "sizeBytes": 356044408,
       "target": "aarch64-apple-darwin",
       "version": "0.144.6"
     },
-    "runtime_manifest_sha256": "87ffbdc2b3ab60570f2bee7b741ed18766ef516e0adef73671c6c433fd1e2fc2",
+    "runtime_manifest_sha256": "cf72b3b130c0682676603e75d40e8f4e9afaa6f5ed1a67d6be233726ff94a95f",
     "runtime_schema": {
       "experimentalApi": false,
       "schemaFileCount": 269,
@@ -78,6 +78,14 @@
         "sha256": "c3dc2b58e6ae9d1a2335bc4937defbbaf9da99848575d1e554fc579ef9aec475"
       },
       {
+        "path": ".yijie/patches/chat-models/0009-feat-164-native-failure-terminals.patch",
+        "sha256": "ae74c11488a31644e9b052f1864fd4a76ecdc05e9019206efd2e7d82f8595886"
+      },
+      {
+        "path": ".yijie/patches/chat-models/0010-feat-164-sanitized-persistence-metrics.patch",
+        "sha256": "bcffb5337101c7d2032acaa0dc633cd92f2d12110eff0be10a79884f38eb85a7"
+      },
+      {
         "path": ".yijie/upstream.env",
         "sha256": "33caf5655c94738bbdac3f4691d227b210ba7c470e78243a3a75ce87805bbe04"
       },
@@ -92,6 +100,30 @@
       {
         "path": "scripts/write-kimi-k31-pro-r2-runtime-manifest.py",
         "sha256": "8e4126c9601473450099e82351fb44a0fa5d596fa1632b8c6ec807e150e93962"
+      },
+      {
+        "path": "scripts/build-kimi-k31-pro-r3.sh",
+        "sha256": "df8996e6f91614f13fd11481c45d4081b760615950d56c30c6efc4b841ca9f5b"
+      },
+      {
+        "path": "scripts/check-kimi-k31-pro-r3.sh",
+        "sha256": "72638533e4cc5eb9472fa6e38ad0521cc31c1e19e56d15195c604e278d017852"
+      },
+      {
+        "path": "scripts/write-kimi-k31-pro-r3-runtime-manifest.py",
+        "sha256": "bc23015f1d9c9352d1fc5a8f6f6f70e7cb71158a878699d74254e793dbe07966"
+      },
+      {
+        "path": "scripts/build-kimi-k31-pro-r4.sh",
+        "sha256": "22a847b609c53e0a7e446bc415033b28cf8c10ce4fe0cb0ffc389cd5f9a03b6a"
+      },
+      {
+        "path": "scripts/check-kimi-k31-pro-r4.sh",
+        "sha256": "feac3cbd16e57d8698f994953f8ccdc62df8e8bb710e7e27f0425ac4f7e13b2a"
+      },
+      {
+        "path": "scripts/write-kimi-k31-pro-r4-runtime-manifest.py",
+        "sha256": "a6a52099c7fd853a08f5463bc57d56a27c67282bdcad989af2dd4d444604122e"
       },
       {
         "path": "scripts/write-kimi-k31-pro-runtime-manifest.py",
@@ -130,20 +162,20 @@
         "sha256": "56b7e3351d0cb7ea1fe2cde08076777074b8e6038e26338153d59c1603d94a2c"
       },
       {
-        "path": ".yijie/build/kimi-k31-pro-r2/aarch64-apple-darwin/runtime-manifest.json",
-        "sha256": "87ffbdc2b3ab60570f2bee7b741ed18766ef516e0adef73671c6c433fd1e2fc2"
+        "path": ".yijie/build/kimi-k31-pro-r4/aarch64-apple-darwin/runtime-manifest.json",
+        "sha256": "cf72b3b130c0682676603e75d40e8f4e9afaa6f5ed1a67d6be233726ff94a95f"
       }
     ],
     "generators": [
       {
         "path": "scripts/generate-runtime-kimi-k31-pro.mjs",
-        "sha256": "8b5850f9211178d8c8f8cb173ba4bb6e8ad44fbaac32580802e7201eb4adca75"
+        "sha256": "68a54f786094f601a4842b9098d7c14250f97af89090c36421f6ada7246d8c6e"
       }
     ],
     "generated": [
       {
         "path": "sdks/go/openapi/runtime-kimi-k31-pro/artifact.gen.go",
-        "sha256": "be960ed3fca750f59799a4d1ec02304067d015de45e8fe0f547815ff9cd0da55"
+        "sha256": "38707bc5f93967d0f304f41019703b2b656882148df4db6a45008177b6012636"
       }
     ]
   },
@@ -152,7 +184,7 @@
       "repository": "yijie-agent-host",
       "source": "sdks/go/openapi/runtime-kimi-k31-pro/artifact.gen.go",
       "destination": "internal/contracts/runtimekimik31pro/artifact.gen.go",
-      "sha256": "be960ed3fca750f59799a4d1ec02304067d015de45e8fe0f547815ff9cd0da55"
+      "sha256": "38707bc5f93967d0f304f41019703b2b656882148df4db6a45008177b6012636"
     }
   ]
 }

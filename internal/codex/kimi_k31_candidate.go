@@ -44,7 +44,15 @@ func kimiK31Catalog() ([]byte, error) {
 	}
 	return json.MarshalIndent(catalog, "", "  ")
 }
+
+// The comment is a managed-file writer boundary, not a Runtime option.
+// Retained r2 Host exact-byte validation rejects this newer writer revision.
 func kimiK31Config(home string) []byte {
+	return append([]byte("# yijie-native-failure-history-writer-v1\n"), kimiK31PriorConfig(home)...)
+}
+
+// Exact retained r2 configuration recipe; no arbitrary user configuration is accepted.
+func kimiK31PriorConfig(home string) []byte {
 	config := strings.Replace(string(chatModelConfig(home)), "model = \"kimi-k3\"", "model = \"kimi-k3.1-pro\"", 1)
 	config = strings.Replace(config, chatModelsCatalogName, kimiK31CatalogName, 1)
 	return []byte(config)
@@ -65,7 +73,7 @@ func prepareKimiK31LayerWithPredecessor(a *managedCodexHomeAuthority, allow bool
 	if err != nil {
 		return nil, err
 	}
-	fp, err := a.preflightManagedFile(kimiK31ConfigName, config, config)
+	fp, err := a.preflightManagedFile(kimiK31ConfigName, config, config, kimiK31PriorConfig(a.path))
 	if err != nil {
 		return nil, err
 	}

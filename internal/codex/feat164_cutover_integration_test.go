@@ -443,9 +443,16 @@ func TestFEAT164LoadedRetiredAgentGuard(t *testing.T) {
 			return feat164AuxTool("multi_agent_v1", "send_input", "retired_followup", map[string]any{"target": child, "message": "Return another ordinary local note, no tools.", "interrupt": false})
 		case 5:
 			return feat164AuxTool("multi_agent_v1", "wait_agent", "retired_wait_again", map[string]any{"targets": []string{child}, "timeout_ms": 10000})
-		default:
+		case 6:
 			feat164WaitResult(t, body, "retired_wait_again", child, "errored")
 			return feat164AuxText("Loaded retired child remained rejected.")
+		case 7:
+			return feat164AuxText("Explicitly migrated child completed normally.")
+		case 8:
+			return feat164AuxTool("multi_agent_v1", "wait_agent", "migrated_child_wait", map[string]any{"targets": []string{child}, "timeout_ms": 10000})
+		default:
+			feat164WaitResult(t, body, "migrated_child_wait", child, "completed")
+			return feat164AuxText("The same child has a successful new-model turn.")
 		}
 	})
 	// Ordinary compatibility metadata lets the native layer reproduce a
@@ -487,28 +494,66 @@ func TestFEAT164LoadedRetiredAgentGuard(t *testing.T) {
 		t.Fatal("only current parent must reach loopback", h.count())
 	}
 	h.mu.Lock()
-	t.Logf("native error diagnostic=%q", h.errors)
+	guardErrors := append([]string(nil), h.errors...)
 	h.mu.Unlock()
-	rawChild, e := h.manager.ReadThread(context.Background(), childID)
-	if e != nil {
+	if len(guardErrors) != 3 {
+		t.Fatal("expected parent and both child retirement guards", len(guardErrors))
+	}
+	for _, message := range guardErrors {
+		if message != "The kimi-k3 model is retired; select kimi-k3.1-pro before executing." {
+			t.Fatal("native rejection was not the reviewed retirement guard")
+		}
+	}
+	t.Log("three native retirement guard errors verified without retaining provider details")
+	checkHistory := func(wantTurns int) {
+		t.Helper()
+		raw, err := h.manager.ReadThread(context.Background(), childID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var observed struct {
+			Turns []struct {
+				Status string `json:"status"`
+				Error  *struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			} `json:"turns"`
+		}
+		if err := json.Unmarshal(raw, &observed); err != nil {
+			t.Fatal(err)
+		}
+		if len(observed.Turns) != wantTurns {
+			t.Fatalf("child history count=%d want=%d", len(observed.Turns), wantTurns)
+		}
+		for i, turn := range observed.Turns {
+			if i < 2 {
+				if turn.Status != "failed" || turn.Error == nil || turn.Error.Message != "Turn failed; error details were not retained." {
+					t.Errorf("native durable failure absent or not sanitized at turn %d", i)
+				}
+			} else if turn.Status != "completed" || turn.Error != nil {
+				t.Error("next normal turn inherited failure")
+			}
+		}
+	}
+	checkHistory(2)
+	if _, e := h.manager.ResumeThread(current, childID); e != nil {
 		t.Fatal(e)
 	}
-	var observed struct {
-		Turns []struct {
-			Status string           `json:"status"`
-			Items  []map[string]any `json:"items"`
-		} `json:"turns"`
+	h.hostTurn(current, childID, "Return one ordinary local note after this explicit new-model selection.")
+	h.hostTurn(current, parent.ID, "Observe the same child's successful new-model completion.")
+	checkHistory(3)
+	if h.count() != 9 {
+		t.Fatal("unexpected native request count", h.count())
 	}
-	_ = json.Unmarshal(rawChild, &observed)
-	for i, v := range observed.Turns {
-		types := []string{}
-		for _, item := range v.Items {
-			kind, _ := item["type"].(string)
-			types = append(types, kind)
-		}
-		t.Logf("child turn diagnostic index=%d status=%s itemTypes=%v", i, v.Status, types)
+	if !h.stop() {
+		t.Fatal("normal shutdown incomplete")
 	}
-	t.Log("loaded old native parent and already-loaded old child follow-up rejected before HTTP; six current parent requests; normal shutdown")
+	h.start(true)
+	checkHistory(3)
+	if h.count() != 9 {
+		t.Fatal("cold history read submitted model HTTP")
+	}
+	t.Log("three native retirement errors; both child waits errored; explicit same-child migration and parent wait completed; all failed history persists safely across normal restart; nine current-only loopback requests")
 }
 
 func TestFEAT164AutomaticCompaction(t *testing.T) {
