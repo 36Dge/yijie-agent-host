@@ -119,13 +119,16 @@ func registerChatModelsV2(mux *http.ServeMux, h *sessionHandler) {
 			modelReplyV2(w, "ModelOperationReceipt", value, err)
 		})
 	}
-	// Draft/market execution remains unavailable until its Native migration slice.
+	// Model-aware execution delegates to the original handlers and their purpose gates.
 	for _, route := range []struct{ method, path, legacy string }{
 		{"POST", "/v2/model-chat/tasks/{task_id}/agent-sessions", "/v1/tasks/{task_id}/agent-sessions"},
 		{"GET", "/v2/model-chat/agent-sessions/{agent_session_id}", "/v1/agent-sessions/{agent_session_id}"},
 		{"POST", "/v2/model-chat/agent-sessions/{agent_session_id}/resume", "/v1/agent-sessions/{agent_session_id}/resume"},
 		{"POST", "/v2/model-chat/agent-sessions/{agent_session_id}/turns", "/v2/agent-sessions/{agent_session_id}/turns"},
 		{"POST", "/v2/model-chat/agent-sessions/{agent_session_id}/permission-turns", "/v1/agent-sessions/{agent_session_id}/permission-turns"},
+		{"POST", "/v2/model-chat/scheduled-plan-draft-sessions", "/v1/scheduled-plan-draft-sessions"},
+		{"POST", "/v2/model-chat/scheduled-plan-draft-sessions/{agent_session_id}/resume", "/v1/scheduled-plan-draft-sessions/{agent_session_id}/resume"},
+		{"POST", "/v2/model-chat/scheduled-plan-draft-sessions/{agent_session_id}/turns", "/v1/scheduled-plan-draft-sessions/{agent_session_id}/turns"},
 	} {
 		register(route.method+" "+route.path, func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.RawQuery != "" {
