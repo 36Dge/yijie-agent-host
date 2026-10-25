@@ -201,7 +201,11 @@ func TestFEAT164NativeAuxiliaryAgent(t *testing.T) {
 				if json.Unmarshal([]byte(output), &wait) != nil || wait.TimedOut || len(wait.Status) != 1 {
 					t.Errorf("native wait did not observe completion: %s", output)
 				} else {
-					observed = true
+					status, ok := wait.Status[childID.Load().(string)].(map[string]any)
+					observed = ok && status["completed"] == "FEAT164 child normal completion"
+					if !observed {
+						t.Errorf("native child did not complete: %s", output)
+					}
 				}
 			}
 		}
