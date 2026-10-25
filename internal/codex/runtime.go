@@ -106,8 +106,8 @@ func (c Config) validate() error {
 	if (c.KimiK31AllowManagedPredecessor || c.KimiK31ExecutionPaused) && !c.KimiK31Candidate {
 		return errors.New("Kimi activation settings require the explicit candidate")
 	}
-	if c.KimiK31Candidate && (!c.ChatModelsEnabled || c.Market.enabled() || c.DynamicToolsEnabled) {
-		return errors.New("Kimi K3.1 candidate requires ordinary model chat; market and dynamic tools await qualification")
+	if c.KimiK31Candidate && (!c.ChatModelsEnabled || c.DynamicToolsEnabled) {
+		return errors.New("Kimi K3.1 candidate requires managed models; independent dynamic image generation is not enabled")
 	}
 	if c.Market.enabled() && !c.ChatModelsEnabled {
 		return errors.New("market connectors require the managed chat model profile")

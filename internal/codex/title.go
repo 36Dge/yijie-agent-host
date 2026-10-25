@@ -43,7 +43,7 @@ func (collector *titleCollector) handle(method string, params json.RawMessage) {
 				Type string `json:"type"`
 			} `json:"item"`
 		}
-		if json.Unmarshal(params, &notification) != nil || (notification.Item.Type != "agentMessage" && notification.Item.Type != "reasoning") {
+		if json.Unmarshal(params, &notification) != nil || (notification.Item.Type != "agentMessage" && notification.Item.Type != "reasoning" && notification.Item.Type != "userMessage") {
 			collector.failLocked()
 		}
 	case "item/agentMessage/delta":
@@ -66,7 +66,7 @@ func (collector *titleCollector) handle(method string, params json.RawMessage) {
 			collector.failLocked()
 			return
 		}
-		if notification.Item.Type != "agentMessage" && notification.Item.Type != "reasoning" {
+		if notification.Item.Type != "agentMessage" && notification.Item.Type != "reasoning" && notification.Item.Type != "userMessage" {
 			collector.failLocked()
 		}
 		if notification.Item.Type == "agentMessage" && notification.Item.Text != "" {

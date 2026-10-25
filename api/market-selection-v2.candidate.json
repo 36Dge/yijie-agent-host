@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "contract_version": "0.3.0",
+  "feature": "FEAT-164",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "base_commit": "2dd214d6a702064edae78510c035442854bf9789",
+  "sources": [
+    {
+      "path": "compatibility/market-selection-v2/wire.schema.json",
+      "sha256": "ac34dd72108e3395d656383b3e1a98fcd903803d224ea844f3ae535833224496"
+    },
+    {
+      "path": "compatibility/market-selection-v2/native-ipc.json",
+      "sha256": "fbf34c272fd0dcee2c031ec6d486b2852242320a3b950132434770aa90dc4056"
+    },
+    {
+      "path": "openapi/market-connectors/market-connectors.yaml",
+      "sha256": "83e1e7084726ac7ff370db3fe4cdc157c144089e449e5807f4c321aed99c1caf"
+    },
+    {
+      "path": "jsonschema/chat/model-selection-v2.schema.json",
+      "sha256": "fa0ae10205dd9d0d2fead4366b67a03d21beda874f1fdb401e871390f72813af"
+    },
+    {
+      "path": "jsonschema/chat/message.schema.json",
+      "sha256": "3f277898f8204e02a400053cd56bec3b0eeb37ed2c50db3a6347e7fec61ddf34"
+    },
+    {
+      "path": "scripts/market-selection-v2-source.mjs",
+      "sha256": "f672fcbb37f15402f2b31a52c629236a2134f403b31142b129ba3c8caeeef1b8"
+    },
+    {
+      "path": "scripts/generate-market-selection-v2.mjs",
+      "sha256": "678294c2dd2f216d29398143cb12b17520cc92fdf0788f5326bdcb30bb9dc293"
+    },
+    {
+      "path": "scripts/sync-model-call-surfaces-v2.mjs",
+      "sha256": "cae9e5b8e458819c3c8c5dfa95d0e2c77b638105c95669e009b378378e50df19"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "57eece158a0405a85ea9b8fd2c382af130e4248897b67af587878737bbf86313"
+    }
+  ],
+  "generated": [
+    {
+      "path": "sdks/rust/market-selection-v2/types.gen.rs",
+      "sha256": "4e33ace5b4da1e52e9e0b92dd95857315e122b1ab4b375bf1f0d425f761721f4"
+    },
+    {
+      "path": "sdks/typescript/src/domain/market-selection-v2.generated.ts",
+      "sha256": "fccf82eac3400a5d2b789ed1454a7bdf250732717cb856fdcfd0452722c22f4e"
+    },
+    {
+      "path": "sdks/typescript/src/api/generated/market-selection-v2-validator.gen.js",
+      "sha256": "26ff5d17fcabbac17c765a696f46103dd3897459f4e7b4e3c6533bda4ef22ea0"
+    },
+    {
+      "path": "sdks/jsonschema/market-selection-v2.schema.json",
+      "sha256": "bff37efc870d81fc1f45977d085697fb6c5e02a5a131a08154c6d89129194684"
+    },
+    {
+      "path": "sdks/go/market-selection-v2/digest.gen.go",
+      "sha256": "bfa3525b0f725381510c15b3cc58e6f5b210afb4e562e3b10133dc73deca53b6"
+    },
+    {
+      "path": "sdks/typescript/src/api/generated/market-selection-v2-validator.gen.d.ts",
+      "sha256": "f09d2b13a3d3aa420b88f88dae153ef8519405a2cd81a54313495ea3a72537e9"
+    },
+    {
+      "path": "fixtures/market-selection-v2/digest-vectors.json",
+      "sha256": "94b33531a4931c584005581d57875fc9919e41c7e4f1da74ea8eef04d0a0ef9b"
+    }
+  ],
+  "source_commit": "eddc64f95d81c26ca1678cc648d177c081f7904d",
+  "consumer": "agent-host",
+  "consumer_generated": []
+}

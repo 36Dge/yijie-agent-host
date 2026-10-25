@@ -36,7 +36,7 @@ type ModelIntent struct {
 
 func (v ModelIntent) Validate() error {
 	switch string(v.ProfileId) {
-	case "kimi-k3-max-v1", "minimax-m3-high-v1":
+	case "kimi-k3-max-v1", "kimi-k3-1-pro-max-v1", "minimax-m3-high-v1":
 	default:
 		return errors.New("invalid model profile")
 	}
@@ -808,7 +808,7 @@ func (v SubmissionReceipt) Validate() error {
 		}
 	}
 	switch string(v.ProfileId) {
-	case "kimi-k3-max-v1", "minimax-m3-high-v1":
+	case "kimi-k3-max-v1", "kimi-k3-1-pro-max-v1", "minimax-m3-high-v1":
 	default:
 		return errors.New("invalid model profile")
 	}

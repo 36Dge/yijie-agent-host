@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"path/filepath"
+	"strconv"
 
 	inputonly "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeinputonly"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/scheduledraft"
@@ -114,11 +116,23 @@ func scheduledDraftTurnParams(ctx context.Context, thread string, inputs []any) 
 	return map[string]any{"threadId": thread, "input": inputs, "clientUserMessageId": clientUserMessageID(ctx), "approvalPolicy": "never", "outputSchema": wire.OutputSchema()}
 }
 
+// The external environment loader remains fixed at 127.0.0.1:18083/v1.
+// Private in-process assembly also accepts a dynamically allocated loopback port
+// for normal offline qualification; it never admits a non-loopback endpoint.
+func draftVerificationLoopback(value string) bool {
+	u, e := url.Parse(value)
+	if e != nil || u.Scheme != "http" || u.Hostname() != "127.0.0.1" || u.Path != "/v1" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.RawPath != "" {
+		return false
+	}
+	port, e := strconv.Atoi(u.Port())
+	return e == nil && port > 0 && port <= 65535
+}
+
 // The paid-request meter is shared; ordinary approval overrides are not.
 // A configured meter never falls back to the direct Provider route.
 func (m *Manager) scheduledDraftThreadParams(cwd, thread string) (map[string]any, error) {
 	if m.config.PermissionVerificationBaseURL != "" &&
-		(!m.config.RuntimePermissionsEnabled || m.config.PermissionVerificationBaseURL != "http://127.0.0.1:18083/v1") {
+		(!m.config.RuntimePermissionsEnabled || !draftVerificationLoopback(m.config.PermissionVerificationBaseURL)) {
 		return nil, errDraftUnqualified
 	}
 	params, err := scheduledDraftStartParams(cwd, thread)

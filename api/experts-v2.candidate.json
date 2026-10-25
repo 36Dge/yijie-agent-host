@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "contract_version": "0.2.0",
+  "feature": "FEAT-164",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "base_commit": "2dd214d6a702064edae78510c035442854bf9789",
+  "sources": [
+    {
+      "path": "compatibility/experts-v2/wire.schema.json",
+      "sha256": "ebb95db4bf7c4278f4499cd32a7b4962b65d0d2305c7e15c22e027edff2d7e1e"
+    },
+    {
+      "path": "compatibility/experts-v2/native-ipc.json",
+      "sha256": "0e4fb2dfbe0a8668ce2bdf3c7e60a5eb3c7a6a855a21b7b49273ada6a6adc827"
+    },
+    {
+      "path": "compatibility/experts-v2/transport.json",
+      "sha256": "4d6f805f49258da972f74a85ccdf7663148dd7eeb696bc1e14e8ff37c2fa1254"
+    },
+    {
+      "path": "openapi/market-connectors/market-connectors.yaml",
+      "sha256": "83e1e7084726ac7ff370db3fe4cdc157c144089e449e5807f4c321aed99c1caf"
+    },
+    {
+      "path": "jsonschema/skills/skill-bundle-manifest-v3.schema.json",
+      "sha256": "4d1af5f41d66fe38faa18eb9c0630fa06845b3871f65f1619785ae06d3011b65"
+    },
+    {
+      "path": "jsonschema/skills/skill-bundle-manifest-v2.schema.json",
+      "sha256": "39a898111ba3dcae2f369fdcb571a2e892830d1d0a57c90ab6210a0ab897a649"
+    },
+    {
+      "path": "compatibility/market-broker-control/wire.schema.json",
+      "sha256": "f6aa66d748a925a3c34be53237d2f539ad5fd1c493a920748c34f1de7a341fdf"
+    },
+    {
+      "path": "compatibility/market-selection-v2/wire.schema.json",
+      "sha256": "ac34dd72108e3395d656383b3e1a98fcd903803d224ea844f3ae535833224496"
+    },
+    {
+      "path": "openapi/runtime-permissions-v2/runtime-permissions-v2.yaml",
+      "sha256": "2ab3f2b9db2f6f8cb9485c3fb0028dd7e66dd1859e22e6a5c06edb55d02bda74"
+    },
+    {
+      "path": "compatibility/market-host-v2/wire.schema.json",
+      "sha256": "06a934d11db8457e35c96a5c449928c032c444c9cd2f675c6e58c1a409c67cf7"
+    },
+    {
+      "path": "jsonschema/chat/model-selection-v2.schema.json",
+      "sha256": "fa0ae10205dd9d0d2fead4366b67a03d21beda874f1fdb401e871390f72813af"
+    },
+    {
+      "path": "openapi/agent-host/agent-host.yaml",
+      "sha256": "8716d11ebae140d7c2cec72f6528bbd39ac5976c898c28e0044bec71fb004083"
+    },
+    {
+      "path": "compatibility/market-provider/wire.schema.json",
+      "sha256": "2b2fa207875b3fcdd7785da825320af159ab0b1dc111b894bfad4a3962658ad1"
+    },
+    {
+      "path": "jsonschema/chat/message.schema.json",
+      "sha256": "3f277898f8204e02a400053cd56bec3b0eeb37ed2c50db3a6347e7fec61ddf34"
+    },
+    {
+      "path": "scripts/experts-v2-source.mjs",
+      "sha256": "45025958147161a4223206f045824f9bf039b3c1c28abffb0b4ef867f7f10c37"
+    },
+    {
+      "path": "scripts/generate-experts-v2.mjs",
+      "sha256": "9c38604bfb3bccd2d26469b3c8bb9fcce06b72a55e1544704d2fa75cf73da941"
+    },
+    {
+      "path": "scripts/market-broker-codegen.mjs",
+      "sha256": "d4218c6515c669f4a80a4f48f857bdd20d0509345fdb184df1da355c97856221"
+    },
+    {
+      "path": "scripts/sync-model-call-surfaces-v2.mjs",
+      "sha256": "cae9e5b8e458819c3c8c5dfa95d0e2c77b638105c95669e009b378378e50df19"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "57eece158a0405a85ea9b8fd2c382af130e4248897b67af587878737bbf86313"
+    }
+  ],
+  "generated": [
+    {
+      "path": "sdks/rust/experts-v2/types.gen.rs",
+      "sha256": "a36837131f96c52fd1a360a6c7aec11f099ccf223afcd4a12b7de0c4c99980f3"
+    },
+    {
+      "path": "sdks/go/experts-v2/types.gen.go",
+      "sha256": "75d48fe9dd28c3cdf14e5602d3644704ef2c263bd6cf49334f9b821502f25391"
+    },
+    {
+      "path": "sdks/jsonschema/experts-v2.schema.json",
+      "sha256": "3d64299a3ed6b7c977543079e16bf3d069027e7de0b47d84ed89272d8147c0d1"
+    },
+    {
+      "path": "sdks/go/experts-v2/bundle_schemas.gen.go",
+      "sha256": "cd219c0cb851702147850dfb7a1f276c37ed785688d601fb3ed328a9311c258c"
+    },
+    {
+      "path": "sdks/typescript/src/domain/experts-v2.generated.ts",
+      "sha256": "33ade8c196a83d18074b0e5ee766a01d3708164b799166d2395f720870105577"
+    },
+    {
+      "path": "sdks/typescript/src/api/generated/experts-v2-validator.gen.js",
+      "sha256": "466a7828b11346a22cc3e603ec635130a4f63f55cc710d0616e843975324c19b"
+    },
+    {
+      "path": "sdks/typescript/src/api/generated/experts-v2-validator.gen.d.ts",
+      "sha256": "8a05cd49b5e26bc8439b6b0064f0737f7a35c3902a206d9072c1f1b9fa57a617"
+    },
+    {
+      "path": "sdks/jsonschema/experts-v2-native.schema.json",
+      "sha256": "0fc89504a2b94723a338449f508cb28635eba0c7f9cff97e552684f2924954e2"
+    },
+    {
+      "path": "fixtures/experts-v2/digest-vectors.json",
+      "sha256": "3f2c0df58f7c95d1a15158baac1ce0af0066e10162263b153d9dc182dbda3e3a"
+    },
+    {
+      "path": "fixtures/experts-v2/knowledge-digest-vectors.json",
+      "sha256": "eeb1da21976fb472be85e95dce71e62d5a07f55ac078b2e19601025a468e284c"
+    },
+    {
+      "path": "sdks/javascript/experts-v2/canonical.gen.mjs",
+      "sha256": "a7ee6c00cd33741143e6733a934c8d596e9bb6a620911dd70894abccb84be0d8"
+    }
+  ],
+  "source_commit": "eddc64f95d81c26ca1678cc648d177c081f7904d",
+  "consumer": "agent-host",
+  "consumer_generated": [
+    {
+      "source": "sdks/go/experts-v2/types.gen.go",
+      "path": "internal/contracts/experts/types.gen.go",
+      "sha256": "b292618ce07864912b0a361f3c17f1c114d8d1192a4a9d213f993b1bdc2416af"
+    },
+    {
+      "source": "sdks/jsonschema/experts-v2.schema.json",
+      "path": "api/experts-v2.schema.json",
+      "sha256": "3d64299a3ed6b7c977543079e16bf3d069027e7de0b47d84ed89272d8147c0d1"
+    }
+  ]
+}

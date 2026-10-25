@@ -1,0 +1,2983 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.yijie.ai/experts/v2",
+  "$defs": {
+    "CanonicalId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "not": {
+        "const": "00000000-0000-0000-0000-000000000000"
+      }
+    },
+    "ExpertId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "Version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "Revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "ScopeBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ownerUserId",
+        "tenantId",
+        "nativeProcessEpoch",
+        "authorizationRevision",
+        "authorizationExpiresAtUnixMs"
+      ],
+      "properties": {
+        "ownerUserId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "tenantId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "nativeProcessEpoch": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "authorizationRevision": {
+          "$ref": "#/$defs/ReferencedRevision"
+        },
+        "authorizationExpiresAtUnixMs": {
+          "$ref": "#/$defs/UnixMilliseconds"
+        }
+      },
+      "description": "Trusted Native authorization projection after Host verification; process epoch/revision are fences, not bearer credentials. Native adapter is not yet exposed to the versioned Host provider. A structurally valid JSON object alone does not authorize a product request."
+    },
+    "NativeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "ModelIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profileId",
+        "expectedRevision"
+      ],
+      "properties": {
+        "profileId": {
+          "$ref": "#/$defs/ProfileId"
+        },
+        "expectedRevision": {
+          "$ref": "#/$defs/ReferencedReferencedRevision"
+        }
+      }
+    },
+    "PermissionMode": {
+      "type": "string",
+      "enum": [
+        "ask",
+        "auto",
+        "full"
+      ],
+      "description": "ask = on-request/user/workspace-write; auto = on-request/auto_review/workspace-write; full = never/user/danger-full-access. Native OS restrictions still apply."
+    },
+    "MarketSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "turnOperationId",
+        "selection",
+        "selectionDigest"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "turnOperationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "selection": {
+          "$ref": "#/$defs/Selection"
+        },
+        "selectionDigest": {
+          "$ref": "#/$defs/SelectionDigest"
+        }
+      },
+      "description": "Native-only durable immutable snapshot. Freeze inside the same transaction as the outbox using its actual turnOperationId. selection must be sorted by installationId ASCII, contain unique installation identities and match selectionDigest. Receipt replay reads this original snapshot, never current UI/catalog. No credentials or execution capability."
+    },
+    "MarketSubmitPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "projectId",
+        "contentBlocks",
+        "intent",
+        "selection"
+      ],
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "projectId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanonicalId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "contentBlocks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/ContentBlock"
+          }
+        },
+        "intent": {
+          "$ref": "#/$defs/ModelIntent"
+        },
+        "selection": {
+          "$ref": "#/$defs/Selection"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "sessionId"
+            ],
+            "properties": {
+              "sessionId": {}
+            }
+          },
+          "then": {
+            "properties": {
+              "projectId": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Ordinary chat only. New chat omits sessionId and uses nullable projectId; an existing session requires projectId=null. Input attachment references use existing Native scoped attachment validation, never arbitrary paths. At most 10 attachment blocks and nonblank text require Native conformance. operationId is renderer submission identity, not necessarily the first actual turn operation. Nonempty selections must be rejected before any durable outbox or Runtime work when execution qualification is unavailable; no implicit fallback to empty. Before a versioned Host provider is qualified, all selections including empty must return execution_unavailable before persistence; do not dispatch via a legacy fallback. Idempotency compares full original content, target, model intent and connector references, not only selectionDigest."
+    },
+    "MarketSubmission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taskId",
+        "localSessionId",
+        "agentSessionId",
+        "submissionOperationId",
+        "cwd",
+        "contentBlocks",
+        "intent",
+        "permissionMode",
+        "snapshot",
+        "services"
+      ],
+      "properties": {
+        "taskId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "localSessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "agentSessionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanonicalId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "submissionOperationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "cwd": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "contentBlocks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/StartTurnV2ContentBlock"
+          }
+        },
+        "intent": {
+          "$ref": "#/$defs/ModelIntent"
+        },
+        "permissionMode": {
+          "$ref": "#/$defs/PermissionMode"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/MarketSnapshot"
+        },
+        "services": {
+          "type": "array",
+          "maxItems": 58,
+          "items": {
+            "$ref": "#/$defs/ProviderBinding"
+          }
+        }
+      },
+      "description": "Trusted immutable Native outbox intention. taskId is the existing PublicTask UUID, distinct from localSessionId and Host agentSessionId; null agentSessionId means creation. snapshot.turnOperationId is the actual turn operation, not the separate create submission operation. cwd is Native canonical authority, content blocks reuse existing v2 attachment handling and aggregate limits. Initial model expectedRevision=0 precedes Host record revision=1. Entire typed intention participates in Host HMAC; grant/context expiry and transport request IDs do not. No platform credential/configuration. Nonempty market selection currently requires permissionMode=ask; auto/full returns permission_mode_unavailable with recovery to request approval mode. Empty selection keeps the existing three permission modes."
+    },
+    "MarketReceipt": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "hostInstanceId",
+        "runtimeGeneration",
+        "taskId",
+        "localSessionId",
+        "submissionOperationId",
+        "turnOperationId",
+        "selectionDigest",
+        "state",
+        "agentSessionId",
+        "nativeThreadId",
+        "nativeTurnId",
+        "profileId",
+        "modelRevision"
+      ],
+      "properties": {
+        "hostInstanceId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "runtimeGeneration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanonicalId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "taskId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "localSessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "submissionOperationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "turnOperationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "selectionDigest": {
+          "$ref": "#/$defs/SelectionDigest"
+        },
+        "state": {
+          "$ref": "#/$defs/SubmissionState"
+        },
+        "agentSessionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanonicalId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nativeThreadId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NativeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nativeTurnId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NativeId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "profileId": {
+          "$ref": "#/$defs/ProfileId"
+        },
+        "modelRevision": {
+          "$ref": "#/$defs/ReferencedReferencedRevision"
+        }
+      },
+      "description": "Host durable operation observation. accepted requires actual Host session/Runtime generation/Thread/Turn, returned from native facts. pending/uncertain never fabricate IDs and never trigger a replacement operation. A same-intent accepted replay returns its original receipt before worker prepare/config/Runtime work; changed full intent conflicts."
+    },
+    "MarketGrant": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "grantRef",
+        "hostInstanceId",
+        "nativeProcessEpoch",
+        "turnOperationId",
+        "selectionDigest",
+        "remainingTtlMs"
+      ],
+      "properties": {
+        "grantRef": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "hostInstanceId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "nativeProcessEpoch": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "turnOperationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "selectionDigest": {
+          "$ref": "#/$defs/SelectionDigest"
+        },
+        "remainingTtlMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 300000
+        }
+      },
+      "description": "Non-secret, generation-bound in-memory lookup only; not a JWT or bearer. No raw content is echoed. Replaying registration returns the same grant and does not extend expiry."
+    },
+    "MarketSubmitTrigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "grantRef",
+        "turnOperationId"
+      ],
+      "properties": {
+        "grantRef": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "turnOperationId": {
+          "$ref": "#/$defs/CanonicalId"
+        }
+      },
+      "description": "HTTP trigger only. The caller cannot replace scope, task, cwd, text, model or selection. An exact previously accepted operation is read before preparation; only a live Native grant may admit new execution."
+    },
+    "NativeReceipt": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "outcome",
+        "sessionId",
+        "localTurnId",
+        "submissionOperationId",
+        "turnOperationId",
+        "selectionDigest"
+      ],
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "local_durable_accepted"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "localTurnId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "submissionOperationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "turnOperationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "selectionDigest": {
+          "$ref": "#/$defs/SelectionDigest"
+        }
+      },
+      "description": "Durable Native receipt only, not proof of Runtime acceptance. Coordinator wake-up failure after commit must not change this accepted result; original receipt remains queryable/replayable."
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "invalid_request",
+        "context_invalid",
+        "permission_denied",
+        "unsupported_capability",
+        "not_found",
+        "resource_unavailable",
+        "resource_in_use",
+        "version_unavailable",
+        "revision_conflict",
+        "request_conflict",
+        "busy",
+        "approval_pending",
+        "operation_pending",
+        "outcome_unknown",
+        "binding_unavailable",
+        "thread_unavailable",
+        "qualification_required",
+        "model_unavailable",
+        "permission_mode_unavailable",
+        "selection_stale",
+        "capacity_exceeded",
+        "temporarily_unavailable"
+      ]
+    },
+    "ResourceState": {
+      "type": "string",
+      "enum": [
+        "available",
+        "preparing",
+        "ready",
+        "unavailable",
+        "incompatible"
+      ]
+    },
+    "BindingState": {
+      "type": "string",
+      "enum": [
+        "none",
+        "ready",
+        "applying",
+        "unknown",
+        "unavailable"
+      ]
+    },
+    "OperationState": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "succeeded",
+        "rejected",
+        "unknown"
+      ]
+    },
+    "ExpertSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expertId",
+        "version"
+      ],
+      "properties": {
+        "expertId": {
+          "$ref": "#/$defs/ExpertId"
+        },
+        "version": {
+          "$ref": "#/$defs/Version"
+        }
+      },
+      "description": "Safe catalog reference only. Native resolves current verified receipt; the renderer cannot choose paths, hashes, role text or trust."
+    },
+    "ExpertRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expertId",
+        "version",
+        "archiveSha256",
+        "roleSha256",
+        "knowledgeManifestSha256"
+      ],
+      "properties": {
+        "expertId": {
+          "$ref": "#/$defs/ExpertId"
+        },
+        "version": {
+          "$ref": "#/$defs/Version"
+        },
+        "archiveSha256": {
+          "$ref": "#/$defs/Digest"
+        },
+        "roleSha256": {
+          "$ref": "#/$defs/Digest"
+        },
+        "knowledgeManifestSha256": {
+          "$ref": "#/$defs/Digest"
+        }
+      },
+      "description": "Native/Host private immutable identity. It conveys no execution or file-access authority."
+    },
+    "ExpertDisplay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expertId",
+        "version",
+        "displayName",
+        "subtitle",
+        "iconKey"
+      ],
+      "properties": {
+        "expertId": {
+          "$ref": "#/$defs/ExpertId"
+        },
+        "version": {
+          "$ref": "#/$defs/Version"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "subtitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "iconKey": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]*$",
+          "maxLength": 64
+        }
+      },
+      "description": "Historical safe identity. No raw resource path, digest, role/knowledge text or credential."
+    },
+    "CatalogEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "display",
+        "description",
+        "platform",
+        "tags",
+        "quickPrompts",
+        "knowledgeSummary",
+        "state"
+      ],
+      "properties": {
+        "display": {
+          "$ref": "#/$defs/ExpertDisplay"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "tags": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          }
+        },
+        "quickPrompts": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 3,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "knowledgeSummary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "state": {
+          "$ref": "#/$defs/ResourceState"
+        },
+        "errorCode": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "operation": {
+          "$ref": "#/$defs/ResourceOperation"
+        }
+      }
+    },
+    "CatalogSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "experts",
+        "canManage",
+        "executionAvailable"
+      ],
+      "properties": {
+        "experts": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/CatalogEntry"
+          }
+        },
+        "canManage": {
+          "type": "boolean"
+        },
+        "executionAvailable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "EmptyPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {}
+    },
+    "ResourcePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "expert"
+      ],
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "expert": {
+          "$ref": "#/$defs/ExpertSelection"
+        }
+      }
+    },
+    "OperationReadPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId"
+      ],
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/CanonicalId"
+        }
+      }
+    },
+    "ResourceOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "expert",
+        "action",
+        "state"
+      ],
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "expert": {
+          "$ref": "#/$defs/ExpertSelection"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "prepare",
+            "remove"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/OperationState"
+        },
+        "errorCode": {
+          "$ref": "#/$defs/ErrorCode"
+        }
+      },
+      "description": "Closing or abandoning a selection does not undo completed installation. Query the original operation after unknown outcomes. No implicit retry with a new operation."
+    },
+    "BindingReadPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionId"
+      ],
+      "properties": {
+        "sessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        }
+      }
+    },
+    "BindingSetPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "sessionId",
+        "expectedBindingRevision",
+        "expert"
+      ],
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "expectedBindingRevision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "expert": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpertSelection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "description": "Existing local conversation only. Native owns scope and maps Host/thread IDs. Null explicitly selects ordinary mode. Active/pending approval/unknown outbox rejects before changing any binding. Draft with no native rollout saves intent only and never invokes SwitchThread."
+    },
+    "BindingOperationReadPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionId",
+        "operationId"
+      ],
+      "properties": {
+        "sessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "operationId": {
+          "$ref": "#/$defs/CanonicalId"
+        }
+      }
+    },
+    "BindingView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionId",
+        "bindingRevision",
+        "expert",
+        "state",
+        "managed"
+      ],
+      "properties": {
+        "sessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "bindingRevision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "expert": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpertDisplay"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/BindingState"
+        },
+        "operationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "errorCode": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "managed": {
+          "type": "boolean",
+          "description": "True once this conversation enters the expert submission family, including explicit ordinary snapshots or a rejected initial binding attempt. Native owns this routing marker; none/revision0 cannot imply a legacy conversation."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "managed": {
+                "const": false
+              }
+            },
+            "required": [
+              "managed"
+            ]
+          },
+          "then": {
+            "properties": {
+              "bindingRevision": {
+                "const": 0
+              },
+              "expert": {
+                "type": "null"
+              },
+              "state": {
+                "const": "none"
+              },
+              "operationId": false
+            }
+          }
+        }
+      ]
+    },
+    "BindingOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "sessionId",
+        "state",
+        "expectedBindingRevision",
+        "bindingRevision",
+        "requestedExpert"
+      ],
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "state": {
+          "$ref": "#/$defs/OperationState"
+        },
+        "expectedBindingRevision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "bindingRevision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "requestedExpert": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpertDisplay"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "errorCode": {
+          "$ref": "#/$defs/ErrorCode"
+        }
+      },
+      "description": "Same scope/operation/full intent replays original receipt. Succeeded means the binding application protocol completed under qualified native lifecycle, not a model quality assertion. Unknown blocks sends and further changes. bindingRevision is the effective confirmed revision: succeeded expected+1; pending/unknown/rejected expected. requestedExpert preserves the original request and is not the effective current binding."
+    },
+    "BindingResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "binding",
+        "operation"
+      ],
+      "properties": {
+        "binding": {
+          "$ref": "#/$defs/BindingView"
+        },
+        "operation": {
+          "$ref": "#/$defs/BindingOperation"
+        }
+      }
+    },
+    "NativeSubmitPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "submission",
+        "expectedBindingRevision",
+        "expert"
+      ],
+      "properties": {
+        "submission": {
+          "$ref": "#/$defs/MarketSubmitPayload"
+        },
+        "expectedBindingRevision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "expert": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpertSelection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "description": "Versioned wrapper: never attach expert fields to the old closed submit. New chat explicit expert/null with revision zero. Existing chat must exactly match the current binding. Native resolves private hashes and freezes with messages/outbox. Full wrapper participates in idempotency."
+    },
+    "TurnExpertSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formatVersion",
+        "turnOperationId",
+        "bindingRevision",
+        "expert",
+        "snapshotDigest"
+      ],
+      "properties": {
+        "formatVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "turnOperationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "bindingRevision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "expert": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpertRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "snapshotDigest": {
+          "$ref": "#/$defs/Digest"
+        }
+      },
+      "description": "Private durable snapshot. Digest defined by transport.json ordered LF tuple. Explicit null means ordinary mode; omission is invalid. Full original model/permission/market submission plus this snapshot form one immutable intent."
+    },
+    "PrivateSubmission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "submission",
+        "expertSnapshot"
+      ],
+      "properties": {
+        "submission": {
+          "$ref": "#/$defs/MarketSubmission"
+        },
+        "expertSnapshot": {
+          "$ref": "#/$defs/TurnExpertSnapshot"
+        }
+      },
+      "description": "Full expert-aware submission. turnOperationId must equal submission.snapshot.turnOperationId. Existing task/localSession/agentSession distinctions and content/permission/market semantics are unchanged. Native/Host must hash the entire wrapper, never only the market body or expert digest."
+    },
+    "PrivateGrantPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "hostInstanceId",
+        "scope",
+        "submission"
+      ],
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "hostInstanceId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "scope": {
+          "$ref": "#/$defs/ScopeBinding"
+        },
+        "submission": {
+          "$ref": "#/$defs/PrivateSubmission"
+        }
+      },
+      "description": "Same Native-owned pipe and hello authority as market control. Original Native authorization must cover chat and selected connectors. One existing grant lifecycle carries the complete typed wrapper; no new bearer, transport or caller-authorized role."
+    },
+    "PrivateGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "grant",
+        "expertSnapshotDigest"
+      ],
+      "properties": {
+        "grant": {
+          "$ref": "#/$defs/MarketGrant"
+        },
+        "expertSnapshotDigest": {
+          "$ref": "#/$defs/Digest"
+        }
+      }
+    },
+    "PrivateReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receipt",
+        "expertSnapshot"
+      ],
+      "properties": {
+        "receipt": {
+          "$ref": "#/$defs/MarketReceipt"
+        },
+        "expertSnapshot": {
+          "$ref": "#/$defs/TurnExpertSnapshot"
+        }
+      },
+      "description": "Original receipt and exact frozen expert context. Never grant authority or native role hash echo; Runtime does not return an expert digest."
+    },
+    "ApplyPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "hostInstanceId",
+        "scope",
+        "localSessionId",
+        "agentSessionId",
+        "nativeThreadId",
+        "expectedBindingRevision",
+        "bindingRevision",
+        "expert",
+        "intent",
+        "permissionMode",
+        "marketSnapshot"
+      ],
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "hostInstanceId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "scope": {
+          "$ref": "#/$defs/ScopeBinding"
+        },
+        "localSessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "agentSessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "nativeThreadId": {
+          "$ref": "#/$defs/NativeId"
+        },
+        "expectedBindingRevision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "bindingRevision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "expert": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpertRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "intent": {
+          "$ref": "#/$defs/ModelIntent"
+        },
+        "permissionMode": {
+          "$ref": "#/$defs/PermissionMode"
+        },
+        "marketSnapshot": {
+          "$ref": "#/$defs/MarketSnapshot"
+        }
+      },
+      "description": "Only an existing owned thread with real rollout. Under the shared session/model/thread lock recheck expected binding/model/scope/market revision and no active/pending/unknown work. New bindingRevision equals expected+1. Preserve full ordinary baseline/model/permission/market composition. marketSnapshot is last confirmed applied market config, not a new grant or previous-turn capability. Removal uses explicit expert=null and complete ordinary baseInstructions."
+    },
+    "PrivateOperationReadPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostInstanceId",
+        "scope",
+        "localSessionId",
+        "agentSessionId",
+        "operationId"
+      ],
+      "properties": {
+        "hostInstanceId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "scope": {
+          "$ref": "#/$defs/ScopeBinding"
+        },
+        "localSessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "agentSessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "operationId": {
+          "$ref": "#/$defs/CanonicalId"
+        }
+      }
+    },
+    "ApplyReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "hostInstanceId",
+        "localSessionId",
+        "agentSessionId",
+        "nativeThreadId",
+        "expectedBindingRevision",
+        "bindingRevision",
+        "expert",
+        "state"
+      ],
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "hostInstanceId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "localSessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "agentSessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "nativeThreadId": {
+          "$ref": "#/$defs/NativeId"
+        },
+        "expectedBindingRevision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "bindingRevision": {
+          "$ref": "#/$defs/Revision"
+        },
+        "expert": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpertRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/OperationState"
+        },
+        "errorCode": {
+          "$ref": "#/$defs/ErrorCode"
+        }
+      },
+      "description": "Host adaptation receipt only, not native role checksum evidence. Pending/unknown retains original intent; read does not restart or execute a turn. bindingRevision is the effective confirmed revision: succeeded equals expectedBindingRevision+1; pending/unknown/rejected retains expectedBindingRevision. expert is the original requested reference/null, not proof it was applied. Native keeps the old current binding until succeeded, and blocks sends while unknown."
+    },
+    "NativeSubmissionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receipt",
+        "expert",
+        "bindingRevision"
+      ],
+      "properties": {
+        "receipt": {
+          "$ref": "#/$defs/NativeReceipt"
+        },
+        "expert": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExpertDisplay"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bindingRevision": {
+          "$ref": "#/$defs/Revision"
+        }
+      }
+    },
+    "SnapshotRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "contextId",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "contextId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "payload": {
+          "$ref": "#/$defs/EmptyPayload"
+        }
+      }
+    },
+    "SnapshotResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/CatalogSnapshot"
+        }
+      }
+    },
+    "PrepareRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "contextId",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "contextId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "payload": {
+          "$ref": "#/$defs/ResourcePayload"
+        }
+      }
+    },
+    "PrepareResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/ResourceOperation"
+        }
+      }
+    },
+    "RemoveRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "contextId",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "contextId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "payload": {
+          "$ref": "#/$defs/ResourcePayload"
+        }
+      }
+    },
+    "RemoveResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/ResourceOperation"
+        }
+      }
+    },
+    "ResourceOperationReadRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "contextId",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "contextId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "payload": {
+          "$ref": "#/$defs/OperationReadPayload"
+        }
+      }
+    },
+    "ResourceOperationReadResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/ResourceOperation"
+        }
+      }
+    },
+    "BindingReadRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "contextId",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "contextId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "payload": {
+          "$ref": "#/$defs/BindingReadPayload"
+        }
+      }
+    },
+    "BindingReadResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/BindingView"
+        }
+      }
+    },
+    "BindingSetRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "contextId",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "contextId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "payload": {
+          "$ref": "#/$defs/BindingSetPayload"
+        }
+      }
+    },
+    "BindingSetResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/BindingResult"
+        }
+      }
+    },
+    "BindingOperationReadRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "contextId",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "contextId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "payload": {
+          "$ref": "#/$defs/BindingOperationReadPayload"
+        }
+      }
+    },
+    "BindingOperationReadResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/BindingResult"
+        }
+      }
+    },
+    "NativeSubmitRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "contextId",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "contextId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "payload": {
+          "$ref": "#/$defs/NativeSubmitPayload"
+        }
+      }
+    },
+    "NativeSubmitResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/NativeSubmissionResult"
+        }
+      }
+    },
+    "ApplyRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "method",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "method": {
+          "type": "string",
+          "const": "expert_apply_binding"
+        },
+        "payload": {
+          "$ref": "#/$defs/ApplyPayload"
+        }
+      }
+    },
+    "ApplyResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/ApplyReceipt"
+        }
+      }
+    },
+    "PrivateOperationReadRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "method",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "method": {
+          "type": "string",
+          "const": "expert_operation_read"
+        },
+        "payload": {
+          "$ref": "#/$defs/PrivateOperationReadPayload"
+        }
+      }
+    },
+    "PrivateOperationReadResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/ApplyReceipt"
+        }
+      }
+    },
+    "PrivateGrantRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "method",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "method": {
+          "type": "string",
+          "const": "expert_grant_register"
+        },
+        "payload": {
+          "$ref": "#/$defs/PrivateGrantPayload"
+        }
+      }
+    },
+    "PrivateGrantResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/PrivateGrant"
+        }
+      }
+    },
+    "PrivateSubmitRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "method",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "method": {
+          "type": "string",
+          "const": "expert_submit"
+        },
+        "payload": {
+          "$ref": "#/$defs/MarketSubmitTrigger"
+        }
+      }
+    },
+    "PrivateSubmitResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/PrivateReceipt"
+        }
+      }
+    },
+    "Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "code",
+        "retryable"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      },
+      "description": "Only temporarily_unavailable may be retryable, after reading original operation. Outcome unknown never grants automatic retry or replacement identity.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "retryable": {
+                "const": true
+              }
+            },
+            "required": [
+              "retryable"
+            ]
+          },
+          "then": {
+            "properties": {
+              "code": {
+                "const": "temporarily_unavailable"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ResourcePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "RoleResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "bytes"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/ResourcePath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/Digest"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768
+        }
+      }
+    },
+    "KnowledgeResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "path",
+        "sha256",
+        "bytes",
+        "content_version",
+        "content_status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$",
+          "maxLength": 80
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "path": {
+          "$ref": "#/$defs/ResourcePath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/Digest"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8388608
+        },
+        "content_version": {
+          "$ref": "#/$defs/Version"
+        },
+        "content_status": {
+          "type": "string",
+          "enum": [
+            "pending-review",
+            "reviewed-reference",
+            "conflicted",
+            "incomplete"
+          ]
+        }
+      }
+    },
+    "ExpertMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expert_id",
+        "source_id",
+        "platform",
+        "subtitle",
+        "tags",
+        "quick_prompts",
+        "knowledge_summary",
+        "role_resource",
+        "knowledge_resources",
+        "runtime_projection",
+        "local_use_authorization"
+      ],
+      "properties": {
+        "expert_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$"
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "subtitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          }
+        },
+        "quick_prompts": {
+          "type": "array",
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "knowledge_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "role_resource": {
+          "$ref": "#/$defs/RoleResource"
+        },
+        "knowledge_resources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/KnowledgeResource"
+          }
+        },
+        "runtime_projection": {
+          "type": "string",
+          "const": "expert_only"
+        },
+        "local_use_authorization": {
+          "$ref": "#/$defs/LocalUseAuthorization"
+        }
+      },
+      "description": "Expert-only product metadata, not a Codex Plugin manifest or tool grant. All resources are ordinary receipt-covered files in the same archive, not additional SKILL.md entrypoints. reviewed-reference is editorial/source completeness review, never verified current policy."
+    },
+    "SubmissionReadPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostInstanceId",
+        "scope",
+        "taskId",
+        "localSessionId",
+        "turnOperationId"
+      ],
+      "properties": {
+        "hostInstanceId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "scope": {
+          "$ref": "#/$defs/ScopeBinding"
+        },
+        "taskId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "localSessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "turnOperationId": {
+          "$ref": "#/$defs/CanonicalId"
+        }
+      },
+      "description": "Read original scoped expert receipt by the actual turn operation. Check owned pipe instance and task/local session mapping. Missing receipt or unknown outcome does not prove unsent, renew a grant or authorize resend. No new native turn."
+    },
+    "SubmissionReadRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "method",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "method": {
+          "type": "string",
+          "const": "expert_submission_read"
+        },
+        "payload": {
+          "$ref": "#/$defs/SubmissionReadPayload"
+        }
+      }
+    },
+    "SubmissionReadResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/PrivateReceipt"
+        }
+      }
+    },
+    "LocalUseAuthorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "evidence_reference"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "local-use-authorized"
+        },
+        "evidence_reference": {
+          "$ref": "#/$defs/ResourcePath"
+        }
+      },
+      "description": "Explicit Owner local-use evidence in the reviewed source tree; not redistribution or executable permission. Native/Host require the registered immutable/candidate source pin and content review, not only this string."
+    },
+    "PrivateStatusPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostInstanceId",
+        "scope"
+      ],
+      "properties": {
+        "hostInstanceId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "scope": {
+          "$ref": "#/$defs/ScopeBinding"
+        }
+      }
+    },
+    "PrivateStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "catalogRevision",
+        "executionAvailable",
+        "resourceOperations"
+      ],
+      "properties": {
+        "catalogRevision": {
+          "$ref": "#/$defs/Digest"
+        },
+        "executionAvailable": {
+          "type": "boolean"
+        },
+        "resourceOperations": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/ResourceOperation"
+          }
+        }
+      }
+    },
+    "PrivateResourcePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostInstanceId",
+        "scope",
+        "operationId",
+        "expert"
+      ],
+      "properties": {
+        "hostInstanceId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "scope": {
+          "$ref": "#/$defs/ScopeBinding"
+        },
+        "operationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "expert": {
+          "$ref": "#/$defs/ExpertSelection"
+        }
+      }
+    },
+    "PrivateResourceReadPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostInstanceId",
+        "scope",
+        "operationId"
+      ],
+      "properties": {
+        "hostInstanceId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "scope": {
+          "$ref": "#/$defs/ScopeBinding"
+        },
+        "operationId": {
+          "$ref": "#/$defs/CanonicalId"
+        }
+      }
+    },
+    "PrivateStatusRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "method",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "method": {
+          "type": "string",
+          "const": "expert_status"
+        },
+        "payload": {
+          "$ref": "#/$defs/PrivateStatusPayload"
+        }
+      }
+    },
+    "PrivateStatusResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/PrivateStatus"
+        }
+      }
+    },
+    "PrivateResourcePrepareRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "method",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "method": {
+          "type": "string",
+          "const": "expert_resources_prepare"
+        },
+        "payload": {
+          "$ref": "#/$defs/PrivateResourcePayload"
+        }
+      }
+    },
+    "PrivateResourcePrepareResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/ResourceOperation"
+        }
+      }
+    },
+    "PrivateResourceRemoveRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "method",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "method": {
+          "type": "string",
+          "const": "expert_resources_remove"
+        },
+        "payload": {
+          "$ref": "#/$defs/PrivateResourcePayload"
+        }
+      }
+    },
+    "PrivateResourceRemoveResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/ResourceOperation"
+        }
+      }
+    },
+    "PrivateResourceReadRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "method",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "method": {
+          "type": "string",
+          "const": "expert_resources_operation_read"
+        },
+        "payload": {
+          "$ref": "#/$defs/PrivateResourceReadPayload"
+        }
+      }
+    },
+    "PrivateResourceReadResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/ResourceOperation"
+        }
+      }
+    },
+    "BindingRecoverRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "contextId",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "contextId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "payload": {
+          "$ref": "#/$defs/BindingOperationReadPayload"
+        }
+      }
+    },
+    "BindingRecoverResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/BindingResult"
+        }
+      }
+    },
+    "ResourceOperationRecoverRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "contextId",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "contextId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "payload": {
+          "$ref": "#/$defs/OperationReadPayload"
+        }
+      }
+    },
+    "ResourceOperationRecoverResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/ResourceOperation"
+        }
+      }
+    },
+    "PrivateBindingRecoverPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostInstanceId",
+        "scope",
+        "original"
+      ],
+      "properties": {
+        "hostInstanceId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "scope": {
+          "$ref": "#/$defs/ScopeBinding"
+        },
+        "original": {
+          "$ref": "#/$defs/ApplyPayload"
+        }
+      },
+      "description": "Explicit recovery only. Current outer authority authorizes reconciling the exact immutable original Native intent. Preserve original identity, payload, Host nonce and receipt. Never start a turn or replace the operation."
+    },
+    "PrivateResourceRecoverPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostInstanceId",
+        "scope",
+        "original",
+        "action"
+      ],
+      "properties": {
+        "hostInstanceId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "scope": {
+          "$ref": "#/$defs/ScopeBinding"
+        },
+        "original": {
+          "$ref": "#/$defs/PrivateResourcePayload"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "prepare",
+            "remove"
+          ]
+        }
+      },
+      "description": "Explicit reconciliation of the original resource operation. Never installs or removes resources. Observe the original managed-core journal; if no core operation began, durably reject the original intent under existing mutation locks. No state inferred from current installation alone."
+    },
+    "PrivateBindingRecoverRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "method",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "method": {
+          "type": "string",
+          "const": "expert_binding_recover"
+        },
+        "payload": {
+          "$ref": "#/$defs/PrivateBindingRecoverPayload"
+        }
+      }
+    },
+    "PrivateResourceRecoverRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "method",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "method": {
+          "type": "string",
+          "const": "expert_resources_recover"
+        },
+        "payload": {
+          "$ref": "#/$defs/PrivateResourceRecoverPayload"
+        }
+      }
+    },
+    "PrivateBindingRecoverResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/ApplyReceipt"
+        }
+      }
+    },
+    "PrivateResourceRecoverResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/ResourceOperation"
+        }
+      }
+    },
+    "DeveloperInfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expert",
+        "name"
+      ],
+      "properties": {
+        "expert": {
+          "$ref": "#/$defs/ExpertSelection"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Developer display name. Defaults to 易界 AI for the current native catalog; not a verification badge or third-party source attribution."
+        }
+      },
+      "description": "Read-only developer metadata for an exact catalog identity. No usage metrics, external URL, installation, binding, or persistence side effects."
+    },
+    "DeveloperReadRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "contextId",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "contextId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "payload": {
+          "$ref": "#/$defs/ExpertSelection"
+        }
+      }
+    },
+    "DeveloperReadResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/DeveloperInfo"
+        }
+      }
+    },
+    "ReferencedRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "UnixMilliseconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "ProfileId": {
+      "type": "string",
+      "enum": [
+        "kimi-k3-max-v1",
+        "kimi-k3-1-pro-max-v1",
+        "minimax-m3-high-v1"
+      ],
+      "description": "Known persisted identity. Recognition grants no execution authority; the K3 identity is retired."
+    },
+    "ReferencedReferencedRevision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "Selection": {
+      "type": "array",
+      "maxItems": 58,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/SelectionRef"
+      },
+      "description": "Unique installationId required even when revisions differ. Native freezes canonical ASCII installationId order; requests may use any order."
+    },
+    "SelectionDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ContentBlock": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/textContentBlock"
+        },
+        {
+          "$ref": "#/$defs/FileInput"
+        },
+        {
+          "$ref": "#/$defs/ImageInput"
+        }
+      ]
+    },
+    "StartTurnV2ContentBlock": {
+      "description": "A closed content-block union discriminated by `type`.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/StartTurnV2TextBlock"
+        },
+        {
+          "$ref": "#/$defs/StartTurnV2ImageBlock"
+        },
+        {
+          "$ref": "#/$defs/StartTurnV2FileBlock"
+        }
+      ]
+    },
+    "ProviderBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference",
+        "serviceId",
+        "credentialRef"
+      ],
+      "properties": {
+        "reference": {
+          "$ref": "#/$defs/SelectionRef"
+        },
+        "serviceId": {
+          "$ref": "#/$defs/ServiceId"
+        },
+        "credentialRef": {
+          "$ref": "#/$defs/CanonicalId"
+        }
+      },
+      "description": "Native-created non-secret credential reference for the exact installation generation and revision. Keyring alias derives stable owner/tenant/service/installation/generation/credentialRef, excludes Native process epoch and display revision. Native authoritative probe may advance only the same generation revision; never treat a ready flag or OAuth completion as tool qualification."
+    },
+    "SubmissionState": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "uncertain"
+      ]
+    },
+    "SelectionRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "installationId",
+        "revision",
+        "generation"
+      ],
+      "properties": {
+        "installationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "revision": {
+          "$ref": "#/$defs/ReferencedRevision"
+        },
+        "generation": {
+          "$ref": "#/$defs/ReferencedRevision"
+        }
+      },
+      "description": "No service label or secret is accepted as authority. Native and Host revalidate exact scope, generation, ready state and connector.use before a versioned turn is admitted."
+    },
+    "textContentBlock": {
+      "title": "ChatTextContentBlock",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "const": "text"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1048576,
+          "pattern": "\\S"
+        }
+      }
+    },
+    "FileInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "attachmentId"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "file"
+        },
+        "attachmentId": {
+          "$ref": "#/$defs/CanonicalId"
+        }
+      }
+    },
+    "ImageInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "attachmentId"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "image"
+        },
+        "attachmentId": {
+          "$ref": "#/$defs/CanonicalId"
+        }
+      }
+    },
+    "StartTurnV2TextBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "text"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1048576,
+          "pattern": "\\S",
+          "description": "Non-blank user text, bounded to 1 MiB in UTF-8 bytes."
+        }
+      }
+    },
+    "StartTurnV2ImageBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "attachment_id",
+        "media_type",
+        "size_bytes",
+        "sha256",
+        "data_url"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "image"
+          ]
+        },
+        "attachment_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Desktop attachment identifier; correlation only, never a local path."
+        },
+        "media_type": {
+          "type": "string",
+          "enum": [
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "image/gif"
+          ]
+        },
+        "size_bytes": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 1,
+          "maximum": 10485760,
+          "description": "Exact decoded image byte length."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "Lowercase hexadecimal SHA-256 of the decoded image bytes."
+        },
+        "data_url": {
+          "type": "string",
+          "minLength": 23,
+          "maxLength": 13981039,
+          "pattern": "^data:image/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$",
+          "description": "Canonical base64 data URL. Its header must equal `media_type`; decoded\nlength must equal `size_bytes`; and decoded SHA-256 must equal `sha256`.\nHost validates all three relationships before invoking Runtime and\nnever persists this value.\n"
+        }
+      }
+    },
+    "StartTurnV2FileBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "attachment_id",
+        "name",
+        "media_type",
+        "size_bytes",
+        "sha256",
+        "context_chunks"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "file"
+          ]
+        },
+        "attachment_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Desktop attachment identifier; correlation only, never a local path."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[^/\\\\\\x00-\\x1F\\x7F\\s]([^/\\\\\\x00-\\x1F\\x7F]*[^/\\\\\\x00-\\x1F\\x7F\\s])?$",
+          "not": {
+            "enum": [
+              ".",
+              ".."
+            ]
+          },
+          "description": "NFC display basename with no path separator, control character, or\nleading/trailing whitespace. It is untrusted text and must never be\ninterpreted as a path, markup, authorization input, or log label.\n"
+        },
+        "media_type": {
+          "$ref": "#/$defs/StartTurnV2FileMediaType"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 1,
+          "maximum": 10485760,
+          "description": "Exact original file byte length verified by Desktop before parsing."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "Lowercase hexadecimal SHA-256 of the original file bytes, verified by Desktop."
+        },
+        "context_chunks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "description": "Ordered, untrusted plain-text excerpts selected locally from this file.\nHost maps them to bounded Runtime text input and never persists them.\nUTF-8 bytes across every file block in the turn must be at most 256 KiB.\n",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16384,
+            "pattern": "\\S"
+          }
+        }
+      }
+    },
+    "ServiceId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$",
+      "description": "Original case-sensitive catalog serverName. Syntactic acceptance does not replace exact registry lookup."
+    },
+    "StartTurnV2FileMediaType": {
+      "type": "string",
+      "description": "Canonical media type produced after Desktop format and container validation.",
+      "enum": [
+        "application/pdf",
+        "text/plain",
+        "text/markdown",
+        "text/csv",
+        "application/json",
+        "application/yaml",
+        "application/xml",
+        "text/html",
+        "application/rtf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      ]
+    }
+  }
+}
