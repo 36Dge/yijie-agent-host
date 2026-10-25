@@ -33,7 +33,7 @@ func (s *Store) prepareModelFormat(tx *bolt.Tx) error {
 	if s.feat126ProjectDirectory != "" {
 		return ErrModelUnavailable
 	}
-	v := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
+	v := domainStoreVersion(tx)
 	if v != "6" && v != "7" && v != "8" && v != "9" && v != "10" {
 		return ErrModelUnavailable
 	}
@@ -41,7 +41,7 @@ func (s *Store) prepareModelFormat(tx *bolt.Tx) error {
 		return e
 	}
 	if v != "8" && v != "9" && v != "10" {
-		return tx.Bucket(metadataBucket).Put(storeSchemaVersionKey, []byte("7"))
+		return putDomainStoreVersion(tx, "7")
 	}
 	return nil
 }
@@ -141,9 +141,6 @@ func (s *Service) SelectChatModel(ctx context.Context, sessionID string, request
 		return wire.Selection{}, ErrInvalidArgument
 	}
 	runtime := s.runtime.(modelRuntime)
-	if !runtime.ModelAvailable(string(request.ProfileId)) {
-		return wire.Selection{}, ErrModelUnavailable
-	}
 	s.modelOperationMu.Lock()
 	defer s.modelOperationMu.Unlock()
 	// Replay terminal evidence before consulting mutable expert resources or
@@ -173,6 +170,14 @@ func (s *Service) SelectChatModel(ctx context.Context, sessionID string, request
 	if prior.Complete {
 		return prior.Result, nil
 	}
+	// A v1 intent has no durable dispatch phase or thread binding. Never replay
+	// it as a new configuration call or translate it into a v2 operation.
+	if prior.Request.OperationId != "" {
+		return wire.Selection{}, ErrModelUnknown
+	}
+	if s.ChatModelsV2Enabled() || !runtime.ModelAvailable(string(request.ProfileId)) {
+		return wire.Selection{}, ErrModelUnavailable
+	}
 	ctx, expertErr := s.contextForStoredExpert(ctx, sessionID)
 	if expertErr != nil {
 		return wire.Selection{}, expertErr
@@ -194,9 +199,7 @@ func (s *Service) SelectChatModel(ctx context.Context, sessionID string, request
 			if operation.Complete {
 				return nil
 			}
-			var e error
-			record, e = s.store.loadRecord(tx, sessionID)
-			return e
+			return ErrModelUnknown
 		}
 		var e error
 		record, e = s.store.loadRecord(tx, sessionID)

@@ -26,7 +26,7 @@ func WithScheduledDraftStorage() StoreOption {
 	return func(s *Store) error { s.draftWriter = true; return nil }
 }
 func (s *Store) prepareDraftFormat(tx *bolt.Tx) error {
-	v := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
+	v := domainStoreVersion(tx)
 	if v == "6" || v == "7" || v == "8" || v == "9" || v == "10" {
 		return tx.Bucket(sessionsBucket).ForEach(func(_, b []byte) error {
 			var r Record
@@ -67,10 +67,10 @@ func (s *Store) prepareDraftFormat(tx *bolt.Tx) error {
 			return e
 		}
 	}
-	return tx.Bucket(metadataBucket).Put(storeSchemaVersionKey, []byte("6"))
+	return putDomainStoreVersion(tx, "6")
 }
 func validateStoredPurpose(tx *bolt.Tx, r *Record) error {
-	v := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
+	v := domainStoreVersion(tx)
 	if err := validateMarketRecord(*r, v); err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func validateStoredPurpose(tx *bolt.Tx, r *Record) error {
 	return nil
 }
 func validatePurposeWrite(tx *bolt.Tx, r Record) error {
-	version := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
+	version := domainStoreVersion(tx)
 	if r.Purpose == purposeDraft && version != "6" && version != "7" && version != "8" && version != "9" && version != "10" {
 		return ErrDraftStorageDisabled
 	}

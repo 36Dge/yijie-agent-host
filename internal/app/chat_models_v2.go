@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -15,6 +17,12 @@ type chatModelV2Service interface {
 	ChatModelsV2Enabled() bool
 	ChatModelCatalogV2() wire.Catalog
 	ReadChatModelV2(string) (wire.Selection, error)
+}
+
+type chatModelV2OperationService interface {
+	SelectChatModelV2(context.Context, string, wire.SelectRequest) (wire.Selection, error)
+	ReadChatModelOperationV2(string, string) (wire.ModelOperationReceipt, error)
+	RecoverChatModelV2(context.Context, string, wire.RecoverRequest) (wire.ModelOperationReceipt, error)
 }
 
 func modelReplyV2(w http.ResponseWriter, name string, value any, err error) {
@@ -31,6 +39,10 @@ func modelReplyV2(w http.ResponseWriter, name string, value any, err error) {
 		status, code = 404, wire.ErrorCodeNotFound
 	case errors.Is(err, session.ErrTurnActive):
 		status, code = 409, wire.ErrorCodeBusy
+	case errors.Is(err, session.ErrTurnOperationPending):
+		status, code = 409, wire.ErrorCodeBusy
+	case errors.Is(err, session.ErrTurnOperationConflict):
+		status, code = 409, wire.ErrorCodeRequestConflict
 	case errors.Is(err, session.ErrModelRevision):
 		status, code = 409, wire.ErrorCodeRevisionConflict
 	case errors.Is(err, session.ErrModelUnavailable):
@@ -76,8 +88,38 @@ func registerChatModelsV2(mux *http.ServeMux, h *sessionHandler) {
 		v, err := s.ReadChatModelV2(id)
 		modelReplyV2(w, "Selection", v, err)
 	})
-	// The walking skeleton exposes ordinary fresh-session routes only. Model
-	// mutation/recovery and draft routes remain unavailable until their slices.
+	if operations, ok := h.service.(chatModelV2OperationService); ok {
+		registerModel("POST /v2/model-chat/agent-sessions/{agent_session_id}/model", func(w http.ResponseWriter, r *http.Request) {
+			var input wire.SelectRequest
+			raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4096))
+			if err != nil || r.URL.RawQuery != "" || wire.Decode("SelectRequest", raw, &input) != nil {
+				modelReplyV2(w, "Selection", nil, session.ErrInvalidArgument)
+				return
+			}
+			value, err := operations.SelectChatModelV2(r.Context(), r.PathValue("agent_session_id"), input)
+			modelReplyV2(w, "Selection", value, err)
+		})
+		registerModel("GET /v2/model-chat/agent-sessions/{agent_session_id}/model-operations/{operation_id}", func(w http.ResponseWriter, r *http.Request) {
+			sessionID, opID := r.PathValue("agent_session_id"), r.PathValue("operation_id")
+			if !validRecoveryRequest(r, sessionID, opID) {
+				modelReplyV2(w, "ModelOperationReceipt", nil, session.ErrInvalidArgument)
+				return
+			}
+			value, err := operations.ReadChatModelOperationV2(sessionID, opID)
+			modelReplyV2(w, "ModelOperationReceipt", value, err)
+		})
+		registerModel("POST /v2/model-chat/agent-sessions/{agent_session_id}/model-operations/{operation_id}/recover", func(w http.ResponseWriter, r *http.Request) {
+			var input wire.RecoverRequest
+			raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4096))
+			if err != nil || r.URL.RawQuery != "" || wire.Decode("RecoverRequest", raw, &input) != nil || input.OperationId != r.PathValue("operation_id") {
+				modelReplyV2(w, "ModelOperationReceipt", nil, session.ErrInvalidArgument)
+				return
+			}
+			value, err := operations.RecoverChatModelV2(r.Context(), r.PathValue("agent_session_id"), input)
+			modelReplyV2(w, "ModelOperationReceipt", value, err)
+		})
+	}
+	// Draft/market execution remains unavailable until its Native migration slice.
 	for _, route := range []struct{ method, path, legacy string }{
 		{"POST", "/v2/model-chat/tasks/{task_id}/agent-sessions", "/v1/tasks/{task_id}/agent-sessions"},
 		{"GET", "/v2/model-chat/agent-sessions/{agent_session_id}", "/v1/agent-sessions/{agent_session_id}"},

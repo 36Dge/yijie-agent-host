@@ -42,6 +42,10 @@ func WithTitleGenerator(generator TitleGenerator) ServiceOption {
 }
 
 func (s *Service) GenerateTitle(ctx context.Context, sessionID, operationID, input string) (TitleResult, error) {
+	if s.ChatModelsV2Enabled() {
+		s.modelOperationMu.Lock()
+		defer s.modelOperationMu.Unlock()
+	}
 	if err := s.requireOrdinaryPurpose(sessionID); err != nil {
 		return TitleResult{}, err
 	}

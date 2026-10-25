@@ -28,7 +28,7 @@ func WithMarketStorage() StoreOption {
 }
 
 func (s *Store) prepareMarketFormat(tx *bolt.Tx) error {
-	v := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
+	v := domainStoreVersion(tx)
 	if v == "8" || v == "9" || v == "10" {
 		if tx.Bucket(marketOperationsBucket) == nil {
 			return ErrMarketPurpose
@@ -44,7 +44,7 @@ func (s *Store) prepareMarketFormat(tx *bolt.Tx) error {
 	if _, err := tx.CreateBucket(marketOperationsBucket); err != nil {
 		return err
 	}
-	return tx.Bucket(metadataBucket).Put(storeSchemaVersionKey, []byte("8"))
+	return putDomainStoreVersion(tx, "8")
 }
 
 func validateMarketRecord(record Record, version string) error {

@@ -30,7 +30,7 @@ func WithExpertStorageReader() StoreOption {
 	return func(s *Store) error { s.expertReader = true; return nil }
 }
 func (s *Store) prepareExpertFormat(tx *bolt.Tx) error {
-	v := string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey))
+	v := domainStoreVersion(tx)
 	if v == "10" {
 		if (!s.expertWriter && !s.expertReader) || tx.Bucket(expertBindingsBucket) == nil || tx.Bucket(expertOperationsBucket) == nil || tx.Bucket(expertResourceOperationsBucket) == nil {
 			return ErrExpertContext
@@ -60,7 +60,7 @@ func (s *Store) prepareExpertFormat(tx *bolt.Tx) error {
 	if _, e := tx.CreateBucket(expertResourceOperationsBucket); e != nil {
 		return e
 	}
-	return tx.Bucket(metadataBucket).Put(storeSchemaVersionKey, []byte("10"))
+	return putDomainStoreVersion(tx, "10")
 }
 
 type expertBinding struct {

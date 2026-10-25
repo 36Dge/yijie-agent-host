@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/chatmodelsv2"
+	"github.com/36Dge/yijie-agent-host/internal/session"
 )
 
 type modelV2RouteService struct{ SessionService }
@@ -19,6 +21,57 @@ func (*modelV2RouteService) ChatModelCatalogV2() wire.Catalog {
 		rows = append(rows, wire.ModelAvailability{Profile: p, Available: true, Reason: wire.ModelAvailabilityReasonReady})
 	}
 	return wire.Catalog{SchemaVersion: 2, DefaultProfile: wire.ActiveProfileIdKimiK31ProMaxV1, Models: rows}
+}
+
+type modelV2OperationRouteService struct {
+	modelV2RouteService
+	calls int
+}
+
+func (s *modelV2OperationRouteService) SelectChatModelV2(context.Context, string, wire.SelectRequest) (wire.Selection, error) {
+	s.calls++
+	return wire.Selection{}, session.ErrTurnOperationConflict
+}
+func (s *modelV2OperationRouteService) ReadChatModelOperationV2(string, string) (wire.ModelOperationReceipt, error) {
+	s.calls++
+	return wire.ModelOperationReceipt{}, session.ErrNotFound
+}
+func (s *modelV2OperationRouteService) RecoverChatModelV2(context.Context, string, wire.RecoverRequest) (wire.ModelOperationReceipt, error) {
+	s.calls++
+	return wire.ModelOperationReceipt{}, session.ErrModelUnknown
+}
+
+func TestFEAT164V2OperationRoutesValidateBeforeService(t *testing.T) {
+	s := &modelV2OperationRouteService{}
+	mux := http.NewServeMux()
+	registerChatModelsV2(mux, &sessionHandler{service: s, apiToken: "local-operation-token"})
+	const id = "00000000-0000-4000-8000-000000000164"
+	base := "/v2/model-chat/agent-sessions/" + id
+	body := `{"schema_version":2,"operation_id":"` + id + `","expected_revision":0,"profile_id":"kimi-k3-1-pro-max-v1"}`
+	for _, tc := range []struct {
+		method, path, body string
+		auth               bool
+		status, calls      int
+	}{
+		{"POST", base + "/model", body, false, 401, 0},
+		{"POST", base + "/model", strings.Replace(body, "kimi-k3-1-pro-max-v1", "kimi-k3-max-v1", 1), true, 400, 0},
+		{"POST", base + "/model", body, true, 409, 1},
+		{"GET", base + "/model-operations/" + id + "?x=1", "", true, 400, 1},
+		{"GET", base + "/model-operations/" + id, "", true, 404, 2},
+		{"POST", base + "/model-operations/00000000-0000-4000-8000-000000000165/recover", body, true, 400, 2},
+		{"POST", base + "/model-operations/" + id + "/recover", body, true, 409, 3},
+	} {
+		r := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+		if tc.auth {
+			r.Header.Set("Authorization", "Bearer local-operation-token")
+		}
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		var errorBody wire.Error
+		if w.Code != tc.status || s.calls != tc.calls || w.Header().Get("Cache-Control") != "no-store" || wire.Decode("Error", w.Body.Bytes(), &errorBody) != nil {
+			t.Fatalf("%s %s status=%d calls=%d body=%s", tc.method, tc.path, w.Code, s.calls, w.Body.String())
+		}
+	}
 }
 func (*modelV2RouteService) ReadChatModelV2(id string) (wire.Selection, error) {
 	old := wire.ProfileIdKimiK3MaxV1

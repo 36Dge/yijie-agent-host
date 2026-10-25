@@ -124,6 +124,7 @@ type Store struct {
 	expertReader            bool
 	marketWriter            bool
 	modelWriter             bool
+	modelV2Writer           bool
 	draftWriter             bool
 	db                      *bolt.DB
 	receiptKey              [32]byte
@@ -231,6 +232,15 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 		}
 		metadata := tx.Bucket(metadataBucket)
 		version := metadata.Get(storeSchemaVersionKey)
+		if string(version) == "11" {
+			if !store.modelV2Writer || tx.Bucket(modelOperationsV2Bucket) == nil {
+				return ErrModelUnavailable
+			}
+			version = metadata.Get(modelBaseVersionKey)
+			if string(version) != "7" && string(version) != "8" && string(version) != "9" && string(version) != "10" {
+				return ErrModelUnknown
+			}
+		}
 		if version != nil && string(version) != "1" && string(version) != "2" && string(version) != "3" && string(version) != "4" && string(version) != storeSchemaVersion && string(version) != "6" && string(version) != "7" && string(version) != "8" && !((store.expertWriter || store.expertReader) && (string(version) == "9" || string(version) == "10")) {
 			return fmt.Errorf("unsupported Agent Host store schema version %q", version)
 		}
@@ -256,6 +266,9 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 			return err
 		}
 		if err := store.prepareExpertFormat(tx); err != nil {
+			return err
+		}
+		if err := store.prepareModelV2Format(tx); err != nil {
 			return err
 		}
 		return purgeExpiredCleanupReceipts(tx, time.Now().UTC())
