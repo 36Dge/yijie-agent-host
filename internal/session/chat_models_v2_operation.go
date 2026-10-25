@@ -126,9 +126,18 @@ func (s *Service) applyChatModelV2(ctx context.Context, sessionID string, reques
 		if err != nil {
 			return err
 		}
-		// Market/expert and draft execution remain fenced until their Native
-		// versioned migration path is implemented; history remains readable.
-		if record.Purpose != purposeOrdinary {
+		// Paired v2 Native consumers may reconfigure a settled market/expert
+		// thread. This creates no new business grant or delivery permission.
+		switch record.Purpose {
+		case purposeOrdinary:
+		case purposeMarket:
+			if !s.MarketEnabled() || record.MarketScopeHash == "" || !isCanonicalNonZeroUUID(record.MarketLocalSessionID) {
+				return ErrModelUnavailable
+			}
+			if _, ok := s.runtime.(expertBindingRuntime); !ok {
+				return ErrModelUnavailable
+			}
+		default:
 			return ErrModelUnavailable
 		}
 		if !s.runtime.(modelRuntime).ModelAvailable(string(request.ProfileId)) || !s.chatModelsV2Ready() {
@@ -189,7 +198,20 @@ func (s *Service) applyChatModelV2(ctx context.Context, sessionID string, reques
 	if err != nil {
 		return wire.Selection{}, err
 	}
-	thread, err := s.runtime.(modelRuntime).SwitchThread(ctx, op.ThreadID)
+	// Reuse the original expert-binding cleanup: revoke any old market lease
+	// and explicitly disable inherited MCP entries before changing the model.
+	// A later business turn still needs its own fresh Native grant/snapshot.
+	var thread codex.ThreadInfo
+	if record.Purpose == purposeMarket {
+		var cleared *codex.MarketPrepared
+		cleared, err = s.runtime.(expertBindingRuntime).ClearMarketConfiguration(ctx, op.ThreadID, record.Cwd)
+		if err == nil {
+			ctx = codex.WithMarketPrepared(ctx, cleared)
+		}
+	}
+	if err == nil {
+		thread, err = s.runtime.(modelRuntime).SwitchThread(ctx, op.ThreadID)
+	}
 	profile, _ := codex.ModelProfile(string(request.ProfileId))
 	if err != nil || thread.ID != op.ThreadID || thread.Model != profile.Model || thread.ModelProvider != profile.Provider || thread.ReasoningEffort != profile.Effort {
 		_ = s.store.db.Update(func(tx *bolt.Tx) error {

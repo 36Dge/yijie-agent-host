@@ -1,0 +1,7 @@
+# FEAT-164 v2 市场/专家模型选择
+
+契约源仍为已固定Models v2与market/expert v2，Runtime r4不变。本次semantic实现补齐已批准S4：普通model配置操作可在已结束且已绑定的market会话使用，Native仍逐次校验scope、SubmitTurn、当前revision及原operation。Host既有owner-only bearer配置API不授market执行权；业务snapshot/grant及审批仍只由原Native管道建立。
+
+Host保留模型可用性、目的分类、状态、活动turn、审批、未决model/expert/market操作及资源检查。market用途额外要求MarketEnabled、持久scope/local-session身份及原expertBindingRuntime能力；draft和未知purpose仍拒绝。配置调用复用ClearMarketConfiguration：撤销旧lease，读取受管cwd配置并关闭继承MCP，再以当前专家资源和明确目标profile执行unsubscribe/resume。它不进行PrepareMarket、BeginMarketTurn、供应商发现或新业务授权。下一业务turn仍重新取得独立Native授权和快照。
+
+原operation的终态回执先于当前可用性只读返回，不重发配置；旧dispatched/unknown且Host缺记录仍不能据404恢复。原失败测试会话保留未决，新验证使用新的合成会话；不直接改真实数据库。源内TestFEAT164SettledMarketExpertModelSelection覆盖活动拒绝、正常终态、paused转MiniMax、clear→switch、0turn增长、旧快照保持与终态重放。真实Runtime/App资格另由元仓35和s4i证据记录，单元double不冒充真实服务。
