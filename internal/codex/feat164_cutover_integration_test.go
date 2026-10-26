@@ -34,6 +34,8 @@ type feat164Cutover struct {
 	errors               []string
 	allowedModel         string
 	reply                func(map[string]any, int) map[string]any
+	stream               func(http.ResponseWriter, *http.Request, map[string]any, int) bool
+	keep                 bool
 }
 
 func newFEAT164Cutover(t *testing.T, reply func(map[string]any, int) map[string]any) *feat164Cutover {
@@ -96,6 +98,9 @@ func newFEAT164Cutover(t *testing.T, reply func(map[string]any, int) map[string]
 			w.WriteHeader(429)
 			return
 		}
+		if h.stream != nil && h.stream(w, r, body, n) {
+			return
+		}
 		item := h.reply(body, n)
 		item["id"] = fmt.Sprintf("cutover_item_%d", n)
 		id := fmt.Sprintf("cutover_response_%d", n)
@@ -128,7 +133,7 @@ func newFEAT164Cutover(t *testing.T, reply func(map[string]any, int) map[string]
 		log, _ := json.Marshal(h.calls)
 		h.mu.Unlock()
 		t.Logf("loopback ledger=%s; real_provider_http=0", log)
-		if ok {
+		if ok && !h.keep {
 			_ = os.RemoveAll(h.root)
 		} else {
 			t.Log("retained temporary root", h.root)
