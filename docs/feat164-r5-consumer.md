@@ -1,0 +1,9 @@
+# FEAT-164 r5 consumer provenance
+
+2026-10-26. Owner approved report41's six-existing-file Runtime shutdown scope and necessary local downstream qualification. Runtime `11fd4504c28afd0f65c6f5f62a6b5328dd437f5a` / r5 binary SHA256 `283d12e16b124942302fcdc8281c729a8a7f676498f06df1d2646292905f579e` is projected by immutable Contracts `5b5dad9d837ba92abc7c2660d1de1a60f4ed1ba2`. The canonical sync script generated the two candidate locks and Runtime artifact constants; no Host implementation, public DTO, model request, grant or storage behavior changed.
+
+The incremental boundary is semantic: owned stdio shutdown now awaits internal listeners/logs and closes the existing pools. The whole FEAT-164 remains breaking and in progress. All 269 Runtime schemas are byte-identical to r4. This consumer uses the same versioned methods/events and checks the new artifact, never a floating source or substituted executable.
+
+Validation: immutable projection check; three selected admission/configuration tests (including ten activation subcases) with race detection; `go vet ./internal/codex` all passed. These tests use normal configuration files and no Runtime or model calls. The separate canonical r5 loaded-thread/start/read/EOF probe passed with preserved home, exit0 and four databases with no remaining WAL bytes; it is not full Host/App teardown qualification. Broad legacy suites containing prohibited fault fixtures were not run. Old r4 real G2V is retained as r4 evidence and is not relabelled r5.
+
+This commit is local only, preceding the Desktop source freeze and same-source build. Keep old histories, unknown operations, grant revisions, ledgers and reserved cost unchanged. No new paid calls, daily-data migration, WAL manipulation, forced process stop, push or release. Rollback requires the matched r4 consumer/artifact set and compatible readers; no r2 writer or database downgrade.
