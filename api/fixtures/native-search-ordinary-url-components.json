@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "scope": "normal public source URLs and ordinary synthetic opaque identifiers; no real credentials, external requests or attack fixtures",
+  "cases": [
+    {
+      "url": "https://platform.kimi.ai/docs/guide/kimi-k2-6-quickstart",
+      "visible": true
+    },
+    {
+      "url": "https://github.com/NousResearch/hermes-agent/issues/26938",
+      "visible": true
+    },
+    {
+      "url": "https://platform.kimi.ai/docs/overview",
+      "visible": true
+    },
+    {
+      "url": "https://platform.kimi.ai/docs/guide/use-kimi-vision-model",
+      "visible": true
+    },
+    {
+      "url": "https://www.kimi.com/code/docs/en/",
+      "visible": true
+    },
+    {
+      "url": "https://www.kimi.com/en/help/kimi-code/cli-interaction",
+      "visible": true
+    },
+    {
+      "url": "https://platform.moonshot.cn/docs/guide/use-kimi-vision-model",
+      "visible": true
+    },
+    {
+      "url": "https://www.kimi.com/en/help/kimi-api/api-model-capabilities",
+      "visible": true
+    },
+    {
+      "url": "https://www.kimi.com/en/help/kimi-api/api-model-selection",
+      "visible": true
+    },
+    {
+      "url": "https://github.com/pollinations/pollinations/issues/8507",
+      "visible": true
+    },
+    {
+      "url": "https://platform.kimi.ai/docs/api/list-models",
+      "visible": true
+    },
+    {
+      "url": "https://www.kimi.com/code/docs/en/kimi-code/whats-new.html",
+      "visible": true
+    },
+    {
+      "url": "https://www.kimi.com/it/help/kimi-code/cli-interaction",
+      "visible": true
+    },
+    {
+      "url": "https://gate.ai/blog/kimi-k3-specs-pricing-api-access-use-cases",
+      "visible": false
+    },
+    {
+      "url": "https://replicate.com/moonshotai/kimi-k2.5",
+      "visible": true
+    },
+    {
+      "url": "https://gitee.com/huangg2018/pentagi",
+      "visible": true
+    },
+    {
+      "url": "https://blog.csdn.net/weixin_40920183/article/details/145171460",
+      "visible": true
+    },
+    {
+      "url": "https://blog.csdn.net/jihui8848/article/details/145176195",
+      "visible": true
+    },
+    {
+      "url": "http://www.dapingtime.com/article/768.html",
+      "visible": true
+    },
+    {
+      "url": "https://meshmac.com/blog/articles/2026-kimi-k3-param-performance-agent-api-deepseek-gpt5-comparison.html",
+      "visible": false
+    },
+    {
+      "url": "https://example.org/documentation/guides/ordinary-pages?edition=2026#overview",
+      "visible": true
+    },
+    {
+      "url": "https://example.org/documents/0123456789abcdef0123456789abcdef",
+      "visible": false
+    },
+    {
+      "url": "https://example.org/documents?reference=0123456789abcdef0123456789abcdef",
+      "visible": false
+    },
+    {
+      "url": "https://example.org/documents#0123456789abcdef0123456789abcdef",
+      "visible": false
+    },
+    {
+      "url": "https://example.org/documents/0123456789abcdef%2F0123456789abcdef",
+      "visible": false
+    }
+  ]
+}
