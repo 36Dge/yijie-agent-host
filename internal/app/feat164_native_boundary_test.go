@@ -27,7 +27,15 @@ func TestFEAT164NativeHostBoundary(t *testing.T) {
 	if binary == "" || manifest == "" || desktop == "" {
 		t.Skip("explicit pinned artifacts and Native test source required")
 	}
-	root, err := os.MkdirTemp("", "feat164-native-boundary-")
+	parent := os.Getenv("YIJIE_FEAT164_S2_RETAIN_ROOT")
+	if parent == "" || !filepath.IsAbs(parent) {
+		t.Fatal("explicit absolute retained S2 output directory required")
+	}
+	info, err := os.Stat(parent)
+	if err != nil || !info.IsDir() {
+		t.Fatal("retained S2 output parent unavailable")
+	}
+	root, err := os.MkdirTemp(parent, "feat164-native-boundary-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,11 +120,10 @@ func TestFEAT164NativeHostBoundary(t *testing.T) {
 		stopped = true
 		return true
 	}
-	defer func() {
-		if stop() {
-			_ = os.RemoveAll(root)
-		}
-	}()
+	// Retain the complete Runtime/Host/Native state on success and failure.
+	// Only the normal owned shutdown path closes resources; never force cleanup.
+	t.Logf("FEAT164_S2_RETAINED_ROOT=%s", root)
+	defer stop()
 	start := func() {
 		runtime = codex.NewManager(config, nil)
 		store, err = session.OpenStore(filepath.Join(root, "host"), session.WithChatModelV2Storage())
