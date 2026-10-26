@@ -24,7 +24,7 @@ import (
 // is the same loopback fixture. No executable substitutions or external tools.
 func TestFEAT164CallSurfacesRuntime(t *testing.T) {
 	binary, manifest := integrationArtifactPaths(t)
-	root, err := os.MkdirTemp("", "feat164-surfaces-")
+	root, err := os.MkdirTemp(os.Getenv("YIJIE_FEAT164_RETAIN_ROOT"), "feat164-surfaces-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestFEAT164CallSurfacesRuntime(t *testing.T) {
 		if err := manager.Shutdown(ctx); err != nil {
 			t.Error("normal cleanup pending; retained files", err)
 		} else {
-			_ = os.RemoveAll(root)
+			t.Logf("FEAT164_RETAINED_ROOT=%q; normal_shutdown=true; loopback_http=%d", root, requests.Load())
 		}
 	}()
 	if err = manager.Start(context.Background()); err != nil {

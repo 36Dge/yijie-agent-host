@@ -24,7 +24,7 @@ type feat164Auxiliary struct {
 func feat164AuxRuntime(t *testing.T, respond func(map[string]any, int64) map[string]any) *feat164Auxiliary {
 	t.Helper()
 	binary, manifest := integrationArtifactPaths(t)
-	root, e := os.MkdirTemp("", "feat164-aux-")
+	root, e := os.MkdirTemp(os.Getenv("YIJIE_FEAT164_RETAIN_ROOT"), "feat164-aux-")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -93,9 +93,7 @@ func feat164AuxRuntime(t *testing.T, respond func(map[string]any, int64) map[str
 			t.Error(e)
 			stopped = false
 		}
-		if stopped {
-			_ = os.RemoveAll(root)
-		}
+		t.Logf("FEAT164_RETAINED_ROOT=%q; normal_shutdown=%t; loopback_http=%d", root, stopped, h.calls.Load())
 	})
 	if e = h.manager.Start(context.Background()); e != nil {
 		t.Fatal(e)

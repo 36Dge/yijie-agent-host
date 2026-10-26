@@ -41,7 +41,7 @@ func newFEAT164Cutover(t *testing.T, reply func(map[string]any, int) map[string]
 	if os.Getenv("YIJIE_FEAT164_S4D_OFFLINE") != "true" {
 		t.Skip("explicit FEAT-164 S4d offline qualification required")
 	}
-	root, err := os.MkdirTemp("", "feat164-cutover-")
+	root, err := os.MkdirTemp(os.Getenv("YIJIE_FEAT164_RETAIN_ROOT"), "feat164-cutover-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,11 +128,7 @@ func newFEAT164Cutover(t *testing.T, reply func(map[string]any, int) map[string]
 		log, _ := json.Marshal(h.calls)
 		h.mu.Unlock()
 		t.Logf("loopback ledger=%s; real_provider_http=0", log)
-		if ok {
-			_ = os.RemoveAll(h.root)
-		} else {
-			t.Log("retained temporary root", h.root)
-		}
+		t.Logf("FEAT164_RETAINED_ROOT=%q; normal_shutdown=%t; loopback_http=%d", h.root, ok, len(h.calls))
 	})
 	return h
 }
