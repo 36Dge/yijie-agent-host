@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv5"
 )
 
 const nativeTextLimit = 256 << 10
@@ -33,6 +33,9 @@ type nativeWireItem struct {
 	Result           json.RawMessage `json:"result"`
 	Query            string          `json:"query"`
 	Action           json.RawMessage `json:"action"`
+	CommandActions   json.RawMessage `json:"commandActions"`
+	Changes          json.RawMessage `json:"changes"`
+	AppContext       json.RawMessage `json:"appContext"`
 }
 
 type nativeWireTurn struct {
@@ -142,6 +145,7 @@ func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) 
 		out.Content = &content
 		out.Summary = &summary
 	case native.CommandExecution:
+		projectNativeCommandActions(wire, cwd, &out)
 		// Reuse the existing security projection only; do not reuse lifecycle state.
 		var life v5LifecycleNotification
 		if json.Unmarshal(raw, &life.Item) != nil {
@@ -170,6 +174,9 @@ func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) 
 		}
 	case native.McpToolCall:
 		projectNativeMcp(wire, &out)
+		projectNativeAppContext(wire, &out)
+	case native.FileChange:
+		projectNativeFileChange(wire, cwd, &out)
 	case native.WebSearch:
 		projectNativeWebSearch(wire, &out)
 	}
@@ -225,7 +232,7 @@ func projectNativeTurn(wire nativeWireTurn, cwd string, allowRawReasoning bool) 
 	return out
 }
 
-func (s *Service) ReadNativeThreadV4(ctx context.Context, sessionID string) (native.NativeThreadSnapshot, error) {
+func (s *Service) ReadNativeThreadV5(ctx context.Context, sessionID string) (native.NativeThreadSnapshot, error) {
 	if err := requireUUID("agent_session_id", sessionID); err != nil {
 		return native.NativeThreadSnapshot{}, err
 	}
@@ -250,7 +257,7 @@ func (s *Service) ReadNativeThreadV4(ctx context.Context, sessionID string) (nat
 	if json.Unmarshal(raw, &wire) != nil || wire.ID != record.CodexThreadID {
 		return native.NativeThreadSnapshot{}, ErrRuntimeRequest
 	}
-	out := native.NativeThreadSnapshot{SchemaVersion: 4, Source: native.RuntimeRead, ThreadId: wire.ID, Turns: []native.NativeTurn{}, Availability: native.NativeThreadSnapshotAvailabilityPartial}
+	out := native.NativeThreadSnapshot{SchemaVersion: 5, Source: native.RuntimeRead, ThreadId: wire.ID, Turns: []native.NativeTurn{}, Availability: native.NativeThreadSnapshotAvailabilityPartial}
 	for i, turn := range wire.Turns {
 		if i >= 1024 {
 			break

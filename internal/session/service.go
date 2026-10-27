@@ -111,9 +111,19 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 	} else if errors.Is(err, ErrCleanupConflict) {
 		return CleanupResult{}, ErrCleanupConflict
 	}
-	operation, err := s.store.BeginCleanup(operationID, sessionID)
+	// Share admission with all ordinary/model/expert submissions. Never wait
+	// indefinitely behind a running request, and never race a new turn with the
+	// native quiescence observation used by cleanup.
+	if !s.modelOperationMu.TryLock() {
+		return incompleteCleanup(operationID, "active_turn", "not_attempted", "not_attempted", "not_attempted"), nil
+	}
+	defer s.modelOperationMu.Unlock()
+	operation, err := s.beginVerifiedCleanup(ctx, operationID, sessionID)
 	if errors.Is(err, ErrTurnActive) {
 		return incompleteCleanup(operationID, "active_turn", "not_attempted", "not_attempted", "not_attempted"), nil
+	}
+	if errors.Is(err, ErrRuntimeRequest) {
+		return incompleteCleanup(operationID, "runtime_delete_unconfirmed", "incomplete", "not_attempted", "not_attempted"), nil
 	}
 	if err != nil {
 		return CleanupResult{}, err
@@ -312,7 +322,7 @@ func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Lo
 		runtime:        runtime,
 		store:          store,
 		events:         events,
-		nativeEvents:   NewEventHubVersion(11, 512, 64),
+		nativeEvents:   NewEventHubVersion(12, 512, 64),
 		logger:         logger,
 		pending:        make(map[string][]pendingNotification),
 		syntheticTurns: make(map[string]*syntheticTerminalBarrier),

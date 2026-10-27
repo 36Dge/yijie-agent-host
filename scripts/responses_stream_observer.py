@@ -6,6 +6,7 @@ retains response text nor changes the bytes forwarded to the fixed provider.
 import hashlib
 import json
 import re
+import time
 
 
 def request_input_summary(value):
@@ -31,16 +32,24 @@ def request_input_summary(value):
                 row['body_sha256'] = digest(content)
             elif isinstance(content, list):
                 row['content_item_count'] = len(content)
+                canonical = json.dumps(content, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+                row['body_bytes'] = len(canonical.encode())
+                row['body_sha256'] = digest(canonical)
+                row['body_encoding'] = 'canonical_json'
         rows.append(row)
     return {'item_count': len(items), 'items': rows, 'truncated': len(items) > 128}
 
 
 class ConversationStreamSummary:
-    def __init__(self):
+    def __init__(self, clock=time.time_ns):
         self.buffer = b''
         self.items = {}
         self.events = {}
         self.truncated = False
+        self.clock = clock
+        self.started_at_ns = clock()
+        self.timeline = []
+        self.terminal = None
 
     def feed(self, chunk):
         if self.truncated:
@@ -67,6 +76,18 @@ class ConversationStreamSummary:
                      'response.reasoning_summary_text.delta', 'response.reasoning_summary_text.done'}
             key = kind if isinstance(kind, str) and kind in known else 'other'
             self.events[key] = self.events.get(key, 0) + 1
+            observed = self.clock()
+            marker = {'event': key, 'at_unix_ns': observed}
+            event_item = event.get('item')
+            identity = event.get('item_id') or (event_item.get('id') if isinstance(event_item, dict) else None)
+            if isinstance(identity, str):
+                marker['item_sha256'] = hashlib.sha256(identity.encode()).hexdigest()
+            if isinstance(event.get('delta'), str):
+                marker['delta_bytes'] = len(event['delta'].encode())
+            if len(self.timeline) < 4096:
+                self.timeline.append(marker)
+            else:
+                self.truncated = True
             if kind in ('response.output_item.added', 'response.output_item.done'):
                 self.item(event.get('item'), 'added' if kind.endswith('.added') else 'done')
             elif kind == 'response.completed':
@@ -74,6 +95,18 @@ class ConversationStreamSummary:
                 if isinstance(response, dict) and isinstance(response.get('output'), list):
                     for item in response['output']:
                         self.item(item, 'completed')
+            if kind in ('response.completed', 'response.failed', 'response.incomplete'):
+                response = event.get('response')
+                if isinstance(response, dict):
+                    usage = response.get('usage') if isinstance(response.get('usage'), dict) else {}
+                    self.terminal = {'event': kind, 'at_unix_ns': observed,
+                                     'status': response.get('status') if response.get('status') in ('completed', 'failed', 'incomplete') else 'other',
+                                     'usage': {k: usage[k] for k in ('input_tokens', 'output_tokens', 'total_tokens') if type(usage.get(k)) is int}}
+                    if isinstance(response.get('id'), str):
+                        self.terminal['response_sha256'] = hashlib.sha256(response['id'].encode()).hexdigest()
+                    reason = (response.get('incomplete_details') or {}).get('reason')
+                    if reason in ('max_output_tokens', 'content_filter'):
+                        self.terminal['incomplete_reason'] = reason
 
     def item(self, item, stage):
         if not isinstance(item, dict) or not isinstance(item.get('id'), str):
@@ -86,6 +119,13 @@ class ConversationStreamSummary:
         if kind not in ('message', 'reasoning', 'web_search_call', 'function_call', 'custom_tool_call'):
             kind = 'other'
         row = {'type': kind}
+        if kind in ('function_call', 'custom_tool_call'):
+            if isinstance(item.get('call_id'), str):
+                row['call_id_sha256'] = hashlib.sha256(item['call_id'].encode()).hexdigest()
+            arguments = item.get('arguments' if kind == 'function_call' else 'input')
+            if isinstance(arguments, str):
+                row['body_bytes'] = len(arguments.encode())
+                row['body_sha256'] = hashlib.sha256(arguments.encode()).hexdigest()
         if kind == 'message':
             row['role'] = item.get('role') if item.get('role') in ('assistant', 'user', 'developer', 'system') else 'other'
             row['phase'] = item.get('phase') if item.get('phase') in ('commentary', 'final_answer', None) else 'other'
@@ -108,7 +148,13 @@ class ConversationStreamSummary:
                 sources = action.get('sources')
                 row['source_count'] = len(sources) if isinstance(sources, list) else 0
                 row['source_url_sha256'] = sorted({hashlib.sha256(s['url'].encode()).hexdigest() for s in sources if isinstance(s, dict) and isinstance(s.get('url'), str)})[:128] if isinstance(sources, list) else []
-        self.items.setdefault(identity, {})[stage] = row
+        entry = self.items.setdefault(identity, {})
+        counts = entry.setdefault('stage_counts', {})
+        counts[stage] = counts.get(stage, 0) + 1
+        entry.setdefault('first_at_unix_ns', self.clock())
+        entry['last_at_unix_ns'] = self.clock()
+        entry[stage] = row
 
     def summary(self):
-        return {'events': self.events, 'items': self.items, 'truncated': self.truncated}
+        return {'events': self.events, 'items': self.items, 'truncated': self.truncated,
+                'started_at_unix_ns': self.started_at_ns, 'timeline': self.timeline, 'terminal': self.terminal}

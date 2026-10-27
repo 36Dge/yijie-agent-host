@@ -68,8 +68,17 @@ func applyModelConfig(config map[string]any, p models.ModelDefinition) map[strin
 	config["model_context_window"] = p.ContextWindow
 	return config
 }
-func chatModelCatalog() ([]byte, error) { return chatModelCatalogVersion(false) }
+func chatModelCatalog() ([]byte, error) {
+	return chatModelCatalogInstructions(false, permissionInstructions)
+}
+
+// Exact historic owned bytes are retained only for the existing managed-file
+// upgrade gate. Arbitrary edits still fail its preflight and atomic recheck.
 func chatModelCatalogVersion(earlyCandidate bool) ([]byte, error) {
+	return chatModelCatalogInstructions(earlyCandidate, "You are Codex. Follow the current task instructions and native permission policy.")
+}
+
+func chatModelCatalogInstructions(earlyCandidate bool, instructions string) ([]byte, error) {
 	b, e := miniMaxModelCatalog()
 	if e != nil {
 		return nil, e
@@ -95,7 +104,7 @@ func chatModelCatalogVersion(earlyCandidate bool) ([]byte, error) {
 		entry["context_window"] = p.ContextWindow
 		entry["max_context_window"] = p.ContextWindow
 		if p.Provider == "kimi" || earlyCandidate {
-			entry["base_instructions"] = "You are Codex. Follow the current task instructions and native permission policy."
+			entry["base_instructions"] = instructions
 		}
 		all = append(all, entry)
 	}
@@ -119,7 +128,19 @@ func prepareChatModelLayer(a *managedCodexHomeAuthority) ([]string, error) {
 	if e != nil {
 		return nil, e
 	}
-	cp, e := a.preflightManagedFile(chatModelsCatalogName, catalog, previous)
+	previousCurrent, e := chatModelCatalogVersion(false)
+	if e != nil {
+		return nil, e
+	}
+	previousProgress, e := chatModelCatalogInstructions(false, previousFEAT163PermissionInstructions)
+	if e != nil {
+		return nil, e
+	}
+	previousReaudit, e := chatModelCatalogInstructions(false, previousFEAT163ReauditInstructions)
+	if e != nil {
+		return nil, e
+	}
+	cp, e := a.preflightManagedFile(chatModelsCatalogName, catalog, previous, previousCurrent, previousProgress, previousReaudit)
 	if e != nil {
 		return nil, e
 	}

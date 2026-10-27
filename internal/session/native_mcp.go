@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	legacy "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversation"
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv5"
 )
 
 var nativeMcpIdentifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
@@ -224,7 +224,7 @@ func LegacyNativeEvent(event Event) Event {
 }
 
 func (s *Service) ReadNativeThread(ctx context.Context, sessionID string) (legacy.NativeThreadSnapshot, error) {
-	value, err := s.ReadNativeThreadV4(ctx, sessionID)
+	value, err := s.ReadNativeThreadV5(ctx, sessionID)
 	if err != nil {
 		return legacy.NativeThreadSnapshot{}, err
 	}

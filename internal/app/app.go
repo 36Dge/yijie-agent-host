@@ -1696,6 +1696,9 @@ type eventSubscriber func(string, string, uint64) (string, []session.Event, <-ch
 
 func (h *sessionHandler) streamEvents(w http.ResponseWriter, r *http.Request, subscribe eventSubscriber) {
 	writeEvent := func(event session.Event) error {
+		if event.SchemaVersion == 12 && !strings.HasPrefix(r.URL.Path, "/v12/agent-sessions/") {
+			event = session.NativeEventV11(event)
+		}
 		if strings.HasPrefix(r.URL.Path, "/v10/agent-sessions/") && event.SchemaVersion == 11 {
 			event = session.NativeEventV10(event)
 		}

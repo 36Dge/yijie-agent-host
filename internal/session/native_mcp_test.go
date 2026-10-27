@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv5"
 	"github.com/getkin/kin-openapi/openapi3"
 )
 

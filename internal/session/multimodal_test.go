@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"hash/crc32"
 	"image"
 	"image/gif"
@@ -415,12 +416,22 @@ func TestServiceTurnV2ConcurrentDuplicateInvokesRuntimeOnce(t *testing.T) {
 		firstResult <- err
 	}()
 	<-entered
-	if _, err := service.StartTurnV2(context.Background(), input); !errors.Is(err, ErrSessionNotUsable) {
-		t.Fatalf("concurrent duplicate was not rejected while the result was pending: %v", err)
-	}
+	// Submission now shares the existing model-operation lock. Let the first
+	// operation finish while the concurrent duplicate waits for its receipt.
+	secondResult := make(chan error, 1)
+	go func() {
+		turn, err := service.StartTurnV2(context.Background(), input)
+		if err == nil && turn.ID != testTurnID {
+			err = fmt.Errorf("duplicate returned a different turn: %s", turn.ID)
+		}
+		secondResult <- err
+	}()
 	close(release)
 	if err := <-firstResult; err != nil {
 		t.Fatalf("first operation failed: %v", err)
+	}
+	if err := <-secondResult; err != nil {
+		t.Fatalf("accepted duplicate did not reuse the receipt: %v", err)
 	}
 	if runtimeCalls != 1 {
 		t.Fatalf("concurrent duplicate invoked Runtime %d times", runtimeCalls)

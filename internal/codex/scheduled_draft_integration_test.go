@@ -72,7 +72,9 @@ func TestFEAT155DraftNativeQualificationAndNormalReopen(t *testing.T) {
 			return
 		}
 		tools, _ := body["tools"].([]any)
-		if len(tools) != 0 || body["tool_choice"] != "none" {
+		// The pinned native client always serializes tool_choice=auto. The
+		// input-only receipt and empty tool list establish the restriction.
+		if len(tools) != 0 || body["tool_choice"] != "auto" {
 			providerErrors = append(providerErrors, "tool surface")
 		}
 		var schema any
@@ -194,5 +196,7 @@ func TestFEAT155DraftNativeQualificationAndNormalReopen(t *testing.T) {
 	if err != nil || ordinaryPolicy.Policy != nil {
 		t.Fatal("ordinary thread acquired a restricted-purpose receipt")
 	}
-	t.Log("actual Runtime: original Host start, no tools in 2 local-only text requests, MCP requests 0, follow-up, normal shutdown/reopen/resume and ordinary coexistence PASS; real Provider NOT RUN")
+	if !t.Failed() {
+		t.Log("actual Runtime: original Host start, no tools in 2 local-only text requests, MCP requests 0, follow-up, normal shutdown/reopen/resume and ordinary coexistence PASS; real Provider NOT RUN")
+	}
 }

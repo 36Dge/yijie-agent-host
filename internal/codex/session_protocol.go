@@ -257,6 +257,21 @@ func (m *Manager) sessionDeveloperInstructions() string {
 	return "Runtime Baseline 2 is read-only for workspace and operating-system actions. Do not modify files or request elevated permissions."
 }
 
+// Compose the same existing tool guidance for initial and resumed sessions.
+// Dynamic tool registration remains owned by thread/start and the Runtime.
+func (m *Manager) threadDeveloperInstructions(ctx context.Context) string {
+	instructions := m.sessionDeveloperInstructions()
+	if m.config.DynamicToolsEnabled {
+		if m.config.RuntimePermissionsEnabled || marketPreparedFrom(ctx) != nil {
+			instructions += " The Host-owned generate_image is the only permitted dynamic tool. Its availability does not change the active native tool or permission policy."
+		} else {
+			instructions += " The Host-owned generate_image dynamic tool is explicitly allowed in this read-only session and does not modify the workspace. It is the only permitted tool."
+		}
+		instructions += " Call generate_image exactly once only when the user explicitly asks to generate a new image, or to generate from the current turn's single character reference image. Never call it for ordinary image viewing or analysis, and never invent image output."
+	}
+	return instructions
+}
+
 func sessionTurnSandboxPolicy() readOnlySandboxPolicy {
 	return readOnlySandboxPolicy{Type: "readOnly", NetworkAccess: false}
 }
@@ -539,7 +554,7 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		Cwd:                   cwd,
 		ApprovalPolicy:        m.sessionApprovalPolicy(),
 		Sandbox:               SessionSandbox,
-		DeveloperInstructions: m.sessionDeveloperInstructions(),
+		DeveloperInstructions: m.threadDeveloperInstructions(ctx),
 		Ephemeral:             false,
 	}
 	if m.config.RuntimePermissionsEnabled {
@@ -550,10 +565,6 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 	if m.config.DynamicToolsEnabled {
 		if m.dynamicToolHandler == nil {
 			return ThreadInfo{}, errors.New("dynamic tool handler is not configured")
-		}
-		params.DeveloperInstructions += " The Host-owned generate_image dynamic tool is explicitly allowed in this read-only session and does not modify the workspace. It is the only permitted tool. Call generate_image exactly once only when the user explicitly asks to generate a new image, or to generate from the current turn's single character reference image. Never call it for ordinary image viewing or analysis, and never invent image output."
-		if marketPreparedFrom(ctx) != nil {
-			params.DeveloperInstructions = strings.Replace(params.DeveloperInstructions, "It is the only permitted tool.", "It is the only permitted dynamic tool.", 1)
 		}
 		params.DynamicTools = []dynamicToolSpec{imageGenerationToolSpec()}
 	}
@@ -619,14 +630,19 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	if m.config.CommandApprovalEnabled || m.config.RuntimePermissionsEnabled {
 		approvalPolicy := m.sessionApprovalPolicy()
 		sandbox := SessionSandbox
-		developerInstructions := m.sessionDeveloperInstructions()
+		developerInstructions := m.threadDeveloperInstructions(ctx)
 		params.ApprovalPolicy = &approvalPolicy
 		params.Sandbox = &sandbox
 		params.DeveloperInstructions = &developerInstructions
 		if m.config.RuntimePermissionsEnabled {
-			params.BaseInstructions = &developerInstructions
+			baseInstructions := permissionInstructions
+			params.BaseInstructions = &baseInstructions
 			params.Config = m.permissionVerificationConfig()
 		}
+	}
+	if m.config.DynamicToolsEnabled && params.DeveloperInstructions == nil {
+		developerInstructions := m.threadDeveloperInstructions(ctx)
+		params.DeveloperInstructions = &developerInstructions
 	}
 	selected, err := m.modelForContext(ctx)
 	if err != nil {

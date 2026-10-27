@@ -3,7 +3,7 @@ package session
 import (
 	"encoding/json"
 	"errors"
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv5"
 	"sync"
 	"time"
 )
@@ -182,7 +182,7 @@ func NewEventHub(capacity, subscriberCapacity int) *EventHub {
 func NewEventHubVersion(schemaVersion, capacity, subscriberCapacity int) *EventHub {
 	if schemaVersion != EventSchemaVersionV2 && schemaVersion != EventSchemaVersionV3 &&
 		schemaVersion != EventSchemaVersionV4 && schemaVersion != EventSchemaVersionV5 &&
-		schemaVersion != EventSchemaVersionV6 && schemaVersion != 7 && schemaVersion != 8 && schemaVersion != 9 && schemaVersion != 10 && schemaVersion != 11 {
+		schemaVersion != EventSchemaVersionV6 && schemaVersion != 7 && schemaVersion != 8 && schemaVersion != 9 && schemaVersion != 10 && schemaVersion != 11 && schemaVersion != 12 {
 		schemaVersion = EventSchemaVersion
 	}
 	if capacity < 1 {

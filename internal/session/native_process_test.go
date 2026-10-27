@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv5"
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
@@ -74,8 +74,11 @@ func TestNativeProcessNewAndLegacyEventsConformWithoutMutatingFacts(t *testing.T
 	if len(events) != 2 {
 		t.Fatal("unexpected lifecycle event count")
 	}
-	for _, version := range []int{11, 10, 8, 7} {
-		file := "../../api/openapi/native-conversation-v4.yaml"
+	for _, version := range []int{12, 11, 10, 8, 7} {
+		file := "../../api/openapi/native-conversation-v5.yaml"
+		if version == 11 {
+			file = "../../api/openapi/native-conversation-v4.yaml"
+		}
 		if version == 10 {
 			file = "../../api/openapi/native-conversation-v3.yaml"
 		}
@@ -91,6 +94,9 @@ func TestNativeProcessNewAndLegacyEventsConformWithoutMutatingFacts(t *testing.T
 		}
 		for _, source := range events {
 			event := source
+			if version == 11 {
+				event = NativeEventV11(source)
+			}
 			if version == 10 {
 				event = NativeEventV10(source)
 			}
@@ -114,7 +120,7 @@ func TestNativeProcessNewAndLegacyEventsConformWithoutMutatingFacts(t *testing.T
 			}
 		}
 	}
-	if events[1].SchemaVersion != 11 || events[1].Payload.Native.Item.Type != native.WebSearch || events[1].Payload.Native.Item.WebSearch == nil {
+	if events[1].SchemaVersion != 12 || events[1].Payload.Native.Item.Type != native.WebSearch || events[1].Payload.Native.Item.WebSearch == nil {
 		t.Fatal("shared event buffer mutated by legacy projection")
 	}
 }
@@ -123,7 +129,7 @@ func TestNativeProcessHistoryVersionsReuseNativeRead(t *testing.T) {
 	runtime := &nativeReadRuntime{raw: rawJSON(t, map[string]any{"id": testThreadID, "turns": []any{map[string]any{"id": testTurnID, "status": "completed", "items": []any{map[string]any{"id": "web", "type": "webSearch", "action": map[string]any{"type": "search", "query": "普通查询"}}}}}})}
 	s := NewService(runtime, openBoundFEAT134Store(t), NewEventHub(32, 8), nil)
 	current, err := s.ReadNativeThreadV4(context.Background(), testSessionID)
-	if err != nil || current.SchemaVersion != 4 || current.Turns[0].Items[0].Type != native.WebSearch {
+	if err != nil || current.SchemaVersion != 4 || string(current.Turns[0].Items[0].Type) != "webSearch" {
 		t.Fatal("v4 native history unavailable")
 	}
 	third, err := s.ReadNativeThreadV3(context.Background(), testSessionID)

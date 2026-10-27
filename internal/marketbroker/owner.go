@@ -62,6 +62,8 @@ type ownerState struct {
 	initialized          bool
 	closed               bool
 	stdin                *os.File
+	modelKeyWriter       *os.File
+	kimiModelKey         string // existing model snapshot; private startup pipe only
 	done                 chan struct{}
 	exitErr              error // published before done closes
 	active               chan exchangeResult
@@ -76,8 +78,8 @@ func NewOwner(manifest string) *Owner {
 }
 
 // NewOwnerWithStorage is the product assembly entry. The single worker owns
-// authorization and Gateway execution; platform credentials remain Connectors
-// Keyring entries and never pass through this Host process.
+// authorization and Gateway execution. Other platform credentials remain in
+// Connectors Keyring; the explicit Kimi model reuse constructor is separate.
 func NewOwnerWithStorage(manifest, home string) (*Owner, error) {
 	if err := prepareLibraryHome(home); err != nil {
 		return nil, err
@@ -98,7 +100,7 @@ func ScrubRuntimeCapability(environment []string) []string {
 	result := make([]string, 0, len(environment))
 	for _, entry := range environment {
 		key, _, _ := strings.Cut(entry, "=")
-		if !strings.EqualFold(key, RuntimeCapabilityEnvironment) {
+		if !strings.EqualFold(key, RuntimeCapabilityEnvironment) && !strings.EqualFold(key, wire.KimiModelCredentialEnvironmentKey) {
 			result = append(result, entry)
 		}
 	}
@@ -215,8 +217,7 @@ func (o *Owner) start(ctx context.Context, processKey string) error {
 		input.Close()
 		return ErrProtocol
 	}
-	// os.Pipe files are close-on-exec. Only these exact child stdio ends are
-	// passed by os/exec; ExtraFiles stays empty and ambient environment is absent.
+	// os.Pipe files are close-on-exec; only explicit descriptors are inherited.
 	command := exec.Command(build.Binary, "--broker-control-stdio")
 	command.Env = []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin", "LANG=en_US.UTF-8", RuntimeCapabilityEnvironment + "=" + capability}
 	if o.libraryHome != "" {
@@ -232,7 +233,31 @@ func (o *Owner) start(ctx context.Context, processKey string) error {
 		err = ctx.Err()
 	}
 	if err == nil {
-		err = command.Start()
+		key := ""
+		if build.ExternalCallsEnabled && build.ProviderProfile == "generic-mcp-v1" {
+			key = o.kimiModelKey
+		}
+		var reader, writer *os.File
+		reader, writer, err = prepareModelCredential(key)
+		if reader != nil {
+			command.ExtraFiles = []*os.File{reader} // canonical child FD 3
+			command.Env = append(command.Env, modelCredentialHint())
+			defer reader.Close()
+		}
+		if err == nil {
+			err = command.Start()
+		}
+		if writer != nil {
+			if err != nil {
+				writer.Close()
+			} else {
+				o.modelKeyWriter = writer
+				go writeModelCredential(writer, key)
+			}
+		}
+		if err == nil {
+			o.kimiModelKey = ""
+		}
 	}
 	childInput.Close()
 	childOutput.Close()
@@ -291,6 +316,11 @@ func (o *Owner) readOutput(output *os.File) {
 // completed, close another process's descriptors, signal or drop child ownership.
 func (o *Owner) retireLocked(reason error) {
 	o.closed, o.initialized, o.capability = true, false, ""
+	o.kimiModelKey = ""
+	if o.modelKeyWriter != nil {
+		o.modelKeyWriter.Close()
+		o.modelKeyWriter = nil
+	}
 	if o.stdin != nil {
 		o.stdin.Close()
 		o.stdin = nil

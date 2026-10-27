@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contract_family_version": "0.4.0",
+  "contract_family_version": "0.5.0",
   "published": false,
   "provenance": "local-working-tree-candidate",
   "sources": {
@@ -10,7 +10,10 @@
     "openapi/native-conversation-v4/native-conversation-v4.yaml": "c0bac188a2778e89d318f04962fcb8e640b9279cd5bf33ae48aaa54f5736dbfd",
     "sdks/go/openapi/native-conversation-v4/client.gen.go": "d7352373a229c18a1a31ea2ab7757a196e9edd8317542a1831066bbdd3628035",
     "sdks/typescript/src/openapi/native-conversation-v4.gen.ts": "e113d77de178e4d87345ff4bc2c85121d2ff496237e3e0edc670d595540e1b81",
-    "scripts/generate-native-process.mjs": "2b2a5136f260b741a835a93ca1724ed2d07e6dfb363e0425aaa57ae05f23a9c3",
-    "scripts/sync-native-process.mjs": "942c3c7b24bb2c9a1b45201d34b5e00747ab3dbc68069f04816bb9690f537c89"
+    "openapi/native-conversation-v5/native-conversation-v5.yaml": "fa5eb2d015974132c543091eef3faeb73ceb39050eb57441fcaa953df4ac675a",
+    "sdks/go/openapi/native-conversation-v5/client.gen.go": "96d1210b93a84ca0ee6ee4b6773373d8d3d6647b90c40705f07fd4ed8eeb3830",
+    "sdks/typescript/src/openapi/native-conversation-v5.gen.ts": "1ee4a970c739a2a1554d57d6058520dec44158574756192f6b798b8e9c1a0c6d",
+    "scripts/generate-native-process.mjs": "397432bbd4f32e6a207d0ee6a9fc6e6f448ed9bd2dc1100bd08db41c22fee44f",
+    "scripts/sync-native-process.mjs": "bc96b38c2a7435eec62337f137bae9e58533edc9c364eb8fb8061e23868a1226"
   }
 }

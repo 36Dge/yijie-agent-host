@@ -40,7 +40,7 @@ func loadArtifact(path string) (artifact, error) {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&value) != nil || decoder.Decode(new(any)) != io.EOF || !value.CandidateOnly || value.QualificationOnly == nil || *value.QualificationOnly || value.CodexSource != "7fd463bcef07f37b0211acd9f62b9f93ea0a4b12" {
+	if decoder.Decode(&value) != nil || decoder.Decode(new(any)) != io.EOF || !value.CandidateOnly || value.QualificationOnly == nil || *value.QualificationOnly || value.CodexSource != "9154f27d0cdb526a5f5ba0913fe3e2448014b4a1" {
 		return artifact{}, ErrArtifact
 	}
 	if !acceptedDeploymentProfile(value) {

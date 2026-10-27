@@ -3,7 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv5"
 	"github.com/getkin/kin-openapi/openapi3"
 	"os"
 	"strings"
@@ -50,7 +50,7 @@ func TestNativeMessageTextAndPhaseSurviveNotificationAndHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 		cancel()
-		view, err := s.ReadNativeThreadV4(context.Background(), testSessionID)
+		view, err := s.ReadNativeThreadV5(context.Background(), testSessionID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -102,7 +102,7 @@ func (r *nativeReadRuntime) ReadThread(_ context.Context, id string) (json.RawMe
 func TestFEAT132NativeReadUsesRuntimeHistoryAndPreservesNativeIDs(t *testing.T) {
 	r := &nativeReadRuntime{raw: rawJSON(t, map[string]any{"id": testThreadID, "cwd": "/private/not-exposed", "turns": []any{map[string]any{"id": testTurnID, "status": "completed", "items": []any{map[string]any{"id": "item-17", "type": "agentMessage", "text": "native history", "phase": nil}}}}})}
 	s := NewService(r, openBoundFEAT134Store(t), NewEventHub(32, 8), nil)
-	view, err := s.ReadNativeThreadV4(context.Background(), testSessionID)
+	view, err := s.ReadNativeThreadV5(context.Background(), testSessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestFEAT132NativeSummaryIndexesAndSafeErrorAreNative(t *testing.T) {
 }
 
 func TestFEAT132NativeProducerConformsToSourceContract(t *testing.T) {
-	document, err := openapi3.NewLoader().LoadFromFile("../../api/openapi/native-conversation-v4.yaml")
+	document, err := openapi3.NewLoader().LoadFromFile("../../api/openapi/native-conversation-v5.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,6 +274,9 @@ func TestFEAT132NativeCrossRepoExport(t *testing.T) {
 		{"item/reasoning/summaryTextDelta", map[string]any{"itemId": "host-reason", "summaryIndex": 1, "delta": "公开摘要"}},
 		{RuntimeNotificationItemStarted, map[string]any{"item": map[string]any{"id": "host-web", "type": "webSearch", "action": map[string]any{"type": "search", "query": "城市产业"}}}},
 		{RuntimeNotificationItemCompleted, map[string]any{"item": map[string]any{"id": "host-web", "type": "webSearch", "action": map[string]any{"type": "search", "queries": []string{"城市产业", "生活成本"}, "sources": []any{map[string]any{"type": "url", "url": "https://example.org/statistics/2025", "title": "Annual statistics"}}}}}},
+		{RuntimeNotificationItemCompleted, map[string]any{"item": map[string]any{"id": "host-command", "type": "commandExecution", "status": "completed", "command": "cat note.md", "commandActions": []any{map[string]any{"type": "read", "name": "note.md", "path": "note.md", "command": "cat note.md"}}, "exitCode": 0}}},
+		{RuntimeNotificationItemCompleted, map[string]any{"item": map[string]any{"id": "host-change", "type": "fileChange", "status": "completed", "changes": []any{map[string]any{"path": "note.md", "kind": map[string]any{"type": "add"}, "diff": "one\ntwo\n"}}}}},
+		{RuntimeNotificationItemCompleted, map[string]any{"item": map[string]any{"id": "host-app", "type": "mcpToolCall", "status": "completed", "server": "example", "tool": "read_report", "appContext": map[string]any{"connectorId": "example", "appName": "Example App"}}}},
 		{RuntimeNotificationItemCompleted, map[string]any{"item": map[string]any{"id": "host-agent", "type": "agentMessage", "text": "来自 Host 的原生最终值", "phase": "final_answer"}}},
 		{RuntimeNotificationTurnCompleted, map[string]any{"turn": map[string]any{"id": testTurnID, "status": "failed", "items": []any{}, "error": map[string]any{"message": "Normal quota result", "codexErrorInfo": "usageLimitExceeded"}}}},
 	} {
@@ -286,12 +289,12 @@ func TestFEAT132NativeCrossRepoExport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cancel()
-	history, err := s.ReadNativeThreadV4(context.Background(), testSessionID)
+	history, err := s.ReadNativeThreadV5(context.Background(), testSessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 9 {
-		t.Fatalf("expected 9 native events, got %d", len(events))
+	if len(events) != 12 {
+		t.Fatalf("expected 12 native events, got %d", len(events))
 	}
 	bytes, err := json.Marshal(map[string]any{"events": events, "history": history})
 	if err != nil {

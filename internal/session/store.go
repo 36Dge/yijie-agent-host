@@ -478,6 +478,13 @@ type CleanupOperation struct {
 }
 
 func (s *Store) BeginCleanup(operationID, sessionID string) (CleanupOperation, error) {
+	return s.beginCleanup(operationID, sessionID, nil)
+}
+
+// observed is an exact record associated with a fresh native quiescence read.
+// It only permits taking the deletion lease; it never rewrites a turn result or
+// authorizes a new submission. The comparison and lease are one transaction.
+func (s *Store) beginCleanup(operationID, sessionID string, observed *Record) (CleanupOperation, error) {
 	var operation CleanupOperation
 	err := s.db.Update(func(tx *bolt.Tx) error {
 		if err := purgeExpiredCleanupReceipts(tx, time.Now().UTC()); err != nil {
@@ -504,7 +511,11 @@ func (s *Store) BeginCleanup(operationID, sessionID string) (CleanupOperation, e
 		if err != nil {
 			return err
 		}
-		if record.ActiveTurnID != "" || record.State == StateActive || record.State == StateStarting || record.CleanupOperationID != "" {
+		if observed != nil && record != *observed {
+			return ErrTurnActive
+		}
+		if record.CleanupOperationID != "" || (observed == nil &&
+			(record.ActiveTurnID != "" || record.State == StateActive || record.State == StateStarting)) {
 			return ErrTurnActive
 		}
 		// A pending expert apply may be between its durable receipt and the
@@ -585,7 +596,9 @@ func (s *Store) DeleteSessionWithReceipt(operationID, sessionID string) error {
 		if err != nil {
 			return err
 		}
-		if record.ActiveTurnID != "" || record.CleanupOperationID != operationID || record.State != StateCleaning {
+		// The exact native thread deletion is already confirmed. A retained
+		// historical ActiveTurnID must not block removing its adapter record.
+		if record.CleanupOperationID != operationID || record.State != StateCleaning || record.CodexThreadID != operation.ThreadID {
 			return ErrTurnActive
 		}
 		if existing := tx.Bucket(cleanupReceiptsBucket).Get([]byte(operationID)); existing != nil {

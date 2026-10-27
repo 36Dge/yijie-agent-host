@@ -25,6 +25,8 @@ parser.add_argument('--observe-tool-stream', action='store_true',
                     help='Record only tool argument byte counts/digests, never content.')
 parser.add_argument('--observe-conversation', action='store_true',
                     help='Use a task-specific Kimi-only ledger; record only public message/source metadata, never text.')
+parser.add_argument('--preserve-request', action='store_true',
+                    help='Forward original request bytes; reject requests without an explicit authorized token bound.')
 args = parser.parse_args()
 def read_key(path):
     import stat
@@ -46,7 +48,7 @@ approved_images = authorization.get('max_image_understanding_requests')
 if args.observe_conversation:
     if (authorization.get('purpose') != 'conversation_observability' or
             authorization.get('models') != ['kimi-k3'] or type(approved_limit) is not int or
-            not 1 <= approved_limit <= 8 or approved_images != 0 or
+            not 1 <= approved_limit <= 40 or approved_images != 0 or
             authorization.get('max_output_tokens_per_request') != 8192):
         raise SystemExit('Explicit task-specific conversation verification ledger is required.')
     providers = {'kimi-k3': ('api.moonshot.cn', read_key(args.kimi_key_file), 'max')}
@@ -178,8 +180,13 @@ class Meter(http.server.BaseHTTPRequestHandler):
                 if isinstance(value,dict): return value.get('type')=='input_image' or any(image_input(v) for v in value.values())
                 return isinstance(value,list) and any(image_input(v) for v in value)
             images=image_input(body.get('input'))
-            body['max_output_tokens']=min(body.get('max_output_tokens') or 8192,8192)
-            payload=json.dumps(body).encode()
+            original_max_output_tokens = body.get('max_output_tokens')
+            if args.preserve_request:
+                if type(original_max_output_tokens) is not int or not 0 < original_max_output_tokens <= 8192:
+                    self.send_error(400, 'Original request exceeds the authorized token bound'); return
+            else:
+                body['max_output_tokens']=min(body.get('max_output_tokens') or 8192,8192)
+                payload=json.dumps(body).encode()
             output_format = (body.get('text') or {}).get('format') or {}
             structured_output = output_format.get('type') == 'json_schema'
         except (ValueError, AttributeError):
@@ -194,6 +201,10 @@ class Meter(http.server.BaseHTTPRequestHandler):
             if images: ledger['image_understanding_requests']+=1
             ledger['requests'].append(item)
             if args.observe_conversation:
+                item['request_bytes_preserved'] = args.preserve_request
+                item['original_max_output_tokens'] = original_max_output_tokens
+                item['request_adjustments'] = [] if args.preserve_request else ['max_output_tokens_cap_and_json_encoding']
+                item['tools_sha256'] = hashlib.sha256(json.dumps(body.get('tools', []), sort_keys=True, separators=(',', ':')).encode()).hexdigest()
                 item['include'] = [v for v in body.get('include', []) if v in ('reasoning.encrypted_content', 'web_search_call.action.sources', 'web_search_call.results')]
                 item['instructions_sha256'] = hashlib.sha256(str(body.get('instructions', '')).encode()).hexdigest()
                 item['input_summary'] = request_input_summary(body.get('input'))

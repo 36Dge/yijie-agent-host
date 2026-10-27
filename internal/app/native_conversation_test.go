@@ -13,6 +13,7 @@ import (
 	v2 "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv2"
 	v3 "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv3"
 	v4 "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
+	v5 "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv5"
 	"github.com/36Dge/yijie-agent-host/internal/session"
 )
 
@@ -42,6 +43,14 @@ func (s *nativeProcessRouteService) ReadNativeThreadV4(_ context.Context, id str
 	return v4.NativeThreadSnapshot{SchemaVersion: 4, Source: v4.RuntimeRead, ThreadId: "native-thread", Turns: []v4.NativeTurn{}, Availability: v4.NativeThreadSnapshotAvailabilityPartial}, nil
 }
 
+func (s *nativeProcessRouteService) ReadNativeThreadV5(_ context.Context, id string) (v5.NativeThreadSnapshot, error) {
+	s.reads++
+	if id != "known-session" {
+		return v5.NativeThreadSnapshot{}, session.ErrNotFound
+	}
+	return v5.NativeThreadSnapshot{SchemaVersion: 5, Source: v5.RuntimeRead, ThreadId: "native-thread", Turns: []v5.NativeTurn{}, Availability: v5.NativeThreadSnapshotAvailabilityPartial}, nil
+}
+
 func (s *nativeProcessRouteService) ReadNativeThreadV2(_ context.Context, _ string) (v2.NativeThreadSnapshot, error) {
 	return v2.NativeThreadSnapshot{}, session.ErrNotFound
 }
@@ -50,9 +59,9 @@ func (s *nativeProcessRouteService) SubscribeNativeEvents(string, string, uint64
 	s.reads++
 	updates := make(chan session.Event)
 	close(updates)
-	return "native-stream", []session.Event{{SchemaVersion: 11, Payload: session.EventPayload{Native: &v4.NativeNotification{
-		Item: &v4.NativeItem{Id: "web-record", Type: v4.WebSearch, Availability: v4.NativeItemAvailabilityAvailable,
-			WebSearch: &v4.NativeWebSearchDisplay{Action: v4.NativeWebSearchDisplayActionSearch, Queries: []string{"城市产业"}}},
+	return "native-stream", []session.Event{{SchemaVersion: 12, Payload: session.EventPayload{Native: &v5.NativeNotification{
+		Item: &v5.NativeItem{Id: "web-record", Type: v5.WebSearch, Availability: v5.NativeItemAvailabilityAvailable,
+			WebSearch: &v5.NativeWebSearchDisplay{Action: v5.NativeWebSearchDisplayActionSearch, Queries: []string{"城市产业"}}},
 	}}}}, updates, func() {}, nil
 }
 
@@ -61,7 +70,7 @@ func TestNativeProcessRoutesPreserveAuthorityAndClosedVersions(t *testing.T) {
 	mux := http.NewServeMux()
 	const token = "native-process-test-token"
 	registerNativeConversation(mux, &sessionHandler{service: service, apiToken: token})
-	for _, target := range []string{"/v4/agent-sessions/known-session/native-thread", "/v11/agent-sessions/known-session/events", "/v3/agent-sessions/known-session/native-thread", "/v10/agent-sessions/known-session/events"} {
+	for _, target := range []string{"/v5/agent-sessions/known-session/native-thread", "/v12/agent-sessions/known-session/events", "/v4/agent-sessions/known-session/native-thread", "/v11/agent-sessions/known-session/events", "/v3/agent-sessions/known-session/native-thread", "/v10/agent-sessions/known-session/events"} {
 		response := httptest.NewRecorder()
 		mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
 		if response.Code != http.StatusUnauthorized || service.reads != 0 {
@@ -83,7 +92,7 @@ func TestNativeProcessRoutesPreserveAuthorityAndClosedVersions(t *testing.T) {
 	if missingResponse.Code != http.StatusNotFound || missingResponse.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal("native unavailable history may be cached")
 	}
-	for _, version := range []int{7, 8, 10, 11} {
+	for _, version := range []int{7, 8, 10, 11, 12} {
 		request := httptest.NewRequest(http.MethodGet, "/v"+strconv.Itoa(version)+"/agent-sessions/known-session/events", nil)
 		request.Header.Set("Authorization", "Bearer "+token)
 		response := httptest.NewRecorder()
@@ -101,10 +110,10 @@ func TestNativeProcessRoutesPreserveAuthorityAndClosedVersions(t *testing.T) {
 			if event.SchemaVersion != version || event.Payload.Native.Item.Id != "web-record" {
 				t.Fatal("stream version or native ID changed")
 			}
-			if version >= 10 && event.Payload.Native.Item.Type != v4.WebSearch {
+			if version >= 10 && event.Payload.Native.Item.Type != v5.WebSearch {
 				t.Fatal("new search projection lost")
 			}
-			if version < 10 && (event.Payload.Native.Item.Type != v4.Unknown || event.Payload.Native.Item.WebSearch != nil) {
+			if version < 10 && (event.Payload.Native.Item.Type != v5.Unknown || event.Payload.Native.Item.WebSearch != nil) {
 				t.Fatal("search fields escaped into a closed old contract")
 			}
 		}

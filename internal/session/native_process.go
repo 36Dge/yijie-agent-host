@@ -12,7 +12,8 @@ import (
 
 	v2 "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv2"
 	v3 "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv3"
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
+	v4 "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv5"
 )
 
 var nativePageHost = regexp.MustCompile(`^[A-Za-z0-9.-]{1,253}$`)
@@ -128,6 +129,7 @@ func projectNativeWebSearch(wire nativeWireItem, out *native.NativeItem) {
 
 // Downgrade only the new display metadata; original IDs and execution facts stay unchanged.
 func NativeEventV10(event Event) Event {
+	event = NativeEventV11(event)
 	event.SchemaVersion = 10
 	if event.Payload.Native == nil {
 		return event
@@ -153,7 +155,7 @@ func NativeEventV10(event Event) Event {
 }
 
 func (s *Service) ReadNativeThreadV3(ctx context.Context, sessionID string) (v3.NativeThreadSnapshot, error) {
-	value, err := s.ReadNativeThreadV4(ctx, sessionID)
+	value, err := s.ReadNativeThreadV5(ctx, sessionID)
 	if err != nil {
 		return v3.NativeThreadSnapshot{}, err
 	}
@@ -172,6 +174,7 @@ func (s *Service) ReadNativeThreadV3(ctx context.Context, sessionID string) (v3.
 
 // Preserve closed v2/v8 responses without mutating the shared native buffer.
 func NativeEventV8(event Event) Event {
+	event = NativeEventV11(event)
 	event.SchemaVersion = 8
 	if event.Payload.Native == nil {
 		return event
@@ -197,7 +200,7 @@ func NativeEventV8(event Event) Event {
 }
 
 func (s *Service) ReadNativeThreadV2(ctx context.Context, sessionID string) (v2.NativeThreadSnapshot, error) {
-	value, err := s.ReadNativeThreadV4(ctx, sessionID)
+	value, err := s.ReadNativeThreadV5(ctx, sessionID)
 	if err != nil {
 		return v2.NativeThreadSnapshot{}, err
 	}
@@ -208,6 +211,56 @@ func (s *Service) ReadNativeThreadV2(ctx context.Context, sessionID string) (v2.
 	value.SchemaVersion = 2
 	data, err := json.Marshal(value)
 	var result v2.NativeThreadSnapshot
+	if err == nil {
+		err = json.Unmarshal(data, &result)
+	}
+	return result, err
+}
+
+// Keep every older closed response unchanged. A deep display copy protects the
+// single native event hub; this does not replay, merge or execute any Item.
+func NativeEventV11(event Event) Event {
+	event.SchemaVersion = 11
+	if event.Payload.Native == nil {
+		return event
+	}
+	encoded, _ := json.Marshal(event.Payload.Native)
+	var copy native.NativeNotification
+	_ = json.Unmarshal(encoded, &copy)
+	strip := func(item *native.NativeItem) {
+		if item.Type == native.FileChange {
+			*item = native.NativeItem{Id: item.Id, Type: native.Unknown, Availability: native.NativeItemAvailabilityUnavailable}
+			return
+		}
+		item.CommandActions = nil
+		item.CommandPreview = nil
+		item.FileChange = nil
+		item.AppContext = nil
+	}
+	if copy.Item != nil {
+		strip(copy.Item)
+	}
+	if copy.Turn != nil {
+		for i := range copy.Turn.Items {
+			strip(&copy.Turn.Items[i])
+		}
+	}
+	event.Payload.Native = &copy
+	return event
+}
+
+func (s *Service) ReadNativeThreadV4(ctx context.Context, sessionID string) (v4.NativeThreadSnapshot, error) {
+	value, err := s.ReadNativeThreadV5(ctx, sessionID)
+	if err != nil {
+		return v4.NativeThreadSnapshot{}, err
+	}
+	for i := range value.Turns {
+		event := NativeEventV11(Event{Payload: EventPayload{Native: &native.NativeNotification{Turn: &value.Turns[i]}}})
+		value.Turns[i] = *event.Payload.Native.Turn
+	}
+	value.SchemaVersion = 4
+	data, err := json.Marshal(value)
+	var result v4.NativeThreadSnapshot
 	if err == nil {
 		err = json.Unmarshal(data, &result)
 	}

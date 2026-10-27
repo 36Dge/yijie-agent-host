@@ -4,11 +4,50 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestChatModelProgressUpgradePreservesOwnedCatalogCompatibility(t *testing.T) {
+	for _, early := range []bool{false, true} {
+		home := canonicalOwnedTempDir(t)
+		authority := acquireTestCodexHomeAuthority(t, home)
+		previous, err := chatModelCatalogVersion(early)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var catalog map[string]any
+		if err = json.Unmarshal(previous, &catalog); err != nil {
+			t.Fatal(err)
+		}
+		for _, raw := range catalog["models"].([]any) {
+			model := raw.(map[string]any)
+			if model["slug"] == "kimi-k3" || early {
+				model["base_instructions"] = "You are Codex. Follow the current task instructions and native permission policy."
+			}
+		}
+		previous, err = json.MarshalIndent(catalog, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(filepath.Join(home, chatModelsCatalogName), previous, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = prepareChatModelLayer(authority); err != nil {
+			t.Fatalf("normal owned catalog upgrade rejected: %v", err)
+		}
+		if err = validateChatModelLayer(authority); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = prepareChatModelLayer(authority); err != nil {
+			t.Fatalf("second prepare not idempotent: %v", err)
+		}
+	}
+}
 
 // Ordinary in-process RPC fixtures: no executable, process or Provider call.
 func TestChatModelSwitchAfterTerminalErrorRetainsNativeLifecycle(t *testing.T) {

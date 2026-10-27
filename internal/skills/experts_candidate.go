@@ -1,6 +1,6 @@
 package skills
 
-// ReviewedExpertCatalogDigest fixes the local canonical Skills candidate bytes.
+// VerifyExpertCandidate checks the local canonical Skills candidate bytes.
 // It is never supplied by a renderer, HTTP request or arbitrary environment hash.
 // Source authority: Desktop contracts/experts-assets.candidate.json and the
 // matching yijie-skills canonical bundle: unchanged jd-ops-expert 0.1.3 plus
@@ -23,8 +23,8 @@ package skills
 // FEAT-160 refreshes source/contract provenance only; all 75 resource entries and archives remain exact.
 // 2026-10-21 developer read interface refreshes contract/source provenance only;
 // all 75 resource entries and archive bytes are unchanged.
-const ReviewedExpertCatalogDigest = "033689b005c2659fa625a7a8e93081ec04b2ffe7cfde67f0c293f69684874741"
-
+// The compiled digest is generated from the fully verified source authority in
+// experts_assets.gen.go; source refreshes require explicit canonical sync.
 func VerifyExpertCandidate(root string) error {
 	current, e := loadCatalog(root)
 	if e != nil {

@@ -57,6 +57,34 @@ class ConversationObservationTests(unittest.TestCase):
         self.assertTrue(observer.summary()['truncated'])
         self.assertEqual(observer.buffer, b'')
 
+    def test_duplicate_stages_and_terminal_only_message_are_observable(self):
+        observer = ConversationStreamSummary(clock=lambda: 1234)
+        call = {'type': 'function_call', 'id': 'tool-1', 'call_id': 'call-1', 'arguments': '{"query":"report"}'}
+        answer = {'type': 'message', 'id': 'answer', 'role': 'assistant', 'phase': 'final_answer',
+                  'content': [{'type': 'output_text', 'text': 'Public answer.'}]}
+        events = [{'type': 'response.output_item.done', 'item': call}] * 2
+        events += [{'type': 'response.completed', 'response': {'id': 'response-1', 'status': 'completed',
+                    'output': [call, answer], 'usage': {'input_tokens': 2, 'output_tokens': 3, 'total_tokens': 5}}}]
+        for e in events:
+            observer.feed(('data: ' + json.dumps(e) + '\n\n').encode())
+        summary = observer.summary()
+        rows = list(summary['items'].values())
+        self.assertEqual(rows[0]['stage_counts'], {'done': 2, 'completed': 1})
+        self.assertEqual(rows[1]['stage_counts'], {'completed': 1})
+        self.assertEqual(len(summary['timeline']), 3)
+        self.assertEqual(summary['terminal']['usage']['total_tokens'], 5)
+        self.assertEqual(rows[0]['done']['call_id_sha256'], hashlib.sha256(b'call-1').hexdigest())
+        self.assertNotIn('Public answer', json.dumps(summary))
+
+    def test_array_output_canonical_digest_is_stable_and_private(self):
+        a = request_input_summary([{'type': 'function_call_output', 'call_id': 'a',
+                                   'output': [{'type': 'text', 'text': 'Ordinary tool output'}]}])
+        b = request_input_summary([{'type': 'function_call_output', 'call_id': 'a',
+                                   'output': [{'text': 'Ordinary tool output', 'type': 'text'}]}])
+        self.assertEqual(a, b)
+        self.assertEqual(a['items'][0]['body_encoding'], 'canonical_json')
+        self.assertNotIn('Ordinary tool output', json.dumps(a))
+
 
 if __name__ == '__main__':
     unittest.main()

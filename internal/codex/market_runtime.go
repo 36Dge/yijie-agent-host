@@ -65,7 +65,11 @@ func (m *Manager) StartMarketProvider(ctx context.Context) error {
 			return err
 		}
 	}
-	owner, err := marketbroker.NewOwnerWithStorage(m.config.Market.Manifest, m.config.Market.LibraryHome)
+	kimiKey := ""
+	if m.config.ChatModelsEnabled {
+		kimiKey = m.config.KimiAPIKey
+	}
+	owner, err := marketbroker.NewOwnerWithModelCredential(m.config.Market.Manifest, m.config.Market.LibraryHome, kimiKey)
 	if err != nil {
 		return err
 	}
