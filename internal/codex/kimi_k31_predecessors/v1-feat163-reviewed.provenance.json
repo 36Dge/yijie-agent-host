@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "purpose": "exact historical managed predecessor only; not new active instructions or FEAT163 implementation",
+  "catalog_sha256": "4b0b3fab2e6ca7d8b924248204c745c8e5abbe271e815ba21ecdd8527b1d31af",
+  "reconstruction_base": "v1-current.json",
+  "reconstruction_base_sha256": "c061c648f9d98115cdc5ae69ceb44b01fe0129c0006fc3f2f5b542e358a6e0fb",
+  "only_changed_field": "models[0].base_instructions",
+  "instruction_sha256": "51f0789ca52dcbd99c42a703fa9c6fe9b40649097beb56cb9665d7d53ee138d3",
+  "source_file": "yijie-agent-host/internal/codex/runtime_permissions.go",
+  "source_tree_kind": "retained local working-tree producer, not release commit",
+  "source_file_sha256": "a78b4d9332c40d0e9af261fb434921a3aa547d9747550635fa5ab47a1f3dfd99",
+  "source_head": "d49c005f8e533e1251179bb2319f6e3e2ec2db08",
+  "original_canonical_host_binary_sha256": "7b093b9a0ce5569f4b78157ae6c2d43193f146f5d19e0628f0627167e2d8a338",
+  "original_canonical_receipt_sha256": "b749914b8bbec6341fffb87592c9eecb24ec4e64d597b51cb3df737391a217b1",
+  "matching_backup_catalog_sha256": "4b0b3fab2e6ca7d8b924248204c745c8e5abbe271e815ba21ecdd8527b1d31af",
+  "original_files_modified": false,
+  "owner_authorization": "Resolve report62 pre-D3 blockers; current user request"
+}

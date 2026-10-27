@@ -11,7 +11,7 @@ import (
 
 // Frozen output from Host 5022435, not reconstructed using current Definitions.
 //
-//go:embed kimi_k31_predecessors/v1-current.json kimi_k31_predecessors/v1-early.json kimi_k31_predecessors/v1.toml.tpl
+//go:embed kimi_k31_predecessors/v1-current.json kimi_k31_predecessors/v1-early.json kimi_k31_predecessors/v1-feat163-reviewed.json kimi_k31_predecessors/v1.toml.tpl
 var kimiK31Predecessors embed.FS
 
 func frozenKimiK31Predecessor(home string) (current, early, config []byte) {
@@ -26,7 +26,10 @@ func frozenKimiK31Predecessor(home string) (current, early, config []byte) {
 // never database migration, thread selection, or permission to send a turn.
 func validateKimiK31Predecessor(a *managedCodexHomeAuthority, allow bool) error {
 	current, early, config := frozenKimiK31Predecessor(a.path)
-	cp, err := a.preflightManagedFile(chatModelsCatalogName, current, early)
+	// Exact retained local producer, reviewed in FEAT-164 report62/63. This is
+	// compatibility admission only; neither legacy files nor active prompts change.
+	reviewed, _ := kimiK31Predecessors.ReadFile("kimi_k31_predecessors/v1-feat163-reviewed.json")
+	cp, err := a.preflightManagedFile(chatModelsCatalogName, current, early, reviewed)
 	if err != nil {
 		return err
 	}
