@@ -22,10 +22,34 @@ var nativePageHost = regexp.MustCompile(`^[A-Za-z0-9.-]{1,253}$`)
 // Reject an unsafe source entirely; never rewrite its address into another URL.
 func safeNativeSourceURL(value string) bool {
 	decoded, err := url.PathUnescape(value)
-	return err == nil && !bearerPattern.MatchString(decoded) &&
-		!v5SensitiveNamePattern.MatchString(decoded) && !v5JWTLikePattern.MatchString(decoded) &&
-		!v5OpaqueTokenPattern.MatchString(decoded) && !v5AWSAccessKeyPattern.MatchString(decoded) &&
-		!v5PEMBlockPattern.MatchString(decoded) && strings.IndexFunc(decoded, unicode.IsControl) < 0
+	if err != nil || bearerPattern.MatchString(decoded) ||
+		v5SensitiveNamePattern.MatchString(decoded) || v5JWTLikePattern.MatchString(decoded) ||
+		v5AWSAccessKeyPattern.MatchString(decoded) || v5PEMBlockPattern.MatchString(decoded) ||
+		strings.IndexFunc(decoded, unicode.IsControl) >= 0 {
+		return false
+	}
+	page, err := url.Parse(value)
+	if err != nil || v5OpaqueTokenPattern.MatchString(page.Hostname()) || v5OpaqueTokenPattern.MatchString(page.Fragment) {
+		return false
+	}
+	// Literal URL separators delimit components, not opaque identifiers. Split
+	// before decoding so an encoded separator stays inside its original component.
+	for _, segment := range strings.Split(page.EscapedPath(), "/") {
+		component, err := url.PathUnescape(segment)
+		if err != nil || v5OpaqueTokenPattern.MatchString(component) {
+			return false
+		}
+	}
+	for _, pair := range strings.Split(page.RawQuery, "&") {
+		key, value, _ := strings.Cut(pair, "=")
+		for _, encoded := range []string{key, value} {
+			component, err := url.QueryUnescape(encoded)
+			if err != nil || v5OpaqueTokenPattern.MatchString(component) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func projectNativeWebSearch(wire nativeWireItem, out *native.NativeItem) {

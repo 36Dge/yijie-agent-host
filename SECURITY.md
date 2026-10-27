@@ -1,5 +1,11 @@
 # Security Policy
 
+FEAT-164 搜索来源 URL 的 opaque-token 检查以 hostname、逐路径段、逐 query key/value、fragment
+为边界；先按原始 URL 分隔符分段再解码，编码分隔符仍属于同一组件。全局日志/命令脱敏及
+URL 全文的 bearer、敏感名称、JWT、AWS、PEM、控制字符拒绝保持不变；HTTP(S)、无 userinfo、
+host/长度限制和去重保持不变。单一长标识仍保守隐藏，过滤必须保留 partial，不能改写来源地址。
+契约说明和普通样例由固定 Contracts commit 同步，不使用域名白名单，不改变网络或授权策略。
+
 FEAT-157 grant 与 market 审批只接受 Native 独占 stdin/stdout，HTTP bearer/Trace 不授执行权。Host 控制单一 canonical worker；随机内部能力仅传此 worker 与经核验的同 generation Runtime，并从工具环境精确排除。平台凭据只留 worker Keyring，provider-only 不启动 Runtime。EOF 先关闭准入再正常退出；超时不重发，STOP_PENDING 保留所有权，不强杀或复活。当前真实工具资格边界见[产品接线记录](docs/market-product-integration.md)。
 
 FEAT-156仅在local/demo_fast启用受管双模型profile：Kimi K3固定max，MiniMax M3保留high。Kimi凭据从独立环境或owner-only普通文件读取，只注入受管Runtime，排除工具子进程环境；不进入renderer、bbolt、事件或日志。profile/model/provider/effort由闭集目录和持久快照核对，不接受任意URL或密钥。模型切换继续校验scope、revision、空闲状态和原操作回执；计划模型变化必须重新审阅，旧grant/run摘要不改。Runtime0004/0005只接受精确产物，input-only空工具集、沙箱和权限审批保持，错误或未知结果不自动换模型或重发。实际本地资格见元仓FEAT-156验收包，非生产发布。
@@ -7,6 +13,11 @@ FEAT-156仅在local/demo_fast启用受管双模型profile：Kimi K3固定max，M
 FEAT-155只读恢复仅在精确local/demo_fast注册，保持既有owner-only loopback bearer；不把可变Trace tenant/user视为资源授权，Desktop native须在消费时校验本地scope。返回当前Host实例不能作为历史执行generation或终止证明；unknown不重投。详细边界见[只读恢复](docs/scheduled-task-recovery.md)。
 
 `yijie-agent-host` 不直接持有电商平台 token。所有高风险工具调用必须经过策略检查、用户审批和审计日志。
+
+FEAT-164 report63 recognizes one additional exact historical managed K3 catalog,
+with recorded producer/catalog/artifact digests, under the existing explicit
+predecessor approval. This does not accept arbitrary prompt edits, rewrite v1 or
+trust files, import the other feature's implementation, or enable any model call.
 
 Runtime Baseline 2 可在内存中持有用户显式配置的 MiniMax 模型 API Key，并只通过 `MINIMAX_API_KEY` 传给受管 Runtime 子进程。推荐来源是 owner-only 原始 Key 文件；Host 拒绝符号链接、组/其他用户可读文件、过大内容和换行控制字符。Key 不写入 Runtime 配置、Host bbolt、事件、状态或日志。
 

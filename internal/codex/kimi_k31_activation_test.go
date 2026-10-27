@@ -3,6 +3,8 @@ package codex
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,17 +19,19 @@ func TestFEAT164ActivationAndRetiredAdmission(t *testing.T) {
 			t.Fatal("legacy source changed; review frozen predecessor compatibility explicitly")
 		}
 	})
-	for _, early := range []bool{false, true} {
-		name := "current_predecessor"
-		if early {
-			name = "early_predecessor"
-		}
+	for _, name := range []string{"current_predecessor", "early_predecessor", "reviewed_local_predecessor"} {
 		t.Run(name, func(t *testing.T) {
 			home := canonicalOwnedTempDir(t)
 			a := acquireTestCodexHomeAuthority(t, home)
 			current, previous, config := frozenKimiK31Predecessor(home)
-			if early {
+			if name == "early_predecessor" {
 				current = previous
+			}
+			if name == "reviewed_local_predecessor" {
+				current, _ = kimiK31Predecessors.ReadFile("kimi_k31_predecessors/v1-feat163-reviewed.json")
+				if fmt.Sprintf("%x", sha256.Sum256(current)) != "4b0b3fab2e6ca7d8b924248204c745c8e5abbe271e815ba21ecdd8527b1d31af" {
+					t.Fatal("reviewed local predecessor drifted")
+				}
 			}
 			writeS1File(t, home, chatModelsCatalogName, current)
 			writeS1File(t, home, chatModelsConfigName, config)
@@ -72,7 +76,7 @@ func TestFEAT164ActivationAndRetiredAdmission(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	for _, which := range []string{"legacy_catalog_only", "legacy_config_only", "unknown_legacy", "candidate_config_only", "unknown_candidate"} {
+	for _, which := range []string{"legacy_catalog_only", "legacy_config_only", "unknown_legacy", "unknown_reviewed_catalog", "candidate_config_only", "unknown_candidate"} {
 		t.Run(which, func(t *testing.T) {
 			home := canonicalOwnedTempDir(t)
 			a := acquireTestCodexHomeAuthority(t, home)
@@ -84,6 +88,10 @@ func TestFEAT164ActivationAndRetiredAdmission(t *testing.T) {
 				writeS1File(t, home, chatModelsConfigName, config)
 			case "unknown_legacy":
 				writeS1File(t, home, chatModelsCatalogName, append(catalog, '\n'))
+				writeS1File(t, home, chatModelsConfigName, config)
+			case "unknown_reviewed_catalog":
+				reviewed, _ := kimiK31Predecessors.ReadFile("kimi_k31_predecessors/v1-feat163-reviewed.json")
+				writeS1File(t, home, chatModelsCatalogName, append(reviewed, '\n'))
 				writeS1File(t, home, chatModelsConfigName, config)
 			case "candidate_config_only":
 				writeS1File(t, home, kimiK31ConfigName, kimiK31Config(home))
