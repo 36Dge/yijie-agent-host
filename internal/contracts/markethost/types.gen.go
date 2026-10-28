@@ -1543,11 +1543,12 @@ const (
 	ErrorCodeAuthorizationRejected     ErrorCode = "authorization_rejected"
 	ErrorCodeAuthorizationTimeout      ErrorCode = "authorization_timeout"
 	ErrorCodeNotQualified              ErrorCode = "not_qualified"
+	ErrorCodeNotConfigured             ErrorCode = "not_configured"
 )
 
 func (v ErrorCode) Validate() error {
 	switch v {
-	case ErrorCodeInvalidRequest, ErrorCodeNotReady, ErrorCodeAuthorityMismatch, ErrorCodeScopeExpired, ErrorCodePermissionDenied, ErrorCodeGrantNotFound, ErrorCodeGrantExpired, ErrorCodeCapacityExceeded, ErrorCodeRequestConflict, ErrorCodeRevisionConflict, ErrorCodeSelectionStale, ErrorCodeExecutionUnavailable, ErrorCodeModelUnavailable, ErrorCodePermissionModeUnavailable, ErrorCodeSessionNotFound, ErrorCodeBusy, ErrorCodeOperationUncertain, ErrorCodeApprovalNotFound, ErrorCodeApprovalStale, ErrorCodeApprovalExpired, ErrorCodeApprovalResolved, ErrorCodeCleanupPending, ErrorCodeTemporarilyUnavailable, ErrorCodeContextInvalid, ErrorCodeBindingMismatch, ErrorCodeNotFound, ErrorCodeUnknownService, ErrorCodeUnsupportedAuth, ErrorCodeKeyringUnavailable, ErrorCodeMetadataUnavailable, ErrorCodeAuthorizationRejected, ErrorCodeAuthorizationTimeout, ErrorCodeNotQualified:
+	case ErrorCodeInvalidRequest, ErrorCodeNotReady, ErrorCodeAuthorityMismatch, ErrorCodeScopeExpired, ErrorCodePermissionDenied, ErrorCodeGrantNotFound, ErrorCodeGrantExpired, ErrorCodeCapacityExceeded, ErrorCodeRequestConflict, ErrorCodeRevisionConflict, ErrorCodeSelectionStale, ErrorCodeExecutionUnavailable, ErrorCodeModelUnavailable, ErrorCodePermissionModeUnavailable, ErrorCodeSessionNotFound, ErrorCodeBusy, ErrorCodeOperationUncertain, ErrorCodeApprovalNotFound, ErrorCodeApprovalStale, ErrorCodeApprovalExpired, ErrorCodeApprovalResolved, ErrorCodeCleanupPending, ErrorCodeTemporarilyUnavailable, ErrorCodeContextInvalid, ErrorCodeBindingMismatch, ErrorCodeNotFound, ErrorCodeUnknownService, ErrorCodeUnsupportedAuth, ErrorCodeKeyringUnavailable, ErrorCodeMetadataUnavailable, ErrorCodeAuthorizationRejected, ErrorCodeAuthorizationTimeout, ErrorCodeNotQualified, ErrorCodeNotConfigured:
 		return nil
 	default:
 		return errors.New("invalid broker enum")

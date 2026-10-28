@@ -16,7 +16,7 @@
     },
     {
       "path": "openapi/market-connectors/market-connectors.yaml",
-      "sha256": "83e1e7084726ac7ff370db3fe4cdc157c144089e449e5807f4c321aed99c1caf"
+      "sha256": "f7e375ec4bfa2f51a71f98b6ba0c4cf325049f1718d4997e84bd2879923ebe20"
     },
     {
       "path": "jsonschema/chat/model-selection-v2.schema.json",
@@ -73,7 +73,7 @@
       "sha256": "94b33531a4931c584005581d57875fc9919e41c7e4f1da74ea8eef04d0a0ef9b"
     }
   ],
-  "source_commit": "eddc64f95d81c26ca1678cc648d177c081f7904d",
+  "source_commit": "2adfa2bef43d38a932f6249dbb0a229c173ff103",
   "consumer": "agent-host",
   "consumer_generated": []
 }

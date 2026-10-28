@@ -288,11 +288,12 @@ const (
 	ErrorCodeNotQualified           ErrorCode = "not_qualified"
 	ErrorCodeCleanupPending         ErrorCode = "cleanup_pending"
 	ErrorCodeTemporarilyUnavailable ErrorCode = "temporarily_unavailable"
+	ErrorCodeNotConfigured          ErrorCode = "not_configured"
 )
 
 func (v ErrorCode) Validate() error {
 	switch v {
-	case ErrorCodeInvalidRequest, ErrorCodeAuthorityMismatch, ErrorCodeScopeExpired, ErrorCodeBindingMismatch, ErrorCodeNotFound, ErrorCodeRequestConflict, ErrorCodeCapacityExceeded, ErrorCodeUnknownService, ErrorCodeUnsupportedAuth, ErrorCodeKeyringUnavailable, ErrorCodeMetadataUnavailable, ErrorCodeAuthorizationRejected, ErrorCodeAuthorizationTimeout, ErrorCodeNotQualified, ErrorCodeCleanupPending, ErrorCodeTemporarilyUnavailable:
+	case ErrorCodeInvalidRequest, ErrorCodeAuthorityMismatch, ErrorCodeScopeExpired, ErrorCodeBindingMismatch, ErrorCodeNotFound, ErrorCodeRequestConflict, ErrorCodeCapacityExceeded, ErrorCodeUnknownService, ErrorCodeUnsupportedAuth, ErrorCodeKeyringUnavailable, ErrorCodeMetadataUnavailable, ErrorCodeAuthorizationRejected, ErrorCodeAuthorizationTimeout, ErrorCodeNotQualified, ErrorCodeCleanupPending, ErrorCodeTemporarilyUnavailable, ErrorCodeNotConfigured:
 		return nil
 	default:
 		return errors.New("invalid broker enum")

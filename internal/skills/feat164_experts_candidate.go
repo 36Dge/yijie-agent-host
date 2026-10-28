@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 )
 
-// Immutable Skills 595c927, canonical bundle 0.25.0. All 75 resource entries
-// and archives are unchanged; FEAT-164 only fixes source provenance. No caller
+// Immutable Skills source from the embedded authority, canonical bundle 0.25.0.
+// All 75 resource entries and archives are retained when provenance changes. No caller
 // supplied digest and no replacement of an existing managed installation.
 //
 //go:embed feat164-expert-assets.json

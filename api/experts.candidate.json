@@ -20,7 +20,7 @@
     },
     {
       "path": "openapi/market-connectors/market-connectors.yaml",
-      "sha256": "83e1e7084726ac7ff370db3fe4cdc157c144089e449e5807f4c321aed99c1caf"
+      "sha256": "f7e375ec4bfa2f51a71f98b6ba0c4cf325049f1718d4997e84bd2879923ebe20"
     },
     {
       "path": "jsonschema/skills/skill-bundle-manifest-v3.schema.json",
@@ -56,7 +56,7 @@
     },
     {
       "path": "compatibility/market-provider/wire.schema.json",
-      "sha256": "2b2fa207875b3fcdd7785da825320af159ab0b1dc111b894bfad4a3962658ad1"
+      "sha256": "a677189764e431d331c974b690ec93eb9c323116c609548d4962173aef3249da"
     },
     {
       "path": "jsonschema/chat/message.schema.json",
