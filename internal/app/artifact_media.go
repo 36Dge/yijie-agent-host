@@ -14,6 +14,30 @@ type artifactMediaService interface {
 	SubscribeMediaEvents(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)
 }
 
+type artifactFileMediaService interface {
+	SubscribeFileMediaEvents(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)
+}
+
+func (h *sessionHandler) fileMediaEvents(w http.ResponseWriter, r *http.Request) {
+	service, ok := h.service.(artifactFileMediaService)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	for key := range r.URL.Query() {
+		if key != "event_schema_version" && key != "after" && key != "stream_id" {
+			http.Error(w, "invalid query", 400)
+			return
+		}
+	}
+	values := r.URL.Query()["event_schema_version"]
+	if len(values) != 1 || values[0] != "12" {
+		http.Error(w, "explicit schema 12 required", 400)
+		return
+	}
+	w.Header().Set("X-Yijie-Event-Schema-Version", "12")
+	h.streamEvents(w, r, service.SubscribeFileMediaEvents)
+}
 func (h *sessionHandler) mediaEvents(w http.ResponseWriter, r *http.Request) {
 	service, ok := h.service.(artifactMediaService)
 	if !ok {

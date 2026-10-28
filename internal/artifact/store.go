@@ -492,12 +492,16 @@ func mediaAllowed(kind, mediaType string, content []byte) bool {
 		return mediaType == "video/mp4" && len(content) >= 12 && string(content[4:8]) == "ftyp"
 	case "file":
 		switch mediaType {
-		case "text/html", "text/plain", "text/csv":
+		case "text/html", "text/plain", "text/csv", "text/markdown":
 			return utf8.Valid(content) && !bytes.Contains(content, []byte{0})
 		case "application/json":
 			return json.Valid(content)
 		case "application/pdf":
 			return bytes.HasPrefix(content, []byte("%PDF-"))
+		case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+			return validOfficeDocument(content, "word/document.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml")
+		case "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+			return validOfficeDocument(content, "ppt/presentation.xml", "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml")
 		case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
 			return bytes.HasPrefix(content, []byte{'P', 'K', 0x03, 0x04})
 		}

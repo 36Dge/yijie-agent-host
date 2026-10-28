@@ -36,7 +36,7 @@
     },
     {
       "path": "openapi/agent-host/agent-host.yaml",
-      "sha256": "8716d11ebae140d7c2cec72f6528bbd39ac5976c898c28e0044bec71fb004083"
+      "sha256": "7c7a2448141bab9a67f76a8127ec3ccc0cff6b831bf196e09a49e6fc4459470b"
     },
     {
       "path": "compatibility/market-provider/wire.schema.json",
@@ -78,15 +78,15 @@
   "generated": [
     {
       "path": "sdks/rust/market-host-v2/types.gen.rs",
-      "sha256": "0d8f9f8979e82972543205e58349689a4f8148512082783d033f08b01c78d5db"
+      "sha256": "018ccfcc2f531ff8d93b502d83362e7e93e7d9cb64c3171f78d98e03e3f0ce1e"
     },
     {
       "path": "sdks/go/market-host-v2/types.gen.go",
-      "sha256": "53256c8eea8152d906f44574cb7fafba7cbcd1093eb0ff9e067dce33425b3e1c"
+      "sha256": "3e8dd3b2ae84473fa1dceca560f846d7db4469a18381d8a1b07f9016292ba75f"
     },
     {
       "path": "sdks/jsonschema/market-host-v2.schema.json",
-      "sha256": "48f932d4e396ac27ad9c90860c3bdc4301eac8f799cb0edcd3d72ce962596306"
+      "sha256": "07dc5c65c63d7a070458b9850fd741098250d48b25ea6f0e23367a4a7c3bca50"
     },
     {
       "path": "sdks/typescript/src/domain/market-host-v2-native.generated.ts",
@@ -105,18 +105,18 @@
       "sha256": "829a0b99d242c7146fd3459ad012d972cbf98bd92bc7deece94b9239b317181e"
     }
   ],
-  "source_commit": "2adfa2bef43d38a932f6249dbb0a229c173ff103",
+  "source_commit": "61137174a25dc368e0006f27633fd4a9ad097aa6",
   "consumer": "agent-host",
   "consumer_generated": [
     {
       "source": "sdks/go/market-host-v2/types.gen.go",
       "path": "internal/contracts/markethost/types.gen.go",
-      "sha256": "cf0a93478e53f74f5147f4193875f81f20a7cf4397f5278362840d0bc7f28b42"
+      "sha256": "caaf043fdabd95e9dcd2f7cedfcf054ab84816d73cc85708bc83d406f55db24f"
     },
     {
       "source": "sdks/jsonschema/market-host-v2.schema.json",
       "path": "api/market-host-v2.schema.json",
-      "sha256": "48f932d4e396ac27ad9c90860c3bdc4301eac8f799cb0edcd3d72ce962596306"
+      "sha256": "07dc5c65c63d7a070458b9850fd741098250d48b25ea6f0e23367a4a7c3bca50"
     }
   ]
 }

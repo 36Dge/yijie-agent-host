@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.yijie.ai/artifact/media-v2.schema.json",
+  "title": "ArtifactMediaV2",
+  "description": "FEAT-165 file formats. Explicit v12 subscription; v9 remains unchanged. Existing v3 byte transport and ACK.",
+  "x-event-schema-version": 12,
+  "x-resource-version": 3,
+  "x-media-types": {
+    "image": [
+      "image/png",
+      "image/jpeg",
+      "image/webp",
+      "image/svg+xml"
+    ],
+    "video": [
+      "video/mp4"
+    ],
+    "file": [
+      "text/plain",
+      "text/csv",
+      "application/json",
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/html",
+      "text/markdown",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    ],
+    "report": [
+      "application/vnd.yijie.report+json;version=1"
+    ]
+  },
+  "definitions": {
+    "PublishInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relative_path",
+        "display_name"
+      ],
+      "properties": {
+        "relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "x-yijie-max-utf8-bytes": 1024
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "x-yijie-max-utf8-bytes": 255
+        }
+      }
+    },
+    "PublishRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "thread_id",
+        "turn_id",
+        "input"
+      ],
+      "properties": {
+        "thread_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "input": {
+          "$ref": "#/definitions/PublishInput"
+        }
+      }
+    },
+    "PublishReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_id",
+        "status"
+      ],
+      "properties": {
+        "artifact_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "staged"
+          ]
+        }
+      }
+    }
+  },
+  "x-http": {
+    "events": {
+      "method": "GET",
+      "path": "/v12/agent-sessions/{agent_session_id}/events",
+      "query": "event_schema_version=12",
+      "authentication": "existing owner bearer",
+      "response": "generated v12 SSE; legacy v9 excludes extended MIME artifacts"
+    },
+    "publish": {
+      "method": "POST",
+      "path": "/internal/artifact-media/v1/publish",
+      "authentication": "existing owner bearer, only Host-owned MCP adapter",
+      "request": "#/definitions/PublishRequest",
+      "response": "#/definitions/PublishReceipt",
+      "errors": {
+        "400": "invalid_request",
+        "409": "artifact_registration_unavailable"
+      },
+      "limits": {
+        "body_bytes": 8192,
+        "files_per_turn": 12
+      },
+      "description": "Extended MIME registration requires an active v12 subscriber for the same session; legacy types keep v9 behavior. No new tool or byte transport."
+    },
+    "resources": "Existing v3 content/poster/ack; no new byte transport"
+  }
+}

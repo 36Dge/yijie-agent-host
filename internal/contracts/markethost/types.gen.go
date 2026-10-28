@@ -4035,11 +4035,13 @@ const (
 	StartTurnV2FileMediaTypeApplicationVndOpenxmlformatsOfficedocumentWordprocessingmlDocument   StartTurnV2FileMediaType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 	StartTurnV2FileMediaTypeApplicationVndOpenxmlformatsOfficedocumentSpreadsheetmlSheet         StartTurnV2FileMediaType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	StartTurnV2FileMediaTypeApplicationVndOpenxmlformatsOfficedocumentPresentationmlPresentation StartTurnV2FileMediaType = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	StartTurnV2FileMediaTypeImageSvgXml                                                          StartTurnV2FileMediaType = "image/svg+xml"
+	StartTurnV2FileMediaTypeVideoMp4                                                             StartTurnV2FileMediaType = "video/mp4"
 )
 
 func (v StartTurnV2FileMediaType) Validate() error {
 	switch v {
-	case StartTurnV2FileMediaTypeApplicationPdf, StartTurnV2FileMediaTypeTextPlain, StartTurnV2FileMediaTypeTextMarkdown, StartTurnV2FileMediaTypeTextCsv, StartTurnV2FileMediaTypeApplicationJson, StartTurnV2FileMediaTypeApplicationYaml, StartTurnV2FileMediaTypeApplicationXml, StartTurnV2FileMediaTypeTextHtml, StartTurnV2FileMediaTypeApplicationRtf, StartTurnV2FileMediaTypeApplicationVndOpenxmlformatsOfficedocumentWordprocessingmlDocument, StartTurnV2FileMediaTypeApplicationVndOpenxmlformatsOfficedocumentSpreadsheetmlSheet, StartTurnV2FileMediaTypeApplicationVndOpenxmlformatsOfficedocumentPresentationmlPresentation:
+	case StartTurnV2FileMediaTypeApplicationPdf, StartTurnV2FileMediaTypeTextPlain, StartTurnV2FileMediaTypeTextMarkdown, StartTurnV2FileMediaTypeTextCsv, StartTurnV2FileMediaTypeApplicationJson, StartTurnV2FileMediaTypeApplicationYaml, StartTurnV2FileMediaTypeApplicationXml, StartTurnV2FileMediaTypeTextHtml, StartTurnV2FileMediaTypeApplicationRtf, StartTurnV2FileMediaTypeApplicationVndOpenxmlformatsOfficedocumentWordprocessingmlDocument, StartTurnV2FileMediaTypeApplicationVndOpenxmlformatsOfficedocumentSpreadsheetmlSheet, StartTurnV2FileMediaTypeApplicationVndOpenxmlformatsOfficedocumentPresentationmlPresentation, StartTurnV2FileMediaTypeImageSvgXml, StartTurnV2FileMediaTypeVideoMp4:
 		return nil
 	default:
 		return errors.New("invalid broker enum")

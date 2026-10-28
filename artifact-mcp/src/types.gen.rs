@@ -1,4 +1,4 @@
-// Generated from artifact/media-v1; DO NOT EDIT.
+// Generated from artifact/media-v2; DO NOT EDIT.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublishInput {
@@ -33,6 +33,9 @@ pub fn media_type_allowed(kind: &str, mime: &str) -> bool {
                 | "application/pdf"
                 | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 | "text/html"
+                | "text/markdown"
+                | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                | "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         ),
         "report" => matches!(mime, "application/vnd.yijie.report+json;version=1"),
         _ => false,

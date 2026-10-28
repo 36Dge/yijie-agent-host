@@ -2,8 +2,12 @@
   "schema_version": 1,
   "mode": "local_candidate",
   "release": false,
-  "base_commit": "9743173474cb68f665044d3ac5765a0f18f16397",
+  "base_commit": "2adfa2bef43d38a932f6249dbb0a229c173ff103",
   "sources": [
+    {
+      "path": "jsonschema/artifact/media-v2.schema.json",
+      "sha256": "7b54da3177d050d1caf16301f056fa2b2e5ddef744cd3552d1eb19502efc0edc"
+    },
     {
       "path": "jsonschema/artifact/media-v1.schema.json",
       "sha256": "7106841e9a32272a12127fbcd43e14985b56fdcc87f1bd1ff15ffd6a5f9b666d"
@@ -14,29 +18,33 @@
     },
     {
       "path": "scripts/generate-artifact-media.mjs",
-      "sha256": "9d6cffbc617e64e1e80be210ac64637b43951dd05724bcad8a16a9c30756ca6e"
+      "sha256": "2e3b43374bf91cc1cfca5665b63738c63c002066c5b737a509a03181c9009627"
     }
   ],
   "generated": [
     {
       "path": "sdks/typescript/src/jsonschema/artifact-media-policy.gen.ts",
-      "sha256": "cfc02d48f91b28d65a65f515c27892c7a8d77b1376a248e1168f5eb21358bfca"
+      "sha256": "e28d93dec2a265a0422f0a6a5c4031055c63d2e06573229c5533f11bd5fd31af"
     },
     {
       "path": "sdks/jsonschema/artifact-media-events-v9.schema.json",
       "sha256": "c2c834a5bf2410c4ef6e8725a568432a76c661b2162b31ae32633e337ce32747"
     },
     {
+      "path": "sdks/jsonschema/artifact-media-events-v12.schema.json",
+      "sha256": "53425f8a431848315a5ee044de1d5d7266511454f892489d8e42f5863e2248c9"
+    },
+    {
       "path": "sdks/go/artifactmedia/types.gen.go",
-      "sha256": "0937e4693723f59efa6bc09c92687924a79a20f9095da73ce4b55819282f0f05"
+      "sha256": "61f4ad933cb402cdcca4b6a4d08420fa70ffc7bb3898a081c827f632f4799a96"
     },
     {
       "path": "sdks/rust/artifactmedia/types.gen.rs",
-      "sha256": "895edbfc25794728222d98a033e2ba72102c609e714d4c3ed19caa14422e5c66"
+      "sha256": "0d621491af6f2c7992e7690242f286f0013684db95abb56bf1a72761b0fbfa28"
     },
     {
       "path": "sdks/typescript/src/jsonschema/artifact-media.gen.ts",
-      "sha256": "590dd13c12f07691c2eb1b0bf6dc6f80498313112029b04a2a02870f4ff52f07"
+      "sha256": "646b9350d0dcc9619582d7497b17ddcc16b6223ddaa1fd8104ae91b04ed43c84"
     }
   ]
 }

@@ -160,6 +160,7 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 	s.clearImageSession(sessionID)
 	if s.media != nil {
 		s.media.events.DeleteSession(sessionID)
+		s.media.filesEvents.DeleteSession(sessionID)
 		s.clearMediaRegistrations(sessionID + "/")
 	}
 	s.abortSyntheticTerminalBarrier(sessionID)

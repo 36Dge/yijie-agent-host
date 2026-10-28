@@ -24,7 +24,7 @@
     },
     {
       "path": "jsonschema/chat/message.schema.json",
-      "sha256": "3f277898f8204e02a400053cd56bec3b0eeb37ed2c50db3a6347e7fec61ddf34"
+      "sha256": "b1c427ee79f98145a3746b23fc2150995d43b464b5685c02bdaaa0ff275f0c51"
     },
     {
       "path": "scripts/market-selection-v2-source.mjs",
@@ -73,7 +73,7 @@
       "sha256": "94b33531a4931c584005581d57875fc9919e41c7e4f1da74ea8eef04d0a0ef9b"
     }
   ],
-  "source_commit": "2adfa2bef43d38a932f6249dbb0a229c173ff103",
+  "source_commit": "61137174a25dc368e0006f27633fd4a9ad097aa6",
   "consumer": "agent-host",
   "consumer_generated": []
 }

@@ -3,9 +3,11 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 contracts_repo="${YIJIE_CONTRACTS_REPO:-$repo_root/../yijie-contracts}"
-required_commit="aeccf5d561bd4259389cdb325bae84ce3e0dea86"
-required_parent="0acf2a39a505a4ef9fb8757b29cb53efe9e9846f"
-required_tree="7a864645bf552a8b7457b6338a30f6626ce15d3a"
+# FEAT-165 advances the ordinary input union; reuse this scoped workflow.
+# Excluded archive/attack fixtures remain object-ID-only and are never copied.
+required_commit="61137174a25dc368e0006f27633fd4a9ad097aa6"
+required_parent="2adfa2bef43d38a932f6249dbb0a229c173ff103"
+required_tree="65e63a49c8c0439c5fe214beac1aaf627830c316"
 legacy_equal_commit="2e490dea4444ea1e33c2df1a5267b2bff5bfb8e6"
 required_version="0.7.0"
 legacy_fixture_baseline_commit="3832a6c5e99b2a6365f193280fdb887c8fdbc2de"

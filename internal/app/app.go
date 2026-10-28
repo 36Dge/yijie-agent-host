@@ -878,6 +878,7 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 		}
 		if config.ArtifactMediaEnabled {
 			mux.Handle("GET /v9/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.mediaEvents)))
+			mux.Handle("GET /v12/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.fileMediaEvents)))
 			mux.Handle("POST /internal/artifact-media/v1/publish", handler.authorize(http.HandlerFunc(handler.publishArtifact)))
 		}
 		if config.ArtifactV3Enabled {

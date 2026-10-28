@@ -3,15 +3,15 @@
   "feature": "FEAT-164",
   "release": false,
   "mode": "immutable_local_candidate",
-  "source_commit": "5b5dad9d837ba92abc7c2660d1de1a60f4ed1ba2",
+  "source_commit": "61137174a25dc368e0006f27633fd4a9ad097aa6",
   "source_lock_path": "compatibility/chat-models-v2/source.lock.json",
-  "source_lock_sha256": "0ad485abaf145bb8dd23541ea4af9bade30085a20db3556f988ceb7045d10d70",
+  "source_lock_sha256": "f20b2ae7270543a6bb39938fa699c95b17e2c5bcbc5d8a44c41cba1c742d49e6",
   "authority": {
     "schema_version": 1,
     "contract_version": "0.2.0",
     "mode": "local_worktree_candidate",
     "release": false,
-    "base_commit": "bedf4159b0fa22e24efe6c295f8b0d4845df56b7",
+    "base_commit": "ea49217fd44c1b768289fc445fdf7d9256f99a13",
     "sources": [
       {
         "path": "jsonschema/chat/model-selection-v1.schema.json",
@@ -27,7 +27,7 @@
       },
       {
         "path": "openapi/agent-host/agent-host.yaml",
-        "sha256": "8716d11ebae140d7c2cec72f6528bbd39ac5976c898c28e0044bec71fb004083"
+        "sha256": "7c7a2448141bab9a67f76a8127ec3ccc0cff6b831bf196e09a49e6fc4459470b"
       },
       {
         "path": "openapi/chat-models-v2/chat-models-v2.yaml",
@@ -61,7 +61,7 @@
       },
       {
         "path": "sdks/openapi/chat-models-v2.bundle.json",
-        "sha256": "a398021462157c3836404a5337f5d64ee68509eea56e9fcc5098e5795819f20a"
+        "sha256": "52ec17431e74f54c611e17d7cd635a2fcb66f552124831e53777fc6a1b406c4f"
       }
     ]
   },

@@ -123,11 +123,13 @@ const (
 	StartTurnV2FileMediaTypeDOCX      StartTurnV2FileMediaType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 	StartTurnV2FileMediaTypeHTML      StartTurnV2FileMediaType = "text/html"
 	StartTurnV2FileMediaTypeJSON      StartTurnV2FileMediaType = "application/json"
+	StartTurnV2FileMediaTypeMP4       StartTurnV2FileMediaType = "video/mp4"
 	StartTurnV2FileMediaTypeMarkdown  StartTurnV2FileMediaType = "text/markdown"
 	StartTurnV2FileMediaTypePDF       StartTurnV2FileMediaType = "application/pdf"
 	StartTurnV2FileMediaTypePPTX      StartTurnV2FileMediaType = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 	StartTurnV2FileMediaTypePlainText StartTurnV2FileMediaType = "text/plain"
 	StartTurnV2FileMediaTypeRTF       StartTurnV2FileMediaType = "application/rtf"
+	StartTurnV2FileMediaTypeSVG       StartTurnV2FileMediaType = "image/svg+xml"
 	StartTurnV2FileMediaTypeXLSX      StartTurnV2FileMediaType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	StartTurnV2FileMediaTypeXML       StartTurnV2FileMediaType = "application/xml"
 	StartTurnV2FileMediaTypeYAML      StartTurnV2FileMediaType = "application/yaml"
@@ -144,6 +146,8 @@ func (e StartTurnV2FileMediaType) Valid() bool {
 		return true
 	case StartTurnV2FileMediaTypeJSON:
 		return true
+	case StartTurnV2FileMediaTypeMP4:
+		return true
 	case StartTurnV2FileMediaTypeMarkdown:
 		return true
 	case StartTurnV2FileMediaTypePDF:
@@ -153,6 +157,8 @@ func (e StartTurnV2FileMediaType) Valid() bool {
 	case StartTurnV2FileMediaTypePlainText:
 		return true
 	case StartTurnV2FileMediaTypeRTF:
+		return true
+	case StartTurnV2FileMediaTypeSVG:
 		return true
 	case StartTurnV2FileMediaTypeXLSX:
 		return true
@@ -300,7 +306,12 @@ type StartTurnV2FileBlock struct {
 	// AttachmentId Desktop attachment identifier; correlation only, never a local path.
 	AttachmentId openapi_types.UUID `json:"attachment_id"`
 
-	// ContextChunks Ordered, untrusted plain-text excerpts selected locally from this file.
+	// ContextChunks Ordered, untrusted plain-text context selected locally from this file.
+	// For text-bearing files (including SVG), chunks are source excerpts.
+	// For video/mp4 only, chunks describe the validated safe name, MIME and
+	// byte length and explicitly state that audio/video content was not read.
+	// They are metadata descriptions, not transcripts or source excerpts.
+	// No file path, binary encoding, codec probe or executable instruction is supplied.
 	// Host maps them to bounded Runtime text input and never persists them.
 	// UTF-8 bytes across every file block in the turn must be at most 256 KiB.
 	ContextChunks []string `json:"context_chunks"`

@@ -26,6 +26,10 @@ type mediaRegistration struct {
 type mediaAuthority struct {
 	mu            sync.Mutex
 	events        *EventHub
+	filesEvents   *EventHub
+	subscribers   map[string]int
+	extended      map[string]bool
+	legacyOrder   map[string]map[string]int
 	registrations map[string]mediaRegistration
 	ordinals      map[string]int
 	orderMu       sync.Mutex
@@ -34,7 +38,7 @@ type mediaAuthority struct {
 
 func WithArtifactMedia() ServiceOption {
 	return func(s *Service) {
-		s.media = &mediaAuthority{events: NewEventHubVersion(9, 512, 64), registrations: make(map[string]mediaRegistration), ordinals: make(map[string]int), order: make(map[string]map[string]int)}
+		s.media = &mediaAuthority{events: NewEventHubVersion(9, 512, 64), filesEvents: NewEventHubVersion(12, 512, 64), subscribers: make(map[string]int), extended: make(map[string]bool), legacyOrder: make(map[string]map[string]int), registrations: make(map[string]mediaRegistration), ordinals: make(map[string]int), order: make(map[string]map[string]int)}
 	}
 }
 
@@ -47,31 +51,74 @@ func (s *Service) SubscribeMediaEvents(sessionID, streamID string, after uint64)
 	}
 	return s.media.events.Subscribe(sessionID, streamID, after)
 }
+
+// The explicit v12 reader is the admission evidence for new file MIME values.
+// This uses the same EventHub and resource/ACK implementation as legacy v9.
+func (s *Service) SubscribeFileMediaEvents(sessionID, streamID string, after uint64) (string, []Event, <-chan Event, func(), error) {
+	if s.media == nil {
+		return "", nil, nil, nil, ErrSessionNotUsable
+	}
+	if _, err := s.store.Get(sessionID); err != nil {
+		return "", nil, nil, nil, err
+	}
+	id, replay, events, cancel, err := s.media.filesEvents.Subscribe(sessionID, streamID, after)
+	if err != nil {
+		return id, replay, events, cancel, err
+	}
+	s.media.mu.Lock()
+	s.media.subscribers[sessionID]++
+	s.media.mu.Unlock()
+	var once sync.Once
+	release := func() {
+		once.Do(func() {
+			cancel()
+			s.media.mu.Lock()
+			defer s.media.mu.Unlock()
+			s.media.subscribers[sessionID]--
+			if s.media.subscribers[sessionID] <= 0 {
+				delete(s.media.subscribers, sessionID)
+			}
+		})
+	}
+	return id, replay, events, release, nil
+}
 func (s *Service) publishMedia(record Record, event Event) error {
 	if s.media == nil {
 		return nil
 	}
+	// Both media streams retain the v3 ordinary-event contract. Reuse the
+	// existing compatibility projection before publishing newer lifecycle fields.
+	event = legacyEvent(event)
 	decorateEvent(record, &event)
-	// The companion stream merges all producers. Reindex only this stream so
-	// legacy producer ordinals and their existing wire contracts stay unchanged.
 	s.media.orderMu.Lock()
 	defer s.media.orderMu.Unlock()
-	if event.Payload.ArtifactID != "" && event.Payload.Ordinal != nil {
-		key := record.AgentSessionID + "/" + event.TurnID
-		order := s.media.order[key]
-		if order == nil {
-			order = make(map[string]int)
-			s.media.order[key] = order
+	publish := func(hub *EventHub, orders map[string]map[string]int) error {
+		copy := event
+		if copy.Payload.ArtifactID != "" && copy.Payload.Ordinal != nil {
+			key := record.AgentSessionID + "/" + copy.TurnID
+			order := orders[key]
+			if order == nil {
+				order = make(map[string]int)
+				orders[key] = order
+			}
+			ordinal, ok := order[copy.Payload.ArtifactID]
+			if !ok {
+				ordinal = len(order)
+				order[copy.Payload.ArtifactID] = ordinal
+			}
+			copy.Payload.Ordinal = &ordinal
 		}
-		ordinal, ok := order[event.Payload.ArtifactID]
-		if !ok {
-			ordinal = len(order)
-			order[event.Payload.ArtifactID] = ordinal
-		}
-		event.Payload.Ordinal = &ordinal
+		_, err := hub.Publish(copy)
+		return err
 	}
-	_, err := s.media.events.Publish(event)
-	return err
+	if err := publish(s.media.filesEvents, s.media.order); err != nil {
+		return err
+	}
+	// Suppress the entire new artifact lifecycle, including started/failed, on v9.
+	if s.media.extended[event.Payload.ArtifactID] {
+		return nil
+	}
+	return publish(s.media.events, s.media.legacyOrder)
 }
 
 func (s *Service) clearMediaRegistrations(prefix string) {
@@ -94,7 +141,11 @@ func (s *Service) clearMediaRegistrations(prefix string) {
 	defer s.media.orderMu.Unlock()
 	for key := range s.media.order {
 		if strings.HasPrefix(key+"/", prefix) {
+			for id := range s.media.order[key] {
+				delete(s.media.extended, id)
+			}
 			delete(s.media.order, key)
+			delete(s.media.legacyOrder, key)
 		}
 	}
 }
@@ -159,6 +210,9 @@ func (s *Service) PublishArtifact(ctx context.Context, request wire.PublishReque
 		}
 		return fail()
 	}
+	if !wire.LegacyMediaAllowed(kind, mime) && s.media.subscribers[record.AgentSessionID] == 0 {
+		return fail()
+	}
 	if len(s.media.registrations) >= 4096 || s.media.ordinals[turnKey] >= 12 {
 		return fail()
 	}
@@ -169,6 +223,11 @@ func (s *Service) PublishArtifact(ctx context.Context, request wire.PublishReque
 	id, err := newUUID()
 	if err != nil {
 		return fail()
+	}
+	if !wire.LegacyMediaAllowed(kind, mime) {
+		s.media.orderMu.Lock()
+		s.media.extended[id] = true
+		s.media.orderMu.Unlock()
 	}
 	ordinal := s.media.ordinals[turnKey]
 	s.media.ordinals[turnKey]++
@@ -211,6 +270,12 @@ func artifactMediaType(name string) (string, string) {
 		return "image", "image/jpeg"
 	case ".webp":
 		return "image", "image/webp"
+	case ".md", ".markdown":
+		return "file", "text/markdown"
+	case ".docx":
+		return "file", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case ".pptx":
+		return "file", "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 	case ".txt":
 		return "file", "text/plain"
 	case ".csv":

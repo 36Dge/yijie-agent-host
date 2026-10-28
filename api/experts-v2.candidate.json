@@ -52,7 +52,7 @@
     },
     {
       "path": "openapi/agent-host/agent-host.yaml",
-      "sha256": "8716d11ebae140d7c2cec72f6528bbd39ac5976c898c28e0044bec71fb004083"
+      "sha256": "7c7a2448141bab9a67f76a8127ec3ccc0cff6b831bf196e09a49e6fc4459470b"
     },
     {
       "path": "compatibility/market-provider/wire.schema.json",
@@ -60,7 +60,7 @@
     },
     {
       "path": "jsonschema/chat/message.schema.json",
-      "sha256": "3f277898f8204e02a400053cd56bec3b0eeb37ed2c50db3a6347e7fec61ddf34"
+      "sha256": "b1c427ee79f98145a3746b23fc2150995d43b464b5685c02bdaaa0ff275f0c51"
     },
     {
       "path": "scripts/experts-v2-source.mjs",
@@ -94,7 +94,7 @@
     },
     {
       "path": "sdks/jsonschema/experts-v2.schema.json",
-      "sha256": "3d64299a3ed6b7c977543079e16bf3d069027e7de0b47d84ed89272d8147c0d1"
+      "sha256": "36d4c13dcab908fcc5630a01f00a4e61e790d662bfd0fda47b0f4b5cf88a3044"
     },
     {
       "path": "sdks/go/experts-v2/bundle_schemas.gen.go",
@@ -129,7 +129,7 @@
       "sha256": "a7ee6c00cd33741143e6733a934c8d596e9bb6a620911dd70894abccb84be0d8"
     }
   ],
-  "source_commit": "2adfa2bef43d38a932f6249dbb0a229c173ff103",
+  "source_commit": "61137174a25dc368e0006f27633fd4a9ad097aa6",
   "consumer": "agent-host",
   "consumer_generated": [
     {
@@ -140,7 +140,7 @@
     {
       "source": "sdks/jsonschema/experts-v2.schema.json",
       "path": "api/experts-v2.schema.json",
-      "sha256": "3d64299a3ed6b7c977543079e16bf3d069027e7de0b47d84ed89272d8147c0d1"
+      "sha256": "36d4c13dcab908fcc5630a01f00a4e61e790d662bfd0fda47b0f4b5cf88a3044"
     }
   ]
 }

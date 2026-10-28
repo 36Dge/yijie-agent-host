@@ -51,6 +51,8 @@ var supportedFileMediaTypes = map[string]struct{}{
 	"text/csv":         {},
 	"text/html":        {},
 	"text/markdown":    {},
+	"image/svg+xml":    {},
+	"video/mp4":        {},
 	"text/plain":       {},
 }
 

@@ -6,7 +6,7 @@
   "published": false,
   "contracts": {
     "repository": "https://github.com/36Dge/yijie-contracts.git",
-    "full_commit": "811f38d6b104fa18477107e7ac91a85e19c445d1"
+    "full_commit": "61137174a25dc368e0006f27633fd4a9ad097aa6"
   },
   "sources": {
     "compatibility/sorftime-product-detail.input.schema.json": "d507da888c8b9d0d93c6b8fdc8edb8d4a9f1ae7efbc134e87f188e53bcc88600",
@@ -17,7 +17,7 @@
     "sdks/go/openapi/runtime-permissions-v2/client.gen.go": "3782b0eb05f6534cfca6d86c0504a7264cb3a806fb6603f85aa41c51842ac9fc",
     "sdks/typescript/src/openapi/runtime-permissions-v2.gen.ts": "17a640f2a951ed98356f77849a2bc8681440497619c234f09f9ffc3e402433b8",
     "compatibility/agent-host-native-mcp-v2.json": "a70b6e1beb245e4876cec12474a13441a63c7a434db1974375765be152adec37",
-    "scripts/generate.mjs": "b036f609bf63e97d34ad7a2d1e77dbfc1c40b42ba931b0c2f1c75e5ca74edf1d",
+    "scripts/generate.mjs": "04c87e5f156be3713e75338ed23da5d0368d3663f4d7b9389b7a4de0b77d1834",
     "scripts/sync-native-mcp.mjs": "4b45697d93f4897424ca252bdb8cae937a699bcb3eb1226a5ce1b70982a0c31b",
     "go.mod": "4bd3ff739f9383a42d641a0cbfcf17d812bf2c260c19be379effff5c528bfc35",
     "go.sum": "0bb3ffbefa7ef6a6507a59feed3708cf92ac542e4c9911241eb2d9f4a7604b36",

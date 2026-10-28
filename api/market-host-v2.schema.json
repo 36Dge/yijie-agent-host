@@ -1958,7 +1958,7 @@
           "type": "array",
           "minItems": 1,
           "maxItems": 32,
-          "description": "Ordered, untrusted plain-text excerpts selected locally from this file.\nHost maps them to bounded Runtime text input and never persists them.\nUTF-8 bytes across every file block in the turn must be at most 256 KiB.\n",
+          "description": "Ordered, untrusted plain-text context selected locally from this file.\nFor text-bearing files (including SVG), chunks are source excerpts.\nFor video/mp4 only, chunks describe the validated safe name, MIME and\nbyte length and explicitly state that audio/video content was not read.\nThey are metadata descriptions, not transcripts or source excerpts.\nNo file path, binary encoding, codec probe or executable instruction is supplied.\nHost maps them to bounded Runtime text input and never persists them.\nUTF-8 bytes across every file block in the turn must be at most 256 KiB.\n",
           "items": {
             "type": "string",
             "minLength": 1,
@@ -2078,7 +2078,9 @@
         "application/rtf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "image/svg+xml",
+        "video/mp4"
       ]
     },
     "ProcessBinding": {
