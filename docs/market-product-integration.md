@@ -29,3 +29,9 @@ Gateway 元数据只用于按 callRef 查询 worker 的真实 PendingCall。审�
 本轮这些 Host 测试没有真实 OAuth 登录、真实 Tushare 工具调用或付费模型调用。当前 Tushare provider 支持授权与 metadata probe，但真实执行白名单仍须根据授权后的实际 metadata 完成资格；其他 50 个服务不因此被标记可执行。原 Runtime/Gateway run06 资格是旧的固定本地合成验证，不能代替本次 Host/Native 完整端到端结果。产品启动与 UI 验收由元仓 evidence 另行记录。
 
 没有执行进程强杀、恶意 fixture、权限破坏、可执行文件替换或故障注入全套验收。不能由上述正常流程测试声称真实供应商异常/取消已经得到故障注入验证。摘要与实际命令结果见 `market-product-verification.json`。
+
+## FEAT-162 当前选集与原生检索
+
+2026-10-29，contract-impact=semantic。通用 Runtime 指令尊重用户当前选中且可执行该网页任务的检索连接器，按其工具描述调用，避免同一信息需求同时使用原生搜索。没有适用的已选连接器时保留原生搜索默认；不改变工具暴露、权限、审批或 Runtime 产物。Basic/Pro/Fetch 的分工仍唯一来自 Contracts 同源描述，Host 不设分类器或额外模型回合。
+
+固定 r5 Runtime 的 TestFEAT164CallSurfacesRuntime 用普通本地素材与 loopback 模型响应，验证真实出站 base/developer 指令、原生搜索工具保留、专家隔离、标题/草案和普通工具续接；6 次 loopback 请求、外部模型 HTTP 为 0。真实 App 收费路由结果由元仓 FEAT-162 验收记录提供，不能由此替代。
