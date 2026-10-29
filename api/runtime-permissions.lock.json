@@ -4,13 +4,13 @@
   "contract_family_version": "0.1.0",
   "contracts": {
     "repository": "https://github.com/36Dge/yijie-contracts.git",
-    "full_commit": "61137174a25dc368e0006f27633fd4a9ad097aa6",
+    "full_commit": "d191ad6ed08f0e8cc89dfea1346b5ecdf010e776",
     "sources": {
       "openapi/runtime-permissions/runtime-permissions.yaml": "0cd99d5ee3f7035bf43c0996648dc855f71a447595dcb61d903232d81b602a99",
       "sdks/go/openapi/runtime-permissions/source.bundle.yaml": "ffce00ab6193440e022de0448f7c7152961c9fc37d756f5172f79caa2594c294",
       "sdks/go/openapi/runtime-permissions/client.gen.go": "5343022e31df266b8cc8f17df3a73fdb52625956d1c36434422171e1cb5a72d1",
       "sdks/typescript/src/openapi/runtime-permissions.gen.ts": "ae337dc018e0f3e2e4a36bc1293415a5986d18066afbc55888d8ad67221f2f31",
-      "scripts/generate.mjs": "04c87e5f156be3713e75338ed23da5d0368d3663f4d7b9389b7a4de0b77d1834"
+      "scripts/generate.mjs": "404bbebb4af2dd8638a0ccab2fad0447037c1b64364d017d38b7032a7b64c444"
     }
   },
   "consumption": {
