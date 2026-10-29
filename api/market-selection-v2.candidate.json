@@ -73,7 +73,7 @@
       "sha256": "94b33531a4931c584005581d57875fc9919e41c7e4f1da74ea8eef04d0a0ef9b"
     }
   ],
-  "source_commit": "61137174a25dc368e0006f27633fd4a9ad097aa6",
+  "source_commit": "d191ad6ed08f0e8cc89dfea1346b5ecdf010e776",
   "consumer": "agent-host",
   "consumer_generated": []
 }

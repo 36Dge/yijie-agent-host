@@ -3,9 +3,9 @@
   "feature": "FEAT-164",
   "release": false,
   "mode": "immutable_local_candidate",
-  "source_commit": "61137174a25dc368e0006f27633fd4a9ad097aa6",
+  "source_commit": "d191ad6ed08f0e8cc89dfea1346b5ecdf010e776",
   "source_lock_path": "compatibility/chat-models-v2/source.lock.json",
-  "source_lock_sha256": "f20b2ae7270543a6bb39938fa699c95b17e2c5bcbc5d8a44c41cba1c742d49e6",
+  "source_lock_sha256": "b7456acca3efcef736808331a2638e7f4d934e7f5cf47d3752bd1ed6a453d6b1",
   "authority": {
     "schema_version": 1,
     "contract_version": "0.2.0",
@@ -39,7 +39,7 @@
       },
       {
         "path": "scripts/generate-chat-models-v2.mjs",
-        "sha256": "46806979daed97b68afc6706df13dbd58a54e6c0b6e81c593c23bca357aa7880"
+        "sha256": "9e8e320e11cca6411384ead93a515ddf7067657a2757cd5398dcb7339814824b"
       }
     ],
     "generated": [

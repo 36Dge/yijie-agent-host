@@ -681,9 +681,27 @@
         },
         "decision": {
           "$ref": "#/$defs/Decision"
+        },
+        "decisionExpiresAtUnixMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "executionExpiresAtUnixMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
         }
       },
-      "description": "Independent market approval projection. identity is obtained by trusted Broker query for the real tools/call; never synthesized from metadata/tool title/last Item. Approval state is not provider execution success."
+      "description": "Independent market approval projection. identity is obtained by trusted Broker query for the real tools/call; never synthesized from metadata/tool title/last Item. Approval state is not provider execution success. New web modes project paired deadlines from Broker. expiresAtUnixMs keeps execution deadline; pending UI/decision uses decisionExpiresAtUnixMs when present, otherwise legacy expiresAtUnixMs. No post-approval extension.",
+      "dependentRequired": {
+        "decisionExpiresAtUnixMs": [
+          "executionExpiresAtUnixMs"
+        ],
+        "executionExpiresAtUnixMs": [
+          "decisionExpiresAtUnixMs"
+        ]
+      }
     },
     "ApprovalDecidePayload": {
       "type": "object",

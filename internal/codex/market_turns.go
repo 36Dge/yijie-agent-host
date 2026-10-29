@@ -90,7 +90,10 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 		id := broker.NativeId(*threadID)
 		nativeThread = &id
 	}
-	lease, e := owner.Prepare(ctx, broker.PrepareRequest{SchemaVersion: 1, RequestId: broker.CanonicalId(uuid.NewString()), Method: "prepare", Payload: broker.PreparePayload{OperationId: broker.CanonicalId(uuid.NewString()), Context: broker.ContextBinding{Process: process, Scope: scope, AgentSessionId: broker.CanonicalId(sessionID), NativeThreadId: nativeThread}, Snapshot: submission.Snapshot, TtlMs: broker.RequestedTtlMs(broker.MaxLeaseTtlMs)}})
+	webVersion, mcpTimeout := broker.WebRetrievalVersion, int64(broker.WebMcpToolTimeoutMs)
+	// This owner prepare must complete before Submit dispatches turn/start.
+	// Worker time at prepare is a conservative lower bound for the MCP timer.
+	lease, e := owner.Prepare(ctx, broker.PrepareRequest{SchemaVersion: 1, RequestId: broker.CanonicalId(uuid.NewString()), Method: "prepare", Payload: broker.PreparePayload{WebRetrievalVersion: &webVersion, McpToolTimeoutMs: &mcpTimeout, OperationId: broker.CanonicalId(uuid.NewString()), Context: broker.ContextBinding{Process: process, Scope: scope, AgentSessionId: broker.CanonicalId(sessionID), NativeThreadId: nativeThread}, Snapshot: submission.Snapshot, TtlMs: broker.RequestedTtlMs(broker.MaxLeaseTtlMs)}})
 	if e != nil {
 		return nil, e
 	}
@@ -98,7 +101,7 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 	m.market.mu.Lock()
 	gateway := m.market.gatewayURL
 	m.market.mu.Unlock()
-	servers[marketServerName] = map[string]any{"url": gateway + "/" + string(lease.Data.Binding.CapabilityRef), "bearer_token_env_var": marketbroker.RuntimeCapabilityEnvironment, "enabled": true, "default_tools_approval_mode": "auto", "startup_timeout_sec": 30, "tool_timeout_sec": 60, "supports_parallel_tool_calls": false}
+	servers[marketServerName] = map[string]any{"url": gateway + "/" + string(lease.Data.Binding.CapabilityRef), "bearer_token_env_var": marketbroker.RuntimeCapabilityEnvironment, "enabled": true, "default_tools_approval_mode": "auto", "startup_timeout_sec": 30, "tool_timeout_sec": broker.WebMcpToolTimeoutMs / 1000, "supports_parallel_tool_calls": false}
 	return p, nil
 }
 

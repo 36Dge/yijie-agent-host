@@ -889,13 +889,15 @@ func (v *CallIdentity) UnmarshalJSON(b []byte) error {
 }
 
 type PendingCall struct {
-	Identity       CallIdentity     `json:"identity"`
-	Revision       Revision         `json:"revision"`
-	State          CallState        `json:"state"`
-	RemainingTtlMs Milliseconds     `json:"remainingTtlMs"`
-	Review         ReviewProjection `json:"review"`
-	DecisionId     *CanonicalId     `json:"decisionId,omitempty"`
-	Decision       *Decision        `json:"decision,omitempty"`
+	Identity                 CallIdentity      `json:"identity"`
+	Revision                 Revision          `json:"revision"`
+	State                    CallState         `json:"state"`
+	RemainingTtlMs           Milliseconds      `json:"remainingTtlMs"`
+	Review                   ReviewProjection  `json:"review"`
+	DecisionId               *CanonicalId      `json:"decisionId,omitempty"`
+	Decision                 *Decision         `json:"decision,omitempty"`
+	DecisionExpiresAtUnixMs  *UnixMilliseconds `json:"decisionExpiresAtUnixMs,omitempty"`
+	ExecutionExpiresAtUnixMs *UnixMilliseconds `json:"executionExpiresAtUnixMs,omitempty"`
 }
 
 func (v PendingCall) Validate() error {
@@ -923,6 +925,22 @@ func (v PendingCall) Validate() error {
 		if err := (*v.Decision).Validate(); err != nil {
 			return err
 		}
+	}
+	if v.DecisionExpiresAtUnixMs != nil {
+		if err := (*v.DecisionExpiresAtUnixMs).Validate(); err != nil {
+			return err
+		}
+	}
+	if v.ExecutionExpiresAtUnixMs != nil {
+		if err := (*v.ExecutionExpiresAtUnixMs).Validate(); err != nil {
+			return err
+		}
+	}
+	if (v.DecisionExpiresAtUnixMs == nil) != (v.ExecutionExpiresAtUnixMs == nil) {
+		return errors.New("incomplete call deadlines")
+	}
+	if v.DecisionExpiresAtUnixMs != nil && *v.DecisionExpiresAtUnixMs >= *v.ExecutionExpiresAtUnixMs {
+		return errors.New("invalid call deadlines")
 	}
 	return nil
 }
@@ -966,6 +984,12 @@ func (v *PendingCall) UnmarshalJSON(b []byte) error {
 		return errors.New("null broker field")
 	}
 	if x, ok := raw["decision"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["decisionExpiresAtUnixMs"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["executionExpiresAtUnixMs"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
 		return errors.New("null broker field")
 	}
 	var w wire
@@ -1226,10 +1250,12 @@ func (v *InitializeResponse) UnmarshalJSON(b []byte) error {
 }
 
 type PreparePayload struct {
-	OperationId CanonicalId       `json:"operationId"`
-	Context     ContextBinding    `json:"context"`
-	Snapshot    SelectionSnapshot `json:"snapshot"`
-	TtlMs       RequestedTtlMs    `json:"ttlMs"`
+	OperationId         CanonicalId       `json:"operationId"`
+	Context             ContextBinding    `json:"context"`
+	Snapshot            SelectionSnapshot `json:"snapshot"`
+	TtlMs               RequestedTtlMs    `json:"ttlMs"`
+	WebRetrievalVersion *string           `json:"webRetrievalVersion,omitempty"`
+	McpToolTimeoutMs    *int64            `json:"mcpToolTimeoutMs,omitempty"`
 }
 
 func (v PreparePayload) Validate() error {
@@ -1244,6 +1270,19 @@ func (v PreparePayload) Validate() error {
 	}
 	if err := v.TtlMs.Validate(); err != nil {
 		return err
+	}
+	if v.WebRetrievalVersion != nil {
+		if string((*v.WebRetrievalVersion)) != "0.3.0" {
+			return errors.New("invalid broker constant")
+		}
+	}
+	if v.McpToolTimeoutMs != nil {
+		if (*v.McpToolTimeoutMs) != 60000 {
+			return errors.New("invalid broker constant")
+		}
+	}
+	if (v.WebRetrievalVersion == nil) != (v.McpToolTimeoutMs == nil) {
+		return errors.New("incomplete web execution profile")
 	}
 	return nil
 }
@@ -1275,6 +1314,12 @@ func (v *PreparePayload) UnmarshalJSON(b []byte) error {
 		return errors.New("missing broker field")
 	}
 	if x, ok := raw["ttlMs"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["webRetrievalVersion"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["mcpToolTimeoutMs"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
 		return errors.New("null broker field")
 	}
 	var w wire
@@ -2853,3 +2898,5 @@ const KimiModelCredentialDescriptor = 3
 const KimiModelCredentialPreamble = "yijie-kimi-model-key-v1\n"
 const KimiModelCredentialMaxKeyBytes = 16384
 const KimiModelCredentialTerminator = "\n"
+const WebRetrievalVersion = "0.3.0"
+const WebMcpToolTimeoutMs = 60000

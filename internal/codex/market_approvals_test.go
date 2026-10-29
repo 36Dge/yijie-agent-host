@@ -29,3 +29,15 @@ func TestFEAT157MarketApprovalNeverUsesLegacyDecisionAuthority(t *testing.T) {
 		t.Fatal("ended native callback remained actionable")
 	}
 }
+
+func TestFEAT162ApprovalDecisionDeadlinePreservesLegacyAndExecution(t *testing.T) {
+	old := wire.MarketApproval{ExpiresAtUnixMs: 60000}
+	if marketDecisionExpiry(old) != 60000 {
+		t.Fatal("legacy expiry changed")
+	}
+	a, d := int64(23000), int64(60000)
+	next := wire.MarketApproval{ExpiresAtUnixMs: d, DecisionExpiresAtUnixMs: &a, ExecutionExpiresAtUnixMs: &d}
+	if marketDecisionExpiry(next) != 23000 || next.ExpiresAtUnixMs != 60000 {
+		t.Fatal("decision and execution collapsed")
+	}
+}

@@ -990,16 +990,18 @@ func (v *ApprovalState) UnmarshalJSON(b []byte) error {
 }
 
 type MarketApproval struct {
-	ApprovalId      CanonicalId      `json:"approvalId"`
-	AgentSessionId  CanonicalId      `json:"agentSessionId"`
-	Kind            string           `json:"kind"`
-	Revision        Revision         `json:"revision"`
-	State           ApprovalState    `json:"state"`
-	Identity        CallIdentity     `json:"identity"`
-	Review          ReviewProjection `json:"review"`
-	ExpiresAtUnixMs int64            `json:"expiresAtUnixMs"`
-	DecisionId      *CanonicalId     `json:"decisionId,omitempty"`
-	Decision        *Decision        `json:"decision,omitempty"`
+	ApprovalId               CanonicalId      `json:"approvalId"`
+	AgentSessionId           CanonicalId      `json:"agentSessionId"`
+	Kind                     string           `json:"kind"`
+	Revision                 Revision         `json:"revision"`
+	State                    ApprovalState    `json:"state"`
+	Identity                 CallIdentity     `json:"identity"`
+	Review                   ReviewProjection `json:"review"`
+	ExpiresAtUnixMs          int64            `json:"expiresAtUnixMs"`
+	DecisionId               *CanonicalId     `json:"decisionId,omitempty"`
+	Decision                 *Decision        `json:"decision,omitempty"`
+	DecisionExpiresAtUnixMs  *int64           `json:"decisionExpiresAtUnixMs,omitempty"`
+	ExecutionExpiresAtUnixMs *int64           `json:"executionExpiresAtUnixMs,omitempty"`
 }
 
 func (v MarketApproval) Validate() error {
@@ -1039,6 +1041,28 @@ func (v MarketApproval) Validate() error {
 		if err := (*v.Decision).Validate(); err != nil {
 			return err
 		}
+	}
+	if v.DecisionExpiresAtUnixMs != nil {
+		if (*v.DecisionExpiresAtUnixMs) < 1 {
+			return errors.New("invalid broker number")
+		}
+		if (*v.DecisionExpiresAtUnixMs) > 9007199254740991 {
+			return errors.New("invalid broker number")
+		}
+	}
+	if v.ExecutionExpiresAtUnixMs != nil {
+		if (*v.ExecutionExpiresAtUnixMs) < 1 {
+			return errors.New("invalid broker number")
+		}
+		if (*v.ExecutionExpiresAtUnixMs) > 9007199254740991 {
+			return errors.New("invalid broker number")
+		}
+	}
+	if (v.DecisionExpiresAtUnixMs == nil) != (v.ExecutionExpiresAtUnixMs == nil) {
+		return errors.New("incomplete approval deadlines")
+	}
+	if v.DecisionExpiresAtUnixMs != nil && (*v.DecisionExpiresAtUnixMs >= *v.ExecutionExpiresAtUnixMs || *v.ExecutionExpiresAtUnixMs != v.ExpiresAtUnixMs) {
+		return errors.New("invalid approval deadlines")
 	}
 	return nil
 }
@@ -1100,6 +1124,12 @@ func (v *MarketApproval) UnmarshalJSON(b []byte) error {
 		return errors.New("null broker field")
 	}
 	if x, ok := raw["decision"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["decisionExpiresAtUnixMs"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["executionExpiresAtUnixMs"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
 		return errors.New("null broker field")
 	}
 	var w wire
