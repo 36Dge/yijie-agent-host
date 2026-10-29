@@ -18,7 +18,7 @@
     },
     {
       "path": "scripts/generate-artifact-media.mjs",
-      "sha256": "2e3b43374bf91cc1cfca5665b63738c63c002066c5b737a509a03181c9009627"
+      "sha256": "07e6cd9f8a5cfaa1f614295198dce934e56ec6859d9b539ce491bdafd57cc232"
     }
   ],
   "generated": [
