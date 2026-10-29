@@ -6,14 +6,14 @@
   "published": false,
   "contracts": {
     "repository": "https://github.com/36Dge/yijie-contracts.git",
-    "full_commit": "61137174a25dc368e0006f27633fd4a9ad097aa6"
+    "full_commit": "d191ad6ed08f0e8cc89dfea1346b5ecdf010e776"
   },
   "sources": {
     "openapi/native-conversation/native-conversation.yaml": "ad4c7f0eece6acb99029358a8284535757ee5d7c97858d65b8813631f56ad651",
     "sdks/go/openapi/native-conversation/client.gen.go": "eefcaeab74a0309a78cda03ad131966cb3b35fa05e66a7e058f1145228124a16",
     "sdks/typescript/src/openapi/native-conversation.gen.ts": "b8303ceb4bacd41646848f6844b20a0cdf63148708c6f005c9314e8ae93e4f2b",
     "compatibility/agent-host-native-conversation-v1.json": "5ae920d8fb1ad34c39dc80d824a9192274b5708016ceb124adb6b01ea7156d46",
-    "scripts/generate.mjs": "04c87e5f156be3713e75338ed23da5d0368d3663f4d7b9389b7a4de0b77d1834",
+    "scripts/generate.mjs": "404bbebb4af2dd8638a0ccab2fad0447037c1b64364d017d38b7032a7b64c444",
     "scripts/sync-native-conversation.mjs": "795cdc2337f5bed26a04b4dd66ff32bf0bdec0f6e168155610e77b5e4bbd1255",
     "package.json": "d53fedd8cba4cfd7238b1f60121803905ce6c0127a2e0cde16ba9af18a6333c6",
     "pnpm-lock.yaml": "57eece158a0405a85ea9b8fd2c382af130e4248897b67af587878737bbf86313",
