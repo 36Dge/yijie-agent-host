@@ -7,6 +7,7 @@ import (
 	"time"
 
 	broker "github.com/36Dge/yijie-agent-host/internal/contracts/marketbrokercontrol"
+	connectors "github.com/36Dge/yijie-agent-host/internal/contracts/marketconnectors"
 	host "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
 	"github.com/36Dge/yijie-agent-host/internal/marketbroker"
 	"github.com/google/uuid"
@@ -98,11 +99,28 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 		return nil, e
 	}
 	p.Lease = &lease.Data
+	applySelectedRetrievalConfig(p.Config, submission)
 	m.market.mu.Lock()
 	gateway := m.market.gatewayURL
 	m.market.mu.Unlock()
 	servers[marketServerName] = map[string]any{"url": gateway + "/" + string(lease.Data.Binding.CapabilityRef), "bearer_token_env_var": marketbroker.RuntimeCapabilityEnvironment, "enabled": true, "default_tools_approval_mode": "auto", "startup_timeout_sec": 30, "tool_timeout_sec": broker.WebMcpToolTimeoutMs / 1000, "supports_parallel_tool_calls": false}
 	return p, nil
+}
+
+// Called only after validated Native submission and successful worker admission.
+// Kimi hosted search runs on the provider, before connector tool selection;
+// instructions alone cannot route it. Omit the override for other selections so
+// thread/resume reloads the ordinary cwd configuration (including user defaults).
+func applySelectedRetrievalConfig(config map[string]any, submission host.Submission) {
+	if string(submission.Intent.ProfileId) != KimiK31ProfileID {
+		return
+	}
+	for _, service := range submission.Services {
+		if service.ServiceId == connectors.BuiltinModelServiceID {
+			config["web_search"] = "disabled"
+			return
+		}
+	}
 }
 
 func (m *Manager) BeginMarketTurn(thread string, p *MarketPrepared) error {
