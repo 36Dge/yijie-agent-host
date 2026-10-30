@@ -3,7 +3,7 @@
   "mode": "local_worktree_candidate",
   "release": false,
   "source_commit": null,
-  "base_commit": "d191ad6ed08f0e8cc89dfea1346b5ecdf010e776",
+  "base_commit": "56bed40a3f87a1c5b1a5866b76be85ec0157a82d",
   "consumer": "agent-host",
   "activation_qualified": false,
   "synchronizer_sha256": "837383665c7a3e7287a2f999376e268ead95a1e377fd1e946d3112007fc2ab98",
@@ -242,7 +242,7 @@
           },
           {
             "path": "compatibility/web-retrieval/tools.json",
-            "sha256": "19f0a64113cb0fd5c1c1de4c1bcb4ede3c4ed206bf1581fd8418a9ae2a3d8d23"
+            "sha256": "15bb3a88cfde5c772a3a80820b217a47a9fe263ab0fe3ddd33f8a950367c4d19"
           },
           {
             "path": "scripts/web-retrieval-source.mjs",
@@ -276,7 +276,7 @@
         "generated": [
           {
             "path": "sdks/rust/web-retrieval/types.gen.rs",
-            "sha256": "02456aa4c3e779423e7facb6283de5e58fb4dede3c81e110cd4b3c1ee7b39b31"
+            "sha256": "d55c0b4f2e65fba647ad9ee91caef1c06152d4462f985e7b71dc571b30dcbbae"
           },
           {
             "path": "sdks/jsonschema/web-retrieval.schema.json",
@@ -284,7 +284,7 @@
           },
           {
             "path": "sdks/jsonschema/web-retrieval.tools.json",
-            "sha256": "30c12d3f651debecbc46c19327229f5e220238f96a4e98460f565c7f55de0966"
+            "sha256": "c193773b860c50b1f4df78e9cdd35e092d7bdb899b5ba701863ed7c6c4ce8e01"
           },
           {
             "path": "sdks/typescript/src/domain/web-retrieval.generated.ts",
