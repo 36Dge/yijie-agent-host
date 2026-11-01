@@ -30,7 +30,7 @@ func TestFEAT162SelectedRetrievalConfig(t *testing.T) {
 			config := map[string]any{"ordinary": true}
 			applySelectedRetrievalConfig(config, v)
 			_, disabled := config["web_search"]
-			if disabled != (model == KimiK31ProfileID && service == "kimi-web") || config["ordinary"] != true {
+			if disabled != (service == "kimi-web") || config["ordinary"] != true {
 				t.Fatalf("route changed: model=%s service=%s", model, service)
 			}
 		}
@@ -63,7 +63,7 @@ func TestFEAT162SelectedRetrievalRuntime(t *testing.T) {
 			return
 		}
 		n := requests.Add(1)
-		if n > 6 {
+		if n > 7 {
 			t.Error("unexpected retry")
 			w.WriteHeader(429)
 			return
@@ -78,6 +78,16 @@ func TestFEAT162SelectedRetrievalRuntime(t *testing.T) {
 		}
 		if native != expectNative.Load() || body["tool_choice"] != "auto" {
 			t.Error("native routing / auto choice mismatch")
+		}
+		// Verify the actual provider request after start AND resume. Checking
+		// only the Host constant would miss stale instructions on an old thread.
+		instructions, _ := body["instructions"].(string)
+		input, _ := json.Marshal(body["input"])
+		if !strings.Contains(instructions, webRetrievalInstructions) || !strings.Contains(string(input), webRetrievalInstructions) {
+			t.Error("retrieval/no-shell-fallback/failure policy lost before provider request")
+		}
+		if !strings.Contains(tools, "exec_command") && !strings.Contains(tools, "shell_command") {
+			t.Error("legitimate local command capability was removed")
 		}
 		for _, name := range []string{"kimi_web_search", "kimi_web_search_pro", "kimi_web_fetch"} {
 			if strings.Contains(tools, name+"\"") != expectSelected.Load() {
@@ -147,6 +157,7 @@ func TestFEAT162SelectedRetrievalRuntime(t *testing.T) {
 	}{
 		{"selected-new", KimiK31ProfileID, true, false}, {"selected-resume", KimiK31ProfileID, true, false},
 		{"cleared", KimiK31ProfileID, false, true}, {"selected-again", KimiK31ProfileID, true, false},
+		{"selected-model-switch", "minimax-m3-high-v1", true, false},
 		{"model-switch", "minimax-m3-high-v1", false, true}, {"back-to-kimi", KimiK31ProfileID, false, true},
 	} {
 		refs := selection.Selection{}
@@ -211,8 +222,8 @@ func TestFEAT162SelectedRetrievalRuntime(t *testing.T) {
 			}
 		}
 	}
-	if requests.Load() != 6 {
+	if requests.Load() != 7 {
 		t.Fatal("loopback request count", requests.Load())
 	}
-	t.Log("6 loopback model requests; real worker three-tool discovery; start/resume/clear/model switch; stale refs rejected; 0 supplier calls")
+	t.Log("7 loopback model requests; real worker three-tool discovery; start/resume/clear/model switch; current retrieval policy propagated; local tools preserved; stale refs rejected; 0 supplier calls")
 }

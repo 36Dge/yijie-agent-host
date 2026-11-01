@@ -86,6 +86,7 @@ func TestFEAT164CallSurfacesRuntime(t *testing.T) {
 				"Respect the user's active connector selection.",
 				"use that connector's tools and follow their tool descriptions",
 				"When no selected retrieval connector applies, use native web search",
+				webRetrievalInstructions,
 			} {
 				if !strings.Contains(instructions, required) || !strings.Contains(string(encoded), required) {
 					t.Error("selected connector preference or native fallback lost from normal Runtime instructions")

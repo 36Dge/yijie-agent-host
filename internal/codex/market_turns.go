@@ -108,13 +108,11 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 }
 
 // Called only after validated Native submission and successful worker admission.
-// Kimi hosted search runs on the provider, before connector tool selection;
-// instructions alone cannot route it. Omit the override for other selections so
+// Hosted search can run on the provider, before connector tool selection;
+// instructions alone cannot route it. A selected Kimi retrieval connector owns
+// this information route regardless of the selected model. Omit the override for other selections so
 // thread/resume reloads the ordinary cwd configuration (including user defaults).
 func applySelectedRetrievalConfig(config map[string]any, submission host.Submission) {
-	if string(submission.Intent.ProfileId) != KimiK31ProfileID {
-		return
-	}
 	for _, service := range submission.Services {
 		if service.ServiceId == connectors.BuiltinModelServiceID {
 			config["web_search"] = "disabled"

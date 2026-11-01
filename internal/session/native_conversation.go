@@ -286,6 +286,7 @@ func (s *Service) publishNativeNotification(method string, raw json.RawMessage) 
 		SummaryIndex *int                    `json:"summaryIndex"`
 		Plan         []native.NativePlanStep `json:"plan"`
 		Explanation  *string                 `json:"explanation"`
+		Message      string                  `json:"message"`
 	}
 	if json.Unmarshal(raw, &p) != nil || p.ThreadID == "" || len(p.TurnID) > 512 || len(p.ItemID) > 512 {
 		return
@@ -362,7 +363,9 @@ func (s *Service) publishNativeNotification(method string, raw json.RawMessage) 
 				}
 			}
 		}
-	case RuntimeNotificationError, RuntimeNotificationWarning:
+	case RuntimeNotificationWarning:
+		n.Code = nativeString(nativeWarningCode(p.Message))
+	case RuntimeNotificationError:
 		n.Code = nativeString("runtime_notice")
 	default:
 		return
