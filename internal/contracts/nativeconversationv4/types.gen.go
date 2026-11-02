@@ -565,7 +565,7 @@ type NativeItem struct {
 	ExitCode   *int32  `json:"exitCode,omitempty"`
 	Id         string  `json:"id"`
 
-	// Mcp Display-only native MCP facts. No raw arguments/error/meta/resources/structuredContent and no business field parsing. Limits do not change execution status. Host bounds total UTF-8 text at 256KiB and first 32 original content entries. Confidentiality may replace entire lines.
+	// Mcp Display-only native MCP facts. No raw arguments/error/meta/resources/structuredContent and no business field parsing. Native list_mcp_resources/list_mcp_resource_templates may expose a validated resource count and redacted resource names/titles, never resource URIs, cursors or metadata. Empty resource lists are successful real results, not omitted content. Other tools retain their existing display policies. Limits do not change execution status; partial content availability must not suppress a known execution outcome. Host bounds total UTF-8 text at 256KiB and first 32 original content entries. Confidentiality may replace entire lines.
 	Mcp *NativeMcpDisplay `json:"mcp,omitempty"`
 
 	// OutputText Bounded, redacted projection of native aggregatedOutput. Omitted when native output is null or unavailable.
@@ -598,7 +598,7 @@ type NativeItemStatus string
 // NativeItemType defines model for NativeItem.Type.
 type NativeItemType string
 
-// NativeMcpDisplay Display-only native MCP facts. No raw arguments/error/meta/resources/structuredContent and no business field parsing. Limits do not change execution status. Host bounds total UTF-8 text at 256KiB and first 32 original content entries. Confidentiality may replace entire lines.
+// NativeMcpDisplay Display-only native MCP facts. No raw arguments/error/meta/resources/structuredContent and no business field parsing. Native list_mcp_resources/list_mcp_resource_templates may expose a validated resource count and redacted resource names/titles, never resource URIs, cursors or metadata. Empty resource lists are successful real results, not omitted content. Other tools retain their existing display policies. Limits do not change execution status; partial content availability must not suppress a known execution outcome. Host bounds total UTF-8 text at 256KiB and first 32 original content entries. Confidentiality may replace entire lines.
 type NativeMcpDisplay struct {
 	Diagnostics []NativeMcpDisplayDiagnostics `json:"diagnostics"`
 	ResultKind  NativeMcpDisplayResultKind    `json:"resultKind"`

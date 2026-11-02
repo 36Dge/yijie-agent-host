@@ -9,6 +9,12 @@ func nativeWarningCode(message string) string {
 		return "runtime_notice"
 	}
 	switch {
+	case strings.HasPrefix(message, "YIJIE_ANSWER_CONTINUATION："):
+		return "answer_completion_continuing"
+	case strings.HasPrefix(message, "YIJIE_ANSWER_FINALIZING："):
+		return "answer_completion_tools_blocked"
+	case strings.HasPrefix(message, "YIJIE_ANSWER_INCOMPLETE："):
+		return "answer_completion_failed"
 	case strings.HasPrefix(message, "YIJIE_WEB_RETRIEVAL_ONLY："):
 		return "web_retrieval_local_fetch_blocked"
 	case strings.HasPrefix(message, "YIJIE_OPERATION_PENDING："):

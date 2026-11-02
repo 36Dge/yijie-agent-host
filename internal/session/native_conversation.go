@@ -287,6 +287,9 @@ func (s *Service) publishNativeNotification(method string, raw json.RawMessage) 
 		Plan         []native.NativePlanStep `json:"plan"`
 		Explanation  *string                 `json:"explanation"`
 		Message      string                  `json:"message"`
+		Error        struct {
+			Message string `json:"message"`
+		} `json:"error"`
 	}
 	if json.Unmarshal(raw, &p) != nil || p.ThreadID == "" || len(p.TurnID) > 512 || len(p.ItemID) > 512 {
 		return
@@ -366,7 +369,11 @@ func (s *Service) publishNativeNotification(method string, raw json.RawMessage) 
 	case RuntimeNotificationWarning:
 		n.Code = nativeString(nativeWarningCode(p.Message))
 	case RuntimeNotificationError:
-		n.Code = nativeString("runtime_notice")
+		message := p.Message
+		if message == "" {
+			message = p.Error.Message
+		}
+		n.Code = nativeString(nativeWarningCode(message))
 	default:
 		return
 	}

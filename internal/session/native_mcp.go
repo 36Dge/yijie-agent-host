@@ -73,6 +73,9 @@ func projectNativeMcp(wire nativeWireItem, out *native.NativeItem) {
 	if wire.DurationMS != nil && *wire.DurationMS >= 0 {
 		out.DurationMs = wire.DurationMS
 	}
+	if projectNativeResourceDiscovery(wire, out, diagnostic) {
+		return
+	}
 	var args map[string]json.RawMessage
 	var asin, site string
 	if wire.Server == "sorftime" && wire.Tool == "product_detail" &&
