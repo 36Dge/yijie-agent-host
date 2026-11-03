@@ -543,7 +543,7 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		Ephemeral:             false,
 	}
 	if m.config.RuntimePermissionsEnabled {
-		instructions := permissionInstructions
+		instructions := executionBaseInstructions
 		params.BaseInstructions = &instructions
 		params.Config = m.permissionVerificationConfig()
 	}
@@ -577,6 +577,10 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 	}
 	params.Config = expertThreadConfig(ctx, params.Config)
 	params.Config = m.artifactThreadConfig(params.Config)
+	params.Config = m.executionProgressConfig(ctx, params.Config)
+	if m.config.RuntimePermissionsEnabled {
+		params.DeveloperInstructions += retrievalCapabilityInstructions(selected.Provider, params.Config)
+	}
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadStart, params, &response); err != nil {
 		return ThreadInfo{}, err
@@ -624,7 +628,8 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 		params.Sandbox = &sandbox
 		params.DeveloperInstructions = &developerInstructions
 		if m.config.RuntimePermissionsEnabled {
-			params.BaseInstructions = &developerInstructions
+			baseInstructions := executionBaseInstructions
+			params.BaseInstructions = &baseInstructions
 			params.Config = m.permissionVerificationConfig()
 		}
 	}
@@ -654,6 +659,11 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	}
 	params.Config = expertThreadConfig(ctx, params.Config)
 	params.Config = m.artifactThreadConfig(params.Config)
+	params.Config = m.executionProgressConfig(ctx, params.Config)
+	if m.config.RuntimePermissionsEnabled && params.DeveloperInstructions != nil {
+		instructions := *params.DeveloperInstructions + retrievalCapabilityInstructions(selected.Provider, params.Config)
+		params.DeveloperInstructions = &instructions
+	}
 	m.forgetKimiK31Thread(threadID)
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadResume, params, &response); err != nil {

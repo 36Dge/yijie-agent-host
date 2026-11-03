@@ -65,8 +65,11 @@ type Config struct {
 	DynamicToolsEnabled            bool
 	CommandApprovalEnabled         bool
 	RuntimePermissionsEnabled      bool
-	PermissionVerificationBaseURL  string
-	PermissionVerificationPolicy   string
+	// Native weighted budget for one loaded ordinary-chat root session tree.
+	// Zero leaves native budget configuration unchanged; it is not a money cap.
+	RolloutBudgetLimitTokens      int64
+	PermissionVerificationBaseURL string
+	PermissionVerificationPolicy  string
 	// DeterministicApprovalProducerEnabled is a D4-only, Host-validated
 	// producer gate. It never changes the command approval authority or
 	// execution permissions and cannot be enabled without that authority.
@@ -86,12 +89,13 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{
-		StartupTimeout:  defaultStartupTimeout,
-		RequestTimeout:  defaultRequestTimeout,
-		ShutdownTimeout: defaultShutdownTimeout,
-		MaxMessageBytes: defaultMaxMessageBytes,
-		WriteQueueDepth: defaultWriteQueueDepth,
-		StderrTailBytes: defaultStderrTailBytes,
+		StartupTimeout:           defaultStartupTimeout,
+		RequestTimeout:           defaultRequestTimeout,
+		ShutdownTimeout:          defaultShutdownTimeout,
+		MaxMessageBytes:          defaultMaxMessageBytes,
+		WriteQueueDepth:          defaultWriteQueueDepth,
+		StderrTailBytes:          defaultStderrTailBytes,
+		RolloutBudgetLimitTokens: 250_000,
 	}
 }
 
@@ -100,6 +104,9 @@ func (c Config) Configured() bool {
 }
 
 func (c Config) validate() error {
+	if c.RolloutBudgetLimitTokens < 0 {
+		return errors.New("native rollout budget limit must not be negative")
+	}
 	if err := c.Market.validate(); err != nil {
 		return err
 	}

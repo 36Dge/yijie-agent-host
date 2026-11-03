@@ -83,7 +83,7 @@ func TestFEAT162SelectedRetrievalRuntime(t *testing.T) {
 		// only the Host constant would miss stale instructions on an old thread.
 		instructions, _ := body["instructions"].(string)
 		input, _ := json.Marshal(body["input"])
-		if !strings.Contains(instructions, webRetrievalInstructions) || !strings.Contains(string(input), webRetrievalInstructions) {
+		if instructions != executionBaseInstructions || !strings.Contains(string(input), webRetrievalInstructions) {
 			t.Error("retrieval/no-shell-fallback/failure policy lost before provider request")
 		}
 		if !strings.Contains(tools, "exec_command") && !strings.Contains(tools, "shell_command") {
