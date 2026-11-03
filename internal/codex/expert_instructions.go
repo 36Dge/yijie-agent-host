@@ -32,7 +32,13 @@ func (m *Manager) expertBaseInstructions(ctx context.Context, ordinary *string) 
 	if !m.ExpertInstructionsAvailable() || isScheduledDraft(ctx) || ordinary == nil {
 		return nil, errors.New("expert native instruction profile is unavailable")
 	}
-	composed, err := composeExpertBaseInstructions(*ordinary, selected.role, selected.index)
+	baseline := *ordinary
+	if baseline == executionBaseInstructions && selected.role != "" {
+		// Only ordinary chat deduplicates its base. Preserve the established
+		// expert system-policy composition and instruction priority.
+		baseline = permissionInstructions
+	}
+	composed, err := composeExpertBaseInstructions(baseline, selected.role, selected.index)
 	if err != nil {
 		return nil, err
 	}

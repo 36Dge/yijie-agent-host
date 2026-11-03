@@ -50,11 +50,30 @@ func TestExecutionProgressRetrievalCapabilitiesMatchRoute(t *testing.T) {
 		t.Fatal("hosted-only capabilities missing")
 	}
 	for _, provider := range []string{"kimi", "minimax"} {
-		if strings.Contains(retrievalCapabilityInstructions(provider, map[string]any{"web_search": "disabled"}), "this Kimi route uses provider-hosted search") {
+		if strings.Contains(retrievalCapabilityInstructions(provider, map[string]any{"web_search": "disabled"}), "does not expose a callable query") {
 			t.Fatal("disabled hosted route advertised")
 		}
 	}
 	if executionBaseInstructions == permissionInstructions || strings.Contains(executionBaseInstructions, "[yijie-answer-completion-v1]") {
 		t.Fatal("business policy duplicated in base")
+	}
+}
+
+func TestExecutionProgressPreservesExpertBasePolicy(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.RuntimePermissionsEnabled, cfg.ChatModelsEnabled = true, true
+	m := NewManager(cfg, nil)
+	ctx, err := WithExpertInstructions(context.Background(), "ordinary expert role", "ordinary index")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := executionBaseInstructions
+	got, err := m.expertBaseInstructions(ctx, &base)
+	if err != nil || got == nil || !strings.HasPrefix(*got, permissionInstructions+"\n\n") {
+		t.Fatalf("existing expert policy priority lost: %v", err)
+	}
+	ordinary, err := m.expertBaseInstructions(context.Background(), &base)
+	if err != nil || ordinary == nil || *ordinary != executionBaseInstructions {
+		t.Fatal("ordinary base unexpectedly expanded")
 	}
 }
