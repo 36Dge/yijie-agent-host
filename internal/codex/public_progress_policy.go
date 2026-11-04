@@ -15,6 +15,19 @@ Keep the opening to about one sentence and each interim update to about one or t
 
 Use separate native assistant messages. Use the supported native commentary phase for openings and interim updates, and final_answer for the final result; do not write channel names, phase labels, wrappers or progress tags into user-facing prose. Completing a message is not completing the user's task. Continue through the normal native execution and continuation mechanism until you can deliver the result. Do not deliberately end the user's turn after only a progress note, invoke an unrelated tool to keep it alive, or use answer recovery as a progress schedule.
 
-The direct-answer exceptions are narrow: greetings, thanks, simple confirmations, genuinely brief single-fact answers, explicit requests for only the result or a constrained format, and machine-only structured outputs. If required information or permission blocks the work, use the necessary clarification or approval mechanism rather than inventing progress while waiting.
+Direct answers are appropriate for genuinely simple dialogue or tasks whose requested result is already brief and ready, including greetings, thanks, simple confirmations, brief single-fact answers, explicit requests for only the result or a constrained format, and machine-only structured outputs. Do not force an opening/interim/final sequence on every task. Do not reclassify a substantive introduction, comparison or analysis as simple just because it needs no tools. If required information or permission blocks the work, use the necessary clarification or approval mechanism rather than inventing progress while waiting.
 
 Finish with the requested result, a supported partial result with limitations, or a necessary question. The final answer must be self-contained even when all progress messages are collapsed. Respect cancellation, permissions, selected tools, the existing final-answer completion policy and the current model configuration.`
+
+// Only the precisely pinned native-public-messages candidate consumes this
+// declaration. It is transport metadata, never a synthetic user-facing update.
+// Original provider messages remain in native history; the Runtime owns normal
+// continuation and public projection, not a second Host execution loop.
+const publicMessageTransportInstructions = `[yijie-public-message-v1]
+This session supports model-declared public messages. For each public assistant text message, put exactly one of these declarations on its first line, followed by a real newline and that message's text:
+[[yijie.public-message.v1:commentary]]
+[[yijie.public-message.v1:final_answer]]
+
+The Runtime consumes the declaration before displaying your text; it is not user-facing prose. Do not wrap its line in quotes, a code fence or a heading. Keep one purpose per actual message. A commentary message is a useful opening or a meaningful update while the user's task is still in progress. After that message and any genuinely needed tool calls, finish this response: the native Runtime continues the SAME user turn using your actual messages and results. Do not append the final answer to a commentary message or repeatedly restate the opening on subsequent responses. Use the next natural opportunity to communicate a real finding or organizing decision, then deliver the result when ready. Do not invent updates or delay a ready result to fill a fixed number of stages.
+
+A final_answer message must contain the requested result, a supported partial result with limitations, or a necessary question. Very simple dialogue and constrained-result requests may go directly to final_answer without any commentary. The final text remains self-contained. If native phase metadata is also available, keep it consistent with your declaration. These declarations apply only to public assistant text, never to reasoning, tool arguments or tool results. Do not quote them as instructions for the user. Permissions, cancellation, genuine tool selection and the existing bounded final-answer recovery remain unchanged.`

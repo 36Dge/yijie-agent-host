@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import threading
 import time
+import sys
 from responses_stream_observer import ConversationStreamSummary, request_input_summary
 
 parser = argparse.ArgumentParser()
@@ -25,6 +26,10 @@ parser.add_argument('--observe-tool-stream', action='store_true',
                     help='Record only tool argument byte counts/digests, never content.')
 parser.add_argument('--observe-conversation', action='store_true',
                     help='Use a task-specific Kimi-only ledger; record only public message/source metadata, never text.')
+parser.add_argument('--observe-public-progress', action='store_true',
+                    help='Current-model task-specific passive wire audit; do not modify request or response payloads.')
+parser.add_argument('--shutdown-on-stdin-eof', action='store_true',
+                    help='Owned diagnostic process exits normally when its parent closes stdin.')
 args = parser.parse_args()
 def read_key(path):
     import stat
@@ -43,7 +48,18 @@ ledger=json.loads(args.ledger.read_text())
 authorization=ledger.get('authorization',{})
 approved_limit = authorization.get('max_http_requests')
 approved_images = authorization.get('max_image_understanding_requests')
-if args.observe_conversation:
+if args.observe_public_progress:
+    if (args.observe_conversation or authorization.get('purpose') != 'public_progress_wire_audit' or
+            authorization.get('models') != ['kimi-k3.1-pro', 'MiniMax-M3'] or
+            authorization.get('preserve_payloads') is not True or
+            authorization.get('owner_resumed_after_failed_pilot') is not True or
+            type(approved_limit) is not int or not 1 <= approved_limit <= 8 or
+            authorization.get('max_http_requests_per_model') != 4 or approved_images != 0 or
+            not args.shutdown_on_stdin_eof or args.key_file is None):
+        raise SystemExit('Explicit current-task public progress diagnostic authorization is required.')
+    providers = {'MiniMax-M3': ('api.minimaxi.com', read_key(args.key_file), 'high'),
+                 'kimi-k3.1-pro': ('api.moonshot.cn', read_key(args.kimi_key_file), 'max')}
+elif args.observe_conversation:
     if (authorization.get('purpose') != 'conversation_observability' or
             authorization.get('models') != ['kimi-k3'] or type(approved_limit) is not int or
             not 1 <= approved_limit <= 8 or approved_images != 0 or
@@ -178,29 +194,35 @@ class Meter(http.server.BaseHTTPRequestHandler):
                 if isinstance(value,dict): return value.get('type')=='input_image' or any(image_input(v) for v in value.values())
                 return isinstance(value,list) and any(image_input(v) for v in value)
             images=image_input(body.get('input'))
-            body['max_output_tokens']=min(body.get('max_output_tokens') or 8192,8192)
-            payload=json.dumps(body).encode()
+            if not args.observe_public_progress:
+                body['max_output_tokens']=min(body.get('max_output_tokens') or 8192,8192)
+                payload=json.dumps(body).encode()
             output_format = (body.get('text') or {}).get('format') or {}
             structured_output = output_format.get('type') == 'json_schema'
         except (ValueError, AttributeError):
             self.send_error(400, 'Verification request metadata is invalid')
             return
         with lock:
+            if args.observe_public_progress and sum(r['model'] == body['model'] for r in ledger['requests']) >= authorization['max_http_requests_per_model']:
+                self.send_error(429, 'Approved per-model diagnostic request limit reached')
+                return
             if len(ledger['requests']) >= args.limit or (images and ledger['image_understanding_requests']>=approved_images):
                 self.send_error(429, 'Approved verification request limit reached')
                 return
-            item={'ordinal':len(ledger['requests'])+1,'admitted_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'status':'forwarding','model':body['model'],'effort':effort,'structured_output':structured_output,'image_understanding':images,'max_output_tokens':body['max_output_tokens'],'tool_choice':body.get('tool_choice'),'tool_count':len(body.get('tools') or []),'upstream':'https://'+provider[0]+'/v1/responses'}
+            item={'ordinal':len(ledger['requests'])+1,'admitted_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'status':'forwarding','model':body['model'],'effort':effort,'structured_output':structured_output,'image_understanding':images,'max_output_tokens':body.get('max_output_tokens'),'tool_choice':body.get('tool_choice'),'tool_count':len(body.get('tools') or []),'upstream':'https://'+provider[0]+'/v1/responses'}
             ledger['real_http_requests']+=1
             if images: ledger['image_understanding_requests']+=1
             ledger['requests'].append(item)
-            if args.observe_conversation:
+            if args.observe_conversation or args.observe_public_progress:
                 item['include'] = [v for v in body.get('include', []) if v in ('reasoning.encrypted_content', 'web_search_call.action.sources', 'web_search_call.results')]
                 item['instructions_sha256'] = hashlib.sha256(str(body.get('instructions', '')).encode()).hexdigest()
                 item['input_summary'] = request_input_summary(body.get('input'))
+                item['public_progress_policy_present'] = b'[yijie-public-progress-v3]' in payload
+                item['request_payload_preserved'] = args.observe_public_progress
             save()
         connection = http.client.HTTPSConnection(provider[0], timeout=240)
         observer = ToolStreamSummary() if args.observe_tool_stream else None
-        conversation_observer = ConversationStreamSummary() if args.observe_conversation else None
+        conversation_observer = ConversationStreamSummary() if args.observe_conversation or args.observe_public_progress else None
         forwarded = hashlib.sha256()
         forwarded_bytes = 0
         try:
@@ -221,7 +243,7 @@ class Meter(http.server.BaseHTTPRequestHandler):
                     message=re.sub(r'sk-[A-Za-z0-9_-]+','[redacted]',message)
                     with lock:
                         item['error_code']=str(detail.get('code',''))[:80]
-                        if not args.observe_conversation:
+                        if not args.observe_conversation and not args.observe_public_progress:
                             item['error_message']=message
                         save()
                 except (ValueError,AttributeError): pass
@@ -272,7 +294,12 @@ server = http.server.ThreadingHTTPServer(('127.0.0.1', args.port), Meter)
 with lock:
     ledger['meter_state']='running'
     save()
-print(json.dumps({'ready': True, 'port': args.port, 'used': len(ledger['requests']), 'limit': args.limit}), flush=True)
+print(json.dumps({'ready': True, 'port': server.server_address[1], 'used': len(ledger['requests']), 'limit': args.limit}), flush=True)
+if args.shutdown_on_stdin_eof:
+    def stop_on_owner_eof():
+        sys.stdin.buffer.read()
+        server.shutdown()
+    threading.Thread(target=stop_on_owner_eof, daemon=True).start()
 try:
     server.serve_forever()
 except KeyboardInterrupt:

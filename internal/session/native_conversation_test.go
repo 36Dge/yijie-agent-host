@@ -268,6 +268,9 @@ func TestFEAT132NativeCrossRepoExport(t *testing.T) {
 		payload map[string]any
 	}{
 		{RuntimeNotificationTurnStarted, map[string]any{"turn": map[string]any{"id": testTurnID, "status": "inProgress", "items": []any{}}}},
+		{RuntimeNotificationItemStarted, map[string]any{"item": map[string]any{"id": "host-opening", "type": "agentMessage", "text": "", "phase": "commentary"}}},
+		{RuntimeNotificationItemAgentMessageDelta, map[string]any{"itemId": "host-opening", "delta": "我会比较城市产业与生活体验。"}},
+		{RuntimeNotificationItemCompleted, map[string]any{"item": map[string]any{"id": "host-opening", "type": "agentMessage", "text": "我会比较城市产业与生活体验。", "phase": "commentary"}}},
 		{RuntimeNotificationItemStarted, map[string]any{"item": map[string]any{"id": "host-agent", "type": "agentMessage", "text": "", "phase": "commentary"}}},
 		{RuntimeNotificationItemAgentMessageDelta, map[string]any{"itemId": "host-agent", "delta": "临时草稿"}},
 		{RuntimeNotificationItemStarted, map[string]any{"item": map[string]any{"id": "host-reason", "type": "reasoning", "content": []any{}, "summary": []any{}}}},
@@ -278,6 +281,9 @@ func TestFEAT132NativeCrossRepoExport(t *testing.T) {
 		{RuntimeNotificationCommandOutputDelta, map[string]any{"itemId": "host-command", "delta": "ordinary output\n"}},
 		{RuntimeNotificationItemCompleted, map[string]any{"item": map[string]any{"id": "host-command", "type": "commandExecution", "command": "python3 --version", "status": "completed", "exitCode": 0, "aggregatedOutput": "ordinary output", "commandActions": []any{map[string]any{"type": "unknown", "command": "python3 --version"}, map[string]any{"type": "unknown", "command": "tail -n 5 README.md"}}}}},
 		{RuntimeNotificationItemCompleted, map[string]any{"item": map[string]any{"id": "host-tool", "type": "mcpToolCall", "server": "cua_repl", "tool": "js", "status": "completed", "arguments": map[string]any{"title": "查看公开资料"}, "result": map[string]any{"_meta": map[string]any{"codex/toolSurface": map[string]any{"kind": "browserUse", "backend": "iab"}}}}}},
+		{RuntimeNotificationItemStarted, map[string]any{"item": map[string]any{"id": "host-interim", "type": "agentMessage", "text": "", "phase": "commentary"}}},
+		{RuntimeNotificationItemAgentMessageDelta, map[string]any{"itemId": "host-interim", "delta": "现有资料分别覆盖产业与生活成本，结论将保持同一比较口径。"}},
+		{RuntimeNotificationItemCompleted, map[string]any{"item": map[string]any{"id": "host-interim", "type": "agentMessage", "text": "现有资料分别覆盖产业与生活成本，结论将保持同一比较口径。", "phase": "commentary"}}},
 		{RuntimeNotificationItemCompleted, map[string]any{"item": map[string]any{"id": "host-agent", "type": "agentMessage", "text": "来自 Host 的原生最终值", "phase": "final_answer"}}},
 		{RuntimeNotificationTurnCompleted, map[string]any{"turn": map[string]any{"id": testTurnID, "status": "failed", "items": []any{}, "error": map[string]any{"message": "Normal quota result", "codexErrorInfo": "usageLimitExceeded"}}}},
 	} {
@@ -294,8 +300,8 @@ func TestFEAT132NativeCrossRepoExport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 13 {
-		t.Fatalf("expected 13 native events, got %d", len(events))
+	if len(events) != 19 {
+		t.Fatalf("expected 19 native events, got %d", len(events))
 	}
 	bytes, err := json.Marshal(map[string]any{"events": events, "history": history})
 	if err != nil {

@@ -21,6 +21,9 @@ def request_input_summary(value):
             continue
         kind = item.get('type')
         row = {'type': kind if isinstance(kind, str) and kind in known else 'other'}
+        if kind == 'message':
+            row['role'] = item.get('role') if item.get('role') in ('assistant', 'user', 'developer', 'system') else 'other'
+            row['phase'] = item.get('phase') if item.get('phase') in ('commentary', 'final_answer', None) else 'other'
         if kind in ('function_call', 'function_call_output', 'custom_tool_call', 'custom_tool_call_output'):
             if isinstance(item.get('call_id'), str):
                 row['call_id_sha256'] = digest(item['call_id'])
@@ -41,6 +44,7 @@ class ConversationStreamSummary:
         self.items = {}
         self.events = {}
         self.truncated = False
+        self.completed_response = None
 
     def feed(self, chunk):
         if self.truncated:
@@ -71,9 +75,17 @@ class ConversationStreamSummary:
                 self.item(event.get('item'), 'added' if kind.endswith('.added') else 'done')
             elif kind == 'response.completed':
                 response = event.get('response')
-                if isinstance(response, dict) and isinstance(response.get('output'), list):
-                    for item in response['output']:
-                        self.item(item, 'completed')
+                if isinstance(response, dict):
+                    end_turn = response.get('end_turn')
+                    self.completed_response = {
+                        'end_turn_present': 'end_turn' in response,
+                        'end_turn': end_turn if end_turn is None or type(end_turn) is bool else 'other',
+                        'status': response.get('status') if response.get('status') in ('completed', 'incomplete', 'failed') else 'other',
+                        'output_count': len(response['output']) if isinstance(response.get('output'), list) else None,
+                    }
+                    if isinstance(response.get('output'), list):
+                        for item in response['output']:
+                            self.item(item, 'completed')
 
     def item(self, item, stage):
         if not isinstance(item, dict) or not isinstance(item.get('id'), str):
@@ -89,8 +101,12 @@ class ConversationStreamSummary:
         if kind == 'message':
             row['role'] = item.get('role') if item.get('role') in ('assistant', 'user', 'developer', 'system') else 'other'
             row['phase'] = item.get('phase') if item.get('phase') in ('commentary', 'final_answer', None) else 'other'
+            row['phase_present'] = 'phase' in item
+            row['channel'] = item.get('channel') if item.get('channel') in ('analysis', 'commentary', 'final', 'final_answer', None) else 'other'
             content = item.get('content')
             blocks = [b for b in content if isinstance(b, dict)] if isinstance(content, list) else []
+            row['content_shape'] = 'array' if isinstance(content, list) else 'missing' if content is None else 'other'
+            row['content_types'] = [b.get('type') if b.get('type') in ('output_text', 'input_text', 'text', 'refusal') else 'other' for b in blocks]
             text = ''.join(b.get('text', '') for b in blocks if b.get('type') == 'output_text' and isinstance(b.get('text'), str))
             row['text_bytes'] = len(text.encode())
             row['text_sha256'] = hashlib.sha256(text.encode()).hexdigest()
@@ -111,4 +127,5 @@ class ConversationStreamSummary:
         self.items.setdefault(identity, {})[stage] = row
 
     def summary(self):
-        return {'events': self.events, 'items': self.items, 'truncated': self.truncated}
+        return {'events': self.events, 'items': self.items, 'truncated': self.truncated,
+                'completed_response': self.completed_response}

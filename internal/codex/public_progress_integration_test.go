@@ -29,6 +29,11 @@ func TestPublicProgressNativeMessagesAndContinuation(t *testing.T) {
 	opening := message("progress_opening", "commentary", "我会先区分范围，再整理这份说明。")
 	interim := message("progress_interim", "commentary", "已明确两种评价范围，后续将分别说明。")
 	answer := message("progress_answer", "final_answer", "结果：城市介绍需要分别考虑短期游览与长期生活。")
+	declaredOpening := message("progress_opening", "", "[[yijie.public-message.v1:commentary]]\n我会先区分范围，再整理这份说明。")
+	declaredInterim := message("progress_interim", "", "[[yijie.public-message.v1:commentary]]\n已明确两种评价范围，后续将分别说明。")
+	declaredAnswer := message("progress_answer", "", "[[yijie.public-message.v1:final_answer]]\n结果：城市介绍需要分别考虑短期游览与长期生活。")
+	declaredViews := map[string]map[string]any{"progress_opening": opening, "progress_interim": interim, "progress_answer": answer}
+
 	command := map[string]any{"type": "function_call", "id": "progress_command", "call_id": "progress_call", "name": "exec_command", "arguments": `{"cmd":"/bin/pwd","max_output_tokens":1000}`}
 	type response struct {
 		items        []map[string]any
@@ -39,12 +44,19 @@ func TestPublicProgressNativeMessagesAndContinuation(t *testing.T) {
 		responses []response
 		commands  int
 		recovery  bool
+		declared  bool
+		cancel    bool
 	}{
-		{"same_response", []response{{items: []map[string]any{opening, interim, answer}}}, 0, false},
-		{"native_no_tool_continuation", []response{{[]map[string]any{opening}, true}, {[]map[string]any{interim}, true}, {items: []map[string]any{answer}}}, 0, false},
-		{"tool_then_native_continuation", []response{{items: []map[string]any{opening, command}}, {[]map[string]any{interim}, true}, {items: []map[string]any{answer}}}, 1, false},
-		{"unknown_phase", []response{{items: []map[string]any{message("progress_opening", "", "我会区分范围。"), message("progress_interim", "", "已明确两种范围。"), message("progress_answer", "", "结果：分别评价两种范围。")}}}, 0, false},
-		{"existing_premature_completion_guard", []response{{items: []map[string]any{opening}}, {items: []map[string]any{answer}}}, 0, true},
+		{"same_response", []response{{items: []map[string]any{opening, interim, answer}}}, 0, false, false, false},
+		{"native_no_tool_continuation", []response{{[]map[string]any{opening}, true}, {[]map[string]any{interim}, true}, {items: []map[string]any{answer}}}, 0, false, false, false},
+		{"tool_then_native_continuation", []response{{items: []map[string]any{opening, command}}, {[]map[string]any{interim}, true}, {items: []map[string]any{answer}}}, 1, false, false, false},
+		{"unknown_phase", []response{{items: []map[string]any{message("progress_opening", "", "我会区分范围。"), message("progress_interim", "", "已明确两种范围。"), message("progress_answer", "", "结果：分别评价两种范围。")}}}, 0, false, false, false},
+		{"existing_premature_completion_guard", []response{{items: []map[string]any{opening}}, {items: []map[string]any{answer}}}, 0, true, false, false},
+		{"declared_no_tool_continuation", []response{{items: []map[string]any{declaredOpening}}, {items: []map[string]any{declaredInterim}}, {items: []map[string]any{declaredAnswer}}}, 0, false, true, false},
+		{"declared_same_response", []response{{items: []map[string]any{declaredOpening, declaredInterim, declaredAnswer}}}, 0, false, true, false},
+		{"declared_tool_then_continuation", []response{{items: []map[string]any{declaredOpening, command}}, {items: []map[string]any{declaredInterim}}, {items: []map[string]any{declaredAnswer}}}, 1, false, true, false},
+		{"declared_direct_final", []response{{items: []map[string]any{declaredAnswer}}}, 0, false, true, false},
+		{"declared_cancel_before_completion", []response{{items: []map[string]any{declaredOpening}}}, 0, false, true, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			root, err := os.MkdirTemp("", "yijie-public-progress-")
@@ -65,8 +77,15 @@ func TestPublicProgressNativeMessagesAndContinuation(t *testing.T) {
 			var bodies []map[string]any
 			var methods []string
 			var completed []map[string]any
+			var started []map[string]any
+			var streamedText string
 			var warningText string
 			commands := 0
+			finishResponse := make(chan struct{})
+			// This fixture owns a finite response source. Native turn cancellation
+			// is not a promise that a supplier acknowledges TCP cancellation.
+			// Finish the ordinary response before graceful fixture teardown.
+			defer close(finishResponse)
 			openingDeltaSeen := make(chan struct{})
 			var openingOnce sync.Once
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -78,6 +97,12 @@ func TestPublicProgressNativeMessagesAndContinuation(t *testing.T) {
 				if r.Method != "POST" || r.URL.Path != "/v1/responses" || json.NewDecoder(r.Body).Decode(&body) != nil {
 					t.Error("unexpected normal loopback request")
 					w.WriteHeader(400)
+					return
+				}
+				// Finish consuming the ordinary request body before waiting on a
+				// response stream; net/http can then observe peer cancellation.
+				if err := r.Body.Close(); err != nil {
+					t.Error("normal loopback request-body close", err)
 					return
 				}
 				mu.Lock()
@@ -110,12 +135,26 @@ func TestPublicProgressNativeMessagesAndContinuation(t *testing.T) {
 					emit(map[string]any{"type": "response.output_item.added", "output_index": index, "item": start})
 					if item["type"] == "message" {
 						text := item["content"].([]any)[0].(map[string]any)["text"].(string)
-						emit(map[string]any{"type": "response.output_text.delta", "output_index": index, "content_index": 0, "item_id": item["id"], "delta": text})
+						chunks := []string{text}
+						if test.declared {
+							// Ordinary arbitrary stream boundaries split the ASCII
+							// declaration. Public text must flow before response done.
+							chunks = []string{text[:8], text[8:25], text[25:]}
+						}
+						for _, chunk := range chunks {
+							emit(map[string]any{"type": "response.output_text.delta", "output_index": index, "content_index": 0, "item_id": item["id"], "delta": chunk})
+						}
 						if item["id"] == "progress_opening" {
 							// Observe the real app-server delta before this normal stream
 							// publishes its next Item or response completion.
 							select {
 							case <-openingDeltaSeen:
+								if test.cancel {
+									// Native interruption is observed by the test first.
+									// The remaining normal response then finishes; it
+									// must not restart this cancelled turn.
+									<-finishResponse
+								}
 							case <-time.After(10 * time.Second):
 								t.Error("opening delta buffered until completion")
 								return
@@ -147,8 +186,18 @@ func TestPublicProgressNativeMessagesAndContinuation(t *testing.T) {
 				if method == "warning" {
 					warningText += string(raw)
 				}
-				if method == "item/agentMessage/delta" && event["itemId"] == "progress_opening" {
-					openingOnce.Do(func() { close(openingDeltaSeen) })
+				if method == "item/started" {
+					item, _ := event["item"].(map[string]any)
+					if item["type"] == "agentMessage" {
+						started = append(started, item)
+					}
+				}
+				if method == "item/agentMessage/delta" {
+					text, _ := event["delta"].(string)
+					streamedText += text
+					if event["itemId"] == "progress_opening" && strings.Contains(streamedText, "区分范围") {
+						openingOnce.Do(func() { close(openingDeltaSeen) })
+					}
 				}
 				if method == "item/completed" {
 					item, _ := event["item"].(map[string]any)
@@ -179,6 +228,13 @@ func TestPublicProgressNativeMessagesAndContinuation(t *testing.T) {
 					t.Error("normal loopback shutdown pending", err)
 					stopped = false
 				}
+				if test.cancel {
+					mu.Lock()
+					if len(bodies) != 1 {
+						t.Error("late provider completion restarted an interrupted turn")
+					}
+					mu.Unlock()
+				}
 				if stopped {
 					_ = os.RemoveAll(root)
 				}
@@ -196,7 +252,30 @@ func TestPublicProgressNativeMessagesAndContinuation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if test.cancel {
+				select {
+				case <-openingDeltaSeen:
+				case <-time.After(10 * time.Second):
+					t.Fatal("no public text available before normal cancellation")
+				}
+				if err := manager.InterruptTurn(ctx, thread.ID, turn.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
 			status, _, err := notifications.waitForTurn(turn.ID, time.Minute)
+			if test.cancel {
+				if err != nil || status != "interrupted" {
+					t.Fatal("native cancellation did not preserve its terminal", status, err)
+				}
+				mu.Lock()
+				defer mu.Unlock()
+				if len(bodies) != 1 || len(started) != 1 || started[0]["phase"] != "commentary" ||
+					streamedText != "我会先区分范围，再整理这份说明。" {
+					t.Fatal("cancellation changed visible message or started another request")
+				}
+				t.Log("normal native interruption retained the visible public message; requests=1; paid=0")
+				return
+			}
 			if err != nil || status != "completed" {
 				t.Fatal("normal native turn did not complete", status, err)
 			}
@@ -242,7 +321,17 @@ func TestPublicProgressNativeMessagesAndContinuation(t *testing.T) {
 			if len(completed) != len(want) || len(savedMessages) != len(want) {
 				t.Fatalf("public message count live=%d history=%d want=%d", len(completed), len(savedMessages), len(want))
 			}
-			for i, item := range want {
+			if test.declared && (strings.Contains(streamedText, "yijie.public-message") || len(started) != len(want)) {
+				t.Error("declaration leaked or native started identity was duplicated")
+			}
+			for i, original := range want {
+				item := original
+				if test.declared {
+					item = declaredViews[original["id"].(string)]
+					if started[i]["id"] != item["id"] || started[i]["phase"] != item["phase"] {
+						t.Errorf("declared phase was unavailable at native Item start %d", i)
+					}
+				}
 				if completed[i]["id"] != item["id"] || completed[i]["phase"] != item["phase"] {
 					t.Fatalf("native message identity/phase changed at index %d", i)
 				}
@@ -279,7 +368,11 @@ func TestPublicProgressNativeMessagesAndContinuation(t *testing.T) {
 						content, _ := json.Marshal(prior["content"])
 						if prior["role"] == "assistant" && strings.Contains(string(content), "我会先区分范围") {
 							found = true
-							if prior["phase"] != "commentary" {
+							if test.declared {
+								if prior["phase"] != nil || !strings.Contains(string(content), "[[yijie.public-message.v1:commentary]]") {
+									t.Error("raw provider phase or declaration was rewritten in model history")
+								}
+							} else if prior["phase"] != "commentary" {
 								t.Error("native request history lost commentary phase")
 							}
 						}
@@ -352,7 +445,7 @@ func TestPublicProgressPolicyUsesCurrentNativeContext(t *testing.T) {
 	defer mu.Unlock()
 	for i, body := range captured {
 		raw, _ := json.Marshal(body)
-		if strings.Count(string(raw), "[yijie-public-progress-v3]") != 1 || strings.Count(string(raw), "[yijie-answer-completion-v1]") != 1 {
+		if strings.Count(string(raw), "[yijie-public-progress-v3]") != 1 || strings.Count(string(raw), "[yijie-answer-completion-v1]") != 1 || strings.Count(string(raw), "[yijie-public-message-v1]") != 1 {
 			t.Fatalf("shared current developer policy not unique at step %d", i)
 		}
 		base, _ := body["instructions"].(string)

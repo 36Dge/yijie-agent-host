@@ -6,6 +6,24 @@ from responses_stream_observer import ConversationStreamSummary, request_input_s
 
 
 class ConversationObservationTests(unittest.TestCase):
+    def test_keeps_item_done_and_response_terminal_metadata_distinct(self):
+        done = {'id': 'ordinary-public-message', 'type': 'message', 'role': 'assistant',
+                'content': [{'type': 'output_text', 'text': 'An opening.'}]}
+        terminal = {**done, 'phase': 'final_answer',
+                    'content': [{'type': 'output_text', 'text': 'A complete answer.'}]}
+        observer = ConversationStreamSummary()
+        for event in [{'type': 'response.output_item.done', 'item': done},
+                      {'type': 'response.completed', 'response': {'status': 'completed', 'end_turn': False, 'output': [terminal]}}]:
+            observer.feed(('data: ' + json.dumps(event) + '\n\n').encode())
+        result = observer.summary()
+        row = next(iter(result['items'].values()))
+        self.assertFalse(row['done']['phase_present'])
+        self.assertEqual(row['completed']['phase'], 'final_answer')
+        self.assertNotEqual(row['done']['text_sha256'], row['completed']['text_sha256'])
+        self.assertEqual(result['completed_response'], {'end_turn_present': True, 'end_turn': False,
+                                                       'status': 'completed', 'output_count': 1})
+        self.assertNotIn('A complete answer.', json.dumps(result))
+
     def test_request_tool_results_are_correlated_by_hash_without_retaining_content(self):
         value = [{'type': 'message', 'role': 'user', 'content': 'Compare two cities'},
                  {'type': 'function_call', 'call_id': 'ordinary-call', 'arguments': '{"query":"annual report"}'},

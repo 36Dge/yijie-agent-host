@@ -254,6 +254,12 @@ func (m *Manager) sessionApprovalPolicy() string {
 
 func (m *Manager) sessionDeveloperInstructions() string {
 	if m.config.RuntimePermissionsEnabled {
+		// KimiK31Candidate is validated against the immutable Runtime projection
+		// before serving threads. Older/other Runtime profiles must never receive
+		// a transport declaration they cannot consume.
+		if m.config.ChatModelsEnabled && m.config.KimiK31Candidate {
+			return permissionInstructions + "\n\n" + publicMessageTransportInstructions
+		}
 		return permissionInstructions
 	}
 	if m.config.DeterministicApprovalProducerEnabled {
