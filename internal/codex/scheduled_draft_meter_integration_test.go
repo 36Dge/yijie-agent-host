@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -48,10 +49,15 @@ func TestFEAT1554BDraftMeterNativeStartResume(t *testing.T) {
 			t.Error("restricted output/tool boundary changed")
 		}
 		var containsGuide func(any) bool
+		var compact bytes.Buffer
+		if err := json.Compact(&compact, wire.OutputSchema()); err != nil {
+			t.Error(err)
+			return
+		}
 		containsGuide = func(value any) bool {
 			switch value := value.(type) {
 			case string:
-				return strings.Contains(value, string(wire.OutputSchema()))
+				return strings.Contains(value, compact.String())
 			case []any:
 				for _, child := range value {
 					if containsGuide(child) {

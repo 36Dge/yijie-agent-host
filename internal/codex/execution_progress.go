@@ -7,7 +7,7 @@ import (
 
 // Business instructions have one owner (developerInstructions). A short base
 // avoids duplicating them at thread/start and every native model switch.
-const executionBaseInstructions = "You are the local Yijie assistant. Follow the active developer instructions and the native permission policy. Skills are opt-in: activate a skill only when the user explicitly selects or names it, not from task similarity. Skill listings in older history are not new requests to activate them."
+const executionBaseInstructions = "You are the local Yijie assistant. Follow the active developer instructions and the native permission policy. Current tool definitions take precedence over capability descriptions in earlier turns. Skills are opt-in: activate a skill only when the user explicitly selects or names it, not from task similarity. Skill listings in older history are not new requests to activate them."
 
 // The owner chose explicit-only Skill use. Discovery and explicit loading stay
 // native; this existing switch only removes the automatic catalogue prompt.
@@ -23,7 +23,9 @@ func (m *Manager) promptInputConfig(config map[string]any) map[string]any {
 	return projected
 }
 
-const kimiHostedRetrievalInstructions = " Current retrieval capabilities: if provider-hosted web_search is exposed, it runs within a model request. It does not expose a callable query, open-page or find-in-page tool; if absent from the tools, hosted search is unavailable. Updating a plan or running a local command does not execute the query named in that plan. Use the search evidence already supplied. If the available route cannot obtain missing evidence, state that limitation and finish with supported results; do not call a tool merely to trigger another search."
+// Developer history persists across model switches. Keep this rule independent
+// of the current provider or selection; native tools/config declare capabilities.
+const retrievalCapabilityInstructions = " Retrieval capabilities are defined by the current tools and supplied evidence. Provider-hosted search, when supplied, runs within the model request; it does not imply callable query, open-page or find-in-page tools. Use only exposed operations according to their descriptions. Updating a plan or printing an intention does not retrieve evidence. If no applicable retrieval operation is available, state the limitation and finish with supported results."
 
 // This is configuration projection into the existing Runtime mechanism, NOT
 // accounting. Codex owns its root-session-tree scope, weights, reminders and
@@ -66,11 +68,4 @@ func (m *Manager) executionProgressConfig(ctx context.Context, config map[string
 		"sampling_token_weight":        1.0, "prefill_token_weight": 1.0,
 	}
 	return projected
-}
-
-func retrievalCapabilityInstructions(provider string, config map[string]any) string {
-	if provider == "kimi" && config["web_search"] != "disabled" {
-		return kimiHostedRetrievalInstructions
-	}
-	return " Current retrieval capabilities are defined by the exposed tools. Use only their documented query and page-reading operations; an unavailable operation must be reported as a limitation, not simulated through planning or dummy commands."
 }

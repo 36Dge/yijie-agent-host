@@ -1592,7 +1592,7 @@ func TestLoadConfigKeepsV2DraftCapabilitiesOffAndLocalOnly(t *testing.T) {
 	t.Setenv("YIJIE_MODEL_PROVIDER", "minimax")
 	t.Setenv("YIJIE_MINIMAX_API_KEY", "synthetic-test-key")
 	t.Setenv("YIJIE_CODEX_HOME", filepath.Join(t.TempDir(), "codex-home"))
-	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "cannot capability-disable tools") {
+	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "qualifies native input-only policy") {
 		t.Fatalf("title flag was not held closed for the pinned Runtime: %v", err)
 	}
 }

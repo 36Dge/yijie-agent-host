@@ -43,7 +43,7 @@ func TestExecutionProgressNativeBudgetRuntime(t *testing.T) {
 		if body["instructions"] != executionBaseInstructions || strings.Count(developer, permissionInstructions) != 1 {
 			t.Error("business policy missing or duplicated")
 		}
-		if !strings.Contains(developer, kimiHostedRetrievalInstructions) {
+		if !strings.Contains(developer, retrievalCapabilityInstructions) {
 			t.Error("actual hosted retrieval capabilities missing")
 		}
 		mu.Lock()

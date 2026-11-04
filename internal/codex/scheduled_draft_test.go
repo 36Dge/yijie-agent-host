@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/scheduledraft"
@@ -58,8 +59,12 @@ func TestFEAT155DraftFixedConfigAndMissingQualificationClosesBeforeIO(t *testing
 	if start["sandbox"] != nil || resume["sandbox"] != nil {
 		t.Fatal("legacy sandbox override")
 	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, wire.OutputSchema()); err != nil {
+		t.Fatal(err)
+	}
 	if start["baseInstructions"] != resume["baseInstructions"] ||
-		!strings.HasSuffix(start["baseInstructions"].(string), string(wire.OutputSchema())) {
+		!strings.HasSuffix(start["baseInstructions"].(string), compact.String()) || compact.Len() >= len(wire.OutputSchema()) {
 		t.Fatal("start/resume must guide output with the identical canonical schema")
 	}
 	config := start["config"].(map[string]any)

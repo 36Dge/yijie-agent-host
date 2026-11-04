@@ -232,7 +232,7 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		return Config{}, errors.New("Agent Host v2 title generation requires the configured pinned model provider")
 	}
 	if titleV2 {
-		return Config{}, errors.New("Agent Host v2 title generation remains disabled because the pinned Runtime cannot capability-disable tools")
+		return Config{}, errors.New("Agent Host v2 title generation remains disabled until its adapter uses and qualifies native input-only policy")
 	}
 	if runtimeConfig.MiniMax.Enabled || runtimeConfig.FakeResponses.Enabled {
 		if hostHome == "" || !filepath.IsAbs(hostHome) {

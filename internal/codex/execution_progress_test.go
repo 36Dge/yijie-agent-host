@@ -60,13 +60,11 @@ func TestExecutionProgressUsesNativeRolloutBudget(t *testing.T) {
 }
 
 func TestExecutionProgressRetrievalCapabilitiesMatchRoute(t *testing.T) {
-	if !strings.Contains(retrievalCapabilityInstructions("kimi", nil), "does not expose a callable query") {
-		t.Fatal("hosted-only capabilities missing")
-	}
-	for _, provider := range []string{"kimi", "minimax"} {
-		if strings.Contains(retrievalCapabilityInstructions(provider, map[string]any{"web_search": "disabled"}), "does not expose a callable query") {
-			t.Fatal("disabled hosted route advertised")
-		}
+	if !strings.Contains(retrievalCapabilityInstructions, "current tools and supplied evidence") ||
+		!strings.Contains(retrievalCapabilityInstructions, "does not imply callable query") ||
+		strings.Contains(strings.ToLower(retrievalCapabilityInstructions), "kimi") ||
+		strings.Contains(strings.ToLower(retrievalCapabilityInstructions), "minimax") {
+		t.Fatal("persistent retrieval rule must defer to current tools without pinning a provider")
 	}
 	if executionBaseInstructions == permissionInstructions || strings.Contains(executionBaseInstructions, "[yijie-answer-completion-v1]") {
 		t.Fatal("business policy duplicated in base")

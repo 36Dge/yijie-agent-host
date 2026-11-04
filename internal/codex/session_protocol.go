@@ -588,7 +588,7 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 	params.Config = m.promptInputConfig(params.Config)
 	params.Config = m.executionProgressConfig(ctx, params.Config)
 	if m.config.RuntimePermissionsEnabled {
-		params.DeveloperInstructions += retrievalCapabilityInstructions(selected.Provider, params.Config)
+		params.DeveloperInstructions += retrievalCapabilityInstructions
 	}
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadStart, params, &response); err != nil {
@@ -671,7 +671,7 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	params.Config = m.promptInputConfig(params.Config)
 	params.Config = m.executionProgressConfig(ctx, params.Config)
 	if m.config.RuntimePermissionsEnabled && params.DeveloperInstructions != nil {
-		instructions := *params.DeveloperInstructions + retrievalCapabilityInstructions(selected.Provider, params.Config)
+		instructions := *params.DeveloperInstructions + retrievalCapabilityInstructions
 		params.DeveloperInstructions = &instructions
 	}
 	m.forgetKimiK31Thread(threadID)
