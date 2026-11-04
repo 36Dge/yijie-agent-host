@@ -2388,23 +2388,11 @@ components:
           type: string
         user_id:
           type: string
-    ToolProfile:
-      type: string
-      enum: [full, light]
-      description: |
-        Explicit new-chat tool configuration. Omission means full. Light maps only
-        to native features.multi_agent=false and features.goals=false; it does not
-        change sandbox, approvals, selected connectors, models or token budgets.
-        The selection is immutable for the session, including resume and model
-        changes. Existing sessions retain full. Expert and scheduled-draft tasks
-        cannot select light. Providers without this capability reject light.
     StartSessionRequest:
       type: object
       additionalProperties: false
       required: [cwd]
       properties:
-        tool_profile:
-          $ref: "#/components/schemas/ToolProfile"
         trace_id:
           type: string
           description: Optional correlation identifier copied to session events.

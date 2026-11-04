@@ -184,10 +184,6 @@ func (s *Service) applyChatModelV2(ctx context.Context, sessionID string, reques
 		return wire.Selection{}, err
 	}
 	ctx = codex.WithModelProfile(ctx, string(request.ProfileId))
-	ctx, err = s.contextForToolProfile(ctx, record.ToolProfile)
-	if err != nil {
-		return wire.Selection{}, err
-	}
 	err = s.store.db.Update(func(tx *bolt.Tx) error {
 		r, e := s.store.loadRecord(tx, sessionID)
 		if e != nil {

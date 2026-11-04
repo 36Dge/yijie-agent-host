@@ -17,7 +17,6 @@ import (
 
 	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
-	agenthostcontract "github.com/36Dge/yijie-agent-host/internal/contracts"
 	"github.com/36Dge/yijie-agent-host/internal/imagegen"
 )
 
@@ -175,10 +174,9 @@ func incompleteCleanup(operationID, reason, runtimeTree, mapping, replay string)
 }
 
 type StartSessionInput struct {
-	ToolProfile agenthostcontract.ToolProfile
-	TaskID      string
-	Cwd         string
-	Trace       TraceContext
+	TaskID string
+	Cwd    string
+	Trace  TraceContext
 }
 
 type StartTurnInput struct {
@@ -349,20 +347,11 @@ func (s *Service) startSession(ctx context.Context, input StartSessionInput, dra
 	if err != nil {
 		return Record{}, err
 	}
-	profile, err := normalizeToolProfile(input.ToolProfile)
-	if err != nil || (draft != nil && profile != "") {
-		return Record{}, ErrInvalidArgument
-	}
-	ctx, err = s.contextForToolProfile(ctx, profile)
-	if err != nil {
-		return Record{}, err
-	}
 	sessionID, err := newUUID()
 	if err != nil {
 		return Record{}, fmt.Errorf("generate agent session id: %w", err)
 	}
 	record := Record{
-		ToolProfile:    profile,
 		TaskID:         input.TaskID,
 		AgentSessionID: sessionID,
 		Cwd:            cwd,
@@ -455,10 +444,6 @@ func (s *Service) resumeSession(ctx context.Context, sessionID string, trace Tra
 	}
 	if record.CodexThreadID == "" {
 		return Record{}, ErrSessionNotUsable
-	}
-	ctx, err = s.contextForToolProfile(ctx, record.ToolProfile)
-	if err != nil {
-		return Record{}, err
 	}
 	thread, err := s.runtime.ResumeThread(ctx, record.CodexThreadID)
 	if err != nil {

@@ -952,15 +952,10 @@ func (h *sessionHandler) startSession(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(w, http.StatusBadRequest, agenthostcontract.ErrorResponseErrorCodeInvalidRequest, "request body is invalid")
 		return
 	}
-	var toolProfile agenthostcontract.ToolProfile
-	if request.ToolProfile != nil {
-		toolProfile = *request.ToolProfile
-	}
 	record, err := h.service.StartSession(r.Context(), session.StartSessionInput{
-		ToolProfile: toolProfile,
-		TaskID:      r.PathValue("task_id"),
-		Cwd:         request.Cwd,
-		Trace:       traceContext(request.TraceId, request.RequestId, request.TenantId, request.UserId),
+		TaskID: r.PathValue("task_id"),
+		Cwd:    request.Cwd,
+		Trace:  traceContext(request.TraceId, request.RequestId, request.TenantId, request.UserId),
 	})
 	if err != nil {
 		writeSessionError(w, err)
@@ -1904,30 +1899,13 @@ func decodeRequestWithLimit(w http.ResponseWriter, r *http.Request, destination 
 		return errors.New("request body limit is invalid")
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
-	var source io.Reader = r.Body
-	var startBody bytes.Buffer
-	_, startRequest := destination.(*agenthostcontract.StartSessionRequest)
-	if startRequest {
-		source = io.TeeReader(source, &startBody)
-	}
-	decoder := json.NewDecoder(source)
+	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(destination); err != nil {
 		return err
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return errors.New("request body must contain one JSON value")
-	}
-	if startRequest {
-		// A generated optional pointer alone cannot distinguish null from omitted.
-		// Keep the canonical new-chat enum non-null without defining another DTO.
-		var fields map[string]json.RawMessage
-		if json.Unmarshal(startBody.Bytes(), &fields) != nil {
-			return errors.New("invalid session request")
-		}
-		if raw, present := fields["tool_profile"]; present && bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-			return errors.New("tool_profile must not be null")
-		}
 	}
 	return nil
 }

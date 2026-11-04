@@ -587,10 +587,6 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 	params.Config = m.artifactThreadConfig(params.Config)
 	params.Config = m.promptInputConfig(params.Config)
 	params.Config = m.executionProgressConfig(ctx, params.Config)
-	params.Config, err = m.toolProfileConfig(ctx, params.Config)
-	if err != nil {
-		return ThreadInfo{}, err
-	}
 	if m.config.RuntimePermissionsEnabled {
 		params.DeveloperInstructions += retrievalCapabilityInstructions
 	}
@@ -674,10 +670,6 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	params.Config = m.artifactThreadConfig(params.Config)
 	params.Config = m.promptInputConfig(params.Config)
 	params.Config = m.executionProgressConfig(ctx, params.Config)
-	params.Config, err = m.toolProfileConfig(ctx, params.Config)
-	if err != nil {
-		return ThreadInfo{}, err
-	}
 	if m.config.RuntimePermissionsEnabled && params.DeveloperInstructions != nil {
 		instructions := *params.DeveloperInstructions + retrievalCapabilityInstructions
 		params.DeveloperInstructions = &instructions

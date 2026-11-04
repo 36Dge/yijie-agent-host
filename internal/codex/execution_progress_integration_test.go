@@ -51,6 +51,14 @@ func TestExecutionProgressNativeBudgetRuntime(t *testing.T) {
 		n := requests
 		reminders = append(reminders, developer)
 		mu.Unlock()
+		if n == 1 {
+			tools, _ := json.Marshal(body["tools"])
+			for _, name := range []string{"multi_agent_v1", "get_goal", "create_goal", "update_goal"} {
+				if !strings.Contains(string(tools), name) {
+					t.Errorf("ordinary chat lost native tool %s", name)
+				}
+			}
+		}
 		id := fmt.Sprintf("native_budget_%d", n)
 		item := map[string]any{"id": "message_" + id, "type": "message", "role": "assistant", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "普通本机结果：6 × 7 = 42。"}}}
 		w.Header().Set("Content-Type", "text/event-stream")

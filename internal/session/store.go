@@ -15,8 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	agenthost "github.com/36Dge/yijie-agent-host/internal/contracts"
-
 	"github.com/google/uuid"
 	bolt "go.etcd.io/bbolt"
 )
@@ -70,17 +68,16 @@ type TraceContext struct {
 }
 
 type Record struct {
-	ToolProfile             agenthost.ToolProfile `json:"tool_profile,omitempty"`
-	MarketScopeHash         string                `json:"market_scope_hash,omitempty"`
-	MarketLocalSessionID    string                `json:"market_local_session_id,omitempty"`
-	ModelProfile            string                `json:"model_profile,omitempty"`
-	ModelRevision           int64                 `json:"model_revision,omitempty"`
-	ModelSelectionState     string                `json:"model_selection_state,omitempty"`
-	ModelSelectionOperation string                `json:"model_selection_operation,omitempty"`
-	Purpose                 string                `json:"purpose,omitempty"`
-	DraftWorkspaceID        string                `json:"draft_workspace_id,omitempty"`
-	DraftPolicyVersion      int64                 `json:"draft_policy_version,omitempty"`
-	DraftSchemaVersion      int64                 `json:"draft_schema_version,omitempty"`
+	MarketScopeHash         string `json:"market_scope_hash,omitempty"`
+	MarketLocalSessionID    string `json:"market_local_session_id,omitempty"`
+	ModelProfile            string `json:"model_profile,omitempty"`
+	ModelRevision           int64  `json:"model_revision,omitempty"`
+	ModelSelectionState     string `json:"model_selection_state,omitempty"`
+	ModelSelectionOperation string `json:"model_selection_operation,omitempty"`
+	Purpose                 string `json:"purpose,omitempty"`
+	DraftWorkspaceID        string `json:"draft_workspace_id,omitempty"`
+	DraftPolicyVersion      int64  `json:"draft_policy_version,omitempty"`
+	DraftSchemaVersion      int64  `json:"draft_schema_version,omitempty"`
 	// Operational provenance is additive. Absent fields on legacy records prove nothing.
 	NativeRevision       uint64 `json:"native_revision,omitempty"`
 	NativeTerminalTurnID string `json:"native_terminal_turn_id,omitempty"`
@@ -123,7 +120,6 @@ type TurnOperation struct {
 }
 
 type Store struct {
-	toolProfileWriter       bool
 	expertWriter            bool
 	expertReader            bool
 	marketWriter            bool
@@ -236,10 +232,7 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 		}
 		metadata := tx.Bucket(metadataBucket)
 		version := metadata.Get(storeSchemaVersionKey)
-		if string(version) == "12" && !store.toolProfileWriter {
-			return ErrModelUnavailable
-		}
-		if string(version) == "11" || string(version) == "12" {
+		if string(version) == "11" || string(version) == "12" || string(version) == "13" {
 			if !store.modelV2Writer || tx.Bucket(modelOperationsV2Bucket) == nil {
 				return ErrModelUnavailable
 			}
@@ -276,9 +269,6 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 			return err
 		}
 		if err := store.prepareModelV2Format(tx); err != nil {
-			return err
-		}
-		if err := store.prepareToolProfileFormat(tx); err != nil {
 			return err
 		}
 		return purgeExpiredCleanupReceipts(tx, time.Now().UTC())
@@ -1309,16 +1299,10 @@ func (s *Store) loadRecord(tx *bolt.Tx, sessionID string) (Record, error) {
 	if err := validateStoredPurpose(tx, &record); err != nil {
 		return Record{}, err
 	}
-	if err := s.validateStoredToolProfile(record); err != nil {
-		return Record{}, err
-	}
 	return record, nil
 }
 
 func (s *Store) saveRecord(tx *bolt.Tx, record Record) error {
-	if err := s.validateStoredToolProfile(record); err != nil {
-		return err
-	}
 	if err := validatePurposeWrite(tx, record); err != nil {
 		return err
 	}

@@ -84,7 +84,7 @@ func run(logger *slog.Logger) error {
 		if config.Runtime.ChatModelsEnabled {
 			storeOptions = append(storeOptions, session.WithChatModelStorage())
 			if config.Runtime.KimiK31Candidate {
-				storeOptions = append(storeOptions, session.WithChatModelV2Storage(), session.WithExpertStorageReader(), session.WithToolProfileStorage())
+				storeOptions = append(storeOptions, session.WithChatModelV2Storage(), session.WithExpertStorageReader())
 			}
 		}
 		if config.Runtime.Market.Manifest != "" {

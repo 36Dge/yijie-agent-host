@@ -12,15 +12,15 @@ import (
 var modelOperationsV2Bucket = []byte("model_operations_v2")
 var modelBaseVersionKey = []byte("model_v2_base_schema")
 
-// Schema 11 is an envelope over the existing domain schema. Old binaries reject
-// it before reading or writing sessions; disabling execution does not downgrade it.
+// The model envelope preserves existing domain schemas. Schema 13 retires the
+// withdrawn preference from schema 12; readers never downgrade existing data.
 func WithChatModelV2Storage() StoreOption {
 	return func(s *Store) error { s.modelV2Writer, s.modelWriter, s.draftWriter = true, true, true; return nil }
 }
 
 func domainStoreVersion(tx *bolt.Tx) string {
 	m := tx.Bucket(metadataBucket)
-	if version := string(m.Get(storeSchemaVersionKey)); version == "11" || version == "12" {
+	if version := string(m.Get(storeSchemaVersionKey)); version == "11" || version == "12" || version == "13" {
 		return string(m.Get(modelBaseVersionKey))
 	}
 	return string(m.Get(storeSchemaVersionKey))
@@ -28,7 +28,7 @@ func domainStoreVersion(tx *bolt.Tx) string {
 
 func putDomainStoreVersion(tx *bolt.Tx, version string) error {
 	key := storeSchemaVersionKey
-	if version := string(tx.Bucket(metadataBucket).Get(key)); version == "11" || version == "12" {
+	if version := string(tx.Bucket(metadataBucket).Get(key)); version == "11" || version == "12" || version == "13" {
 		key = modelBaseVersionKey
 	}
 	return tx.Bucket(metadataBucket).Put(key, []byte(version))
@@ -45,10 +45,47 @@ func (s *Store) prepareModelV2Format(tx *bolt.Tx) error {
 	if _, err := tx.CreateBucketIfNotExists(modelOperationsV2Bucket); err != nil {
 		return err
 	}
+	if string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey)) == "12" {
+		if err := retireToolPreference(tx); err != nil {
+			return err
+		}
+	}
 	if err := tx.Bucket(metadataBucket).Put(modelBaseVersionKey, []byte(v)); err != nil {
 		return err
 	}
-	return tx.Bucket(metadataBucket).Put(storeSchemaVersionKey, []byte("11"))
+	return tx.Bucket(metadataBucket).Put(storeSchemaVersionKey, []byte("13"))
+}
+
+// Data retirement only. There is no selector, runtime feature projection or
+// ongoing preference write path. Records without the old key keep exact bytes.
+func retireToolPreference(tx *bolt.Tx) error {
+	bucket := tx.Bucket(sessionsBucket)
+	type change struct{ key, value []byte }
+	var changes []change
+	if err := bucket.ForEach(func(key, value []byte) error {
+		var record map[string]json.RawMessage
+		if json.Unmarshal(value, &record) != nil {
+			return ErrModelUnknown
+		}
+		if _, exists := record["tool_profile"]; !exists {
+			return nil
+		}
+		delete(record, "tool_profile")
+		updated, err := json.Marshal(record)
+		if err != nil {
+			return err
+		}
+		changes = append(changes, change{append([]byte(nil), key...), updated})
+		return nil
+	}); err != nil {
+		return err
+	}
+	for _, item := range changes {
+		if err := bucket.Put(item.key, item.value); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type modelOperationV2 struct {

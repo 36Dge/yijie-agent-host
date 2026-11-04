@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
-	agenthost "github.com/36Dge/yijie-agent-host/internal/contracts"
 	broker "github.com/36Dge/yijie-agent-host/internal/contracts/marketbrokercontrol"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
 	"github.com/google/uuid"
@@ -125,16 +124,7 @@ func (s *Service) submitMarket(ctx context.Context, input wire.SubmitPayload, ex
 			return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeModelUnavailable)
 		}
 		record = Record{TaskID: string(submission.TaskId), AgentSessionID: uuid.NewString(), Cwd: cwd, Purpose: purposeMarket, MarketScopeHash: grant.scopeHash, MarketLocalSessionID: string(submission.LocalSessionId), ModelProfile: string(submission.Intent.ProfileId), ModelRevision: 1, ModelSelectionState: "ready"}
-		if submission.ToolProfile != nil {
-			record.ToolProfile, err = normalizeToolProfile(agenthost.ToolProfile(*submission.ToolProfile))
-			if err != nil {
-				return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeInvalidRequest)
-			}
-		}
 	} else {
-		if submission.ToolProfile != nil {
-			return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeInvalidRequest)
-		}
 		record, err = s.store.Get(string(*submission.AgentSessionId))
 		if err != nil {
 			return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeSessionNotFound)
@@ -174,17 +164,10 @@ func (s *Service) submitMarket(ctx context.Context, input wire.SubmitPayload, ex
 		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeRequestConflict)
 	}
 	if grant.expertSnapshot != nil {
-		if record.ToolProfile != "" && grant.expertSnapshot.Expert != nil {
-			return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeInvalidRequest)
-		}
 		ctx, err = s.contextForExpert(ctx, grant.expertSnapshot.Expert)
 		if err != nil {
 			return wire.SubmissionReceipt{}, err
 		}
-	}
-	ctx, err = s.contextForToolProfile(ctx, record.ToolProfile)
-	if err != nil {
-		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeInvalidRequest)
 	}
 	prepared, err := runtime.PrepareMarket(ctx, grant.scope, submission, record.AgentSessionID, thread)
 	if err != nil {
