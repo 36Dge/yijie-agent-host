@@ -4,12 +4,12 @@
   "contract_family_version": "0.1.0",
   "contracts": {
     "repository": "https://github.com/36Dge/yijie-contracts.git",
-    "full_commit": "d191ad6ed08f0e8cc89dfea1346b5ecdf010e776",
+    "full_commit": "633aa9eee300a3123c1574306234682059f557ec",
     "sources": {
       "openapi/runtime-permissions/runtime-permissions.yaml": "0cd99d5ee3f7035bf43c0996648dc855f71a447595dcb61d903232d81b602a99",
-      "sdks/go/openapi/runtime-permissions/source.bundle.yaml": "ffce00ab6193440e022de0448f7c7152961c9fc37d756f5172f79caa2594c294",
-      "sdks/go/openapi/runtime-permissions/client.gen.go": "5343022e31df266b8cc8f17df3a73fdb52625956d1c36434422171e1cb5a72d1",
-      "sdks/typescript/src/openapi/runtime-permissions.gen.ts": "ae337dc018e0f3e2e4a36bc1293415a5986d18066afbc55888d8ad67221f2f31",
+      "sdks/go/openapi/runtime-permissions/source.bundle.yaml": "7ff6ab02b4480576578fa632054b148d8949d42676a3179a0b5c0df9cf2399c4",
+      "sdks/go/openapi/runtime-permissions/client.gen.go": "c74404f83f1f3f98a8b6662f90bb83f1979742da8c85b19a91628b10ac610088",
+      "sdks/typescript/src/openapi/runtime-permissions.gen.ts": "fb5c59dcdeb5e46cfc696fa81716b78add70fbb35c6ae8fa51439ec1a6edc9f4",
       "scripts/generate.mjs": "404bbebb4af2dd8638a0ccab2fad0447037c1b64364d017d38b7032a7b64c444"
     }
   },
@@ -17,7 +17,7 @@
     "source": "sdks/go/openapi/runtime-permissions/source.bundle.yaml",
     "snapshot": "api/openapi/runtime-permissions.yaml",
     "generated_types": "internal/contracts/runtimepermissions/types.gen.go",
-    "generated_types_sha256": "c45ede6569cc390a5292b29fed74c6b071b31549194682e1fc7a72a12cb04fd2",
+    "generated_types_sha256": "4283ade72fc64a50ee099e9c43d273e4753d86868ceedcba4a5df9b8806c7cc7",
     "generator": "github.com/oapi-codegen/oapi-codegen/v2 v2.7.2",
     "command": "go tool oapi-codegen -generate types -package runtimepermissions api/openapi/runtime-permissions.yaml"
   },
