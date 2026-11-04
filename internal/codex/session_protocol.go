@@ -585,7 +585,6 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 	}
 	params.Config = expertThreadConfig(ctx, params.Config)
 	params.Config = m.artifactThreadConfig(params.Config)
-	params.Config = m.promptInputConfig(params.Config)
 	params.Config = m.executionProgressConfig(ctx, params.Config)
 	if m.config.RuntimePermissionsEnabled {
 		params.DeveloperInstructions += retrievalCapabilityInstructions
@@ -668,7 +667,6 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	}
 	params.Config = expertThreadConfig(ctx, params.Config)
 	params.Config = m.artifactThreadConfig(params.Config)
-	params.Config = m.promptInputConfig(params.Config)
 	params.Config = m.executionProgressConfig(ctx, params.Config)
 	if m.config.RuntimePermissionsEnabled && params.DeveloperInstructions != nil {
 		instructions := *params.DeveloperInstructions + retrievalCapabilityInstructions

@@ -1,11 +1,60 @@
 package codex
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestNativeSkillGuidanceCatalogUpgradePreservesExistingSettings(t *testing.T) {
+	home := canonicalOwnedTempDir(t)
+	authority := acquireTestCodexHomeAuthority(t, home)
+	prior, err := kimiK31PriorSkillCatalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := kimiK31Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var oldValue, newValue map[string]any
+	if json.Unmarshal(prior, &oldValue) != nil || json.Unmarshal(current, &newValue) != nil {
+		t.Fatal("catalogue JSON")
+	}
+	for _, raw := range newValue["models"].([]any) {
+		entry := raw.(map[string]any)
+		if entry["include_skills_usage_instructions"] != true {
+			t.Fatal("native Skill usage is not enabled")
+		}
+		delete(entry, "include_skills_usage_instructions")
+	}
+	oldJSON, _ := json.Marshal(oldValue)
+	newJSON, _ := json.Marshal(newValue)
+	if !bytes.Equal(oldJSON, newJSON) {
+		t.Fatal("unrelated model settings changed")
+	}
+	writeS1File(t, home, kimiK31CatalogName, prior)
+	config := kimiK31Config(home)
+	writeS1File(t, home, kimiK31ConfigName, config)
+	trust := []byte("# ordinary existing user configuration\n")
+	writeS1File(t, home, "config.toml", trust)
+	for i := 0; i < 2; i++ {
+		if _, err = prepareKimiK31Layer(authority); err != nil {
+			t.Fatal("normal catalogue upgrade/reopen", err)
+		}
+	}
+	for name, want := range map[string][]byte{kimiK31CatalogName: current, kimiK31ConfigName: config, "config.toml": trust} {
+		got, err := os.ReadFile(filepath.Join(home, name))
+		if err != nil || !bytes.Equal(got, want) {
+			t.Fatal("catalogue upgrade changed unrelated content", name, err)
+		}
+	}
+	if _, err = authority.preflightManagedFile(kimiK31CatalogName, prior, prior); err == nil {
+		t.Fatal("old exact writer accepted new metadata without review")
+	}
+}
 
 func TestFEAT164CandidateAdmissionAndFreshConfiguration(t *testing.T) {
 	c := DefaultConfig()

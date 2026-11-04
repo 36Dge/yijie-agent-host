@@ -28,6 +28,25 @@ func (m *Manager) ChatModelsV2Enabled() bool {
 func (m *Manager) ChatModelsV2Ready() bool { return m.ChatModelsV2Enabled() && m.Snapshot().Ready }
 
 func kimiK31Catalog() ([]byte, error) {
+	raw, err := kimiK31PriorSkillCatalog()
+	if err != nil {
+		return nil, err
+	}
+	var catalog map[string]any
+	if err = json.Unmarshal(raw, &catalog); err != nil {
+		return nil, err
+	}
+	for _, value := range catalog["models"].([]any) {
+		// Codex renders its own explicit/implicit trigger and progressive-read
+		// guidance. Host must not duplicate those instructions in business prose.
+		value.(map[string]any)["include_skills_usage_instructions"] = true
+	}
+	return json.MarshalIndent(catalog, "", "  ")
+}
+
+// Exact previous managed catalogue recipe, accepted only by the existing
+// managed-file upgrade boundary. Legacy v1 catalogues remain unchanged.
+func kimiK31PriorSkillCatalog() ([]byte, error) {
 	raw, err := chatModelCatalog()
 	if err != nil {
 		return nil, err
@@ -69,7 +88,11 @@ func prepareKimiK31LayerWithPredecessor(a *managedCodexHomeAuthority, allow bool
 		return nil, err
 	}
 	config := kimiK31Config(a.path)
-	cp, err := a.preflightManagedFile(kimiK31CatalogName, catalog, catalog)
+	prior, err := kimiK31PriorSkillCatalog()
+	if err != nil {
+		return nil, err
+	}
+	cp, err := a.preflightManagedFile(kimiK31CatalogName, catalog, catalog, prior)
 	if err != nil {
 		return nil, err
 	}

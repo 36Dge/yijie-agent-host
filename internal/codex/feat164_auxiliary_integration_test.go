@@ -22,6 +22,10 @@ type feat164Auxiliary struct {
 }
 
 func feat164AuxRuntime(t *testing.T, respond func(map[string]any, int64) map[string]any) *feat164Auxiliary {
+	return feat164AuxRuntimeProfiles(t, respond, false)
+}
+
+func feat164AuxRuntimeProfiles(t *testing.T, respond func(map[string]any, int64) map[string]any, allowMiniMax bool) *feat164Auxiliary {
 	t.Helper()
 	binary, manifest := integrationArtifactPaths(t)
 	root, e := os.MkdirTemp("", "feat164-aux-")
@@ -59,7 +63,9 @@ func feat164AuxRuntime(t *testing.T, respond func(map[string]any, int64) map[str
 			return
 		}
 		reasoning, _ := body["reasoning"].(map[string]any)
-		if body["model"] != "kimi-k3.1-pro" || reasoning["effort"] != "max" {
+		validProfile := body["model"] == "kimi-k3.1-pro" && reasoning["effort"] == "max"
+		validProfile = validProfile || (allowMiniMax && body["model"] == "MiniMax-M3" && reasoning["effort"] == "high")
+		if !validProfile {
 			t.Errorf("auxiliary identity differs: model=%v effort=%v", body["model"], reasoning["effort"])
 		}
 		item := respond(body, n)

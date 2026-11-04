@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -41,9 +42,16 @@ func TestNativeSelectedSkillHotReloadKeepsThreadAndBudget(t *testing.T) {
 		requests++
 		n := requests
 		mu.Unlock()
-		input, _ := json.Marshal(body["input"])
-		if strings.Contains(string(input), "<skills_instructions>") {
-			t.Error("automatic Skill catalogue was injected in explicit-only mode")
+		var encoded bytes.Buffer
+		encoder := json.NewEncoder(&encoded)
+		encoder.SetEscapeHTML(false)
+		_ = encoder.Encode(body["input"])
+		input := encoded.String()
+		if !strings.Contains(input, "<skills_instructions>") {
+			t.Error("native Skill metadata catalogue is missing")
+		}
+		if n == 1 && (strings.Contains(string(input), "selected-body-a:") || strings.Contains(string(input), "selected-body-b:")) {
+			t.Error("unselected Skill body was injected with the metadata catalogue")
 		}
 		if n == 2 && (!strings.Contains(string(input), "selected-body-a:") || strings.Contains(string(input), "selected-body-b:")) {
 			t.Error("native structured selection/hot reload did not select exact A")

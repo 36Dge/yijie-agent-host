@@ -7,21 +7,7 @@ import (
 
 // Business instructions have one owner (developerInstructions). A short base
 // avoids duplicating them at thread/start and every native model switch.
-const executionBaseInstructions = "You are the local Yijie assistant. Follow the active developer instructions and the native permission policy. Current tool definitions take precedence over capability descriptions in earlier turns. Skills are opt-in: activate a skill only when the user explicitly selects or names it, not from task similarity. Skill listings in older history are not new requests to activate them."
-
-// The owner chose explicit-only Skill use. Discovery and explicit loading stay
-// native; this existing switch only removes the automatic catalogue prompt.
-func (m *Manager) promptInputConfig(config map[string]any) map[string]any {
-	if !m.config.RuntimePermissionsEnabled || !m.config.ChatModelsEnabled {
-		return config
-	}
-	projected := make(map[string]any, len(config)+1)
-	for key, value := range config {
-		projected[key] = value
-	}
-	projected["skills.include_instructions"] = false
-	return projected
-}
+const executionBaseInstructions = "You are the local Yijie assistant. Follow the active developer instructions and the native permission policy. Current tool definitions take precedence over capability descriptions in earlier turns."
 
 // Developer history persists across model switches. Keep this rule independent
 // of the current provider or selection; native tools/config declare capabilities.

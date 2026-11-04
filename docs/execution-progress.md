@@ -1,5 +1,17 @@
 # 执行进展修复的 Host 接入
 
+## 2026-11-04 最新技能策略
+
+Owner 最新要求覆盖下方历史“仅显式”决定：默认恢复 Codex 原生的显式调用、
+隐式调用和按需加载。Host 不再强制 `skills.include_instructions=false`，也不在
+base 中禁止按描述匹配；原生目录只提供名称、描述及路径，选用后由原生加载正文。
+目录预算、单技能 `allow_implicit_invocation`、启停、同名处理和去重继续原生负责。
+精确身份核验与 `UserInput::Skill` 保持。v2 Kimi/MiniMax 模型目录启用已有原生
+`include_skills_usage_instructions=true`，不在 Host 抄写技能指南。旧精确目录仅通过
+原 managed-file 升级边界接受；旧 Host 会拒绝新目录，所以最高
+`contract-impact=breaking`（私有受管配置），无新公共 wire 或数据库格式，旧历史
+不重写。以下旧目录缩减测量不代表当前策略的收益。
+
 2026-11-03，Owner 复审后要求实施且必须复用 `yijie-codex` 既有机制。`contract-impact = semantic`，不新增公共 HTTP/RPC/DTO、数据库或第二个执行循环。
 
 Host 只做配置与指令投影：

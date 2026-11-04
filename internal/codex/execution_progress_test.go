@@ -7,20 +7,6 @@ import (
 	"testing"
 )
 
-func TestPromptInputConfigUsesNativeExplicitSkillMode(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.RuntimePermissionsEnabled, cfg.ChatModelsEnabled = true, true
-	m := NewManager(cfg, nil)
-	original := map[string]any{"web_search": "live", "approvals_reviewer": "user"}
-	got := m.promptInputConfig(original)
-	if got["skills.include_instructions"] != false || got["web_search"] != "live" || len(original) != 2 {
-		t.Fatal("native explicit Skill projection changed unrelated configuration")
-	}
-	if _, changed := got["features.multi_agent"]; changed {
-		t.Fatal("Skill directory projection changed tool capabilities")
-	}
-}
-
 func TestExecutionProgressUsesNativeRolloutBudget(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.RuntimePermissionsEnabled, cfg.ChatModelsEnabled = true, true
