@@ -1832,6 +1832,24 @@ func (e TitleOutputInvalidErrorErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for ToolProfile.
+const (
+	Full  ToolProfile = "full"
+	Light ToolProfile = "light"
+)
+
+// Valid indicates whether the value is a known member of the ToolProfile enum.
+func (e ToolProfile) Valid() bool {
+	switch e {
+	case Full:
+		return true
+	case Light:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TurnOperationConflictErrorErrorCode.
 const (
 	TurnOperationConflict TurnOperationConflictErrorErrorCode = "turn_operation_conflict"
@@ -2746,6 +2764,14 @@ type StartSessionRequest struct {
 	// TenantId Optional correlation context only; it does not grant tenant access.
 	TenantId *string `json:"tenant_id,omitempty"`
 
+	// ToolProfile Explicit new-chat tool configuration. Omission means full. Light maps only
+	// to native features.multi_agent=false and features.goals=false; it does not
+	// change sandbox, approvals, selected connectors, models or token budgets.
+	// The selection is immutable for the session, including resume and model
+	// changes. Existing sessions retain full. Expert and scheduled-draft tasks
+	// cannot select light. Providers without this capability reject light.
+	ToolProfile *ToolProfile `json:"tool_profile,omitempty"`
+
 	// TraceId Optional correlation identifier copied to session events.
 	TraceId *string `json:"trace_id,omitempty"`
 
@@ -2931,6 +2957,14 @@ type TitleOutputInvalidError struct {
 
 // TitleOutputInvalidErrorErrorCode defines model for TitleOutputInvalidError.Error.Code.
 type TitleOutputInvalidErrorErrorCode string
+
+// ToolProfile Explicit new-chat tool configuration. Omission means full. Light maps only
+// to native features.multi_agent=false and features.goals=false; it does not
+// change sandbox, approvals, selected connectors, models or token budgets.
+// The selection is immutable for the session, including resume and model
+// changes. Existing sessions retain full. Expert and scheduled-draft tasks
+// cannot select light. Providers without this capability reject light.
+type ToolProfile string
 
 // TraceRequest Correlation metadata copied to subsequent events. `{}` is valid. These
 // values are correlation context, not authentication or authorization input.

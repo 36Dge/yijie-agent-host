@@ -20,7 +20,7 @@ func WithChatModelV2Storage() StoreOption {
 
 func domainStoreVersion(tx *bolt.Tx) string {
 	m := tx.Bucket(metadataBucket)
-	if string(m.Get(storeSchemaVersionKey)) == "11" {
+	if version := string(m.Get(storeSchemaVersionKey)); version == "11" || version == "12" {
 		return string(m.Get(modelBaseVersionKey))
 	}
 	return string(m.Get(storeSchemaVersionKey))
@@ -28,7 +28,7 @@ func domainStoreVersion(tx *bolt.Tx) string {
 
 func putDomainStoreVersion(tx *bolt.Tx, version string) error {
 	key := storeSchemaVersionKey
-	if string(tx.Bucket(metadataBucket).Get(key)) == "11" {
+	if version := string(tx.Bucket(metadataBucket).Get(key)); version == "11" || version == "12" {
 		key = modelBaseVersionKey
 	}
 	return tx.Bucket(metadataBucket).Put(key, []byte(version))

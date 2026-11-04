@@ -3,7 +3,7 @@
   "feature": "FEAT-164",
   "release": false,
   "mode": "immutable_local_candidate",
-  "source_commit": "633aa9eee300a3123c1574306234682059f557ec",
+  "source_commit": "ccf89302398309fbc8d500ec95531e3e68b579f9",
   "source_lock_path": "compatibility/runtime-kimi-k31-pro/source.lock.json",
   "source_lock_sha256": "6617587380b4b12c7c7bb49d6ae4e81d7897b8109462af94f89a1d8bb23613e4",
   "authority": {

@@ -206,7 +206,7 @@ func (s *Service) ApplyExpertBinding(ctx context.Context, input expert.ApplyPayl
 	if e != nil {
 		return expert.ApplyReceipt{}, expertFail(expert.ErrorCodeNotFound)
 	}
-	if record.CodexThreadID != string(input.NativeThreadId) || record.Purpose == purposeDraft || (record.Purpose == purposeMarket && (record.MarketScopeHash != owner || record.MarketLocalSessionID != string(input.LocalSessionId))) {
+	if record.ToolProfile != "" || record.CodexThreadID != string(input.NativeThreadId) || record.Purpose == purposeDraft || (record.Purpose == purposeMarket && (record.MarketScopeHash != owner || record.MarketLocalSessionID != string(input.LocalSessionId))) {
 		return expert.ApplyReceipt{}, expertFail(expert.ErrorCodeContextInvalid)
 	}
 	ctx = codex.WithModelProfile(ctx, string(input.Intent.ProfileId))
@@ -286,7 +286,7 @@ func (s *Service) RecoverExpertBinding(ctx context.Context, recovery expert.Priv
 	if e != nil {
 		return expert.ApplyReceipt{}, expertFail(expert.ErrorCodeNotFound)
 	}
-	if record.CodexThreadID != string(input.NativeThreadId) || record.Purpose == purposeDraft || (record.Purpose == purposeMarket && (record.MarketScopeHash != owner || record.MarketLocalSessionID != string(input.LocalSessionId))) {
+	if record.ToolProfile != "" || record.CodexThreadID != string(input.NativeThreadId) || record.Purpose == purposeDraft || (record.Purpose == purposeMarket && (record.MarketScopeHash != owner || record.MarketLocalSessionID != string(input.LocalSessionId))) {
 		return expert.ApplyReceipt{}, expertFail(expert.ErrorCodeContextInvalid)
 	}
 	ctx = codex.WithModelProfile(ctx, string(input.Intent.ProfileId))

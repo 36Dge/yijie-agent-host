@@ -130,6 +130,7 @@ type Submission struct {
 	PermissionMode        PermissionMode    `json:"permissionMode"`
 	Snapshot              SelectionSnapshot `json:"snapshot"`
 	Services              []ServiceBinding  `json:"services"`
+	ToolProfile           *ToolProfile      `json:"toolProfile,omitempty"`
 }
 
 func (v Submission) Validate() error {
@@ -184,6 +185,11 @@ func (v Submission) Validate() error {
 	}
 	for _, item := range v.Services {
 		if err := item.Validate(); err != nil {
+			return err
+		}
+	}
+	if v.ToolProfile != nil {
+		if err := (*v.ToolProfile).Validate(); err != nil {
 			return err
 		}
 	}
@@ -264,6 +270,9 @@ func (v *Submission) UnmarshalJSON(b []byte) error {
 		return errors.New("missing broker field")
 	}
 	if x, ok := raw["services"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["toolProfile"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
 		return errors.New("null broker field")
 	}
 	var w wire
@@ -3753,6 +3762,34 @@ func (v *SuspendResponse) UnmarshalJSON(b []byte) error {
 		return errors.New("invalid broker object")
 	}
 	x := SuspendResponse(w)
+	if err := x.Validate(); err != nil {
+		return err
+	}
+	*v = x
+	return nil
+}
+
+type ToolProfile string
+
+const (
+	ToolProfileFull  ToolProfile = "full"
+	ToolProfileLight ToolProfile = "light"
+)
+
+func (v ToolProfile) Validate() error {
+	switch v {
+	case ToolProfileFull, ToolProfileLight:
+		return nil
+	default:
+		return errors.New("invalid broker enum")
+	}
+}
+func (v *ToolProfile) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return errors.New("invalid broker enum")
+	}
+	x := ToolProfile(s)
 	if err := x.Validate(); err != nil {
 		return err
 	}

@@ -154,6 +154,9 @@
         },
         "selection": {
           "$ref": "#/$defs/Selection"
+        },
+        "toolProfile": {
+          "$ref": "#/$defs/ToolProfile"
         }
       },
       "allOf": [
@@ -240,6 +243,9 @@
           "items": {
             "$ref": "#/$defs/ProviderBinding"
           }
+        },
+        "toolProfile": {
+          "$ref": "#/$defs/ToolProfile"
         }
       },
       "description": "Trusted immutable Native outbox intention. taskId is the existing PublicTask UUID, distinct from localSessionId and Host agentSessionId; null agentSessionId means creation. snapshot.turnOperationId is the actual turn operation, not the separate create submission operation. cwd is Native canonical authority, content blocks reuse existing v2 attachment handling and aggregate limits. Initial model expectedRevision=0 precedes Host record revision=1. Entire typed intention participates in Host HMAC; grant/context expiry and transport request IDs do not. No platform credential/configuration. Nonempty market selection currently requires permissionMode=ask; auto/full returns permission_mode_unavailable with recovery to request approval mode. Empty selection keeps the existing three permission modes."
@@ -2693,6 +2699,14 @@
           "$ref": "#/$defs/ImageInput"
         }
       ]
+    },
+    "ToolProfile": {
+      "type": "string",
+      "enum": [
+        "full",
+        "light"
+      ],
+      "description": "Explicit new-chat tool configuration. Omission means full. Light maps only\nto native features.multi_agent=false and features.goals=false; it does not\nchange sandbox, approvals, selected connectors, models or token budgets.\nThe selection is immutable for the session, including resume and model\nchanges. Existing sessions retain full. Expert and scheduled-draft tasks\ncannot select light. Providers without this capability reject light.\n"
     },
     "StartTurnV2ContentBlock": {
       "description": "A closed content-block union discriminated by `type`.",
