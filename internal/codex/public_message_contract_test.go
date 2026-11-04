@@ -163,3 +163,64 @@ func TestPublicMessageNativeNormalReopen(t *testing.T) {
 		t.Fatal("reopening dispatched model generation")
 	}
 }
+
+// A malformed scripted transcript is still ONE actual Item. Keep every result
+// word, suppress only unquoted control lines, and do not resample just because
+// its first declaration says commentary. This is the real MiniMax regression.
+func TestPublicMessageMixedDeclarationDoesNotResample(t *testing.T) {
+	raw := "[[yijie.public-message.v1:commentary]]\n我会比较两种协作方式。\n\n[[yijie.public-message.v1:final_answer]]\n结果：同步协作适合即时协调，异步协作适合可留痕的信息交换。"
+	h := feat164AuxRuntime(t, func(_ map[string]any, number int64) map[string]any {
+		if number != 1 {
+			t.Error("mixed declarations caused an extra sampling request")
+			return feat164AuxText("完整结果已给出。")
+		}
+		item := feat164AuxText(raw)
+		delete(item, "phase")
+		return item
+	})
+	ctx := feat164AuxCtx()
+	thread, err := h.manager.StartThread(ctx, h.cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, _ := TextUserInput("比较两种协作方式，无需工具。")
+	turn, err := h.manager.StartTurnV2(ctx, thread.ID, []UserInput{input}, "max")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, _, err := h.notifications.waitForTurn(turn.ID, 30*time.Second)
+	if err != nil || status != "completed" || h.calls.Load() != 1 {
+		t.Fatal("mixed message did not stop normally with its readable result", status, err, h.calls.Load())
+	}
+	history, err := h.manager.ReadThread(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var view struct {
+		Turns []struct {
+			Items []struct {
+				Type  string  `json:"type"`
+				Text  string  `json:"text"`
+				Phase *string `json:"phase"`
+			} `json:"items"`
+		} `json:"turns"`
+	}
+	if json.Unmarshal(history, &view) != nil {
+		t.Fatal("history decode failed")
+	}
+	count := 0
+	for _, savedTurn := range view.Turns {
+		for _, item := range savedTurn.Items {
+			if item.Type != "agentMessage" {
+				continue
+			}
+			count++
+			if item.Phase != nil || item.Text != "我会比较两种协作方式。\n\n结果：同步协作适合即时协调，异步协作适合可留痕的信息交换。" {
+				t.Error("mixed Item text or unknown phase was not preserved")
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatal("one actual Item was split or duplicated")
+	}
+}
