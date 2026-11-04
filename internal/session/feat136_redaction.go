@@ -21,8 +21,8 @@ var (
 const v5RedactedMarker = "[内容已脱敏]"
 
 // redactV5CommandText deliberately favors confidentiality over fidelity. Command
-// summaries never use this function (they are allowlisted category labels); this
-// sanitizer is only for bounded output projection.
+// v5 summaries remain category labels. Native trace previews also reuse this
+// sanitizer on a bounded first line before selecting any display text.
 func redactV5CommandText(value string) string {
 	value = normalizeV5CommandText(value)
 	var sanitized strings.Builder

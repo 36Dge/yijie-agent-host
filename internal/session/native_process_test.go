@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv6"
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
@@ -79,7 +79,7 @@ func TestNativeProcessProjectsExistingWebSearchActions(t *testing.T) {
 	} {
 		raw := json.RawMessage(`{"id":"web-native","type":"webSearch","action":` + action + `}`)
 		item, err := projectNativeItem(raw, "/workspace", false)
-		if err != nil || item.Type != native.WebSearch || item.Id != "web-native" || item.WebSearch == nil || item.Status != nil {
+		if err != nil || item.Type != native.NativeItemTypeWebSearch || item.Id != "web-native" || item.WebSearch == nil || item.Status != nil {
 			t.Fatal("native web identity/action was lost or execution status was invented")
 		}
 		encoded, _ := json.Marshal(item)
@@ -151,8 +151,8 @@ func TestNativeProcessNewAndLegacyEventsConformWithoutMutatingFacts(t *testing.T
 	if len(events) != 2 {
 		t.Fatal("unexpected lifecycle event count")
 	}
-	for _, version := range []int{11, 10, 8, 7} {
-		file := "../../api/openapi/native-conversation-v4.yaml"
+	for _, version := range []int{13, 10, 8, 7} {
+		file := "../../api/openapi/native-conversation-v6.yaml"
 		if version == 10 {
 			file = "../../api/openapi/native-conversation-v3.yaml"
 		}
@@ -186,12 +186,12 @@ func TestNativeProcessNewAndLegacyEventsConformWithoutMutatingFacts(t *testing.T
 			if event.EventID != source.EventID || event.Sequence != source.Sequence || event.Terminal != source.Terminal || event.Payload.Native.Method != source.Payload.Native.Method {
 				t.Fatal("downgrade changed execution facts")
 			}
-			if version < 10 && (event.Payload.Native.Item.Type != native.Unknown || event.Payload.Native.Item.WebSearch != nil) {
+			if version < 10 && (event.Payload.Native.Item.Type != native.NativeItemTypeUnknown || event.Payload.Native.Item.WebSearch != nil) {
 				t.Fatal("new display fields leaked to old readers")
 			}
 		}
 	}
-	if events[1].SchemaVersion != 11 || events[1].Payload.Native.Item.Type != native.WebSearch || events[1].Payload.Native.Item.WebSearch == nil {
+	if events[1].SchemaVersion != 13 || events[1].Payload.Native.Item.Type != native.NativeItemTypeWebSearch || events[1].Payload.Native.Item.WebSearch == nil {
 		t.Fatal("shared event buffer mutated by legacy projection")
 	}
 }
@@ -200,8 +200,8 @@ func TestNativeProcessHistoryVersionsReuseNativeRead(t *testing.T) {
 	sourceURL := "https://example.org/documentation/guides/ordinary-pages"
 	runtime := &nativeReadRuntime{raw: rawJSON(t, map[string]any{"id": testThreadID, "turns": []any{map[string]any{"id": testTurnID, "status": "completed", "items": []any{map[string]any{"id": "web", "type": "webSearch", "action": map[string]any{"type": "search", "query": "普通查询", "sources": []map[string]string{{"type": "url", "url": sourceURL}}}}}}}})}
 	s := NewService(runtime, openBoundFEAT134Store(t), NewEventHub(32, 8), nil)
-	current, err := s.ReadNativeThreadV4(context.Background(), testSessionID)
-	if err != nil || current.SchemaVersion != 4 || current.Turns[0].Items[0].Type != native.WebSearch {
+	current, err := s.ReadNativeThreadV6(context.Background(), testSessionID)
+	if err != nil || current.SchemaVersion != 6 || current.Turns[0].Items[0].Type != native.NativeItemTypeWebSearch {
 		t.Fatal("v4 native history unavailable")
 	}
 	if current.Turns[0].Items[0].WebSearch.Sources == nil || len(*current.Turns[0].Items[0].WebSearch.Sources) != 1 || (*current.Turns[0].Items[0].WebSearch.Sources)[0].Url != sourceURL {

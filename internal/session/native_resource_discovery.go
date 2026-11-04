@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv6"
 )
 
 // The native discovery result is a closed envelope. Reuse native MCP text,

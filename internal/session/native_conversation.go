@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv6"
 )
 
 const nativeTextLimit = 256 << 10
@@ -14,25 +14,27 @@ const nativeTextLimit = 256 << 10
 // These are transient decoders for the pinned native protocol, not a second
 // conversation model. Public values below use generated contract types.
 type nativeWireItem struct {
-	ID               string          `json:"id"`
-	Type             string          `json:"type"`
-	ClientID         *string         `json:"clientId"`
-	Text             *string         `json:"text"`
-	Phase            *string         `json:"phase"`
-	Summary          []string        `json:"summary"`
-	Content          json.RawMessage `json:"content"`
-	Status           *string         `json:"status"`
-	Command          string          `json:"command"`
-	Cwd              string          `json:"cwd"`
-	AggregatedOutput *string         `json:"aggregatedOutput"`
-	ExitCode         *int32          `json:"exitCode"`
-	DurationMS       *int64          `json:"durationMs"`
-	Server           string          `json:"server"`
-	Tool             string          `json:"tool"`
-	Arguments        json.RawMessage `json:"arguments"`
-	Result           json.RawMessage `json:"result"`
-	Query            string          `json:"query"`
-	Action           json.RawMessage `json:"action"`
+	ID               string                `json:"id"`
+	Type             string                `json:"type"`
+	ClientID         *string               `json:"clientId"`
+	Text             *string               `json:"text"`
+	Phase            *string               `json:"phase"`
+	Summary          []string              `json:"summary"`
+	Content          json.RawMessage       `json:"content"`
+	Status           *string               `json:"status"`
+	Command          string                `json:"command"`
+	Cwd              string                `json:"cwd"`
+	AggregatedOutput *string               `json:"aggregatedOutput"`
+	ExitCode         *int32                `json:"exitCode"`
+	DurationMS       *int64                `json:"durationMs"`
+	Server           string                `json:"server"`
+	Tool             string                `json:"tool"`
+	Arguments        json.RawMessage       `json:"arguments"`
+	Result           json.RawMessage       `json:"result"`
+	Query            string                `json:"query"`
+	Action           json.RawMessage       `json:"action"`
+	CommandActions   []nativeWireAction    `json:"commandActions"`
+	AppContext       *nativeWireAppContext `json:"appContext"`
 }
 
 type nativeWireTurn struct {
@@ -59,7 +61,7 @@ func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) 
 	}
 	out := native.NativeItem{Id: wire.ID, Type: native.NativeItemType(wire.Type), Availability: native.NativeItemAvailabilityAvailable}
 	if !out.Type.Valid() {
-		out.Type = native.Unknown
+		out.Type = native.NativeItemTypeUnknown
 		out.Availability = native.NativeItemAvailabilityUnavailable
 		return out, nil
 	}
@@ -79,7 +81,7 @@ func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) 
 		}
 	}
 	switch out.Type {
-	case native.AgentMessage:
+	case native.NativeItemTypeAgentMessage:
 		if wire.Text != nil {
 			out.Text = text(*wire.Text, nativeTextLimit)
 		} else {
@@ -93,7 +95,7 @@ func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) 
 				out.Availability = native.NativeItemAvailabilityPartial
 			}
 		}
-	case native.UserMessage:
+	case native.NativeItemTypeUserMessage:
 		if wire.ClientID != nil && len(*wire.ClientID) <= 512 {
 			out.ClientId = wire.ClientID
 		}
@@ -114,7 +116,7 @@ func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) 
 			}
 		}
 		out.Text = text(strings.Join(texts, "\n"), nativeTextLimit)
-	case native.Reasoning:
+	case native.NativeItemTypeReasoning:
 		var content []string
 		if json.Unmarshal(wire.Content, &content) != nil {
 			out.Availability = native.NativeItemAvailabilityPartial
@@ -141,7 +143,8 @@ func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) 
 		summary := bounded(wire.Summary)
 		out.Content = &content
 		out.Summary = &summary
-	case native.CommandExecution:
+	case native.NativeItemTypeCommandExecution:
+		projectNativeActions(wire, cwd, &out)
 		// Reuse the existing security projection only; do not reuse lifecycle state.
 		var life v5LifecycleNotification
 		if json.Unmarshal(raw, &life.Item) != nil {
@@ -149,6 +152,7 @@ func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) 
 		}
 		command := v5CommandSummary(life)
 		out.CommandLabel = &command.Text
+		projectNativeCommandPreview(wire, &out)
 		location := v5CommandCwd(cwd, &wire.Cwd)
 		label := "[路径已隐藏]"
 		if location.Kind == "workspace_root" {
@@ -168,9 +172,10 @@ func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) 
 				out.Availability = native.NativeItemAvailabilityPartial
 			}
 		}
-	case native.McpToolCall:
+	case native.NativeItemTypeMcpToolCall:
 		projectNativeMcp(wire, &out)
-	case native.WebSearch:
+		projectNativeToolDisplay(wire, &out)
+	case native.NativeItemTypeWebSearch:
 		projectNativeWebSearch(wire, &out)
 	}
 	return out, nil
@@ -225,7 +230,7 @@ func projectNativeTurn(wire nativeWireTurn, cwd string, allowRawReasoning bool) 
 	return out
 }
 
-func (s *Service) ReadNativeThreadV4(ctx context.Context, sessionID string) (native.NativeThreadSnapshot, error) {
+func (s *Service) ReadNativeThreadV6(ctx context.Context, sessionID string) (native.NativeThreadSnapshot, error) {
 	if err := requireUUID("agent_session_id", sessionID); err != nil {
 		return native.NativeThreadSnapshot{}, err
 	}
@@ -250,7 +255,7 @@ func (s *Service) ReadNativeThreadV4(ctx context.Context, sessionID string) (nat
 	if json.Unmarshal(raw, &wire) != nil || wire.ID != record.CodexThreadID {
 		return native.NativeThreadSnapshot{}, ErrRuntimeRequest
 	}
-	out := native.NativeThreadSnapshot{SchemaVersion: 4, Source: native.RuntimeRead, ThreadId: wire.ID, Turns: []native.NativeTurn{}, Availability: native.NativeThreadSnapshotAvailabilityPartial}
+	out := native.NativeThreadSnapshot{SchemaVersion: 6, Source: native.RuntimeRead, ThreadId: wire.ID, Turns: []native.NativeTurn{}, Availability: native.NativeThreadSnapshotAvailabilityPartial}
 	for i, turn := range wire.Turns {
 		if i >= 1024 {
 			break
@@ -287,6 +292,7 @@ func (s *Service) publishNativeNotification(method string, raw json.RawMessage) 
 		Plan         []native.NativePlanStep `json:"plan"`
 		Explanation  *string                 `json:"explanation"`
 		Message      string                  `json:"message"`
+		WillRetry    *bool                   `json:"willRetry"`
 		Error        struct {
 			Message string `json:"message"`
 		} `json:"error"`
@@ -369,6 +375,7 @@ func (s *Service) publishNativeNotification(method string, raw json.RawMessage) 
 	case RuntimeNotificationWarning:
 		n.Code = nativeString(nativeWarningCode(p.Message))
 	case RuntimeNotificationError:
+		n.WillRetry = p.WillRetry
 		message := p.Message
 		if message == "" {
 			message = p.Error.Message

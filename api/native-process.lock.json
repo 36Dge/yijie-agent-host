@@ -1,12 +1,15 @@
 {
   "schema_version": 1,
-  "contract_family_version": "0.4.0",
+  "contract_family_version": "0.6.0",
   "published": false,
   "provenance": "git-commit",
   "contracts": {
-    "full_commit": "b8854c159375a1abd2fef47f7e6ee182b84a4b09"
+    "full_commit": "dfd9012954c716d360f702d6be3bdbdef75e0633"
   },
   "sources": {
+    "openapi/native-conversation-v6/native-conversation-v6.yaml": "79a8f357db6c64cd891b1fe48d5bf169ccf8c006f32d18cee695037e9b166d7a",
+    "sdks/go/openapi/native-conversation-v6/client.gen.go": "6dd88dd4ffdfff4522ea37291b6b3f8e17f5775f97d277980f8706c812e6cd11",
+    "sdks/typescript/src/openapi/native-conversation-v6.gen.ts": "e294d382762b4720d8ca5f50700cbf3486a9989b9e86d0e1e0af681a93fb24dd",
     "tests/fixtures/agent/native-search-sources/ordinary-url-components.json": "79b5d56d803b7dba0f0c05bff6be6129b12786bca5fd96336ce288a7442cae9f",
     "openapi/native-conversation-v3/native-conversation-v3.yaml": "484ab1edc3d5673721c8b822fb8d99427dbf62be32b610083903c3786230fb62",
     "sdks/go/openapi/native-conversation-v3/client.gen.go": "9826f5f65a44e803787a4989f1cc7375a881a73de5a492871ff73719e515699f",
@@ -14,8 +17,9 @@
     "openapi/native-conversation-v4/native-conversation-v4.yaml": "53575f80bb7e79bc2974c196c8bafb26a19e9a8dd1df93257fd28373c3ea30f8",
     "sdks/go/openapi/native-conversation-v4/client.gen.go": "d2ffb481959bccb0c9192f389f2add59d59fe6a69e1d0b0da2127f01310a56a5",
     "sdks/typescript/src/openapi/native-conversation-v4.gen.ts": "7e3d7bfda9995914d9ecd1125f95430bcc1d195d59afd19140bc8bdca4e168bc",
-    "scripts/generate-native-process.mjs": "2b2a5136f260b741a835a93ca1724ed2d07e6dfb363e0425aaa57ae05f23a9c3",
-    "scripts/sync-native-process.mjs": "1b736dd717bac9d60aee3ae95c4852333507c08f0b2044d6572bab763da1b806",
-    "docs/native-search-sources-v4.md": "810d6257d140a655715030f918650513b5c17da0de317a257353faca2dbcbe1c"
+    "scripts/generate-native-process.mjs": "310450c3ed38577c196b0bfde15b435add5b31d867958399716bdb39340a6225",
+    "scripts/sync-native-process.mjs": "1445f3461bb5b457a34aa38800d23557b1cf3b7ba8e15ef63e0dd6c3bc516f49",
+    "docs/native-search-sources-v4.md": "810d6257d140a655715030f918650513b5c17da0de317a257353faca2dbcbe1c",
+    "docs/native-trace-v6.md": "03b409cb70416f393fce0e9b1e98f2d2cc6f4c56f07a8df354d01477a68af76b"
   }
 }

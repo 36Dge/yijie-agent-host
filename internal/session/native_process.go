@@ -12,7 +12,7 @@ import (
 
 	v2 "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv2"
 	v3 "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv3"
-	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv4"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv6"
 )
 
 var nativePageHost = regexp.MustCompile(`^[A-Za-z0-9.-]{1,253}$`)
@@ -177,7 +177,7 @@ func NativeEventV10(event Event) Event {
 }
 
 func (s *Service) ReadNativeThreadV3(ctx context.Context, sessionID string) (v3.NativeThreadSnapshot, error) {
-	value, err := s.ReadNativeThreadV4(ctx, sessionID)
+	value, err := s.ReadNativeThreadV6(ctx, sessionID)
 	if err != nil {
 		return v3.NativeThreadSnapshot{}, err
 	}
@@ -204,8 +204,8 @@ func NativeEventV8(event Event) Event {
 	var copy native.NativeNotification
 	_ = json.Unmarshal(encoded, &copy)
 	strip := func(item *native.NativeItem) {
-		if item.Type == native.WebSearch {
-			*item = native.NativeItem{Id: item.Id, Type: native.Unknown, Availability: native.NativeItemAvailabilityUnavailable}
+		if item.Type == native.NativeItemTypeWebSearch {
+			*item = native.NativeItem{Id: item.Id, Type: native.NativeItemTypeUnknown, Availability: native.NativeItemAvailabilityUnavailable}
 		}
 	}
 	if copy.Item != nil {
@@ -221,7 +221,7 @@ func NativeEventV8(event Event) Event {
 }
 
 func (s *Service) ReadNativeThreadV2(ctx context.Context, sessionID string) (v2.NativeThreadSnapshot, error) {
-	value, err := s.ReadNativeThreadV4(ctx, sessionID)
+	value, err := s.ReadNativeThreadV6(ctx, sessionID)
 	if err != nil {
 		return v2.NativeThreadSnapshot{}, err
 	}
