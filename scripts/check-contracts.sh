@@ -310,7 +310,7 @@ if git -C "$contracts_repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
   source_report_v1_schema="$temporary_dir/report-document-v1.schema.json"
   source_skill_bundle_v1_schema="$temporary_dir/skill-bundle-manifest-v1.schema.json"
   source_skill_bundle_v2_schema="$temporary_dir/skill-bundle-manifest-v2.schema.json"
-  source_skill_v1_fixtures="$temporary_dir/skill-bundle-v1"
+  source_skill_v1_fixtures="$snapshot_skill_v1_fixtures"
   source_skill_v2_fixtures="$temporary_dir/skill-bundle-v2"
   source_host_skill_fixtures="$temporary_dir/host-skills-v1"
   source_event_v4_fixtures="$temporary_dir/session-event-v4"
@@ -325,9 +325,12 @@ if git -C "$contracts_repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
   git -C "$contracts_repo" show "$CONTRACTS_COMMIT:jsonschema/report/report-document-v1.schema.json" >"$source_report_v1_schema"
   git -C "$contracts_repo" show "$CONTRACTS_COMMIT:jsonschema/skills/skill-bundle-manifest-v1.schema.json" >"$source_skill_bundle_v1_schema"
   git -C "$contracts_repo" show "$CONTRACTS_COMMIT:jsonschema/skills/skill-bundle-manifest-v2.schema.json" >"$source_skill_bundle_v2_schema"
-  mkdir -p "$source_skill_v1_fixtures/packages"
   for relative in "${skill_v1_fixture_files[@]}"; do
-    git -C "$contracts_repo" show "$CONTRACTS_COMMIT:tests/fixtures/skills/bundle-v1/$relative" >"$source_skill_v1_fixtures/$relative"
+    if [ "$(git -C "$repo_root" hash-object --no-filters "$snapshot_skill_v1_fixtures/$relative")" != \
+      "$(git -C "$contracts_repo" rev-parse "$CONTRACTS_COMMIT:tests/fixtures/skills/bundle-v1/$relative")" ]; then
+      echo "Historical Skill fixture does not match the pinned source: $relative" >&2
+      exit 1
+    fi
   done
   mkdir -p "$source_skill_v2_fixtures/packages"
   for relative in "${skill_v2_fixture_files[@]}"; do
@@ -353,9 +356,7 @@ if git -C "$contracts_repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; the
   cmp "$source_report_v1_schema" "$snapshot_report_v1_schema"
   cmp "$source_skill_bundle_v1_schema" "$snapshot_skill_bundle_v1_schema"
   cmp "$source_skill_bundle_v2_schema" "$snapshot_skill_bundle_v2_schema"
-  for relative in "${skill_v1_fixture_files[@]}"; do
-    cmp "$source_skill_v1_fixtures/$relative" "$snapshot_skill_v1_fixtures/$relative"
-  done
+  # Exact blob comparison above preserves checks without copying attack archives.
   for relative in "${skill_v2_fixture_files[@]}"; do
     cmp "$source_skill_v2_fixtures/$relative" "$snapshot_skill_v2_fixtures/$relative"
   done

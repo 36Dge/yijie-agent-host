@@ -36,7 +36,7 @@
     },
     {
       "path": "compatibility/market-selection-v2/wire.schema.json",
-      "sha256": "ac34dd72108e3395d656383b3e1a98fcd903803d224ea844f3ae535833224496"
+      "sha256": "886b7f4937162422ea4d945b65a1e15d9a14fbcd0e378216c964a88c368ddea2"
     },
     {
       "path": "openapi/runtime-permissions-v2/runtime-permissions-v2.yaml",
@@ -52,15 +52,11 @@
     },
     {
       "path": "openapi/agent-host/agent-host.yaml",
-      "sha256": "7c7a2448141bab9a67f76a8127ec3ccc0cff6b831bf196e09a49e6fc4459470b"
+      "sha256": "3a869bb3656bc6ce84f570c324078e0b23fbbdf6872803c448c736561c873541"
     },
     {
       "path": "compatibility/market-provider/wire.schema.json",
       "sha256": "a677189764e431d331c974b690ec93eb9c323116c609548d4962173aef3249da"
-    },
-    {
-      "path": "jsonschema/chat/message.schema.json",
-      "sha256": "b1c427ee79f98145a3746b23fc2150995d43b464b5685c02bdaaa0ff275f0c51"
     },
     {
       "path": "scripts/experts-v2-source.mjs",
@@ -94,7 +90,7 @@
     },
     {
       "path": "sdks/jsonschema/experts-v2.schema.json",
-      "sha256": "36d4c13dcab908fcc5630a01f00a4e61e790d662bfd0fda47b0f4b5cf88a3044"
+      "sha256": "b13872f6659948c5b8065c1a44c7c18386825860bb779c66793c3ce66acc1c31"
     },
     {
       "path": "sdks/go/experts-v2/bundle_schemas.gen.go",
@@ -102,11 +98,11 @@
     },
     {
       "path": "sdks/typescript/src/domain/experts-v2.generated.ts",
-      "sha256": "33ade8c196a83d18074b0e5ee766a01d3708164b799166d2395f720870105577"
+      "sha256": "e718089a69703d0294ec6ebb856ffe594e4aacb57b6f11186b3b0414124e0525"
     },
     {
       "path": "sdks/typescript/src/api/generated/experts-v2-validator.gen.js",
-      "sha256": "466a7828b11346a22cc3e603ec635130a4f63f55cc710d0616e843975324c19b"
+      "sha256": "5c42be629908a3d4caa7936fc6eece72dff264a6e81568ab79822f612e1bdc6e"
     },
     {
       "path": "sdks/typescript/src/api/generated/experts-v2-validator.gen.d.ts",
@@ -114,7 +110,7 @@
     },
     {
       "path": "sdks/jsonschema/experts-v2-native.schema.json",
-      "sha256": "0fc89504a2b94723a338449f508cb28635eba0c7f9cff97e552684f2924954e2"
+      "sha256": "05b819f0e2f3f23a0c9a5868b5b10f863a3d572c4a869ac6be9c4ceb92532555"
     },
     {
       "path": "fixtures/experts-v2/digest-vectors.json",
@@ -129,7 +125,7 @@
       "sha256": "a7ee6c00cd33741143e6733a934c8d596e9bb6a620911dd70894abccb84be0d8"
     }
   ],
-  "source_commit": "d191ad6ed08f0e8cc89dfea1346b5ecdf010e776",
+  "source_commit": "633aa9eee300a3123c1574306234682059f557ec",
   "consumer": "agent-host",
   "consumer_generated": [
     {
@@ -140,7 +136,7 @@
     {
       "source": "sdks/jsonschema/experts-v2.schema.json",
       "path": "api/experts-v2.schema.json",
-      "sha256": "36d4c13dcab908fcc5630a01f00a4e61e790d662bfd0fda47b0f4b5cf88a3044"
+      "sha256": "b13872f6659948c5b8065c1a44c7c18386825860bb779c66793c3ce66acc1c31"
     }
   ]
 }

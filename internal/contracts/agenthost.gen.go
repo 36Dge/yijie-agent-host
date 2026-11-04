@@ -2632,6 +2632,15 @@ type RuntimeStatusUpstreamCommit string
 // RuntimeStatusUpstreamTag defines model for RuntimeStatus.UpstreamTag.
 type RuntimeStatusUpstreamTag string
 
+// SelectedSkillRef User-selected managed Skill identity. Host resolves the exact enabled installation and native SKILL.md path from its verified catalog and receipt. No client path or prompt content is accepted.
+type SelectedSkillRef struct {
+	Id      string `json:"id"`
+	Version string `json:"version"`
+}
+
+// SelectedSkills Ordered selections frozen with the user turn. IDs must be unique across the entire turn. Absence preserves legacy behavior. Native Skill inputs own instruction loading and per-turn deduplication. Consumers send only after the new source pin is admitted.
+type SelectedSkills = []SelectedSkillRef
+
 // SemanticVersion defines model for SemanticVersion.
 type SemanticVersion = string
 
@@ -2879,6 +2888,9 @@ type StartTurnV2RequestReasoningEffort string
 
 // StartTurnV2TextBlock defines model for StartTurnV2TextBlock.
 type StartTurnV2TextBlock struct {
+	// Skills Ordered selections frozen with the user turn. IDs must be unique across the entire turn. Absence preserves legacy behavior. Native Skill inputs own instruction loading and per-turn deduplication. Consumers send only after the new source pin is admitted.
+	Skills *SelectedSkills `json:"skills,omitempty"`
+
 	// Text Non-blank user text, bounded to 1 MiB in UTF-8 bytes.
 	Text string                   `json:"text"`
 	Type StartTurnV2TextBlockType `json:"type"`

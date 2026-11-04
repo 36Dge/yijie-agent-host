@@ -60,7 +60,8 @@ source_event_v4_schema="$temporary_dir/agent-session-event-v4.schema.json"
 source_report_v1_schema="$temporary_dir/report-document-v1.schema.json"
 source_skill_bundle_v1_schema="$temporary_dir/skill-bundle-manifest-v1.schema.json"
 source_skill_bundle_v2_schema="$temporary_dir/skill-bundle-manifest-v2.schema.json"
-source_skill_v1_fixtures="$temporary_dir/skill-bundle-v1"
+# Historical attack archives are retained read-only, never materialized by sync.
+source_skill_v1_fixtures="$repo_root/api/fixtures/skills/bundle-v1"
 source_skill_v2_fixtures="$temporary_dir/skill-bundle-v2"
 source_host_skill_fixtures="$temporary_dir/host-skills-v1"
 source_event_v4_fixtures="$temporary_dir/session-event-v4"
@@ -76,7 +77,6 @@ git -C "$contracts_repo" show "$contracts_commit:jsonschema/agent/session-event-
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/report/report-document-v1.schema.json" >"$source_report_v1_schema"
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/skills/skill-bundle-manifest-v1.schema.json" >"$source_skill_bundle_v1_schema"
 git -C "$contracts_repo" show "$contracts_commit:jsonschema/skills/skill-bundle-manifest-v2.schema.json" >"$source_skill_bundle_v2_schema"
-mkdir -p "$source_skill_v1_fixtures/packages"
 skill_v1_fixture_files=(
   manifest-valid.json
   manifest-checksum-mismatch.json
@@ -86,7 +86,12 @@ skill_v1_fixture_files=(
   packages/fixture-zip-slip.zip
 )
 for relative in "${skill_v1_fixture_files[@]}"; do
-  git -C "$contracts_repo" show "$contracts_commit:tests/fixtures/skills/bundle-v1/$relative" >"$source_skill_v1_fixtures/$relative"
+  if [ ! -f "$source_skill_v1_fixtures/$relative" ] ||
+    [ "$(git -C "$repo_root" hash-object --no-filters "$source_skill_v1_fixtures/$relative")" != \
+      "$(git -C "$contracts_repo" rev-parse "$contracts_commit:tests/fixtures/skills/bundle-v1/$relative")" ]; then
+    echo "Historical Skill fixture differs or is missing; safety policy forbids creating/replacing attack fixtures: $relative" >&2
+    exit 1
+  fi
 done
 mkdir -p "$source_skill_v2_fixtures/packages"
 skill_v2_fixture_files=(
@@ -210,9 +215,7 @@ cp "$source_event_v4_schema" "$repo_root/api/jsonschema/agent-session-event-v4.s
 cp "$source_report_v1_schema" "$repo_root/api/jsonschema/report-document-v1.schema.json"
 cp "$source_skill_bundle_v1_schema" "$repo_root/api/jsonschema/skill-bundle-manifest-v1.schema.json"
 cp "$source_skill_bundle_v2_schema" "$repo_root/api/jsonschema/skill-bundle-manifest-v2.schema.json"
-for relative in "${skill_v1_fixture_files[@]}"; do
-  cp "$source_skill_v1_fixtures/$relative" "$repo_root/api/fixtures/skills/bundle-v1/$relative"
-done
+# The retained v1 fixture set was verified by exact Git blob identity above.
 for relative in "${skill_v2_fixture_files[@]}"; do
   cp "$source_skill_v2_fixtures/$relative" "$repo_root/api/fixtures/skills/bundle-v2/$relative"
 done

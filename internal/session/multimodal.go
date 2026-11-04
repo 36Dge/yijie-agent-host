@@ -20,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	agenthostcontract "github.com/36Dge/yijie-agent-host/internal/contracts"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -64,10 +65,11 @@ var supportedImageMediaTypes = map[string]struct{}{
 }
 
 type TurnContentBlock struct {
-	Type  string
-	Text  string
-	Image *TurnImageBlock
-	File  *TurnFileBlock
+	Type   string
+	Text   string
+	Image  *TurnImageBlock
+	File   *TurnFileBlock
+	Skills []agenthostcontract.SelectedSkillRef
 }
 
 type TurnImageBlock struct {
@@ -201,6 +203,14 @@ func (s *Service) startTurnV2Locked(ctx context.Context, input StartTurnV2Input,
 	if err := s.checkModelRequest(ctx, recordPurpose); err != nil {
 		return codex.TurnInfo{}, err
 	}
+	// An accepted operation above is read-only even if its Skill was later
+	// removed. Fresh dispatch resolves the frozen references before reserving
+	// an operation, so unavailable selections cannot cause a model request.
+	skillInputs, err := s.resolveSelectedSkillInputs(ctx, input.ContentBlocks, draft)
+	if err != nil {
+		return codex.TurnInfo{}, err
+	}
+	runtimeInputs = append(runtimeInputs, skillInputs...)
 	operation, record, err := s.store.prepareModelTurnOperation(
 		input.AgentSessionID,
 		input.OperationID,
@@ -308,6 +318,15 @@ func turnV2InputDigest(key [sha256.Size]byte, blocks []TurnContentBlock, normali
 		switch block.Type {
 		case ContentBlockText:
 			writeString(block.Text)
+			if len(block.Skills) > 0 {
+				// Preserve every historical text-only operation digest exactly.
+				writeString("yijie-selected-skills-v1")
+				writeInt64(int64(len(block.Skills)))
+				for _, skill := range block.Skills {
+					writeString(skill.Id)
+					writeString(skill.Version)
+				}
+			}
 		case ContentBlockImage:
 			if block.Image == nil {
 				return "", fmt.Errorf("%w: image content block is invalid", ErrInvalidArgument)
@@ -342,6 +361,9 @@ func validateAndMapTurnV2Blocks(blocks []TurnContentBlock) ([]codex.UserInput, e
 		return nil, fmt.Errorf("%w: content block count must be between 1 and %d", ErrInvalidArgument, maxTurnV2Blocks)
 	}
 	inputs := make([]codex.UserInput, 0, len(blocks))
+	if _, err := selectedSkillReferences(blocks); err != nil {
+		return nil, err
+	}
 	attachments := 0
 	var imageBytes int64
 	fileContextBytes := 0

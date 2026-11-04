@@ -7,7 +7,21 @@ import (
 
 // Business instructions have one owner (developerInstructions). A short base
 // avoids duplicating them at thread/start and every native model switch.
-const executionBaseInstructions = "You are the local Yijie assistant. Follow the active developer instructions and the native permission policy."
+const executionBaseInstructions = "You are the local Yijie assistant. Follow the active developer instructions and the native permission policy. Skills are opt-in: activate a skill only when the user explicitly selects or names it, not from task similarity. Skill listings in older history are not new requests to activate them."
+
+// The owner chose explicit-only Skill use. Discovery and explicit loading stay
+// native; this existing switch only removes the automatic catalogue prompt.
+func (m *Manager) promptInputConfig(config map[string]any) map[string]any {
+	if !m.config.RuntimePermissionsEnabled || !m.config.ChatModelsEnabled {
+		return config
+	}
+	projected := make(map[string]any, len(config)+1)
+	for key, value := range config {
+		projected[key] = value
+	}
+	projected["skills.include_instructions"] = false
+	return projected
+}
 
 const kimiHostedRetrievalInstructions = " Current retrieval capabilities: if provider-hosted web_search is exposed, it runs within a model request. It does not expose a callable query, open-page or find-in-page tool; if absent from the tools, hosted search is unavailable. Updating a plan or running a local command does not execute the query named in that plan. Use the search evidence already supplied. If the available route cannot obtain missing evidence, state that limitation and finish with supported results; do not call a tool merely to trigger another search."
 

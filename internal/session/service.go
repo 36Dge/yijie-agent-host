@@ -239,6 +239,7 @@ type Service struct {
 	v5Items         map[v5ItemKey]*v5ItemState
 	titleMu         sync.Mutex
 	titleGenerator  TitleGenerator
+	selectedSkills  SelectedSkillResources
 	titleOperations map[titleOperationKey]*titleOperation
 	imageGenerator  imagegen.Generator
 	imageMu         sync.Mutex

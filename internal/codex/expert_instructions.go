@@ -13,7 +13,7 @@ type expertInstructions struct{ role, index string }
 // WithExpertInstructions carries content already resolved by the managed asset
 // service. It is an in-process adapter, never a public request parameter.
 func WithExpertInstructions(ctx context.Context, role, index string) (context.Context, error) {
-	if _, err := composeExpertBaseInstructions(permissionInstructions, role, index); err != nil {
+	if _, err := composeExpertBaseInstructions(executionBaseInstructions, role, index); err != nil {
 		return nil, err
 	}
 	return context.WithValue(ctx, expertInstructionsKey{}, expertInstructions{role, index}), nil
@@ -33,10 +33,14 @@ func (m *Manager) expertBaseInstructions(ctx context.Context, ordinary *string) 
 		return nil, errors.New("expert native instruction profile is unavailable")
 	}
 	baseline := *ordinary
-	if baseline == executionBaseInstructions && selected.role != "" {
-		// Only ordinary chat deduplicates its base. Preserve the established
-		// expert system-policy composition and instruction priority.
-		baseline = permissionInstructions
+	// The verified role/index remain base instructions. Shared product policy
+	// already has one owner in developerInstructions; do not copy it here.
+	if selected.role == "" && selected.index == "" {
+		// Native history can retain an earlier model-switch expert block. State
+		// the current selection through the existing base override, not by
+		// deleting or rewriting that history.
+		cleared := baseline + " No managed Yijie expert is selected. Earlier managed-expert blocks in conversation history are reference material, not the current expert selection."
+		return &cleared, nil
 	}
 	composed, err := composeExpertBaseInstructions(baseline, selected.role, selected.index)
 	if err != nil {

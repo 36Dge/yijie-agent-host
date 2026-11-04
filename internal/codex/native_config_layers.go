@@ -2,12 +2,16 @@ package codex
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
+	runtimeprojection "github.com/36Dge/yijie-agent-host/internal/contracts/runtimekimik31pro"
 	"github.com/pelletier/go-toml/v2"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // The fixed native app-server persists project trust in config.toml. Its -c
@@ -16,26 +20,44 @@ import (
 // just to make a managed-file comparison succeed.
 const managedNativeConfigName = "yijie-runtime-v1.toml"
 
-type nativeProjectTrust struct {
-	TrustLevel *string `toml:"trust_level"`
-}
-
-type nativeProjectConfig struct {
-	Projects map[string]nativeProjectTrust `toml:"projects"`
-}
+var nativeUserConfigSchema = sync.OnceValues(func() (*jsonschema.Schema, error) {
+	var document any
+	if err := json.Unmarshal(runtimeprojection.NativeConfigSchema, &document); err != nil {
+		return nil, errors.New("native configuration schema is unavailable")
+	}
+	compiler := jsonschema.NewCompiler()
+	const resource = "https://schemas.yijie.ai/pinned-runtime/config"
+	if err := compiler.AddResource(resource, document); err != nil {
+		return nil, errors.New("native configuration schema is unavailable")
+	}
+	return compiler.Compile(resource)
+})
 
 func validateNativeProjectConfig(content []byte) error {
-	var config nativeProjectConfig
-	if err := toml.NewDecoder(bytes.NewReader(content)).DisallowUnknownFields().Decode(&config); err != nil {
+	var config map[string]any
+	if err := toml.Unmarshal(content, &config); err != nil {
 		// TOML errors can quote source contents. Do not surface them.
 		return errors.New("native project configuration has unsupported fields or syntax")
 	}
-	for path, project := range config.Projects {
+	if config == nil {
+		config = map[string]any{}
+	}
+	// This is Host ownership policy, not another Runtime config model. Provider,
+	// permission and executable settings remain in the exact managed -c layer.
+	// Native ConfigEdits owns project trust and skill enabled-state persistence.
+	for key := range config {
+		if key != "projects" && key != "skills" {
+			return errors.New("native configuration contains an unowned setting")
+		}
+	}
+	schema, err := nativeUserConfigSchema()
+	if err != nil || schema.Validate(config) != nil {
+		return errors.New("native configuration differs from the pinned Runtime schema")
+	}
+	projects, _ := config["projects"].(map[string]any)
+	for path := range projects {
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path || strings.ContainsAny(path, "\x00\r\n") {
 			return errors.New("native project configuration has an unsupported path")
-		}
-		if project.TrustLevel != nil && *project.TrustLevel != "trusted" && *project.TrustLevel != "untrusted" {
-			return errors.New("native project configuration has an unsupported trust value")
 		}
 	}
 	return nil
@@ -144,8 +166,8 @@ func (a *managedCodexHomeAuthority) validateNativeLayeredConfig(expected []byte)
 	if err := a.validateManagedFileExact(managedNativeConfigName, expected); err != nil {
 		return err
 	}
-	// No legacy prefix is accepted after migration. The native root may only
-	// contain the closed ProjectConfig shape of the pinned Runtime.
+	// No legacy prefix is accepted after migration. Native-owned project/skill
+	// state uses the unchanged canonical Runtime schema, not a Host shadow DTO.
 	_, err := a.preflightNativeProjectConfig(nil)
 	return err
 }

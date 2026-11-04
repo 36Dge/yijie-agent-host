@@ -111,6 +111,9 @@ func (s *Service) submitMarket(ctx context.Context, input wire.SubmitPayload, ex
 	if _, err = validateAndMapTurnV2Blocks(blocks); err != nil {
 		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeInvalidRequest)
 	}
+	if _, err = s.resolveSelectedSkillInputs(ctx, blocks, false); err != nil {
+		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeInvalidRequest)
+	}
 	ctx = codex.WithModelProfile(ctx, string(submission.Intent.ProfileId))
 	ctx = codex.WithPermissionMode(ctx, codex.PermissionMode(submission.PermissionMode))
 	var record Record

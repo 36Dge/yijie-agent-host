@@ -360,6 +360,11 @@ func (m *Manager) WriteSkillConfig(ctx context.Context, skillPath string, enable
 	if response.EffectiveEnabled != enabled {
 		return false, errors.New("skills/config/write response is inconsistent")
 	}
+	// Native hot reload updates existing sessions without restarting threads,
+	// replacing history, or resetting the native shared rollout budget.
+	if err := m.refreshNativeSkillConfig(ctx); err != nil {
+		return false, err
+	}
 	return response.EffectiveEnabled, nil
 }
 

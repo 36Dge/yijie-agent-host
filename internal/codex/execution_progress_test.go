@@ -7,6 +7,20 @@ import (
 	"testing"
 )
 
+func TestPromptInputConfigUsesNativeExplicitSkillMode(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.RuntimePermissionsEnabled, cfg.ChatModelsEnabled = true, true
+	m := NewManager(cfg, nil)
+	original := map[string]any{"web_search": "live", "approvals_reviewer": "user"}
+	got := m.promptInputConfig(original)
+	if got["skills.include_instructions"] != false || got["web_search"] != "live" || len(original) != 2 {
+		t.Fatal("native explicit Skill projection changed unrelated configuration")
+	}
+	if _, changed := got["features.multi_agent"]; changed {
+		t.Fatal("Skill directory projection changed tool capabilities")
+	}
+}
+
 func TestExecutionProgressUsesNativeRolloutBudget(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.RuntimePermissionsEnabled, cfg.ChatModelsEnabled = true, true
@@ -59,7 +73,7 @@ func TestExecutionProgressRetrievalCapabilitiesMatchRoute(t *testing.T) {
 	}
 }
 
-func TestExecutionProgressPreservesExpertBasePolicy(t *testing.T) {
+func TestExecutionProgressKeepsExpertRoleWithoutDuplicatingDeveloperPolicy(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.RuntimePermissionsEnabled, cfg.ChatModelsEnabled = true, true
 	m := NewManager(cfg, nil)
@@ -69,11 +83,20 @@ func TestExecutionProgressPreservesExpertBasePolicy(t *testing.T) {
 	}
 	base := executionBaseInstructions
 	got, err := m.expertBaseInstructions(ctx, &base)
-	if err != nil || got == nil || !strings.HasPrefix(*got, permissionInstructions+"\n\n") {
-		t.Fatalf("existing expert policy priority lost: %v", err)
+	if err != nil || got == nil || !strings.HasPrefix(*got, executionBaseInstructions+"\n\n") ||
+		strings.Contains(*got, permissionInstructions) || !strings.Contains(*got, "ordinary expert role") || !strings.Contains(*got, "ordinary index") {
+		t.Fatalf("expert base lost resources or duplicated developer policy: %v", err)
 	}
 	ordinary, err := m.expertBaseInstructions(context.Background(), &base)
 	if err != nil || ordinary == nil || *ordinary != executionBaseInstructions {
 		t.Fatal("ordinary base unexpectedly expanded")
+	}
+	removed, err := WithExpertInstructions(context.Background(), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleared, err := m.expertBaseInstructions(removed, &base)
+	if err != nil || cleared == nil || !strings.Contains(*cleared, "No managed Yijie expert is selected") || strings.Contains(*cleared, "ordinary expert role") {
+		t.Fatal("explicit expert removal did not override retained historical expert context")
 	}
 }

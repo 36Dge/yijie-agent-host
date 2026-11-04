@@ -1,6 +1,25 @@
 // Code generated from the FEAT-164 inactive candidate manifest. DO NOT EDIT.
 package runtimekimik31pro
 
+import _ "embed"
+
+// NativeConfigSchema is the exact pinned Runtime schema, not a Host reimplementation.
+//
+//go:embed config.schema.json
+var NativeConfigSchema []byte
+
+// NativeTurnStartSchema retains the canonical UserInput variants, including Skill.
+//
+//go:embed turn-start.schema.json
+var NativeTurnStartSchema []byte
+
+//go:embed config-batch-write.schema.json
+var NativeConfigBatchWriteSchema []byte
+
+//go:embed config-write-response.schema.json
+var NativeConfigWriteResponseSchema []byte
+
+const NativeConfigReloadMethod = "config/batchWrite"
 const RuntimeBinarySHA256 = "50d89e152c90e660331326506d372b986acd0279324376cb77385959698219d7"
 const RuntimeManifestSHA256 = "cdf6aed681dba948823b96f8d6fb423c53c44921f3de77a4a334391d35a8d1a8"
 const RuntimeBinarySize int64 = 356868728

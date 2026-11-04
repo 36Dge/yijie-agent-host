@@ -2684,7 +2684,7 @@
     "ContentBlock": {
       "oneOf": [
         {
-          "$ref": "#/$defs/textContentBlock"
+          "$ref": "#/$defs/StartTurnV2TextBlock"
         },
         {
           "$ref": "#/$defs/FileInput"
@@ -2758,8 +2758,7 @@
       },
       "description": "No service label or secret is accepted as authority. Native and Host revalidate exact scope, generation, ready state and connector.use before a versioned turn is admitted."
     },
-    "textContentBlock": {
-      "title": "ChatTextContentBlock",
+    "StartTurnV2TextBlock": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -2768,13 +2767,20 @@
       ],
       "properties": {
         "type": {
-          "const": "text"
+          "type": "string",
+          "enum": [
+            "text"
+          ]
         },
         "text": {
           "type": "string",
           "minLength": 1,
           "maxLength": 1048576,
-          "pattern": "\\S"
+          "pattern": "\\S",
+          "description": "Non-blank user text, bounded to 1 MiB in UTF-8 bytes."
+        },
+        "skills": {
+          "$ref": "#/$defs/SelectedSkills"
         }
       }
     },
@@ -2809,29 +2815,6 @@
         },
         "attachmentId": {
           "$ref": "#/$defs/CanonicalId"
-        }
-      }
-    },
-    "StartTurnV2TextBlock": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "type",
-        "text"
-      ],
-      "properties": {
-        "type": {
-          "type": "string",
-          "enum": [
-            "text"
-          ]
-        },
-        "text": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 1048576,
-          "pattern": "\\S",
-          "description": "Non-blank user text, bounded to 1 MiB in UTF-8 bytes."
         }
       }
     },
@@ -2961,6 +2944,16 @@
       "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$",
       "description": "Original case-sensitive catalog serverName. Syntactic acceptance does not replace exact registry lookup."
     },
+    "SelectedSkills": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/SelectedSkillRef"
+      },
+      "description": "Ordered selections frozen with the user turn. IDs must be unique across the entire turn. Absence preserves legacy behavior. Native Skill inputs own instruction loading and per-turn deduplication. Consumers send only after the new source pin is admitted."
+    },
     "StartTurnV2FileMediaType": {
       "type": "string",
       "description": "Canonical media type produced after Desktop format and container validation.",
@@ -2980,6 +2973,29 @@
         "image/svg+xml",
         "video/mp4"
       ]
+    },
+    "SelectedSkillRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "\\S"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "\\S"
+        }
+      },
+      "description": "User-selected managed Skill identity. Host resolves the exact enabled installation and native SKILL.md path from its verified catalog and receipt. No client path or prompt content is accepted."
     }
   }
 }

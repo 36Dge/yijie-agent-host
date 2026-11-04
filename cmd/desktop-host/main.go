@@ -103,6 +103,9 @@ func run(logger *slog.Logger) error {
 			return err
 		}
 		serviceOptions := make([]session.ServiceOption, 0, 8)
+		if skillService != nil {
+			serviceOptions = append(serviceOptions, session.WithSelectedSkillResources(skillService))
+		}
 		if config.ExpertsEnabled {
 			serviceOptions = append(serviceOptions, session.WithExpertResources(skillService))
 		}

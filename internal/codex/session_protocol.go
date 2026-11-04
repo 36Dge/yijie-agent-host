@@ -164,9 +164,11 @@ type TurnInfo struct {
 }
 
 type UserInput struct {
-	kind     string
-	text     string
-	imageURL string
+	kind      string
+	text      string
+	imageURL  string
+	skillName string
+	skillPath string
 }
 
 func TextUserInput(text string) (UserInput, error) {
@@ -199,6 +201,12 @@ func (input UserInput) wireValue() (map[string]any, error) {
 			return nil, err
 		}
 		return map[string]any{"type": "image", "url": input.imageURL}, nil
+	case "skill":
+		value := map[string]any{"type": "skill", "name": input.skillName, "path": input.skillPath}
+		if err := validateNativeSkillInput(value); err != nil {
+			return nil, err
+		}
+		return value, nil
 	default:
 		return nil, errors.New("Runtime user input kind is unsupported")
 	}
@@ -577,6 +585,7 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 	}
 	params.Config = expertThreadConfig(ctx, params.Config)
 	params.Config = m.artifactThreadConfig(params.Config)
+	params.Config = m.promptInputConfig(params.Config)
 	params.Config = m.executionProgressConfig(ctx, params.Config)
 	if m.config.RuntimePermissionsEnabled {
 		params.DeveloperInstructions += retrievalCapabilityInstructions(selected.Provider, params.Config)
@@ -659,6 +668,7 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	}
 	params.Config = expertThreadConfig(ctx, params.Config)
 	params.Config = m.artifactThreadConfig(params.Config)
+	params.Config = m.promptInputConfig(params.Config)
 	params.Config = m.executionProgressConfig(ctx, params.Config)
 	if m.config.RuntimePermissionsEnabled && params.DeveloperInstructions != nil {
 		instructions := *params.DeveloperInstructions + retrievalCapabilityInstructions(selected.Provider, params.Config)
@@ -783,7 +793,15 @@ func (m *Manager) StartTurnV2(
 	if threadID == "" {
 		return TurnInfo{}, errors.New("Codex thread id is required")
 	}
-	if len(inputs) == 0 || len(inputs) > maxTurnV2InputCount {
+	contentCount, skillCount := 0, 0
+	for _, input := range inputs {
+		if input.kind == "skill" {
+			skillCount++
+		} else {
+			contentCount++
+		}
+	}
+	if contentCount == 0 || contentCount > maxTurnV2InputCount || skillCount > 256 {
 		return TurnInfo{}, fmt.Errorf("Runtime turn input count must be between 1 and %d", maxTurnV2InputCount)
 	}
 	if reasoningEffort == "" {

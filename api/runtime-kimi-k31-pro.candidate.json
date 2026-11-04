@@ -3,9 +3,9 @@
   "feature": "FEAT-164",
   "release": false,
   "mode": "immutable_local_candidate",
-  "source_commit": "b51d26063f03f8fdb4109e03ede0738053740ed3",
+  "source_commit": "633aa9eee300a3123c1574306234682059f557ec",
   "source_lock_path": "compatibility/runtime-kimi-k31-pro/source.lock.json",
-  "source_lock_sha256": "95954b51034d1dce2018c4729aa2e45db8352bae06690522a499669232da88b5",
+  "source_lock_sha256": "6617587380b4b12c7c7bb49d6ae4e81d7897b8109462af94f89a1d8bb23613e4",
   "authority": {
     "schema_version": 1,
     "feature": "FEAT-164",
@@ -22,7 +22,8 @@
       "url": "https://github.com/openai/codex.git"
     },
     "methods": [
-      "thread/inputOnlyPolicy/read"
+      "thread/inputOnlyPolicy/read",
+      "config/batchWrite"
     ],
     "experimental_api": false,
     "wire_authority": {
@@ -230,6 +231,22 @@
         "sha256": "56b7e3351d0cb7ea1fe2cde08076777074b8e6038e26338153d59c1603d94a2c"
       },
       {
+        "path": "codex-rs/core/config.schema.json",
+        "sha256": "841e0ab1c1bd2fea736ba2d46212ab5bedc06dce9fd83bbafbf50b57b9056d17"
+      },
+      {
+        "path": ".yijie/build/execution-progress-v1/aarch64-apple-darwin/generated-json-schema/v2/TurnStartParams.json",
+        "sha256": "befb5c2c14416ff6cc67e1b8b7b17e5966378e7ccf3bc30f771c75ab762e67ed"
+      },
+      {
+        "path": ".yijie/build/execution-progress-v1/aarch64-apple-darwin/generated-json-schema/v2/ConfigBatchWriteParams.json",
+        "sha256": "fb382df3fbfb02c782f8373b7d553e757b461f502c3587223dc0b74e8515d202"
+      },
+      {
+        "path": ".yijie/build/execution-progress-v1/aarch64-apple-darwin/generated-json-schema/v2/ConfigWriteResponse.json",
+        "sha256": "8cd93ef4e2af27f896f967f17f50cf1b25b91cbaae0d135a29ccd8ce8fbd0aef"
+      },
+      {
         "path": ".yijie/build/execution-progress-v1/aarch64-apple-darwin/runtime-manifest.json",
         "sha256": "cdf6aed681dba948823b96f8d6fb423c53c44921f3de77a4a334391d35a8d1a8"
       }
@@ -237,13 +254,29 @@
     "generators": [
       {
         "path": "scripts/generate-runtime-kimi-k31-pro.mjs",
-        "sha256": "2d8ee86174346c65faea4f1dffc5f4e557624b2194d011ec42772298cff3680c"
+        "sha256": "5c7f77fa1f112741ac1a5ff9d2399230a00182fe087623571dd4cfafa3ffd831"
       }
     ],
     "generated": [
       {
         "path": "sdks/go/openapi/runtime-kimi-k31-pro/artifact.gen.go",
-        "sha256": "70ff2fd20ad387eebcf82416bef9b67d4ef8bcf27af87bc419a8432863e837ff"
+        "sha256": "0ad71a237c9325a56c76d61eb6678d3398bfe7aeb95223f24749097333d57ce1"
+      },
+      {
+        "path": "sdks/go/openapi/runtime-kimi-k31-pro/config.schema.json",
+        "sha256": "841e0ab1c1bd2fea736ba2d46212ab5bedc06dce9fd83bbafbf50b57b9056d17"
+      },
+      {
+        "path": "sdks/go/openapi/runtime-kimi-k31-pro/turn-start.schema.json",
+        "sha256": "befb5c2c14416ff6cc67e1b8b7b17e5966378e7ccf3bc30f771c75ab762e67ed"
+      },
+      {
+        "path": "sdks/go/openapi/runtime-kimi-k31-pro/config-batch-write.schema.json",
+        "sha256": "fb382df3fbfb02c782f8373b7d553e757b461f502c3587223dc0b74e8515d202"
+      },
+      {
+        "path": "sdks/go/openapi/runtime-kimi-k31-pro/config-write-response.schema.json",
+        "sha256": "8cd93ef4e2af27f896f967f17f50cf1b25b91cbaae0d135a29ccd8ce8fbd0aef"
       }
     ]
   },
@@ -252,7 +285,31 @@
       "repository": "yijie-agent-host",
       "source": "sdks/go/openapi/runtime-kimi-k31-pro/artifact.gen.go",
       "destination": "internal/contracts/runtimekimik31pro/artifact.gen.go",
-      "sha256": "70ff2fd20ad387eebcf82416bef9b67d4ef8bcf27af87bc419a8432863e837ff"
+      "sha256": "0ad71a237c9325a56c76d61eb6678d3398bfe7aeb95223f24749097333d57ce1"
+    },
+    {
+      "repository": "yijie-agent-host",
+      "source": "sdks/go/openapi/runtime-kimi-k31-pro/config.schema.json",
+      "destination": "internal/contracts/runtimekimik31pro/config.schema.json",
+      "sha256": "841e0ab1c1bd2fea736ba2d46212ab5bedc06dce9fd83bbafbf50b57b9056d17"
+    },
+    {
+      "repository": "yijie-agent-host",
+      "source": "sdks/go/openapi/runtime-kimi-k31-pro/turn-start.schema.json",
+      "destination": "internal/contracts/runtimekimik31pro/turn-start.schema.json",
+      "sha256": "befb5c2c14416ff6cc67e1b8b7b17e5966378e7ccf3bc30f771c75ab762e67ed"
+    },
+    {
+      "repository": "yijie-agent-host",
+      "source": "sdks/go/openapi/runtime-kimi-k31-pro/config-batch-write.schema.json",
+      "destination": "internal/contracts/runtimekimik31pro/config-batch-write.schema.json",
+      "sha256": "fb382df3fbfb02c782f8373b7d553e757b461f502c3587223dc0b74e8515d202"
+    },
+    {
+      "repository": "yijie-agent-host",
+      "source": "sdks/go/openapi/runtime-kimi-k31-pro/config-write-response.schema.json",
+      "destination": "internal/contracts/runtimekimik31pro/config-write-response.schema.json",
+      "sha256": "8cd93ef4e2af27f896f967f17f50cf1b25b91cbaae0d135a29ccd8ce8fbd0aef"
     }
   ]
 }

@@ -82,13 +82,16 @@ func TestFEAT164CallSurfacesRuntime(t *testing.T) {
 			// FEAT-162: qualify the normal wire instructions with the real Runtime.
 			// The observer must not remove native search to force a connector route.
 			instructions, _ := body["instructions"].(string)
+			if instructions != executionBaseInstructions {
+				t.Error("ordinary base did not retain the short native projection")
+			}
 			for _, required := range []string{
 				"Respect the user's active connector selection.",
 				"use that connector's tools and follow their tool descriptions",
 				"When no selected retrieval connector applies, use native web search",
 				webRetrievalInstructions,
 			} {
-				if !strings.Contains(instructions, required) || !strings.Contains(string(encoded), required) {
+				if strings.Contains(instructions, required) || strings.Count(string(encoded), required) != 1 {
 					t.Error("selected connector preference or native fallback lost from normal Runtime instructions")
 				}
 			}

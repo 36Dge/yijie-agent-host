@@ -3761,8 +3761,9 @@ func (v *SuspendResponse) UnmarshalJSON(b []byte) error {
 }
 
 type StartTurnV2TextBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type   string          `json:"type"`
+	Text   string          `json:"text"`
+	Skills *SelectedSkills `json:"skills,omitempty"`
 }
 
 func (v StartTurnV2TextBlock) Validate() error {
@@ -3779,6 +3780,11 @@ func (v StartTurnV2TextBlock) Validate() error {
 	}
 	if !wirePattern3.MatchString(string(v.Text)) {
 		return errors.New("invalid broker pattern")
+	}
+	if v.Skills != nil {
+		if err := (*v.Skills).Validate(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -3798,6 +3804,9 @@ func (v *StartTurnV2TextBlock) UnmarshalJSON(b []byte) error {
 		return errors.New("missing broker field")
 	}
 	if x, ok := raw["text"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["skills"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
 		return errors.New("null broker field")
 	}
 	var w wire
@@ -4083,6 +4092,94 @@ func (v *StartTurnV2FileMediaType) UnmarshalJSON(b []byte) error {
 		return errors.New("invalid broker enum")
 	}
 	x := StartTurnV2FileMediaType(s)
+	if err := x.Validate(); err != nil {
+		return err
+	}
+	*v = x
+	return nil
+}
+
+type SelectedSkills []SelectedSkillRef
+
+func (v SelectedSkills) Validate() error {
+	if v == nil {
+		return errors.New("null broker collection")
+	}
+	if len(v) < 1 {
+		return errors.New("invalid broker collection")
+	}
+	if len(v) > 256 {
+		return errors.New("invalid broker collection")
+	}
+	for _, item := range v {
+		if err := item.Validate(); err != nil {
+			return err
+		}
+	}
+	for i, item := range v {
+		for _, prior := range v[:i] {
+			if item == prior {
+				return errors.New("duplicate broker collection item")
+			}
+		}
+	}
+	return nil
+}
+
+type SelectedSkillRef struct {
+	Id      string `json:"id"`
+	Version string `json:"version"`
+}
+
+func (v SelectedSkillRef) Validate() error {
+	if utf8.RuneCountInString(string(v.Id)) < 1 {
+		return errors.New("invalid broker text")
+	}
+	if utf8.RuneCountInString(string(v.Id)) > 256 {
+		return errors.New("invalid broker text")
+	}
+	if !wirePattern3.MatchString(string(v.Id)) {
+		return errors.New("invalid broker pattern")
+	}
+	if utf8.RuneCountInString(string(v.Version)) < 1 {
+		return errors.New("invalid broker text")
+	}
+	if utf8.RuneCountInString(string(v.Version)) > 64 {
+		return errors.New("invalid broker text")
+	}
+	if !wirePattern3.MatchString(string(v.Version)) {
+		return errors.New("invalid broker pattern")
+	}
+	return nil
+}
+func (v *SelectedSkillRef) UnmarshalJSON(b []byte) error {
+	type wire SelectedSkillRef
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil || raw == nil {
+		return errors.New("invalid broker object")
+	}
+	if _, ok := raw["id"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["id"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["version"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["version"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	var w wire
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&w); err != nil {
+		return errors.New("invalid broker object")
+	}
+	if err := d.Decode(new(any)); err != io.EOF {
+		return errors.New("invalid broker object")
+	}
+	x := SelectedSkillRef(w)
 	if err := x.Validate(); err != nil {
 		return err
 	}

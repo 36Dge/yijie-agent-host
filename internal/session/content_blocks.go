@@ -25,7 +25,18 @@ func MapTurnV2ContentBlocks(blocks []agenthostcontract.StartTurnV2ContentBlock) 
 			if err := strictContentBlock(raw, &value); err != nil || string(value.Type) != discriminator {
 				return nil, errors.New("invalid text content block")
 			}
-			mapped = append(mapped, TurnContentBlock{Type: discriminator, Text: value.Text})
+			var selected []agenthostcontract.SelectedSkillRef
+			var fields map[string]json.RawMessage
+			if json.Unmarshal(raw, &fields) != nil || bytes.Equal(bytes.TrimSpace(fields["skills"]), []byte("null")) {
+				return nil, errors.New("invalid selected Skill metadata")
+			}
+			if value.Skills != nil {
+				if len(*value.Skills) == 0 {
+					return nil, errors.New("empty selected Skill metadata")
+				}
+				selected = append(selected, (*value.Skills)...)
+			}
+			mapped = append(mapped, TurnContentBlock{Type: discriminator, Text: value.Text, Skills: selected})
 		case ContentBlockImage:
 			var value agenthostcontract.StartTurnV2ImageBlock
 			if err := strictContentBlock(raw, &value); err != nil || string(value.Type) != discriminator {
