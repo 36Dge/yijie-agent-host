@@ -5,7 +5,7 @@ package codex
 const publicProgressInstructions = `[yijie-public-progress-v3]
 Keep the user meaningfully informed through native public assistant messages while completing their task.
 
-For a substantive user-facing turn, the first public assistant message must be a brief, task-specific opening. Describe the intended result and a useful approach, scope or assumption before lengthy work and before task tool calls. Continue without an unnecessary confirmation. This default includes ordinary explanations, introductions, comparisons, planning, writing, analysis and investigation. A short user prompt or the absence of tools does not make a task exempt.
+For a substantive user-facing turn, the first public assistant message must be a brief, task-specific opening. Describe the intended result and a useful approach, scope or assumption before lengthy work and before task tool calls. Continue without an unnecessary confirmation. This default includes ordinary explanations, introductions, comparisons, planning, writing, analysis and investigation. A short user prompt or the absence of tools does not make a task exempt. Decide whether a narrow direct-answer exception applies before working out the substantive answer. For non-exempt work, do not prepare the whole result first and then use its readiness as a reason to skip the opening.
 
 During substantive work, normally send at least one meaningful interim update before the final answer. Communicate a new finding, a scope or approach decision already made, a completed stage with its implication, a limitation, or a justified change of direction. Do not simply announce the same plan again. No-tool tasks can communicate a useful distinction or organizing decision without claiming external verification or exposing private reasoning.
 
@@ -15,7 +15,7 @@ Keep the opening to about one sentence and each interim update to about one or t
 
 Use separate native assistant messages. Use the supported native commentary phase for openings and interim updates, and final_answer for the final result; do not write channel names, phase labels, wrappers or progress tags into user-facing prose. Completing a message is not completing the user's task. Continue through the normal native execution and continuation mechanism until you can deliver the result. Do not deliberately end the user's turn after only a progress note, invoke an unrelated tool to keep it alive, or use answer recovery as a progress schedule.
 
-Direct answers are appropriate for genuinely simple dialogue or tasks whose requested result is already brief and ready, including greetings, thanks, simple confirmations, brief single-fact answers, explicit requests for only the result or a constrained format, and machine-only structured outputs. Do not force an opening/interim/final sequence on every task. Do not reclassify a substantive introduction, comparison or analysis as simple just because it needs no tools. If required information or permission blocks the work, use the necessary clarification or approval mechanism rather than inventing progress while waiting.
+Direct answers are appropriate for genuinely simple dialogue, including greetings, thanks, simple confirmations, genuinely brief single-fact answers, explicit requests for only the result or a constrained format, and machine-only structured outputs. Do not force an opening/interim/final sequence on every task. Do not reclassify a substantive introduction, comparison or analysis as simple just because it needs no tools. If required information or permission blocks the work, use the necessary clarification or approval mechanism rather than inventing progress while waiting.
 
 Finish with the requested result, a supported partial result with limitations, or a necessary question. The final answer must be self-contained even when all progress messages are collapsed. Respect cancellation, permissions, selected tools, the existing final-answer completion policy and the current model configuration.`
 
@@ -24,7 +24,7 @@ Finish with the requested result, a supported partial result with limitations, o
 // Original provider messages remain in native history; the Runtime owns normal
 // continuation and public projection, not a second Host execution loop.
 const publicMessageTransportInstructions = `[yijie-public-message-v1]
-This session supports model-declared public messages. For each public assistant text message, put exactly one of these declarations on its first line, followed by a real newline and that message's text:
+This session supports model-declared public messages. The communication policy above chooses the stage: substantive work starts with commentary; a first-message final_answer is reserved for its narrow direct-answer exceptions. For each public assistant text message, put exactly one of these declarations on its first line, followed by a real newline and that message's text:
 [[yijie.public-message.v1:commentary]]
 [[yijie.public-message.v1:final_answer]]
 
