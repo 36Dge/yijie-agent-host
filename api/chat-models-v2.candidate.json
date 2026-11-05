@@ -3,7 +3,7 @@
   "feature": "FEAT-164",
   "release": false,
   "mode": "immutable_local_candidate",
-  "source_commit": "486bce5f653bdc67a19a6698e87ad4cca0a21105",
+  "source_commit": "62070251d0da84ce4c5eba0c7b25d9a48e5d5929",
   "source_lock_path": "compatibility/chat-models-v2/source.lock.json",
   "source_lock_sha256": "2d0cb1d8e7ac71f5db28e5d43b8cd6d5504389b3bdfdccd884a9acbbc1905907",
   "authority": {

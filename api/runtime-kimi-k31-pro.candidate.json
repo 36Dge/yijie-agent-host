@@ -3,18 +3,18 @@
   "feature": "FEAT-164",
   "release": false,
   "mode": "immutable_local_candidate",
-  "source_commit": "486bce5f653bdc67a19a6698e87ad4cca0a21105",
+  "source_commit": "62070251d0da84ce4c5eba0c7b25d9a48e5d5929",
   "source_lock_path": "compatibility/runtime-kimi-k31-pro/source.lock.json",
-  "source_lock_sha256": "7b07a258c9a65b10b1f2a5f8ad38359b5eeb2f687beb1265b55773974fdf447c",
+  "source_lock_sha256": "ea6a52771d8ab0735084329c199d29024d37dfe4a008a10a8d5c5814f961612a",
   "authority": {
     "schema_version": 1,
     "feature": "FEAT-164",
     "mode": "local_worktree_candidate",
     "release": false,
-    "authority": "yijie-codex canonical native-public-messages-r2 candidate retaining the complete prior patch chain; one valid model-authored declaration supplies effective public AgentMessage phase and same-turn continuation through the existing Runtime loop; multiple unquoted standalone declarations invalidate the declared phase and cannot request continuation, without splitting the real Item or dropping readable text; control lines are consumed in streaming and complete public projections, quoted/code examples stay literal; original provider phase/text/declarations remain in raw model history; native phase and end_turn retain precedence, while unknown messages remain unknown; no Host execution loop, hooks activation, permission change, migration or history rewriting; existing budgets, cancellation and two-attempt answer-only finalization remain authoritative",
+    "authority": "yijie-codex canonical native-public-messages-r3 candidate retaining the complete prior patch chain; one valid model-authored declaration in either exact v1 dot or hyphen namespace supplies effective public AgentMessage phase and same-turn continuation through the existing Runtime loop; no fuzzy phase inference or unknown-version acceptance; multiple unquoted standalone declarations across either spelling invalidate the declared phase and cannot request continuation, without splitting the real Item or dropping readable text; control lines are consumed in streaming and complete public projections, quoted/code examples stay literal; original provider phase/text/declarations remain in raw model history; native phase and end_turn retain precedence, while unknown messages remain unknown; no Host execution loop, hooks activation, permission change, migration or history rewriting; existing budgets, cancellation and two-attempt answer-only finalization remain authoritative",
     "runtime_source": {
       "repository": "https://github.com/36Dge/yijie-codex.git",
-      "base_commit": "bab24532581249880a5c656f8f2a2ddb50d35836"
+      "base_commit": "2b79447c363165ecd3b9d12dffe300c1adddbbb0"
     },
     "upstream": {
       "commit": "5d1fbf26c43abc65a203928b2e31561cb039e06d",
@@ -33,12 +33,12 @@
     "runtime_artifact": {
       "binary": "codex",
       "reportedVersion": "codex-cli 0.144.6",
-      "sha256": "6f38c8035eaa34ccdff8e5840ddbe5c9c0e510b97e35014f5b5fd888f9fdc9f4",
-      "sizeBytes": 357038328,
+      "sha256": "cf358a9140a5e1f7e74c02bf94d55c871c28d3f5f871dfd95fbdd0e7a327b0aa",
+      "sizeBytes": 356885944,
       "target": "aarch64-apple-darwin",
       "version": "0.144.6"
     },
-    "runtime_manifest_sha256": "3281f33cf155ca18adf9694c8d1c6ff98e02abc5dfb32d2a6b1647e1c68b849f",
+    "runtime_manifest_sha256": "181874984e35c98ddb605917afb909eb198e755637b9a516261c68ae1c6bf719",
     "runtime_schema": {
       "experimentalApi": false,
       "schemaFileCount": 269,
@@ -115,6 +115,10 @@
         "sha256": "392a4c4141cabedcad148e2ce9b0133a64287152cefb16c576295409da9bb84b"
       },
       {
+        "path": ".yijie/patches/chat-models/0018-native-public-message-spelling.patch",
+        "sha256": "91deb2b8fda2c6e2d0f64a835f5fcf30930715c44e63943a763419a39276dff2"
+      },
+      {
         "path": ".yijie/upstream.env",
         "sha256": "33caf5655c94738bbdac3f4691d227b210ba7c470e78243a3a75ce87805bbe04"
       },
@@ -180,7 +184,7 @@
       },
       {
         "path": "scripts/build-answer-completion.sh",
-        "sha256": "63a5cedb0245330ff8f213bc98f4201a834446f28ff5fa65f8f08bab561537df"
+        "sha256": "37570ef5f1eedbcd02707fa53c382fbbda9181cba35bd03f9daf2d36898cce09"
       },
       {
         "path": "scripts/prepare-answer-completion.py",
@@ -247,6 +251,22 @@
         "sha256": "527291bed02f918acc1b9b9f8f797ed1d96e30efb6508301a333a2fe94a7002c"
       },
       {
+        "path": "scripts/build-native-public-messages-r3.sh",
+        "sha256": "12a87531fa9f71b6f6eb4dd8eb2250790ed90bdf3a611d21f8e83a881f595bbf"
+      },
+      {
+        "path": "scripts/prepare-native-public-messages-r3.py",
+        "sha256": "6e75751205ce51dc2328d67289c300bdcff84a6ee84d18ed921a6b9bb55d16e7"
+      },
+      {
+        "path": "scripts/write-native-public-messages-r3-runtime-manifest.py",
+        "sha256": "b50bfcd02263ad4f750be4d9effbd8c94e5d7ade068e5b7937f3f08c2eabbe75"
+      },
+      {
+        "path": "docs/native-public-messages-r3.md",
+        "sha256": "47ac6f3525d58d255d80d2b6b94c2fe26d8199e7e510a5bc5d2ddb9277b42c27"
+      },
+      {
         "path": "scripts/check-feat164-state-close.py",
         "sha256": "53c6ea23daa3cf63a2e1be80ab356e9d115759754c476f005155f5b9e74505b8"
       },
@@ -291,32 +311,32 @@
         "sha256": "841e0ab1c1bd2fea736ba2d46212ab5bedc06dce9fd83bbafbf50b57b9056d17"
       },
       {
-        "path": ".yijie/build/native-public-messages-r2/aarch64-apple-darwin/generated-json-schema/v2/TurnStartParams.json",
+        "path": ".yijie/build/native-public-messages-r3/aarch64-apple-darwin/generated-json-schema/v2/TurnStartParams.json",
         "sha256": "befb5c2c14416ff6cc67e1b8b7b17e5966378e7ccf3bc30f771c75ab762e67ed"
       },
       {
-        "path": ".yijie/build/native-public-messages-r2/aarch64-apple-darwin/generated-json-schema/v2/ConfigBatchWriteParams.json",
+        "path": ".yijie/build/native-public-messages-r3/aarch64-apple-darwin/generated-json-schema/v2/ConfigBatchWriteParams.json",
         "sha256": "fb382df3fbfb02c782f8373b7d553e757b461f502c3587223dc0b74e8515d202"
       },
       {
-        "path": ".yijie/build/native-public-messages-r2/aarch64-apple-darwin/generated-json-schema/v2/ConfigWriteResponse.json",
+        "path": ".yijie/build/native-public-messages-r3/aarch64-apple-darwin/generated-json-schema/v2/ConfigWriteResponse.json",
         "sha256": "8cd93ef4e2af27f896f967f17f50cf1b25b91cbaae0d135a29ccd8ce8fbd0aef"
       },
       {
-        "path": ".yijie/build/native-public-messages-r2/aarch64-apple-darwin/runtime-manifest.json",
-        "sha256": "3281f33cf155ca18adf9694c8d1c6ff98e02abc5dfb32d2a6b1647e1c68b849f"
+        "path": ".yijie/build/native-public-messages-r3/aarch64-apple-darwin/runtime-manifest.json",
+        "sha256": "181874984e35c98ddb605917afb909eb198e755637b9a516261c68ae1c6bf719"
       }
     ],
     "generators": [
       {
         "path": "scripts/generate-runtime-kimi-k31-pro.mjs",
-        "sha256": "8686b88aa96b706542ef2dbbef8043cd3d6f55eb683653632c9f8b4a138a941f"
+        "sha256": "57f9efbf79d2c225af663bf757b0a76cbcf3f6a57bbcf9a26fa353b15fe4a05d"
       }
     ],
     "generated": [
       {
         "path": "sdks/go/openapi/runtime-kimi-k31-pro/artifact.gen.go",
-        "sha256": "896e428d4d421f442acc1bc718a26052876b7629d14727eb8bcf4cd78f097498"
+        "sha256": "a5f64aa267d4eb6f97a13f6d5d03325b4b0c7754edc46a4c55d4fe3dc2bd0c12"
       },
       {
         "path": "sdks/go/openapi/runtime-kimi-k31-pro/config.schema.json",
@@ -341,7 +361,7 @@
       "repository": "yijie-agent-host",
       "source": "sdks/go/openapi/runtime-kimi-k31-pro/artifact.gen.go",
       "destination": "internal/contracts/runtimekimik31pro/artifact.gen.go",
-      "sha256": "896e428d4d421f442acc1bc718a26052876b7629d14727eb8bcf4cd78f097498"
+      "sha256": "a5f64aa267d4eb6f97a13f6d5d03325b4b0c7754edc46a4c55d4fe3dc2bd0c12"
     },
     {
       "repository": "yijie-agent-host",

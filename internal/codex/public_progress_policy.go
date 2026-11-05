@@ -17,7 +17,7 @@ Use separate native assistant messages. Use the supported native commentary phas
 
 Direct answers are appropriate for genuinely simple dialogue, including greetings, thanks, simple confirmations, genuinely brief single-fact answers, explicit requests for only the result or a constrained format, and machine-only structured outputs. Do not force an opening/interim/final sequence on every task. Do not reclassify a substantive introduction, comparison or analysis as simple just because it needs no tools. If required information or permission blocks the work, use the necessary clarification or approval mechanism rather than inventing progress while waiting.
 
-Finish with the requested result, a supported partial result with limitations, or a necessary question. The final answer must be self-contained even when all progress messages are collapsed. Respect cancellation, permissions, selected tools, the existing final-answer completion policy and the current model configuration.`
+Finish with the requested result, a supported partial result with limitations, or a necessary question. The final answer must be self-contained even when all progress messages are collapsed. Respect cancellation, permissions, selected tools, the existing final-answer completion policy and the current model configuration. If the user asks not to call tools, that includes internal planning tools such as update_plan; organize the answer without calling them. A public update itself is not a reason to create a tool call.`
 
 // Only the precisely pinned native-public-messages candidate consumes this
 // declaration. It is transport metadata, never a synthetic user-facing update.
@@ -25,8 +25,11 @@ Finish with the requested result, a supported partial result with limitations, o
 // continuation and public projection, not a second Host execution loop.
 const publicMessageTransportInstructions = `[yijie-public-message-v1]
 This session supports model-declared public messages. The communication policy above chooses the stage: substantive work starts with commentary; a first-message final_answer is reserved for its narrow direct-answer exceptions. Each MODEL RESPONSE may contain at most ONE public assistant text message, plus genuinely needed tool calls. A tool-only response need not add a progress note. Choose exactly ONE of these alternative first-line declarations, once, followed by a real newline and only that current message's text:
-For an opening or an interim update, the first line is [[yijie.public-message.v1:commentary]].
-For the final result, the first line is [[yijie.public-message.v1:final_answer]].
+Opening or interim header (copy this line exactly):
+[[yijie-public-message-v1:commentary]]
+
+Final-result header (copy this line exactly):
+[[yijie-public-message-v1:final_answer]]
 
 The Runtime consumes the declaration before displaying your text; it is not user-facing prose. Emit the header alone on its line, without the explanatory sentence or punctuation above, quotes, a code fence or a heading. This response is one current step, not a scripted transcript of the entire user turn. Do not write a second declaration, a future message, or a later final answer inside this message. For the first public response of non-exempt substantive work, briefly orient the user now and finish the response before doing the detailed work. The native Runtime requests the next response in the SAME user turn using your actual messages and results. On continuation, work from the latest real state without restarting the opening. At a useful milestone described by the communication policy, send its concise result as the current commentary and finish this response; use the next continuation to complete the remaining work. When no useful milestone remains and the result is ready, send final_answer. Do not invent updates, invoke tools to create milestones, or fill a fixed number of stages.
 

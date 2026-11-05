@@ -224,3 +224,68 @@ func TestPublicMessageMixedDeclarationDoesNotResample(t *testing.T) {
 		t.Fatal("one actual Item was split or duplicated")
 	}
 }
+
+// Real observed spelling: the model reused the activation namespace's hyphens
+// in an otherwise explicit v1 commentary declaration. This must remain one
+// message and reach the ordinary continuation, without a word-list guess.
+func TestPublicMessageObservedHyphenDeclarationContinues(t *testing.T) {
+	texts := []string{
+		"[[yijie.public-message.v1:commentary]]\n我会解释缓存的原理与代价。",
+		"[[yijie-public-message-v1:commentary]]\n框架已定，接下来把原理、代价和类比压缩成约350字的成稿。",
+		"[[yijie-public-message-v1:final_answer]]\n缓存保存可重复利用的副本，减少再次读取或计算的等待；代价包括额外存储和内容更新后的同步。",
+	}
+	h := feat164AuxRuntime(t, func(_ map[string]any, number int64) map[string]any {
+		if number > int64(len(texts)) {
+			t.Error("unexpected answer-only retry")
+			return feat164AuxText("已有完整结果。")
+		}
+		item := feat164AuxText(texts[number-1])
+		delete(item, "phase")
+		return item
+	})
+	ctx := feat164AuxCtx()
+	thread, err := h.manager.StartThread(ctx, h.cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, _ := TextUserInput("解释缓存的原理与代价，不调用工具。")
+	turn, err := h.manager.StartTurnV2(ctx, thread.ID, []UserInput{input}, "max")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, _, err := h.notifications.waitForTurn(turn.ID, 30*time.Second)
+	if err != nil || status != "completed" || h.calls.Load() != 3 {
+		t.Fatal("explicit commentary stopped before a deliverable", status, err, h.calls.Load())
+	}
+	history, err := h.manager.ReadThread(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var view struct {
+		Turns []struct {
+			Items []struct {
+				Type  string  `json:"type"`
+				Text  string  `json:"text"`
+				Phase *string `json:"phase"`
+			} `json:"items"`
+		} `json:"turns"`
+	}
+	if json.Unmarshal(history, &view) != nil {
+		t.Fatal("history decode failed")
+	}
+	var phases []string
+	for _, savedTurn := range view.Turns {
+		for _, item := range savedTurn.Items {
+			if item.Type != "agentMessage" {
+				continue
+			}
+			if item.Phase == nil || strings.Contains(item.Text, "[[yijie") {
+				t.Fatal("declaration leaked or explicit phase lost")
+			}
+			phases = append(phases, *item.Phase)
+		}
+	}
+	if strings.Join(phases, ",") != "commentary,commentary,final_answer" {
+		t.Fatal("real message sequence changed", phases)
+	}
+}
