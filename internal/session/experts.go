@@ -76,6 +76,10 @@ func (s *Service) contextForExpert(ctx context.Context, ref *expert.ExpertRef) (
 	if e != nil {
 		return nil, expertFail(expert.ErrorCodeResourceUnavailable)
 	}
+	ctx, e = codex.WithExpertImageRoute(ctx, string(ref.ExpertId), string(ref.Version), string(ref.RoleSha256))
+	if e != nil {
+		return nil, expertFail(expert.ErrorCodeResourceUnavailable)
+	}
 	return codex.WithExpertInstructions(ctx, resolved.Role, resolved.Index)
 }
 func (s *Service) contextForStoredExpert(ctx context.Context, sessionID string) (context.Context, error) {

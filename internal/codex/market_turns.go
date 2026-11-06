@@ -17,13 +17,15 @@ const marketServerName = "yijie_market"
 
 type marketPreparedKey struct{}
 type MarketPrepared struct {
-	Lease    *broker.Lease
-	Config   map[string]any
-	Scope    broker.ScopeBinding
-	Snapshot broker.SelectionSnapshot
-	Process  broker.ProcessBinding
+	ImageRoute string
+	Lease      *broker.Lease
+	Config     map[string]any
+	Scope      broker.ScopeBinding
+	Snapshot   broker.SelectionSnapshot
+	Process    broker.ProcessBinding
 }
 type marketTurnState struct {
+	imageCallRef  string
 	prepared      *MarketPrepared
 	thread, turn  string
 	bindOperation broker.CanonicalId
@@ -82,7 +84,7 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 	if err != nil {
 		return nil, err
 	}
-	p := &MarketPrepared{Config: map[string]any{"mcp_servers": servers}, Scope: scope, Snapshot: submission.Snapshot, Process: process}
+	p := &MarketPrepared{ImageRoute: ImageRoute(ctx), Config: map[string]any{"mcp_servers": servers}, Scope: scope, Snapshot: submission.Snapshot, Process: process}
 	if len(submission.Snapshot.Selection) == 0 {
 		return p, nil
 	}

@@ -22,6 +22,7 @@ parser.add_argument('--ledger', type=Path, required=True)
 parser.add_argument('--key-file', type=Path)
 parser.add_argument('--kimi-key-file', type=Path, required=True)
 parser.add_argument('--limit', type=int, help='Optional batch ceiling within the approved ledger total.')
+parser.add_argument('--qualify-host-images', action='store_true', help='FEAT-168 isolated image candidate; preserve real request/response payloads and bound chat HTTP count.')
 parser.add_argument('--observe-tool-stream', action='store_true',
                     help='Record only tool argument byte counts/digests, never content.')
 parser.add_argument('--observe-conversation', action='store_true',
@@ -48,7 +49,17 @@ ledger=json.loads(args.ledger.read_text())
 authorization=ledger.get('authorization',{})
 approved_limit = authorization.get('max_http_requests')
 approved_images = authorization.get('max_image_understanding_requests')
-if args.observe_public_progress:
+if args.qualify_host_images:
+    if (args.observe_conversation or args.observe_public_progress or
+            authorization.get('purpose') != 'FEAT-168-isolated-images' or
+            authorization.get('models') != ['kimi-k3.1-pro','MiniMax-M3'] or
+            type(approved_limit) is not int or not 1 <= approved_limit <= 10 or
+            type(approved_images) is not int or not 0 <= approved_images <= approved_limit or
+            not args.shutdown_on_stdin_eof or args.key_file is None):
+        raise SystemExit('Explicit FEAT-168 image qualification budget required.')
+    providers = {'MiniMax-M3': ('api.minimaxi.com', read_key(args.key_file), 'high'),
+                 'kimi-k3.1-pro': ('api.moonshot.cn', read_key(args.kimi_key_file), 'max')}
+elif args.observe_public_progress:
     if (args.observe_conversation or authorization.get('purpose') != 'public_progress_wire_audit' or
             authorization.get('models') != ['kimi-k3.1-pro', 'MiniMax-M3'] or
             authorization.get('preserve_payloads') is not True or
@@ -194,7 +205,7 @@ class Meter(http.server.BaseHTTPRequestHandler):
                 if isinstance(value,dict): return value.get('type')=='input_image' or any(image_input(v) for v in value.values())
                 return isinstance(value,list) and any(image_input(v) for v in value)
             images=image_input(body.get('input'))
-            if not args.observe_public_progress:
+            if not (args.observe_public_progress or args.qualify_host_images):
                 body['max_output_tokens']=min(body.get('max_output_tokens') or 8192,8192)
                 payload=json.dumps(body).encode()
             output_format = (body.get('text') or {}).get('format') or {}
@@ -210,6 +221,8 @@ class Meter(http.server.BaseHTTPRequestHandler):
                 self.send_error(429, 'Approved verification request limit reached')
                 return
             item={'ordinal':len(ledger['requests'])+1,'admitted_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'status':'forwarding','model':body['model'],'effort':effort,'structured_output':structured_output,'image_understanding':images,'max_output_tokens':body.get('max_output_tokens'),'tool_choice':body.get('tool_choice'),'tool_count':len(body.get('tools') or []),'upstream':'https://'+provider[0]+'/v1/responses'}
+            if args.qualify_host_images:
+                item['host_image_tool_visible'] = any(t.get('type') == 'function' and t.get('name') == 'generate_image' for t in body.get('tools', []) if isinstance(t,dict))
             ledger['real_http_requests']+=1
             if images: ledger['image_understanding_requests']+=1
             ledger['requests'].append(item)
@@ -243,7 +256,7 @@ class Meter(http.server.BaseHTTPRequestHandler):
                     message=re.sub(r'sk-[A-Za-z0-9_-]+','[redacted]',message)
                     with lock:
                         item['error_code']=str(detail.get('code',''))[:80]
-                        if not args.observe_conversation and not args.observe_public_progress:
+                        if not (args.observe_conversation or args.observe_public_progress or args.qualify_host_images):
                             item['error_message']=message
                         save()
                 except (ValueError,AttributeError): pass

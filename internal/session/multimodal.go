@@ -228,7 +228,7 @@ func (s *Service) startTurnV2Locked(ctx context.Context, input StartTurnV2Input,
 	if operation.State == TurnOperationStateAccepted {
 		return codex.TurnInfo{ID: operation.TurnID}, nil
 	}
-	if err := s.beginImageTurn(record, imageReferences(input.ContentBlocks)); err != nil {
+	if err := s.beginImageTurn(ctx, record, imageReferences(input.ContentBlocks)); err != nil {
 		_, _ = s.store.MarkTurnOperationUncertain(
 			input.AgentSessionID, input.OperationID, inputDigest, "image_turn_state_failed",
 		)

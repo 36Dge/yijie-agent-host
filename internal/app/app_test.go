@@ -1597,7 +1597,7 @@ func TestLoadConfigKeepsV2DraftCapabilitiesOffAndLocalOnly(t *testing.T) {
 	}
 }
 
-func TestLoadConfigGatesFEAT128ImageGenerationOnExactLocalConjunction(t *testing.T) {
+func TestLoadConfigRejectsRetiredFEAT128ImageGeneration(t *testing.T) {
 	for _, key := range []string{
 		"YIJIE_FEAT128_IMAGE_GENERATION_ENABLED", "YIJIE_MODEL_PROVIDER", "YIJIE_MINIMAX_API_KEY",
 		"YIJIE_MINIMAX_API_KEY_FILE", "YIJIE_AGENT_HOST_HOME", "YIJIE_CODEX_HOME", "YIJIE_ENV",
@@ -1616,8 +1616,8 @@ func TestLoadConfigGatesFEAT128ImageGenerationOnExactLocalConjunction(t *testing
 	t.Setenv("YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED", "true")
 	t.Setenv("YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED", "true")
 	config, err := LoadConfig()
-	if err != nil || !config.ImageGenerationEnabled || !config.Runtime.DynamicToolsEnabled {
-		t.Fatalf("exact image generation conjunction rejected: %#v err=%v", config, err)
+	if err == nil || config.ImageGenerationEnabled || config.Runtime.DynamicToolsEnabled {
+		t.Fatal("retired image producer admitted")
 	}
 	t.Setenv("YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED", "false")
 	if _, err := LoadConfig(); err == nil {

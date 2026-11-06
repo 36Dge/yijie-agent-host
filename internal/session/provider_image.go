@@ -13,6 +13,7 @@ import (
 
 	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	hostimage "github.com/36Dge/yijie-agent-host/internal/contracts/runtimehostimages"
 	"github.com/36Dge/yijie-agent-host/internal/imagegen"
 )
 
@@ -24,6 +25,7 @@ type imageReference struct {
 }
 
 type imageTurn struct {
+	route      string
 	sessionID  string
 	turnID     string
 	references []imageReference
@@ -51,7 +53,7 @@ func imageReferences(blocks []TurnContentBlock) []imageReference {
 	return references
 }
 
-func (s *Service) beginImageTurn(record Record, references []imageReference) error {
+func (s *Service) beginImageTurn(ctx context.Context, record Record, references []imageReference) error {
 	if s.imageGenerator == nil {
 		return nil
 	}
@@ -67,6 +69,7 @@ func (s *Service) beginImageTurn(record Record, references []imageReference) err
 	}
 	s.imageTurns[record.CodexThreadID] = &imageTurn{
 		sessionID:  record.AgentSessionID,
+		route:      codex.ImageRoute(ctx),
 		references: append([]imageReference(nil), references...),
 		context:    turnContext,
 		cancel:     cancel,
@@ -141,9 +144,32 @@ func (s *Service) HandleDynamicToolCall(callContext context.Context, call codex.
 		return imageToolFailure("protocol_error")
 	}
 
+	arguments, err := decodeImageToolArguments(call.Arguments)
+	if err != nil {
+		return imageToolFailure("generation_failed")
+	}
+	return s.generateTurnImage(callContext, call, arguments)
+}
+
+func (s *Service) HandleHostImage(ctx context.Context, call hostimage.HostImageGenerateParams) bool {
+	mode := imagegen.ModeTextToImage
+	if call.UseCurrentReference {
+		mode = imagegen.ModeSubject
+	}
+	if requireUUID("codex_thread_id", call.ThreadID) != nil || requireUUID("turn_id", call.TurnID) != nil ||
+		call.CallID == "" || len(call.CallID) > 256 || strings.TrimSpace(call.Prompt) == "" || utf8.RuneCountInString(call.Prompt) > 1500 {
+		return false
+	}
+	return s.generateTurnImage(ctx, codex.DynamicToolCall{ThreadID: call.ThreadID, TurnID: call.TurnID, CallID: call.CallID}, imageToolArguments{Prompt: call.Prompt, Mode: mode}).Success
+}
+
+func (s *Service) generateTurnImage(callContext context.Context, call codex.DynamicToolCall, arguments imageToolArguments) codex.DynamicToolResult {
+	if s.imageGenerator == nil {
+		return imageToolFailure("resource_unavailable")
+	}
 	s.imageMu.Lock()
 	turn := s.imageTurns[call.ThreadID]
-	if turn == nil || turn.called || (turn.turnID != "" && turn.turnID != call.TurnID) {
+	if turn == nil || turn.called || turn.route != "builtin" || (turn.turnID != "" && turn.turnID != call.TurnID) {
 		s.imageMu.Unlock()
 		return imageToolFailure("protocol_error")
 	}
@@ -158,8 +184,7 @@ func (s *Service) HandleDynamicToolCall(callContext context.Context, call codex.
 	if err != nil || record.AgentSessionID != sessionID || record.ActiveTurnID != call.TurnID {
 		return imageToolFailure("protocol_error")
 	}
-	arguments, err := decodeImageToolArguments(call.Arguments)
-	if err != nil {
+	if len(references) > 1 {
 		return imageToolFailure("generation_failed")
 	}
 	request := imagegen.Request{
@@ -188,27 +213,27 @@ func (s *Service) HandleDynamicToolCall(callContext context.Context, call codex.
 	}); err != nil {
 		return imageToolFailure("resource_unavailable")
 	}
-	progress := 10
-	if err := s.publishV3(record, Event{
-		TurnID: call.TurnID, ItemID: itemID, EventType: EventItemArtifactProgress,
-		Payload: EventPayload{
-			ArtifactID: artifactID, Kind: "image", Provenance: "provider", Status: "in_progress",
-			Ordinal: &ordinal, Stage: "generating", Progress: &progress,
-		},
-	}); err != nil {
-		return imageToolFailure("resource_unavailable")
-	}
-
 	providerContext, cancel := context.WithCancel(turnContext)
 	stop := context.AfterFunc(callContext, cancel)
 	result, generateErr := s.imageGenerator.Generate(providerContext, request)
 	stop()
+	if generateErr == nil && (providerContext.Err() != nil || callContext.Err() != nil) {
+		generateErr = &imagegen.ProviderError{Code: imagegen.ErrorRequestCanceled}
+	}
 	cancel()
 	if generateErr != nil {
 		failureCode := providerFailureCode(generateErr)
 		retryable := imagegen.Retryable(generateErr)
-		_ = s.publishProviderImageFailure(record, call.TurnID, itemID, artifactID, ordinal, failureCode, retryable)
+		_ = s.publishProviderImageFailure(record, call.TurnID, itemID, artifactID, ordinal, failureCode, retryable, imagegen.Diagnostic(generateErr))
 		return imageToolFailure(failureCode)
+	}
+	// Linearize publishing against turn interruption/removal. The paid HTTP
+	// request and image decoding above do not hold this lock.
+	s.imageMu.Lock()
+	defer s.imageMu.Unlock()
+	if s.imageTurns[call.ThreadID] != turn || turnContext.Err() != nil || callContext.Err() != nil {
+		_ = s.publishProviderImageFailure(record, call.TurnID, itemID, artifactID, ordinal, "turn_interrupted", false, "Image delivery was interrupted.")
+		return imageToolFailure("turn_interrupted")
 	}
 	displayName = imagegen.DisplayName(result.MediaType)
 	if err := s.artifacts.Put(artifact.Manifest{
@@ -217,7 +242,7 @@ func (s *Service) HandleDynamicToolCall(callContext context.Context, call codex.
 	}); err != nil {
 		failureCode := artifactFailureCode(err)
 		retryable := failureCode == "resource_unavailable"
-		_ = s.publishProviderImageFailure(record, call.TurnID, itemID, artifactID, ordinal, failureCode, retryable)
+		_ = s.publishProviderImageFailure(record, call.TurnID, itemID, artifactID, ordinal, failureCode, retryable, "Local image staging failed.")
 		return imageToolFailure(failureCode)
 	}
 
@@ -265,8 +290,7 @@ func decodeImageToolArguments(raw json.RawMessage) (imageToolArguments, error) {
 	return arguments, nil
 }
 
-func (s *Service) publishProviderImageFailure(record Record, turnID, itemID, artifactID string, ordinal int, code string, retryable bool) error {
-	message := "Image generation failed."
+func (s *Service) publishProviderImageFailure(record Record, turnID, itemID, artifactID string, ordinal int, code string, retryable bool, message string) error {
 	return s.publishV3(record, Event{
 		TurnID: turnID, ItemID: itemID, EventType: EventItemArtifactFailed,
 		Payload: EventPayload{
@@ -278,6 +302,10 @@ func (s *Service) publishProviderImageFailure(record Record, turnID, itemID, art
 
 func providerFailureCode(err error) string {
 	switch imagegen.ErrorCode(err) {
+	case imagegen.ErrorAuthentication, imagegen.ErrorBalance:
+		return "unsupported_provider"
+	case imagegen.ErrorInvalidResponse:
+		return "integrity_failed"
 	case imagegen.ErrorRateLimited:
 		return "limit_exceeded"
 	case imagegen.ErrorTimeout, imagegen.ErrorUnavailable:

@@ -21,7 +21,7 @@ Agent Host Runtime Baseline 2 已完成真实 thread/turn 的只读最小垂直�
 - 使用 bbolt 持久化 `task_id → agent_session_id → codex_thread_id → turn_id`，不持久化消息正文；
 - 每进程事件流有独立 `stream_id` 和单调 `sequence`，支持有界进程内重放；
 - 会话 HTTP API 使用 Host 自动生成的本机 bearer token；Runtime 固定 `read-only`、`approvalPolicy=never`。
-- FEAT-128 提供默认关闭的 v3 Artifact SSE、encrypted staging、content/poster/ACK/range 与 strict-local synthetic producer；另有默认关闭的 MiniMax `image-01` 中国区文生图/单张人物参考生图 provider projection。
+- FEAT-128 提供默认关闭的 v3 Artifact SSE、encrypted staging、content/poster/ACK/range 与 strict-local synthetic producer；FEAT-168 隔离候选复用此产物通道交付 Seedream 图片。
 - FEAT-129 提供精确 `local + demo_fast` 下的本地 Skill 查询、扫描、原子安装、启停和卸载，继续精确消费 Manifest v2 与 `yijie-skills@0.3.0` 的 38 项目录，并只将当前 catalog 中 receipt 有效的具体 Skill 目录通过固定 Runtime Skills API 重放；HTTP 边界仍校验 owner-only bearer 与 `plugin.read`/`plugin.manage`。
 - FEAT-134/136 提供默认关闭、显式协商的 v4/v5 SSE。v5 在 v4 稳定投影之上增加有界 Command 与 Tool Item：Command 只发布分类摘要、结构化工作区 cwd 和脱敏输出；Tool 只做通用稳定投影，当前没有新增 producer。
 
@@ -99,19 +99,7 @@ v3 route 必须显式设置 `YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED=true`。零�
 `YIJIE_FEAT128_SYNTHETIC_MANIFEST=feat128-artifact-v1`；它只允许 `YIJIE_ENV=local`，且不能与
 MiniMax 或其它 fake profile 共启。默认配置不会注册 v3 route，也不会生成 Artifact。
 
-真实图片生成还必须显式设置以下 exact-local conjunction：
-
-```bash
-export YIJIE_ENV=local
-export YIJIE_MODEL_PROVIDER=minimax
-export YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED=true
-export YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED=true
-export YIJIE_FEAT128_IMAGE_GENERATION_ENABLED=true
-```
-
-启用后，Host 才以 `experimentalApi=true` 向固定 Runtime 注册单一 `generate_image` dynamic tool。它固定调用
-`https://api.minimaxi.com/v1/image_generation`、模型 `image-01`、base64、`n=1`，仅支持文生图或当前轮单张
-PNG/JPEG 人物参考生图；普通看图/分析不会调用。Key 继续使用上述内存或 owner-only Key 文件配置。
+FEAT-168 通过 Desktop 的 `pnpm client:images:prepare` 和 `pnpm client:images:open` 启动固定的本机生图候选。Kimi K3.1 Pro / MiniMax-M3 继续承担主聊，Runtime 的原生图像扩展通过 stdio 请求 Host，由 Host 调用方舟 `doubao-seedream-5-0-pro-260628`。默认大小 `1.5K`，水印关闭，其余选项使用 API 默认。首次需要凭据时用本机掩码弹窗保存到对应 Host 的钥匙串账户。专家有自身生图工具时，以显式选择和该轮冻结的专家绑定为准。FEAT-128 的 MiniMax 生图开关已退役，历史 Artifact 仍按原 reader 读取。
 
 未配置 Runtime 时 Host 仍可启动用于诊断：`/healthz` 返回 `200`，`/readyz` 返回 `503`，会话路由不注册。
 

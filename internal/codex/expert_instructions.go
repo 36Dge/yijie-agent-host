@@ -5,7 +5,37 @@ import (
 	"errors"
 	"strings"
 	"unicode/utf8"
+
+	hostimage "github.com/36Dge/yijie-agent-host/internal/contracts/runtimehostimages"
 )
+
+type imageRouteKey struct{}
+
+// WithExpertImageRoute binds a verified installed expert version to its reviewed
+// image method. An upgrade of a known image expert must be reviewed again.
+func WithExpertImageRoute(ctx context.Context, expertID, version, roleDigest string) (context.Context, error) {
+	known := false
+	for _, route := range hostimage.ExpertImageRoutes {
+		if route.ExpertID != expertID {
+			continue
+		}
+		known = true
+		if route.Version == version && route.RoleSHA256 == roleDigest {
+			return context.WithValue(ctx, imageRouteKey{}, route.Route), nil
+		}
+	}
+	if known {
+		return nil, errors.New("expert image tool configuration unavailable")
+	}
+	return ctx, nil
+}
+
+func ImageRoute(ctx context.Context) string {
+	if route, ok := ctx.Value(imageRouteKey{}).(string); ok {
+		return route
+	}
+	return "builtin"
+}
 
 type expertInstructionsKey struct{}
 type expertInstructions struct{ role, index string }

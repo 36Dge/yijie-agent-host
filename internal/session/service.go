@@ -528,7 +528,7 @@ func (s *Service) StartTurn(ctx context.Context, input StartTurnInput) (codex.Tu
 	if err != nil {
 		return codex.TurnInfo{}, err
 	}
-	if err := s.beginImageTurn(record, nil); err != nil {
+	if err := s.beginImageTurn(ctx, record, nil); err != nil {
 		_, _ = s.store.TurnStartFailed(input.AgentSessionID, "image_turn_state_failed")
 		return codex.TurnInfo{}, err
 	}

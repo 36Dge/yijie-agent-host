@@ -63,6 +63,7 @@ type Config struct {
 	FakeResponses                  FakeResponsesConfig
 	ManagedReasoningProfile        ManagedReasoningProfile
 	DynamicToolsEnabled            bool
+	HostImagesEnabled              bool
 	CommandApprovalEnabled         bool
 	RuntimePermissionsEnabled      bool
 	// Native weighted budget for one loaded ordinary-chat root session tree.
@@ -112,6 +113,9 @@ func (c Config) validate() error {
 	}
 	if (c.KimiK31AllowManagedPredecessor || c.KimiK31ExecutionPaused) && !c.KimiK31Candidate {
 		return errors.New("Kimi activation settings require the explicit candidate")
+	}
+	if c.HostImagesEnabled && (!c.KimiK31Candidate || !c.RuntimePermissionsEnabled || c.DynamicToolsEnabled) {
+		return errors.New("Host image generation requires the managed stable candidate")
 	}
 	if c.KimiK31Candidate && (!c.ChatModelsEnabled || c.DynamicToolsEnabled) {
 		return errors.New("Kimi K3.1 candidate requires managed models; independent dynamic image generation is not enabled")
@@ -231,6 +235,7 @@ type Manager struct {
 
 	notificationHandler    NotificationHandler
 	dynamicToolHandler     DynamicToolHandler
+	hostImageHandler       HostImageHandler
 	commandApprovalHandler CommandApprovalHandler
 	runtimeGeneration      string
 	deleteWaiters          map[string]chan struct{}
@@ -305,7 +310,11 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 	m.mu.Lock()
 	dynamicToolHandler := m.dynamicToolHandler
 	commandApprovalHandler := m.commandApprovalHandler
+	hostImageHandler := m.hostImageHandler
 	m.mu.Unlock()
+	if m.config.HostImagesEnabled && hostImageHandler == nil {
+		return errors.New("managed image handler unavailable")
+	}
 	if m.config.DynamicToolsEnabled && dynamicToolHandler == nil {
 		m.fail("runtime_config_invalid")
 		return errors.New("Runtime dynamic tool handler is not configured")
@@ -350,7 +359,7 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 		m.fail("artifact_verification_failed")
 		return err
 	}
-	if m.config.KimiK31Candidate != artifact.SupportsKimiK31() {
+	if m.config.HostImagesEnabled != artifact.supportsHostImages() || m.config.KimiK31Candidate != artifact.SupportsKimiK31() {
 		m.fail("artifact_verification_failed")
 		return errors.New("Kimi candidate and Runtime artifact must match exactly")
 	}

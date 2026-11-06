@@ -160,10 +160,7 @@ func run(logger *slog.Logger) error {
 			serviceOptions = append(serviceOptions, session.WithArtifactMedia())
 		}
 		if config.ImageGenerationEnabled {
-			imageClient, imageErr := imagegen.NewMiniMaxClient(config.Runtime.MiniMax.APIKey)
-			if imageErr != nil {
-				return imageErr
-			}
+			imageClient := imagegen.NewSeedreamClient(imagegen.ArkCredential(config.HostHome))
 			serviceOptions = append(serviceOptions, session.WithImageGenerator(imageClient))
 		}
 		if config.ScheduledCandidate != nil {
@@ -177,7 +174,7 @@ func run(logger *slog.Logger) error {
 			serviceOptions...,
 		)
 		if config.ImageGenerationEnabled {
-			if err := runtime.SetDynamicToolHandler(sessionService.HandleDynamicToolCall); err != nil {
+			if err := runtime.SetHostImageHandler(sessionService.HandleHostImage); err != nil {
 				return err
 			}
 		}

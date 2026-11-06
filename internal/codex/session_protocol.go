@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	broker "github.com/36Dge/yijie-agent-host/internal/contracts/marketbrokercontrol"
+	hostimage "github.com/36Dge/yijie-agent-host/internal/contracts/runtimehostimages"
 )
 
 const (
@@ -312,6 +313,9 @@ func (m *Manager) SetCommandApprovalHandler(handler CommandApprovalHandler) erro
 }
 
 func (m *Manager) handleServerRequest(ctx context.Context, request serverRequest) serverRequestResult {
+	if request.method == hostimage.Method {
+		return m.handleHostImage(ctx, request)
+	}
 	if request.method == "mcpServer/elicitation/request" {
 		if result, handled := m.handleMarketElicitation(ctx, request); handled {
 			return result
@@ -553,7 +557,7 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		Cwd:                   cwd,
 		ApprovalPolicy:        m.sessionApprovalPolicy(),
 		Sandbox:               SessionSandbox,
-		DeveloperInstructions: m.sessionDeveloperInstructions(),
+		DeveloperInstructions: m.sessionDeveloperInstructions() + m.imageToolInstructions(ctx),
 		Ephemeral:             false,
 	}
 	if m.config.RuntimePermissionsEnabled {
@@ -590,6 +594,12 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		return ThreadInfo{}, err
 	}
 	params.Config = expertThreadConfig(ctx, params.Config)
+	if m.config.HostImagesEnabled {
+		if params.Config == nil {
+			params.Config = make(map[string]any)
+		}
+		params.Config["yijie_host_images"] = ImageRoute(ctx) == "builtin" && !isScheduledDraft(ctx)
+	}
 	params.Config = m.artifactThreadConfig(params.Config)
 	params.Config = m.executionProgressConfig(ctx, params.Config)
 	if m.config.RuntimePermissionsEnabled {
@@ -637,7 +647,7 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	if m.config.CommandApprovalEnabled || m.config.RuntimePermissionsEnabled {
 		approvalPolicy := m.sessionApprovalPolicy()
 		sandbox := SessionSandbox
-		developerInstructions := m.sessionDeveloperInstructions()
+		developerInstructions := m.sessionDeveloperInstructions() + m.imageToolInstructions(ctx)
 		params.ApprovalPolicy = &approvalPolicy
 		params.Sandbox = &sandbox
 		params.DeveloperInstructions = &developerInstructions
@@ -672,6 +682,12 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 		return ThreadInfo{}, err
 	}
 	params.Config = expertThreadConfig(ctx, params.Config)
+	if m.config.HostImagesEnabled {
+		if params.Config == nil {
+			params.Config = make(map[string]any)
+		}
+		params.Config["yijie_host_images"] = ImageRoute(ctx) == "builtin" && !isScheduledDraft(ctx)
+	}
 	params.Config = m.artifactThreadConfig(params.Config)
 	params.Config = m.executionProgressConfig(ctx, params.Config)
 	if m.config.RuntimePermissionsEnabled && params.DeveloperInstructions != nil {

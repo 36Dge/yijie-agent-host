@@ -15,6 +15,7 @@ import (
 	"time"
 
 	chatmodels "github.com/36Dge/yijie-agent-host/internal/contracts/runtimechatmodels"
+	hostimage "github.com/36Dge/yijie-agent-host/internal/contracts/runtimehostimages"
 	inputonly "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeinputonly"
 	kimik31 "github.com/36Dge/yijie-agent-host/internal/contracts/runtimekimik31pro"
 )
@@ -173,11 +174,22 @@ func VerifyArtifact(ctx context.Context, binaryPath, manifestPath string, timeou
 		}
 		policy = artifactPolicy{runtimeSHA256: kimik31.RuntimeBinarySHA256, runtimeSize: kimik31.RuntimeBinarySize, manifestSHA256: kimik31.RuntimeManifestSHA256, schemaTreeSHA256: kimik31.RuntimeSchemaTreeSHA256, patches: patches, schemaFileCount: kimik31.RuntimeSchemaFileCount}
 	}
+	if digest == hostimage.RuntimeManifestSHA256 {
+		var patches []ManifestPatch
+		if err := json.Unmarshal([]byte(hostimage.RuntimePatchManifest), &patches); err != nil {
+			return ArtifactInfo{}, errors.New("managed image artifact authority unavailable")
+		}
+		policy = artifactPolicy{runtimeSHA256: hostimage.RuntimeBinarySHA256, runtimeSize: hostimage.RuntimeBinarySize, manifestSHA256: hostimage.RuntimeManifestSHA256, schemaTreeSHA256: hostimage.RuntimeSchemaTreeSHA256, patches: patches, schemaFileCount: hostimage.RuntimeSchemaFileCount}
+	}
 	return verifyArtifactWithPolicy(ctx, binaryPath, manifestPath, timeout, policy)
 }
 
+func (a ArtifactInfo) supportsHostImages() bool {
+	return a.BinarySHA256 == hostimage.RuntimeBinarySHA256 && a.ManifestSHA256 == hostimage.RuntimeManifestSHA256
+}
+
 func (a ArtifactInfo) SupportsKimiK31() bool {
-	return a.BinarySHA256 == kimik31.RuntimeBinarySHA256 && a.ManifestSHA256 == kimik31.RuntimeManifestSHA256
+	return a.supportsHostImages() || a.BinarySHA256 == kimik31.RuntimeBinarySHA256 && a.ManifestSHA256 == kimik31.RuntimeManifestSHA256
 }
 
 // SupportsInputOnly accepts only exact reviewed artifact pairs.

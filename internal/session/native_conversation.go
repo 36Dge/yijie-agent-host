@@ -205,7 +205,18 @@ func projectNativeError(raw json.RawMessage) *native.NativeError {
 	return out
 }
 
-func projectNativeTurn(wire nativeWireTurn, cwd string, allowRawReasoning bool) native.NativeTurn {
+// Managed images are already represented by their Artifact companion. The
+// original native item remains in the Runtime history for execution/replay.
+func (s *Service) managedImageCompanion(raw json.RawMessage) bool {
+	if s.imageGenerator == nil {
+		return false
+	}
+	var kind struct {
+		Type string `json:"type"`
+	}
+	return json.Unmarshal(raw, &kind) == nil && kind.Type == "imageGeneration"
+}
+func (s *Service) projectNativeTurn(wire nativeWireTurn, cwd string, allowRawReasoning bool) native.NativeTurn {
 	out := native.NativeTurn{Id: wire.ID, Items: []native.NativeItem{}, ItemsComplete: false, Error: projectNativeError(wire.Error)}
 	status := native.NativeTurnStatus(wire.Status)
 	if status.Valid() {
@@ -221,6 +232,9 @@ func projectNativeTurn(wire nativeWireTurn, cwd string, allowRawReasoning bool) 
 	for i, raw := range wire.Items {
 		if i >= 512 {
 			break
+		}
+		if s.managedImageCompanion(raw) {
+			continue
 		}
 		item, err := projectNativeItem(raw, cwd, allowRawReasoning)
 		if err == nil {
@@ -260,7 +274,7 @@ func (s *Service) ReadNativeThreadV6(ctx context.Context, sessionID string) (nat
 		if i >= 1024 {
 			break
 		}
-		out.Turns = append(out.Turns, projectNativeTurn(turn, record.Cwd, s.rawReasoning))
+		out.Turns = append(out.Turns, s.projectNativeTurn(turn, record.Cwd, s.rawReasoning))
 	}
 	encoded, err := json.Marshal(out)
 	if err != nil || len(encoded) > 8<<20 {
@@ -324,6 +338,9 @@ func (s *Service) publishNativeNotification(method string, raw json.RawMessage) 
 	}
 	switch method {
 	case RuntimeNotificationItemStarted, RuntimeNotificationItemCompleted:
+		if s.managedImageCompanion(p.Item) {
+			return
+		}
 		item, e := projectNativeItem(p.Item, record.Cwd, s.rawReasoning)
 		if e != nil {
 			issue()
@@ -336,7 +353,7 @@ func (s *Service) publishNativeNotification(method string, raw json.RawMessage) 
 			issue()
 		} else {
 			n.TurnId = &p.Turn.ID
-			turn := projectNativeTurn(p.Turn, record.Cwd, s.rawReasoning)
+			turn := s.projectNativeTurn(p.Turn, record.Cwd, s.rawReasoning)
 			n.Turn = &turn
 		}
 	case RuntimeNotificationItemAgentMessageDelta, RuntimeNotificationReasoningTextDelta, "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":

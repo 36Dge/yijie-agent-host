@@ -53,12 +53,12 @@ func TestProviderImagePublishesTextAndSingleCharacterReferenceArtifacts(t *testi
 				t.Fatal(err)
 			}
 			cancel()
-			if len(replay) != 3 || replay[0].EventType != EventItemArtifactStarted ||
-				replay[1].EventType != EventItemArtifactProgress || replay[2].EventType != EventItemArtifactCompleted ||
-				replay[2].Payload.Provenance != "provider" || replay[2].Payload.MediaType != "image/png" {
+			if len(replay) != 2 || replay[0].EventType != EventItemArtifactStarted ||
+				replay[1].EventType != EventItemArtifactCompleted ||
+				replay[1].Payload.Provenance != "provider" || replay[1].Payload.MediaType != "image/png" {
 				t.Fatalf("unexpected provider artifact lifecycle: %+v", replay)
 			}
-			resource, err := spool.Get(testSessionID, replay[2].Payload.ArtifactID, artifact.Content)
+			resource, err := spool.Get(testSessionID, replay[1].Payload.ArtifactID, artifact.Content)
 			if err != nil || !bytes.Equal(resource.Bytes, pngBytes) {
 				t.Fatalf("provider artifact was not staged: %+v err=%v", resource, err)
 			}
@@ -116,9 +116,9 @@ func TestProviderImageFailureIsContentFreeAndPublishesStableFailure(t *testing.T
 		t.Fatal(err)
 	}
 	cancel()
-	if len(replay) != 3 || replay[2].EventType != EventItemArtifactFailed ||
-		replay[2].Payload.ErrorCode != "generation_failed" || replay[2].Payload.Message == nil ||
-		strings.Contains(*replay[2].Payload.Message, "CANARY") {
+	if len(replay) != 2 || replay[1].EventType != EventItemArtifactFailed ||
+		replay[1].Payload.ErrorCode != "generation_failed" || replay[1].Payload.Message == nil ||
+		strings.Contains(*replay[1].Payload.Message, "CANARY") {
 		t.Fatalf("unstable provider failure lifecycle: %+v", replay)
 	}
 }
@@ -151,7 +151,7 @@ func newProviderImageService(t *testing.T, generator imagegen.Generator, referen
 		WithV3Artifacts(NewEventHubVersion(EventSchemaVersionV3, 32, 8), spool, false),
 		WithImageGenerator(generator),
 	)
-	if err := service.beginImageTurn(record, references); err != nil {
+	if err := service.beginImageTurn(context.Background(), record, references); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.BindTurn(testSessionID, testTurnID); err != nil {

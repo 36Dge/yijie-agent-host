@@ -9,8 +9,44 @@ import (
 
 	broker "github.com/36Dge/yijie-agent-host/internal/contracts/marketbrokercontrol"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
+	hostimage "github.com/36Dge/yijie-agent-host/internal/contracts/runtimehostimages"
 	"github.com/google/uuid"
 )
+
+// Review is produced by the owner's worker after validation against the frozen
+// upstream schema. Approval and consume_execution subsequently require the
+// same immutable identity, arguments digest and turn-bound lease.
+func authorizeImageMethod(view wire.MarketApproval, selected string) (bool, error) {
+	creation := false
+	for _, r := range hostimage.ExpertImageRoutes {
+		if string(view.Identity.ServiceId) != r.Service {
+			continue
+		}
+		matches := view.Review.Title == r.Method
+		if view.Review.Title == r.Proxy {
+			if view.Review.ArgumentsJson == nil || view.Review.SchemaDigest == nil {
+				return false, errors.New("image proxy review is incomplete")
+			}
+			var args struct {
+				Method string `json:"toolName"`
+			}
+			if json.Unmarshal([]byte(*view.Review.ArgumentsJson), &args) != nil || args.Method == "" {
+				return false, errors.New("image proxy method unavailable")
+			}
+			matches = args.Method == r.Method
+		}
+		if matches {
+			creation = true
+			if r.Route == selected {
+				return true, nil
+			}
+		}
+	}
+	if creation {
+		return false, errors.New("expert image method not selected")
+	}
+	return false, nil
+}
 
 type marketApprovalCallback struct {
 	view      wire.MarketApproval
@@ -82,6 +118,24 @@ func (m *Manager) handleMarketElicitation(ctx context.Context, request serverReq
 	}
 	if view.Validate() != nil || marketDecisionExpiry(view) <= time.Now().UnixMilli() {
 		return decline()
+	}
+	if m.config.HostImagesEnabled {
+		create, err := authorizeImageMethod(view, state.prepared.ImageRoute)
+		if err != nil {
+			return decline()
+		}
+		if create {
+			m.market.mu.Lock()
+			live := m.market.turns[p.ThreadID]
+			allowed := live == state && !live.closed && live.turn == p.TurnID && live.imageCallRef == ""
+			if allowed {
+				live.imageCallRef = string(meta.YijieMarketCallRef)
+			}
+			m.market.mu.Unlock()
+			if !allowed {
+				return decline()
+			}
+		}
 	}
 	entry.market = &marketApprovalCallback{view: view, scope: scope}
 	if err = m.addRuntimeApproval(entry); err != nil {

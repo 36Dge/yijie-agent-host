@@ -215,11 +215,17 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if syntheticArtifact && !artifactV3 {
 		return Config{}, errors.New("FEAT-128 synthetic profile requires the v3 Artifact capability")
 	}
-	if imageGeneration && (environment != "local" || !artifactV3 || !multimodalV2 || !runtimeConfig.MiniMax.Enabled ||
-		runtimeConfig.FakeResponses.Enabled || syntheticArtifact) {
-		return Config{}, errors.New("FEAT-128 image generation requires the exact local MiniMax and v3 Artifact conjunction")
+	if imageGeneration {
+		return Config{}, errors.New("FEAT-128 MiniMax image generation has been retired")
 	}
-	runtimeConfig.DynamicToolsEnabled = imageGeneration
+	hostImages, err := exactBoolEnv("YIJIE_FEAT168_HOST_IMAGES")
+	if err != nil {
+		return Config{}, err
+	}
+	if hostImages && (environment != "local" || os.Getenv("YIJIE_LOCAL_PROFILE") != "demo_fast" || !artifactV3 || !multimodalV2 || runtimeConfig.FakeResponses.Enabled || syntheticArtifact) {
+		return Config{}, errors.New("managed image generation requires the local media profile")
+	}
+	runtimeConfig.HostImagesEnabled = hostImages
 	if feat128S10Profile && (environment != "local" || !artifactV3 || !syntheticArtifact ||
 		artifactManifest != session.SyntheticArtifactManifest || !runtimeConfig.FakeResponses.Enabled ||
 		runtimeConfig.MiniMax.Enabled) {
@@ -364,7 +370,7 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		ArtifactMediaEnabled:           artifactV3 && os.Getenv("YIJIE_ARTIFACT_MEDIA_ENABLED") == "true" && os.Getenv("YIJIE_ENV") == "local" && os.Getenv("YIJIE_LOCAL_PROFILE") == "demo_fast",
 		ArtifactSynthetic:              syntheticArtifact,
 		ArtifactManifest:               artifactManifest,
-		ImageGenerationEnabled:         imageGeneration,
+		ImageGenerationEnabled:         hostImages,
 		InstanceNonce:                  instanceNonce,
 		FEAT126TestParentPID:           testParentPID,
 		FEAT126TestRunID:               fakeProfile.RunID,

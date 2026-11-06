@@ -18,7 +18,7 @@ func TestNativeDailyReasoningConfig(t *testing.T) {
 		"YIJIE_ENV": "local", "YIJIE_LOCAL_PROFILE": "demo_fast", "YIJIE_RUNTIME_PERMISSIONS_ENABLED": "true",
 		"YIJIE_MODEL_PROVIDER": "minimax", "YIJIE_MINIMAX_API_KEY": "normal-test-placeholder",
 		"YIJIE_AGENT_HOST_HOME": filepath.Join(root, "host"), "YIJIE_CODEX_HOME": filepath.Join(root, "runtime"),
-		"YIJIE_FEAT128_IMAGE_GENERATION_ENABLED": "true", "YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED": "true", "YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED": "true",
+		"YIJIE_FEAT128_IMAGE_GENERATION_ENABLED": "false", "YIJIE_AGENT_HOST_V3_ARTIFACTS_ENABLED": "true", "YIJIE_AGENT_HOST_V2_MULTIMODAL_TURNS_ENABLED": "true",
 	} {
 		t.Setenv(key, value)
 	}
@@ -34,8 +34,8 @@ func TestNativeDailyReasoningConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !enabled.NativeReasoningEnabled || enabled.Runtime.ManagedReasoningProfile != codex.ManagedReasoningProfileNativeHighRaw || !enabled.Runtime.DynamicToolsEnabled || !enabled.ImageGenerationEnabled {
-		t.Fatal("daily reasoning and existing image capability must coexist")
+	if !enabled.NativeReasoningEnabled || enabled.Runtime.ManagedReasoningProfile != codex.ManagedReasoningProfileNativeHighRaw || enabled.Runtime.DynamicToolsEnabled || enabled.ImageGenerationEnabled {
+		t.Fatal("daily reasoning enabled the retired image profile")
 	}
 	if enabled.FEAT134StreamingEnabled || enabled.RawReasoningV2Enabled || enabled.FEAT136CommandToolItemsEnabled || enabled.FEAT137CommandApprovalEnabled {
 		t.Fatal("daily reasoning enabled a legacy event surface")
