@@ -372,6 +372,7 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 		m.fail("startup_cancelled")
 		return errors.Join(m.startupBoundaryError(startupCtx), releaseErr)
 	}
+	authority.nativeCommandRules = m.config.RuntimePermissionsEnabled && !m.config.CommandApprovalEnabled && !m.config.FakeResponses.Enabled
 	m.codexHomeAuthority = authority
 	m.authorityCleanupError = nil
 	m.mu.Unlock()

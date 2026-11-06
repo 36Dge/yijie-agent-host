@@ -4,10 +4,29 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestNativeCommandPrefixIsOnlyTheOfferedScope(t *testing.T) {
+	proposal := json.RawMessage(`["git","status"]`)
+	choices := json.RawMessage(`["accept",{"acceptWithExecpolicyAmendment":{"execpolicy_amendment":["git","status"]}},"cancel"]`)
+	for _, test := range []struct {
+		proposed, offered json.RawMessage
+		want              []string
+	}{
+		{proposal, nil, []string{"git", "status"}}, {nil, choices, []string{"git", "status"}},
+		{proposal, choices, []string{"git", "status"}}, {nil, nil, nil},
+		{proposal, json.RawMessage(`["accept","acceptForSession","decline"]`), nil},
+		{json.RawMessage(`["git","log"]`), choices, nil},
+	} {
+		if got := offeredCommandPrefix(test.proposed, test.offered); !slices.Equal(got, test.want) {
+			t.Fatalf("unexpected command option: %v", got)
+		}
+	}
+}
 
 func TestRuntimePermissionModes(t *testing.T) {
 	for _, tc := range []struct {

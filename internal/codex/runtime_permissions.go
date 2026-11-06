@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -65,6 +66,56 @@ func (m *Manager) ValidatePermissionMode(mode PermissionMode) error {
 type RuntimeApproval struct {
 	ID, Kind, Summary, Scope, Reason, Status string
 	Mcp                                      *McpApprovalScope
+	CommandPrefix                            []string
+}
+
+const ApproveSimilar = "approve_similar"
+
+// Use only the Runtime's offer for this callback. Newer senders supply the
+// actual choices; on the stable wire the proposed amendment can stand alone.
+func offeredCommandPrefix(proposed, available json.RawMessage) []string {
+	var proposedPrefix []string
+	if len(proposed) != 0 && json.Unmarshal(proposed, &proposedPrefix) != nil {
+		return nil
+	}
+	valid := func(prefix []string) bool {
+		if len(prefix) == 0 || len(prefix) > 64 {
+			return false
+		}
+		for _, arg := range prefix {
+			if len(arg) == 0 || len(arg) > 256 {
+				return false
+			}
+		}
+		return true
+	}
+	if len(available) == 0 || string(available) == "null" {
+		if valid(proposedPrefix) {
+			return proposedPrefix
+		}
+		return nil
+	}
+	var choices []json.RawMessage
+	if json.Unmarshal(available, &choices) != nil {
+		return nil
+	}
+	var selected []string
+	for _, choice := range choices {
+		var offer struct {
+			Accept *struct {
+				Prefix []string `json:"execpolicy_amendment"`
+			} `json:"acceptWithExecpolicyAmendment"`
+		}
+		if json.Unmarshal(choice, &offer) != nil || offer.Accept == nil {
+			continue
+		}
+		prefix := offer.Accept.Prefix
+		if !valid(prefix) || (proposedPrefix != nil && !slices.Equal(proposedPrefix, prefix)) || (selected != nil && !slices.Equal(selected, prefix)) {
+			return nil // No unambiguous, reviewable native option.
+		}
+		selected = prefix
+	}
+	return selected
 }
 
 type runtimeApprovalCallback struct {
@@ -118,8 +169,16 @@ func (m *Manager) addRuntimeApproval(entry *runtimeApprovalCallback) error {
 }
 
 func (m *Manager) DecideRuntimeApproval(ctx context.Context, threadID, id, decision string) (RuntimeApproval, error) {
-	if decision != "approve_once" && decision != "reject" && decision != "cancel" {
+	if decision != "approve_once" && decision != "reject" && decision != "cancel" && decision != ApproveSimilar {
 		return RuntimeApproval{}, errors.New("invalid approval decision")
+	}
+	var authority *managedCodexHomeAuthority
+	if decision == ApproveSimilar {
+		m.mu.Lock()
+		if !m.shutdownRequested {
+			authority = m.codexHomeAuthority
+		}
+		m.mu.Unlock()
 	}
 	c := &m.permissionCallbacks
 	c.mu.Lock()
@@ -147,6 +206,16 @@ func (m *Manager) DecideRuntimeApproval(ctx context.Context, threadID, id, decis
 		if entry.view.Status != "pending" || (entry.guardian == nil && c.activeTurns[entry.threadID] != entry.turnID) {
 			c.mu.Unlock()
 			return RuntimeApproval{}, errors.New("runtime approval is unavailable")
+		}
+		if decision == ApproveSimilar {
+			if entry.view.Kind != "command" || len(entry.view.CommandPrefix) == 0 || authority == nil {
+				c.mu.Unlock()
+				return RuntimeApproval{}, errors.New("command prefix was not offered")
+			}
+			if err := authority.prepareNativeCommandRules(); err != nil {
+				c.mu.Unlock()
+				return RuntimeApproval{}, err
+			}
 		}
 		entry.decision = decision
 		if entry.guardian != nil {
@@ -180,7 +249,7 @@ func (m *Manager) finishRuntimeApproval(entry *runtimeApprovalCallback, err erro
 		entry.writtenErr = err
 		if err != nil {
 			entry.view.Status = "unavailable"
-		} else if entry.decision == "approve_once" {
+		} else if entry.decision == "approve_once" || entry.decision == ApproveSimilar {
 			entry.view.Status = "approved"
 		} else if entry.decision == "cancel" {
 			entry.view.Status = "cancelled"
@@ -191,6 +260,7 @@ func (m *Manager) finishRuntimeApproval(entry *runtimeApprovalCallback, err erro
 			entry.market.view.State = marketApprovalState(entry.view.Status)
 		}
 		entry.permissions = nil
+		entry.view.CommandPrefix = nil
 		entry.guardian = nil
 		close(entry.written)
 	})
@@ -203,15 +273,18 @@ func (m *Manager) handleRuntimePermissionRequest(ctx context.Context, request se
 		return serverRequestResult{}, false
 	}
 	var p struct {
-		ThreadID    string          `json:"threadId"`
-		TurnID      string          `json:"turnId"`
-		ItemID      string          `json:"itemId"`
-		Command     string          `json:"command"`
-		Cwd         string          `json:"cwd"`
-		Reason      string          `json:"reason"`
-		GrantRoot   string          `json:"grantRoot"`
-		Permissions json.RawMessage `json:"permissions"`
-		Network     json.RawMessage `json:"networkApprovalContext"`
+		ThreadID              string          `json:"threadId"`
+		TurnID                string          `json:"turnId"`
+		ItemID                string          `json:"itemId"`
+		Command               string          `json:"command"`
+		Cwd                   string          `json:"cwd"`
+		Reason                string          `json:"reason"`
+		GrantRoot             string          `json:"grantRoot"`
+		Permissions           json.RawMessage `json:"permissions"`
+		Network               json.RawMessage `json:"networkApprovalContext"`
+		ProposedPrefix        json.RawMessage `json:"proposedExecpolicyAmendment"`
+		AvailableDecisions    json.RawMessage `json:"availableDecisions"`
+		AdditionalPermissions json.RawMessage `json:"additionalPermissions"`
 	}
 	invalid := func() (serverRequestResult, bool) {
 		return serverRequestResult{respond: true, rpcError: &RPCError{Code: -32602, Message: "Invalid approval request"}}, true
@@ -226,6 +299,11 @@ func (m *Manager) handleRuntimePermissionRequest(ctx context.Context, request se
 		return invalid()
 	}
 	entry := &runtimeApprovalCallback{view: RuntimeApproval{ID: uuid.NewString(), Kind: kind, Summary: p.Command, Scope: p.Cwd, Reason: p.Reason, Status: "pending"}, threadID: p.ThreadID, turnID: p.TurnID, requestKey: request.idKey, permissions: p.Permissions, resolve: make(chan string, 1), written: make(chan struct{})}
+	var prefix []string
+	if kind == "command" && (len(p.Network) == 0 || string(p.Network) == "null") && (len(p.AdditionalPermissions) == 0 || string(p.AdditionalPermissions) == "null") {
+		prefix = offeredCommandPrefix(p.ProposedPrefix, p.AvailableDecisions)
+		entry.view.CommandPrefix = prefix
+	}
 	if kind == "file_change" {
 		entry.view.Summary = "修改文件"
 		m.permissionCallbacks.mu.Lock()
@@ -260,6 +338,8 @@ func (m *Manager) handleRuntimePermissionRequest(ctx context.Context, request se
 				permissions = p.Permissions
 			}
 			value = map[string]any{"permissions": permissions, "scope": "turn"}
+		} else if decision == ApproveSimilar {
+			value = map[string]any{"decision": map[string]any{"acceptWithExecpolicyAmendment": map[string][]string{"execpolicy_amendment": prefix}}}
 		} else {
 			native := "decline"
 			if decision == "approve_once" {

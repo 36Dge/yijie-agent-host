@@ -32,13 +32,14 @@ const (
 type managedCodexHomeAuthority struct {
 	mu sync.Mutex
 
-	path             string
-	root             *os.File
-	rootInfo         os.FileInfo
-	rootIdentity     managedCodexHomeIdentity
-	registryHeld     bool
-	approvalExpected bool
-	closed           bool
+	path               string
+	root               *os.File
+	rootInfo           os.FileInfo
+	rootIdentity       managedCodexHomeIdentity
+	registryHeld       bool
+	approvalExpected   bool
+	nativeCommandRules bool
+	closed             bool
 
 	// Deterministic safe test seams. Production always uses File.Sync and has
 	// no callback between mutation and the final exact postcondition.
@@ -71,6 +72,7 @@ type feat137RulePlan struct {
 	legacyInfo      os.FileInfo
 	managedExists   bool
 	managedInfo     os.FileInfo
+	nativeInfo      os.FileInfo
 }
 
 func validateManagedCodexHome(path string) error {
@@ -316,6 +318,16 @@ func (a *managedCodexHomeAuthority) preflightFEAT137ExecPolicyLocked() (feat137R
 	for _, name := range names {
 		switch name {
 		case managedLegacyDefaultRulesFile:
+			if a.nativeCommandRules {
+				info, native, err := a.inspectNativeCommandRules(directory)
+				if err != nil {
+					return feat137RulePlan{}, err
+				}
+				if native {
+					plan.nativeInfo = info
+					continue
+				}
+			}
 			content, info, present, readErr := readOwnedRegularAt(directory, name, 4096)
 			if readErr != nil {
 				return feat137RulePlan{}, readErr
@@ -460,7 +472,7 @@ func (a *managedCodexHomeAuthority) applyFEAT137ExecPolicyLocked(enabled bool, p
 				return fmt.Errorf("migrate legacy FEAT-137 Runtime exec policy: %w", err)
 			}
 		}
-		if err := a.verifyFEAT137RulesPostconditionLocked(directory, directoryInfo, true); err != nil {
+		if err := a.verifyFEAT137RulesPostconditionLocked(directory, directoryInfo, true, nil); err != nil {
 			return err
 		}
 		a.approvalExpected = true
@@ -478,7 +490,7 @@ func (a *managedCodexHomeAuthority) applyFEAT137ExecPolicyLocked(enabled bool, p
 			return fmt.Errorf("remove disabled FEAT-137 Runtime exec policy: %w", err)
 		}
 	}
-	if err := a.verifyFEAT137RulesPostconditionLocked(directory, directoryInfo, false); err != nil {
+	if err := a.verifyFEAT137RulesPostconditionLocked(directory, directoryInfo, false, current.nativeInfo); err != nil {
 		return err
 	}
 	a.approvalExpected = false
@@ -556,6 +568,7 @@ func (a *managedCodexHomeAuthority) verifyFEAT137RulesPostconditionLocked(
 	directory *os.File,
 	directoryInfo os.FileInfo,
 	enabled bool,
+	nativeInfo os.FileInfo,
 ) error {
 	if a.testBeforeFEAT137Postcondition != nil {
 		if err := a.testBeforeFEAT137Postcondition(); err != nil {
@@ -570,6 +583,16 @@ func (a *managedCodexHomeAuthority) verifyFEAT137RulesPostconditionLocked(
 		return fmt.Errorf("re-enumerate managed Runtime rules directory: %w", err)
 	}
 	if !enabled {
+		if a.nativeCommandRules && nativeInfo != nil {
+			if len(names) != 1 || names[0] != managedLegacyDefaultRulesFile {
+				return errors.New("native Runtime rules directory changed during cleanup")
+			}
+			info, native, err := a.inspectNativeCommandRules(directory)
+			if err != nil || !native || !os.SameFile(info, nativeInfo) {
+				return errors.New("native Runtime rules file changed during cleanup")
+			}
+			return ensureDirectoryEntrySame(a.root, managedRulesDirectory, directoryInfo)
+		}
 		if len(names) != 0 {
 			return errors.New("gate-off Runtime rules directory is not empty after exact cleanup")
 		}
@@ -895,6 +918,7 @@ func sameFEAT137RulePlan(left, right feat137RulePlan) bool {
 		{left.directoryInfo, right.directoryInfo},
 		{left.legacyInfo, right.legacyInfo},
 		{left.managedInfo, right.managedInfo},
+		{left.nativeInfo, right.nativeInfo},
 	} {
 		if (pair[0] == nil) != (pair[1] == nil) || (pair[0] != nil && !os.SameFile(pair[0], pair[1])) {
 			return false

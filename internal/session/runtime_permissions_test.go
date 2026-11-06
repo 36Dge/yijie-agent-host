@@ -2,6 +2,7 @@ package session
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -14,7 +15,7 @@ func TestRuntimeApprovalReviewPreservesOrdinaryOperationAndTarget(t *testing.T) 
 		Scope:   "/Users/demo/project/workspace",
 		Reason:  "Write an ordinary sample file outside the workspace",
 	}
-	if got := safeRuntimeApproval(approval); got != approval {
+	if got := safeRuntimeApproval(approval); !reflect.DeepEqual(got, approval) {
 		t.Fatalf("ordinary operation was hidden from its reviewer: %+v", got)
 	}
 }

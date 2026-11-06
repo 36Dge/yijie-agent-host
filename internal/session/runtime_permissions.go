@@ -57,6 +57,14 @@ func (s *Service) DecideRuntimeApproval(ctx context.Context, sessionID, id, deci
 	if !ok {
 		return codex.RuntimeApproval{}, ErrSessionNotUsable
 	}
+	if decision == codex.ApproveSimilar {
+		// A caller cannot accept a broader scope than could be shown faithfully.
+		for _, request := range runtime.ListRuntimeApprovals(record.CodexThreadID) {
+			if request.ID == id && request.Status == "pending" && len(safeRuntimeApproval(request).CommandPrefix) == 0 {
+				return codex.RuntimeApproval{}, ErrInvalidArgument
+			}
+		}
+	}
 	result, err := runtime.DecideRuntimeApproval(ctx, record.CodexThreadID, id, decision)
 	if err != nil {
 		return codex.RuntimeApproval{}, errors.Join(ErrSessionNotUsable, errors.New("runtime approval unavailable"))
@@ -89,6 +97,12 @@ func safeRuntimeApproval(value codex.RuntimeApproval) codex.RuntimeApproval {
 	value.Summary = clean(value.Summary)
 	value.Scope = clean(value.Scope)
 	value.Reason = clean(value.Reason)
+	if len(value.CommandPrefix) > 0 {
+		review := strings.Join(value.CommandPrefix, " ")
+		if clean(review) != review || strings.ContainsAny(review, "\r\n\t") {
+			value.CommandPrefix = nil
+		}
+	}
 	return value
 }
 

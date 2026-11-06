@@ -1,0 +1,16 @@
+{
+  "contract": "runtime-approvals-v3",
+  "sourceCommit": "af6245ac6607bb9f0d6772c19b611b730ec67104",
+  "provenance": "git-commit",
+  "sources": {
+    "openapi/runtime-approvals-v3/runtime-approvals-v3.yaml": "d06d3b0f9b8569bdc7b2ba442ae206ec7c584118e5a5b32550dfd02d23163c19",
+    "openapi/runtime-permissions-v2/runtime-permissions-v2.yaml": "2ab3f2b9db2f6f8cb9485c3fb0028dd7e66dd1859e22e6a5c06edb55d02bda74",
+    "sdks/typescript/src/openapi/runtime-approvals-v3.gen.ts": "b8e0af3e2d7f976787f39676a2560279b2b803e67ae76a56241e237a4af229f7",
+    "sdks/go/openapi/runtime-approvals-v3/client.gen.go": "49849debbdc05594a65c8efeafe827cc4bc04328a32fb039798b4a2df9cfc89f",
+    "scripts/sync-runtime-approval-choices.mjs": "282990b6aedd7a4da0229605a2c5bb28edec6cc6afe8a941b47949122dbf2539",
+    "scripts/generate-core.mjs": "182679289e476137b74a0bc23d3ef82b22cb75f72a3811c97c425eec8603b3d7",
+    "go.mod": "4bd3ff739f9383a42d641a0cbfcf17d812bf2c260c19be379effff5c528bfc35",
+    "go.sum": "0bb3ffbefa7ef6a6507a59feed3708cf92ac542e4c9911241eb2d9f4a7604b36"
+  },
+  "hostTypesSha256": "886a625c2bae3ce5f2a64f14d3356fdd484e3cec7a8673efe0ef2c008e69bbff"
+}

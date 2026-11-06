@@ -19,6 +19,50 @@ type mcpRouteService struct {
 	decisions, preparations int
 }
 
+type prefixRouteService struct {
+	mcpRouteService
+	selected string
+}
+
+func (*prefixRouteService) ListRuntimeApprovals(string) ([]codex.RuntimeApproval, error) {
+	return []codex.RuntimeApproval{{ID: "01440000-0000-4000-8000-000000000002", Kind: "command", Summary: "git status --short", Status: "pending", CommandPrefix: []string{"git", "status"}}}, nil
+}
+func (s *prefixRouteService) DecideRuntimeApproval(_ context.Context, sessionID, id, decision string) (codex.RuntimeApproval, error) {
+	rows, _ := s.ListRuntimeApprovals(sessionID)
+	if id != rows[0].ID {
+		return codex.RuntimeApproval{}, session.ErrInvalidArgument
+	}
+	s.selected = decision
+	rows[0].Status = "approved"
+	rows[0].CommandPrefix = nil
+	return rows[0], nil
+}
+func TestCommandChoiceRoutesShareTheOriginalCallback(t *testing.T) {
+	service := &prefixRouteService{}
+	mux := http.NewServeMux()
+	registerRuntimePermissions(mux, &sessionHandler{service: service, apiToken: "local-test"}, true)
+	call := func(method, path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer local-test")
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		return w
+	}
+	path := "/agent-sessions/session/runtime-approvals"
+	v2, v3 := call("GET", "/v2"+path, ""), call("GET", "/v3"+path, "")
+	if v2.Code != 200 || v3.Code != 200 || strings.Contains(v2.Body.String(), "commandPrefixes") || !strings.Contains(v3.Body.String(), `"01440000-0000-4000-8000-000000000002":["git","status"]`) {
+		t.Fatal("v3 option missing or sent to a v2 reader")
+	}
+	path += "/01440000-0000-4000-8000-000000000002"
+	if w := call("POST", "/v2"+path, `{"decision":"approve_similar"}`); w.Code != 400 || service.selected != "" {
+		t.Fatal("v2 accepted an unsupported choice")
+	}
+	if w := call("POST", "/v3"+path, `{"decision":"approve_similar"}`); w.Code != 200 || service.selected != codex.ApproveSimilar || !strings.Contains(w.Body.String(), `"status":"approved"`) {
+		t.Fatal("v3 did not return the original callback receipt")
+	}
+}
+
 func (*mcpRouteService) StartTurnV2(context.Context, session.StartTurnV2Input) (codex.TurnInfo, error) {
 	return codex.TurnInfo{}, session.ErrSessionNotUsable
 }

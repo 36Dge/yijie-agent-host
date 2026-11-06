@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	choices "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeapprovalsv3"
 	contract "github.com/36Dge/yijie-agent-host/internal/contracts/runtimepermissionsv2"
 	"github.com/36Dge/yijie-agent-host/internal/session"
 	"github.com/google/uuid"
@@ -13,32 +14,53 @@ import (
 
 func registerNativeMcpPermissions(mux *http.ServeMux, h *sessionHandler, service permissionSessionService) {
 	register := func(path string, handler http.HandlerFunc) { mux.Handle(path, h.authorize(handler)) }
-	register("GET /v2/agent-sessions/{agent_session_id}/runtime-approvals", func(w http.ResponseWriter, r *http.Request) {
+	list := func(w http.ResponseWriter, r *http.Request, includeChoices bool) {
 		values, err := service.ListRuntimeApprovals(r.PathValue("agent_session_id"))
 		if err != nil {
 			writeSessionError(w, err)
 			return
 		}
 		response := contract.RuntimeApprovalSnapshot{Requests: make([]contract.RuntimeApproval, 0, len(values))}
+		prefixes := make(map[string][]string)
 		for _, value := range values {
 			response.Requests = append(response.Requests, approvalResponseV2(value))
+			if includeChoices && value.Kind == "command" && value.Status == "pending" && len(value.CommandPrefix) != 0 {
+				prefixes[value.ID] = value.CommandPrefix
+			}
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		writeJSON(w, http.StatusOK, response)
-	})
-	register("POST /v2/agent-sessions/{agent_session_id}/runtime-approvals/{approval_id}", func(w http.ResponseWriter, r *http.Request) {
-		var request contract.RuntimeApprovalDecision
-		if err := decodeRequest(w, r, &request); err != nil || (request.Decision != "approve_once" && request.Decision != "reject" && request.Decision != "cancel") {
-			writeSessionError(w, session.ErrInvalidArgument)
+		if includeChoices {
+			writeJSON(w, http.StatusOK, choices.RuntimeApprovalChoices{Requests: response.Requests, CommandPrefixes: prefixes})
 			return
 		}
-		value, err := service.DecideRuntimeApproval(r.Context(), r.PathValue("agent_session_id"), r.PathValue("approval_id"), string(request.Decision))
+		writeJSON(w, http.StatusOK, response)
+	}
+	register("GET /v2/agent-sessions/{agent_session_id}/runtime-approvals", func(w http.ResponseWriter, r *http.Request) { list(w, r, false) })
+	register("GET /v3/agent-sessions/{agent_session_id}/runtime-approvals", func(w http.ResponseWriter, r *http.Request) { list(w, r, true) })
+	decide := func(w http.ResponseWriter, r *http.Request, decision string) {
+		value, err := service.DecideRuntimeApproval(r.Context(), r.PathValue("agent_session_id"), r.PathValue("approval_id"), decision)
 		if err != nil {
 			writeSessionError(w, err)
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusOK, approvalResponseV2(value))
+	}
+	register("POST /v2/agent-sessions/{agent_session_id}/runtime-approvals/{approval_id}", func(w http.ResponseWriter, r *http.Request) {
+		var request contract.RuntimeApprovalDecision
+		if err := decodeRequest(w, r, &request); err != nil || (request.Decision != "approve_once" && request.Decision != "reject" && request.Decision != "cancel") {
+			writeSessionError(w, session.ErrInvalidArgument)
+			return
+		}
+		decide(w, r, string(request.Decision))
+	})
+	register("POST /v3/agent-sessions/{agent_session_id}/runtime-approvals/{approval_id}", func(w http.ResponseWriter, r *http.Request) {
+		var request choices.SimilarCommandDecision
+		if err := decodeRequest(w, r, &request); err != nil || request.Decision != choices.ApproveSimilar {
+			writeSessionError(w, session.ErrInvalidArgument)
+			return
+		}
+		decide(w, r, string(request.Decision))
 	})
 	if prepare, ok := h.service.(interface {
 		PrepareMcpPermissionScope(context.Context, codex.PermissionMode) (bool, bool, error)

@@ -1,5 +1,7 @@
 # Security Policy
 
+本地原生命令审批：只有原始 command 回调提供了可完整展示的 execpolicy 前缀，才允许当前任务通过 owner-only v3 接口选择“允许类似命令”。前端不能传入规则，连接器和 Guardian 不走此选项。Host 只在用户明确选择后为 Codex 准备私有追加目标；规则内容、匹配和持久化均归 Codex。旧 FEAT-137 文件继续精确核验，未知文件不被采纳或覆盖。兼容和降级限制见相邻 Contracts 的 `docs/runtime-approval-choices.md`。
+
 FEAT-164 搜索来源 URL 的 opaque-token 检查以 hostname、逐路径段、逐 query key/value、fragment
 为边界；先按原始 URL 分隔符分段再解码，编码分隔符仍属于同一组件。全局日志/命令脱敏及
 URL 全文的 bearer、敏感名称、JWT、AWS、PEM、控制字符拒绝保持不变；HTTP(S)、无 userinfo、
