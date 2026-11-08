@@ -108,15 +108,17 @@ const (
 )
 
 type TurnOperation struct {
-	ModelProfile  string    `json:"model_profile,omitempty"`
-	SchemaVersion int       `json:"schema_version"`
-	SessionID     string    `json:"session_id"`
-	OperationID   string    `json:"operation_id"`
-	InputDigest   string    `json:"input_digest"`
-	State         string    `json:"state"`
-	TurnID        string    `json:"turn_id,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	// Display provenance only; never used for turn admission or execution.
+	ContextModelRevision int64     `json:"context_model_revision,omitempty"`
+	ModelProfile         string    `json:"model_profile,omitempty"`
+	SchemaVersion        int       `json:"schema_version"`
+	SessionID            string    `json:"session_id"`
+	OperationID          string    `json:"operation_id"`
+	InputDigest          string    `json:"input_digest"`
+	State                string    `json:"state"`
+	TurnID               string    `json:"turn_id,omitempty"`
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 type Store struct {
@@ -883,14 +885,15 @@ func (s *Store) prepareModelTurnOperation(sessionID, operationID, inputDigest st
 		}
 		now := time.Now().UTC()
 		operation = TurnOperation{
-			ModelProfile:  modelProfile,
-			SchemaVersion: 1,
-			SessionID:     sessionID,
-			OperationID:   operationID,
-			InputDigest:   inputDigest,
-			State:         TurnOperationStatePending,
-			CreatedAt:     now,
-			UpdatedAt:     now,
+			ContextModelRevision: loaded.ModelRevision,
+			ModelProfile:         modelProfile,
+			SchemaVersion:        1,
+			SessionID:            sessionID,
+			OperationID:          operationID,
+			InputDigest:          inputDigest,
+			State:                TurnOperationStatePending,
+			CreatedAt:            now,
+			UpdatedAt:            now,
 		}
 		if err := saveTurnOperation(operations, key, operation); err != nil {
 			return err

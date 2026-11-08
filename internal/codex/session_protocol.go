@@ -313,6 +313,9 @@ func (m *Manager) SetCommandApprovalHandler(handler CommandApprovalHandler) erro
 }
 
 func (m *Manager) handleServerRequest(ctx context.Context, request serverRequest) serverRequestResult {
+	if request.method == userInputMethod {
+		return m.handleUserInput(ctx, request)
+	}
 	if request.method == hostimage.Method {
 		return m.handleHostImage(ctx, request)
 	}
@@ -602,6 +605,10 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 	}
 	params.Config = m.artifactThreadConfig(params.Config)
 	params.Config = m.executionProgressConfig(ctx, params.Config)
+	params.Config, err = m.toolSearchThreadConfig(params.Config)
+	if err != nil {
+		return ThreadInfo{}, err
+	}
 	if m.config.RuntimePermissionsEnabled {
 		params.DeveloperInstructions += retrievalCapabilityInstructions
 	}
@@ -617,6 +624,7 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		return ThreadInfo{}, err
 	}
 	m.bindKimiK31Thread(ctx, thread)
+	m.registerNativeToolsRoot(thread.ID)
 	return thread, nil
 }
 
@@ -690,6 +698,10 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	}
 	params.Config = m.artifactThreadConfig(params.Config)
 	params.Config = m.executionProgressConfig(ctx, params.Config)
+	params.Config, err = m.toolSearchThreadConfig(params.Config)
+	if err != nil {
+		return ThreadInfo{}, err
+	}
 	if m.config.RuntimePermissionsEnabled && params.DeveloperInstructions != nil {
 		instructions := *params.DeveloperInstructions + retrievalCapabilityInstructions
 		params.DeveloperInstructions = &instructions
@@ -710,6 +722,7 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 		return ThreadInfo{}, errors.New("thread/resume returned an unexpected thread id")
 	}
 	m.bindKimiK31Thread(ctx, thread)
+	m.registerNativeToolsRoot(thread.ID)
 	return thread, nil
 }
 

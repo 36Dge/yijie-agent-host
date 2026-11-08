@@ -226,6 +226,30 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		return Config{}, errors.New("managed image generation requires the local media profile")
 	}
 	runtimeConfig.HostImagesEnabled = hostImages
+	nativeTools, err := exactBoolEnv("YIJIE_FEAT169_NATIVE_TOOLS")
+	if err != nil {
+		return Config{}, err
+	}
+	if nativeTools && (environment != "local" || os.Getenv("YIJIE_LOCAL_PROFILE") != "demo_fast" || runtimeConfig.FakeResponses.Enabled) {
+		return Config{}, errors.New("native tools require the local managed profile")
+	}
+	runtimeConfig.NativeToolsEnabled = nativeTools
+	interactionTools, err := exactBoolEnv("YIJIE_FEAT169_INTERACTION_TOOLS")
+	if err != nil {
+		return Config{}, err
+	}
+	if interactionTools && !nativeTools {
+		return Config{}, errors.New("interaction tools require native tool profile")
+	}
+	runtimeConfig.InteractionToolsEnabled = interactionTools
+	toolSearch, err := exactBoolEnv("YIJIE_FEAT170_TOOL_SEARCH")
+	if err != nil {
+		return Config{}, err
+	}
+	if toolSearch && (!interactionTools || environment != "local" || os.Getenv("YIJIE_LOCAL_PROFILE") != "demo_fast") {
+		return Config{}, errors.New("tool search requires the paired local interaction profile")
+	}
+	runtimeConfig.ToolSearchEnabled = toolSearch
 	if feat128S10Profile && (environment != "local" || !artifactV3 || !syntheticArtifact ||
 		artifactManifest != session.SyntheticArtifactManifest || !runtimeConfig.FakeResponses.Enabled ||
 		runtimeConfig.MiniMax.Enabled) {
@@ -854,6 +878,8 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 			service: sessions, apiToken: apiToken, heartbeatInterval: defaultSSEHeartbeatInterval,
 		}
 		registerRuntimePermissions(mux, handler, config.Runtime.RuntimePermissionsEnabled)
+		registerUserInput(mux, handler, config.Runtime.InteractionToolsEnabled)
+		registerContextWindow(mux, handler)
 		if config.Environment == "local" && config.ScheduledRecoveryEnabled {
 			registerScheduledRecovery(mux, handler, config.InstanceNonce)
 			registerScheduledDraft(mux, handler, config.InstanceNonce)

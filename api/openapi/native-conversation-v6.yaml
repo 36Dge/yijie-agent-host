@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Yijie Native Conversation Trace v6",
-    "version": "0.6.0",
-    "description": "Canonical provider search sources, distinct from assistant citations. Native lifecycle and permissions unchanged. Legacy history v1/v2/v3 and SSE v7/v8/v10 retain their projections."
+    "version": "0.7.0",
+    "description": "Canonical provider search sources, distinct from assistant citations. Native lifecycle and permissions unchanged. Legacy history v1/v2/v3 and SSE v7/v8/v10 retain their projections. FEAT-169 adds native fileChange and subAgentActivity display facts; requires paired local consumers, without rewriting existing records."
   },
   "servers": [
     {
@@ -203,6 +203,8 @@
               "commandExecution",
               "mcpToolCall",
               "webSearch",
+              "fileChange",
+              "subAgentActivity",
               "unknown"
             ]
           },

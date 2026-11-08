@@ -1,0 +1,274 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "CanonicalID": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "ToolRequestUserInputQuestion": {
+      "description": "EXPERIMENTAL. Represents one request_user_input question and its required options.",
+      "properties": {
+        "header": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "isOther": {
+          "default": false,
+          "type": "boolean"
+        },
+        "isSecret": {
+          "default": false,
+          "type": "boolean"
+        },
+        "options": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/definitions/ToolRequestUserInputOption"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "question": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "header",
+        "id",
+        "question"
+      ],
+      "type": "object"
+    },
+    "ToolRequestUserInputAnswer": {
+      "description": "EXPERIMENTAL. Captures a user's answer to a request_user_input question.",
+      "properties": {
+        "answers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "answers"
+      ],
+      "type": "object"
+    },
+    "InputState": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "submitting",
+        "answered",
+        "skipped",
+        "timed_out",
+        "cancelled",
+        "unknown"
+      ]
+    },
+    "UserInputRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "request_id": {
+          "$ref": "#/definitions/CanonicalID"
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "item_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "state": {
+          "$ref": "#/definitions/InputState"
+        },
+        "questions": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/definitions/ToolRequestUserInputQuestion"
+          }
+        },
+        "deadline_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "timeout_paused": {
+          "type": "boolean"
+        },
+        "operation_id": {
+          "$ref": "#/definitions/CanonicalID"
+        }
+      },
+      "required": [
+        "request_id",
+        "turn_id",
+        "item_id",
+        "state",
+        "questions",
+        "timeout_paused"
+      ]
+    },
+    "UserInputSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "requests": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/definitions/UserInputRequest"
+          }
+        },
+        "generation": {
+          "$ref": "#/definitions/CanonicalID",
+          "description": "Current Host Runtime generation; omitted only for an unbound local session. A change invalidates prior pending UI state, never replays answers."
+        }
+      },
+      "required": [
+        "enabled",
+        "requests"
+      ]
+    },
+    "UserInputAnswerRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "$ref": "#/definitions/CanonicalID"
+        },
+        "answers": {
+          "type": "object",
+          "maxProperties": 3,
+          "additionalProperties": {
+            "$ref": "#/definitions/ToolRequestUserInputAnswer"
+          },
+          "description": "Exact original question IDs only. At most one answer string per question, at most 8192 Unicode characters each. Empty map/arrays skip; never approval. Values go to the original native model/rollout, never additional Host/UI storage."
+        }
+      },
+      "required": [
+        "operation_id",
+        "answers"
+      ]
+    },
+    "UserInputError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "invalid_request",
+                "unavailable",
+                "not_found",
+                "conflict",
+                "unauthorized"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "maxLength": 160
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ]
+        }
+      },
+      "description": "Keep these closed codes across adapters. not_found, conflict and unavailable must remain distinguishable; unknown or malformed errors must never be interpreted as definitive request absence."
+    },
+    "ToolRequestUserInputParams": {
+      "description": "EXPERIMENTAL. Params sent with a request_user_input event.",
+      "properties": {
+        "autoResolutionMs": {
+          "anyOf": [
+            {
+              "default": null,
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "itemId": {
+          "type": "string"
+        },
+        "questions": {
+          "items": {
+            "$ref": "#/definitions/ToolRequestUserInputQuestion"
+          },
+          "type": "array"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "itemId",
+        "questions",
+        "threadId",
+        "turnId"
+      ],
+      "type": "object"
+    },
+    "ToolRequestUserInputOption": {
+      "description": "EXPERIMENTAL. Defines a single selectable option for request_user_input.",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "description",
+        "label"
+      ],
+      "type": "object"
+    },
+    "ToolRequestUserInputResponse": {
+      "description": "EXPERIMENTAL. Response payload mapping question ids to answers.",
+      "properties": {
+        "answers": {
+          "additionalProperties": {
+            "$ref": "#/definitions/ToolRequestUserInputAnswer"
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "answers"
+      ],
+      "type": "object"
+    }
+  }
+}

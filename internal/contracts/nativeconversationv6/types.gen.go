@@ -220,8 +220,10 @@ func (e NativeItemStatus) Valid() bool {
 const (
 	NativeItemTypeAgentMessage     NativeItemType = "agentMessage"
 	NativeItemTypeCommandExecution NativeItemType = "commandExecution"
+	NativeItemTypeFileChange       NativeItemType = "fileChange"
 	NativeItemTypeMcpToolCall      NativeItemType = "mcpToolCall"
 	NativeItemTypeReasoning        NativeItemType = "reasoning"
+	NativeItemTypeSubAgentActivity NativeItemType = "subAgentActivity"
 	NativeItemTypeUnknown          NativeItemType = "unknown"
 	NativeItemTypeUserMessage      NativeItemType = "userMessage"
 	NativeItemTypeWebSearch        NativeItemType = "webSearch"
@@ -234,9 +236,13 @@ func (e NativeItemType) Valid() bool {
 		return true
 	case NativeItemTypeCommandExecution:
 		return true
+	case NativeItemTypeFileChange:
+		return true
 	case NativeItemTypeMcpToolCall:
 		return true
 	case NativeItemTypeReasoning:
+		return true
+	case NativeItemTypeSubAgentActivity:
 		return true
 	case NativeItemTypeUnknown:
 		return true

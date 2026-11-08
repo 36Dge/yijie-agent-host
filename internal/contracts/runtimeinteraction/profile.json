@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-169",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "base_profile": "runtime-native-tools",
+  "native_config": {
+    "features": {
+      "default_mode_request_user_input": true,
+      "token_budget": {"enabled": true, "reset_on_compact": false}
+    },
+    "tools": {"experimental_request_user_input": {"enabled": true}}
+  },
+  "native_methods": ["item/tool/requestUserInput"],
+  "context_policy": "ordinary-native-summary-explicit-native-fresh-window",
+  "question_scope": "owned-root-current-generation-and-turn",
+  "secret_policy": "display-masking-native-model-input-and-rollout-no-extra-answer-storage"
+}

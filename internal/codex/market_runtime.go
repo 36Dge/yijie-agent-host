@@ -166,13 +166,29 @@ set = {}
 }
 
 func validateMarketEffectiveIsolation(config map[string]json.RawMessage) error {
+	return validateMarketEffectiveIsolationForTools(config, false)
+}
+
+func validateMarketEffectiveIsolationForTools(config map[string]json.RawMessage, nativeTools bool) error {
 	var features map[string]any
 	if json.Unmarshal(config["features"], &features) != nil {
 		return errors.New("market execution isolation unavailable")
 	}
 	for _, name := range []string{"hooks", "plugins", "apps", "tool_suggest", "shell_snapshot", "multi_agent", "js_repl", "memories"} {
-		if features[name] != false {
+		expected := nativeTools && name == "memories"
+		if features[name] != expected {
 			return errors.New("market execution isolation mismatch")
+		}
+	}
+	if nativeTools {
+		for _, name := range []string{"multi_agent_v2", "code_mode"} {
+			value, ok := features[name].(map[string]any)
+			if !ok || value["enabled"] != true {
+				return errors.New("native tool isolation profile unavailable")
+			}
+		}
+		if features["multi_agent_v2"].(map[string]any)["inherit_mcp_servers"] != false {
+			return errors.New("native child MCP isolation unavailable")
 		}
 	}
 	if features["tool_call_mcp_elicitation"] != true {
@@ -201,7 +217,7 @@ func (m *Manager) validateMarketIsolation(ctx context.Context, cwd string) error
 	if err := m.request(ctx, "config/read", params, &response); err != nil {
 		return errors.New("market native configuration unavailable")
 	}
-	return validateMarketEffectiveIsolation(response.Config)
+	return validateMarketEffectiveIsolationForTools(response.Config, m.config.NativeToolsEnabled)
 }
 
 // CloseMarketAdmission is an irreversible Native authority boundary. It closes

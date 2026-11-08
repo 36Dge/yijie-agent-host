@@ -64,6 +64,9 @@ type Config struct {
 	ManagedReasoningProfile        ManagedReasoningProfile
 	DynamicToolsEnabled            bool
 	HostImagesEnabled              bool
+	NativeToolsEnabled             bool
+	InteractionToolsEnabled        bool
+	ToolSearchEnabled              bool
 	CommandApprovalEnabled         bool
 	RuntimePermissionsEnabled      bool
 	// Native weighted budget for one loaded ordinary-chat root session tree.
@@ -105,6 +108,15 @@ func (c Config) Configured() bool {
 }
 
 func (c Config) validate() error {
+	if c.ToolSearchEnabled && (!c.InteractionToolsEnabled || !c.NativeToolsEnabled || !c.KimiK31Candidate) {
+		return errors.New("tool search requires the paired native interaction profile")
+	}
+	if c.InteractionToolsEnabled && !c.NativeToolsEnabled {
+		return errors.New("interaction tools require the native tool profile")
+	}
+	if c.NativeToolsEnabled && (!c.KimiK31Candidate || !c.RuntimePermissionsEnabled || !c.ChatModelsEnabled || c.DynamicToolsEnabled || c.FakeResponses.Enabled) {
+		return errors.New("native tool integration requires the managed local model profile")
+	}
 	if c.RolloutBudgetLimitTokens < 0 {
 		return errors.New("native rollout budget limit must not be negative")
 	}
@@ -213,6 +225,7 @@ type Manager struct {
 	artifactMCPToken    string
 	market              marketRuntimeState
 	permissionCallbacks runtimeApprovalCallbacks
+	userInputs          userInputCallbacks
 	threadOperation     sync.Mutex // Shared starts, model changes and scheduled operations.
 	config              Config
 	logger              *slog.Logger
@@ -359,7 +372,9 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 		m.fail("artifact_verification_failed")
 		return err
 	}
-	if m.config.HostImagesEnabled != artifact.supportsHostImages() || m.config.KimiK31Candidate != artifact.SupportsKimiK31() {
+	if (m.config.ToolSearchEnabled && !artifact.supportsToolSearch()) || m.config.InteractionToolsEnabled != artifact.supportsInteractionTools() || m.config.NativeToolsEnabled != artifact.supportsNativeTools() ||
+		(!m.config.NativeToolsEnabled && m.config.HostImagesEnabled != artifact.supportsHostImages()) ||
+		(m.config.HostImagesEnabled && !artifact.supportsHostImages()) || m.config.KimiK31Candidate != artifact.SupportsKimiK31() {
 		m.fail("artifact_verification_failed")
 		return errors.New("Kimi candidate and Runtime artifact must match exactly")
 	}
@@ -455,13 +470,32 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 			m.status.Model = MiniMaxModel
 		}
 	}
-	if providerErr == nil && m.MarketEnabled() {
+	if providerErr == nil && (m.MarketEnabled() || m.config.NativeToolsEnabled) {
 		var extra []string
 		extra, providerErr = marketNativeLayerArguments()
 		if providerErr == nil {
 			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
 		}
 	}
+	if providerErr == nil && m.config.NativeToolsEnabled {
+		var extra []string
+		extra, providerErr = prepareNativeToolsLayer(authority)
+		if providerErr == nil {
+			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
+		}
+	}
+	if providerErr == nil && m.config.ToolSearchEnabled {
+		providerErr = prepareToolSearchLayer(authority)
+	}
+
+	if providerErr == nil && m.config.InteractionToolsEnabled {
+		var extra []string
+		extra, providerErr = interactionToolsArguments()
+		if providerErr == nil {
+			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
+		}
+	}
+
 	if providerErr == nil && m.config.KimiK31Candidate {
 		var extra []string
 		extra, providerErr = m.kimiK31MeterArguments()
@@ -558,14 +592,23 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 		if err := m.StartMarketBroker(requestCtx); err != nil {
 			return errors.Join(err, m.abortStartup("market_worker_unavailable"))
 		}
-		var marketConfig struct {
+	}
+	if m.MarketEnabled() || m.config.InteractionToolsEnabled {
+		var effective struct {
 			Config map[string]json.RawMessage `json:"config"`
 		}
-		if err := client.Request(requestCtx, "config/read", map[string]any{"includeLayers": false}, &marketConfig); err != nil {
-			return errors.Join(errors.New("market native isolation unavailable"), m.abortStartup("market_isolation_unavailable"))
+		if err := client.Request(requestCtx, "config/read", map[string]any{"includeLayers": false}, &effective); err != nil {
+			return errors.Join(errors.New("native configuration unavailable"), m.abortStartup("native_config_unavailable"))
 		}
-		if err := validateMarketEffectiveIsolation(marketConfig.Config); err != nil {
-			return errors.Join(err, m.abortStartup("market_isolation_mismatch"))
+		if m.MarketEnabled() {
+			if err := validateMarketEffectiveIsolationForTools(effective.Config, m.config.NativeToolsEnabled); err != nil {
+				return errors.Join(err, m.abortStartup("market_isolation_mismatch"))
+			}
+		}
+		if m.config.InteractionToolsEnabled {
+			if err := validateInteractionToolsEffectiveConfig(effective.Config); err != nil {
+				return errors.Join(err, m.abortStartup("interaction_config_mismatch"))
+			}
 		}
 	}
 
@@ -582,6 +625,16 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 }
 
 func (m *Manager) validateManagedProviderAuthority(authority *managedCodexHomeAuthority) error {
+	if m.config.ToolSearchEnabled {
+		if err := validateToolSearchLayer(authority); err != nil {
+			return err
+		}
+	}
+	if m.config.NativeToolsEnabled {
+		if err := validateNativeToolsLayer(authority); err != nil {
+			return err
+		}
+	}
 	if m.config.ChatModelsEnabled {
 		if err := m.validateSelectedChatModelLayer(authority); err != nil {
 			return err
@@ -826,6 +879,7 @@ func (m *Manager) waitForExit(cmd *exec.Cmd) {
 	if cleanupErr != nil {
 		m.logger.Warn("managed CODEX_HOME cleanup failed", "failure_code", "provider_config_failed", "detail", "authority_cleanup")
 	}
+	m.closeUserInputs("", "", "", true)
 	if approvalHandler != nil && generation != "" {
 		approvalHandler.HandleCommandApprovalGenerationClosed(generation)
 	}
@@ -860,6 +914,7 @@ func (m *Manager) handleClientFailure(err error) {
 	approvalHandler := m.commandApprovalHandler
 	generation := m.runtimeGeneration
 	m.mu.Unlock()
+	m.closeUserInputs("", "", "", true)
 	if approvalHandler != nil && generation != "" {
 		approvalHandler.HandleCommandApprovalGenerationClosed(generation)
 	}
@@ -870,6 +925,7 @@ func (m *Manager) handleClientFailure(err error) {
 
 func (m *Manager) handleNotification(method string, params json.RawMessage) {
 	m.handlePermissionNotification(method, params)
+	m.observeUserInputNotification(method, params)
 	m.observeMarketNotification(method, params)
 	m.logger.Debug("Codex Runtime notification", "method", method)
 	if method == RuntimeNotificationServerRequestResolved {
@@ -918,6 +974,9 @@ func (m *Manager) handleNotification(method string, params json.RawMessage) {
 			ThreadID string `json:"threadId"`
 		}
 		if json.Unmarshal(params, &notification) == nil {
+			m.permissionCallbacks.mu.Lock()
+			delete(m.permissionCallbacks.nativeRoots, notification.ThreadID)
+			m.permissionCallbacks.mu.Unlock()
 			if waiter := m.deleteWaiters[notification.ThreadID]; waiter != nil {
 				close(waiter)
 				delete(m.deleteWaiters, notification.ThreadID)

@@ -1,0 +1,582 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ModelsResponse",
+  "description": "Response wrapper for `/models`.",
+  "type": "object",
+  "required": [
+    "models"
+  ],
+  "properties": {
+    "models": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ModelInfo"
+      }
+    }
+  },
+  "definitions": {
+    "ApplyPatchToolType": {
+      "type": "string",
+      "enum": [
+        "freeform",
+        "function"
+      ]
+    },
+    "ApprovalMessages": {
+      "type": "object",
+      "properties": {
+        "on_request": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "on_request_auto_review": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "AutoReviewMessages": {
+      "type": "object",
+      "properties": {
+        "policy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ConfigShellToolType": {
+      "description": "Shell execution capability for a model.",
+      "type": "string",
+      "enum": [
+        "default",
+        "local",
+        "unified_exec",
+        "disabled",
+        "shell_command"
+      ]
+    },
+    "InputModality": {
+      "description": "Canonical user-input modality tags advertised by a model.",
+      "oneOf": [
+        {
+          "description": "Plain text turns and tool payloads.",
+          "type": "string",
+          "enum": [
+            "text"
+          ]
+        },
+        {
+          "description": "Image attachments included in user turns.",
+          "type": "string",
+          "enum": [
+            "image"
+          ]
+        }
+      ]
+    },
+    "ModelAvailabilityNux": {
+      "type": "object",
+      "required": [
+        "message"
+      ],
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "ModelInfo": {
+      "description": "Model metadata returned by the Codex backend `/models` endpoint.",
+      "type": "object",
+      "required": [
+        "base_instructions",
+        "display_name",
+        "experimental_supported_tools",
+        "priority",
+        "shell_type",
+        "slug",
+        "support_verbosity",
+        "supported_in_api",
+        "supported_reasoning_levels",
+        "supports_parallel_tool_calls",
+        "supports_reasoning_summaries",
+        "truncation_policy",
+        "visibility"
+      ],
+      "properties": {
+        "additional_speed_tiers": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "apply_patch_tool_type": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ApplyPatchToolType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "auto_compact_token_limit": {
+          "description": "Token threshold for automatic compaction. When omitted, core derives it from `context_window` (90%). When provided, core clamps it to 90% of the context window when available.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "auto_review_model_override": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "availability_nux": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelAvailabilityNux"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "base_instructions": {
+          "type": "string"
+        },
+        "comp_hash": {
+          "description": "Opaque identifier for compaction-compatible model configurations.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "context_window": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "default_reasoning_level": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReasoningEffort"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "default_reasoning_summary": {
+          "default": "auto",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ReasoningSummary"
+            }
+          ]
+        },
+        "default_service_tier": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "default_verbosity": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Verbosity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "effective_context_window_percent": {
+          "description": "Percentage of the context window considered usable for inputs, after reserving headroom for system prompts, tool overhead, and model output.",
+          "default": 95,
+          "type": "integer",
+          "format": "int64"
+        },
+        "experimental_supported_tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "include_skills_usage_instructions": {
+          "default": false,
+          "type": "boolean"
+        },
+        "input_modalities": {
+          "description": "Input modalities accepted by the backend for this model.",
+          "default": [
+            "text",
+            "image"
+          ],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/InputModality"
+          }
+        },
+        "max_context_window": {
+          "description": "Maximum context window allowed for config overrides.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "model_messages": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelMessages"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "multi_agent_version": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MultiAgentVersion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "priority": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "service_tiers": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ModelServiceTier"
+          }
+        },
+        "shell_type": {
+          "$ref": "#/definitions/ConfigShellToolType"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "support_verbosity": {
+          "type": "boolean"
+        },
+        "supported_in_api": {
+          "type": "boolean"
+        },
+        "supported_reasoning_levels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReasoningEffortPreset"
+          }
+        },
+        "supports_image_detail_original": {
+          "default": false,
+          "type": "boolean"
+        },
+        "supports_parallel_tool_calls": {
+          "type": "boolean"
+        },
+        "supports_reasoning_summaries": {
+          "type": "boolean"
+        },
+        "supports_search_tool": {
+          "default": false,
+          "type": "boolean"
+        },
+        "tool_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ToolMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool_search_transport": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ToolSearchTransport"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "truncation_policy": {
+          "$ref": "#/definitions/TruncationPolicyConfig"
+        },
+        "upgrade": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelInfoUpgrade"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "use_responses_lite": {
+          "default": false,
+          "type": "boolean"
+        },
+        "visibility": {
+          "$ref": "#/definitions/ModelVisibility"
+        },
+        "web_search_tool_type": {
+          "default": "text",
+          "allOf": [
+            {
+              "$ref": "#/definitions/WebSearchToolType"
+            }
+          ]
+        }
+      }
+    },
+    "ModelInfoUpgrade": {
+      "type": "object",
+      "required": [
+        "migration_markdown",
+        "model"
+      ],
+      "properties": {
+        "migration_markdown": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        }
+      }
+    },
+    "ModelInstructionsVariables": {
+      "type": "object",
+      "properties": {
+        "personality_default": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "personality_friendly": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "personality_pragmatic": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ModelMessages": {
+      "description": "A strongly-typed template for assembling model instructions and developer messages. If instructions_* is populated and valid, it will override base_instructions.",
+      "type": "object",
+      "properties": {
+        "approvals": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ApprovalMessages"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "auto_review": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AutoReviewMessages"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "instructions_template": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "instructions_variables": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelInstructionsVariables"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ModelServiceTier": {
+      "type": "object",
+      "required": [
+        "description",
+        "id",
+        "name"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "ModelVisibility": {
+      "description": "Visibility of a model in the picker or APIs.",
+      "type": "string",
+      "enum": [
+        "list",
+        "hide",
+        "none"
+      ]
+    },
+    "MultiAgentVersion": {
+      "type": "string",
+      "enum": [
+        "disabled",
+        "v1",
+        "v2"
+      ]
+    },
+    "ReasoningEffort": {
+      "description": "A non-empty reasoning effort value advertised by the model.",
+      "type": "string",
+      "minLength": 1
+    },
+    "ReasoningEffortPreset": {
+      "description": "A reasoning effort option that can be surfaced for a model.",
+      "type": "object",
+      "required": [
+        "description",
+        "effort"
+      ],
+      "properties": {
+        "description": {
+          "description": "Short human description shown next to the effort in UIs.",
+          "type": "string"
+        },
+        "effort": {
+          "description": "Effort level that the model supports.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ReasoningEffort"
+            }
+          ]
+        }
+      }
+    },
+    "ReasoningSummary": {
+      "description": "A summary of the reasoning performed by the model. This can be useful for debugging and understanding the model's reasoning process. See https://platform.openai.com/docs/guides/reasoning?api-mode=responses#reasoning-summaries",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "auto",
+            "concise",
+            "detailed"
+          ]
+        },
+        {
+          "description": "Option to disable reasoning summaries.",
+          "type": "string",
+          "enum": [
+            "none"
+          ]
+        }
+      ]
+    },
+    "ToolMode": {
+      "type": "string",
+      "enum": [
+        "direct",
+        "code_mode",
+        "code_mode_only"
+      ]
+    },
+    "ToolSearchTransport": {
+      "description": "Native search execution is shared; this selects the provider-facing transport.",
+      "type": "string",
+      "enum": [
+        "native",
+        "function_code_mode"
+      ]
+    },
+    "TruncationMode": {
+      "description": "Server-provided truncation policy metadata for a model.",
+      "type": "string",
+      "enum": [
+        "bytes",
+        "tokens"
+      ]
+    },
+    "TruncationPolicyConfig": {
+      "type": "object",
+      "required": [
+        "limit",
+        "mode"
+      ],
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "mode": {
+          "$ref": "#/definitions/TruncationMode"
+        }
+      }
+    },
+    "Verbosity": {
+      "description": "Controls output length/detail on GPT-5 models via the Responses API. Serialized with lowercase values to match the OpenAI API.",
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "WebSearchToolType": {
+      "type": "string",
+      "enum": [
+        "text",
+        "text_and_image"
+      ]
+    }
+  }
+}

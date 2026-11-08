@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-170",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "base_profile": "runtime-interaction-tools",
+  "model_overrides": {
+    "kimi-k3.1-pro": {"supports_search_tool": true, "tool_search_transport": "function_code_mode"}
+  },
+  "scope": "ordinary-root-thread-catalog-only",
+  "execution": "native-code-mode-and-current-mcp-registry",
+  "approval": "existing-native-host-gateway-policy",
+  "fallback": "base-catalog-direct-tools",
+  "public_wire_change": false
+}

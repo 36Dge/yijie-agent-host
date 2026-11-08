@@ -49,3 +49,18 @@ B3B原生候选部署描述只选择Store6和受管scope目录，必须先核对
 固定输出schema同时作为受限线程的显式baseInstructions传给原生start/resume；这是结构化输出指引，不是任务文件/skills/MCP继承或权限证明。旧developer历史可能保持原文，因此不依赖修改该历史来更新指引。Provider返回仍须由Desktop对完整原生事实严格校验，不能以提示词替代schema或放宽input-only限制。
 
 FEAT-155日常入口经Owner明确授权后复用原数据目录及Store6兼容迁移。普通图片能力与受限草案共用同一Runtime；全局dynamic-tool协商不构成草案工具权限，草案每轮仍须取得原生空工具、无继承和input-only证据。普通图片回调只接受原image turn绑定。启动选择不是计划执行grant，不放宽固定产物、有限授权、审批或零重发边界。
+
+### FEAT-169 原生问答适配
+
+问答与原生权限审批使用不同接口与状态。仅精确 interaction-tools candidate + local 开关启用；
+回调绑定当前 generation、owned root、turn、item 和原 RPC。HTTP 保持本机 bearer；Desktop
+仍验证自身 scope/session。回答只写回原通道，幂等回执不含答案，旧/结束请求不复活或重放。
+有 autoResolutionMs 才可超时，首次交互暂停；超时仅空答复，不选推荐项、不批准操作。
+敏感标记仅遮罩，原生模型输入/rollout 保持原语义；Host 不额外持久化/日志记录答案。
+
+
+### FEAT-170 原生工具发现
+
+Host仅生成受管普通聊天模型目录并通过原生thread/start/resume config选择；不新增搜索器、执行路由、凭据或审批状态。默认进程目录和辅助线程不开搜索，未资格MiniMax保持旧路径。ToolSearchEnabled只在匹配的local候选可开；关能力仍使用兼容reader并显式恢复基线目录。
+
+选集准备复用既有ForTools隔离校验，修复旧入口误用memories关闭假设；当前选集、generation、thread/turn、参数和一次审批检查保持。真实产品Gateway拒绝测试确认发现不会代替批准。模型验收由独立FEAT-170最多12次Kimi计数器约束，实用5次且正常EOF退出；没有外部业务调用或数据迁移。

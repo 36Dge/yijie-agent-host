@@ -119,6 +119,7 @@ func offeredCommandPrefix(proposed, available json.RawMessage) []string {
 }
 
 type runtimeApprovalCallback struct {
+	ownerThreadID                          string
 	market                                 *marketApprovalCallback
 	view                                   RuntimeApproval
 	threadID, turnID, requestKey, decision string
@@ -135,6 +136,7 @@ type runtimeApprovalCallbacks struct {
 	entries     []*runtimeApprovalCallback
 	fileScopes  map[string]string
 	activeTurns map[string]string
+	nativeRoots map[string]bool
 }
 
 func (m *Manager) ListRuntimeApprovals(threadID string) []RuntimeApproval {
@@ -142,7 +144,7 @@ func (m *Manager) ListRuntimeApprovals(threadID string) []RuntimeApproval {
 	defer m.permissionCallbacks.mu.Unlock()
 	views := make([]RuntimeApproval, 0)
 	for _, entry := range m.permissionCallbacks.entries {
-		if entry.threadID == threadID {
+		if entry.threadID == threadID || entry.ownerThreadID == threadID {
 			views = append(views, entry.view)
 		}
 	}
@@ -184,7 +186,7 @@ func (m *Manager) DecideRuntimeApproval(ctx context.Context, threadID, id, decis
 	c.mu.Lock()
 	var entry *runtimeApprovalCallback
 	for _, candidate := range c.entries {
-		if candidate.threadID == threadID && candidate.view.ID == id {
+		if (candidate.threadID == threadID || candidate.ownerThreadID == threadID) && candidate.view.ID == id {
 			entry = candidate
 			break
 		}
@@ -222,7 +224,7 @@ func (m *Manager) DecideRuntimeApproval(ctx context.Context, threadID, id, decis
 			c.mu.Unlock()
 			var err error
 			if decision == "approve_once" {
-				err = m.request(ctx, "thread/approveGuardianDeniedAction", map[string]any{"threadId": threadID, "event": entry.guardian}, &struct{}{})
+				err = m.request(ctx, "thread/approveGuardianDeniedAction", map[string]any{"threadId": entry.threadID, "event": entry.guardian}, &struct{}{})
 			}
 			m.finishRuntimeApproval(entry, err)
 			c.mu.Lock()
@@ -292,13 +294,23 @@ func (m *Manager) handleRuntimePermissionRequest(ctx context.Context, request se
 	if json.Unmarshal(request.params, &p) != nil || p.ThreadID == "" || p.TurnID == "" || p.ItemID == "" {
 		return invalid()
 	}
-	m.permissionCallbacks.mu.Lock()
-	active := m.permissionCallbacks.activeTurns[p.ThreadID] == p.TurnID
-	m.permissionCallbacks.mu.Unlock()
-	if !active {
-		return invalid()
+	ownerThreadID := p.ThreadID
+	if m.config.NativeToolsEnabled {
+		owner, err := m.nativeApprovalOwner(ctx, p.ThreadID, p.TurnID)
+		if err != nil {
+			return invalid()
+		}
+		ownerThreadID = owner
+	} else {
+		m.permissionCallbacks.mu.Lock()
+		active := m.permissionCallbacks.activeTurns[p.ThreadID] == p.TurnID
+		m.permissionCallbacks.mu.Unlock()
+		if !active {
+			return invalid()
+		}
 	}
 	entry := &runtimeApprovalCallback{view: RuntimeApproval{ID: uuid.NewString(), Kind: kind, Summary: p.Command, Scope: p.Cwd, Reason: p.Reason, Status: "pending"}, threadID: p.ThreadID, turnID: p.TurnID, requestKey: request.idKey, permissions: p.Permissions, resolve: make(chan string, 1), written: make(chan struct{})}
+	entry.ownerThreadID = ownerThreadID
 	var prefix []string
 	if kind == "command" && (len(p.Network) == 0 || string(p.Network) == "null") && (len(p.AdditionalPermissions) == 0 || string(p.AdditionalPermissions) == "null") {
 		prefix = offeredCommandPrefix(p.ProposedPrefix, p.AvailableDecisions)
@@ -322,6 +334,9 @@ func (m *Manager) handleRuntimePermissionRequest(ctx context.Context, request se
 	}
 	if len(p.Network) > 0 && string(p.Network) != "null" {
 		entry.view.Scope += "\n" + string(p.Network)
+	}
+	if ownerThreadID != p.ThreadID {
+		entry.view.Summary = "子任务：" + entry.view.Summary
 	}
 	if err := m.addRuntimeApproval(entry); err != nil {
 		return serverRequestResult{respond: true, rpcError: &RPCError{Code: -32603, Message: "Approval capacity unavailable"}}, true
@@ -484,6 +499,16 @@ func (m *Manager) handlePermissionNotification(method string, raw json.RawMessag
 	event := map[string]any{"id": p["reviewId"], "turn_id": turnID, "target_item_id": p["targetItemId"], "started_at_ms": p["startedAtMs"], "completed_at_ms": p["completedAtMs"], "status": "denied", "risk_level": review["riskLevel"], "user_authorization": review["userAuthorization"], "rationale": review["rationale"], "decision_source": p["decisionSource"], "action": coreGuardianValue(action)}
 	reason, _ := review["rationale"].(string)
 	entry := &runtimeApprovalCallback{view: RuntimeApproval{ID: uuid.NewString(), Kind: "auto_review", Summary: fmt.Sprint(action["type"]), Scope: mustJSON(action), Reason: reason, Status: "pending"}, threadID: threadID, turnID: turnID, guardian: json.RawMessage(mustJSON(event)), written: make(chan struct{})}
+	if m.config.NativeToolsEnabled {
+		m.permissionCallbacks.mu.Lock()
+		root := m.permissionCallbacks.nativeRoots[threadID]
+		m.permissionCallbacks.mu.Unlock()
+		if !root {
+			go m.addNativeGuardianApproval(entry)
+			return
+		}
+		entry.ownerThreadID = threadID
+	}
 	_ = m.addRuntimeApproval(entry)
 }
 

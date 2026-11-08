@@ -205,6 +205,8 @@ type syntheticTerminalBarrier struct {
 }
 
 type Service struct {
+	contextWindowMu      sync.Mutex
+	contextWindows       map[string]*contextObservation
 	media                *mediaAuthority
 	expertResources      ExpertResources
 	market               *marketAuthority
@@ -726,6 +728,11 @@ func (s *Service) HandleNotification(method string, params json.RawMessage) {
 }
 
 func (s *Service) processNotification(method string, params json.RawMessage) (resultErr error) {
+	defer func() {
+		if resultErr == nil {
+			s.observeContextNotification(method, params)
+		}
+	}()
 	defer func() {
 		if resultErr != nil && method == RuntimeNotificationTurnCompleted {
 			s.publishNativeProjectionNotice(params)
@@ -1472,6 +1479,9 @@ func (s *Service) flushPending(threadID string) {
 }
 
 func supportedNotification(method string) bool {
+	if method == tokenUsageNotification {
+		return true
+	}
 	if method == RuntimeNotificationReasoningTextDelta || method == "item/reasoning/summaryTextDelta" || method == "item/reasoning/summaryPartAdded" {
 		return true
 	}

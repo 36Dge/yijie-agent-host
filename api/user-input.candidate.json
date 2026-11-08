@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-169",
+  "contract_version": "0.2.0",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "base_commit": "c24d73fde83a01b5dd2a9ded8defb5bbef34e311",
+  "sources": {
+    "openapi/user-input/user-input.yaml": "5c6fe2da9d8f175866fb7e737df830acca0b192d3186f323cc0337d3b91a5040",
+    "scripts/generate-user-input.mjs": "75d33dbad52ca589b3af1a9c4c242e20eff0604890b2aa53497eec237e249e45",
+    "compatibility/runtime-interaction-tools/types.openapi.json": "16af36b8fe31ea8571255b767f0b8294be6e338befff4e6e852b6bda99ccb0ec",
+    "compatibility/runtime-interaction-tools/source.lock.json": "bfd9bac1c621f276552c976e3ca3066c5d54b3b9c68a0d3fc9945c980c744d20"
+  },
+  "generated": {
+    "sdks/openapi/user-input.resolved.json": "ac9dc4dbc715a55d2c909959fb7a86885596f9f45bdc7a86885704a19d064103",
+    "sdks/go/openapi/user-input/types.gen.go": "9598ffa3b1c97e644de70c1eb8e9408ca454d506ac7804907077000aaf9e9afe",
+    "sdks/typescript/src/openapi/user-input.gen.ts": "4ef5e42c2eae65fd63f83ba2f7c03178bc0410dde5ac379e95413add489b1c4c",
+    "sdks/jsonschema/user-input.schema.json": "88b24cdcad96fcfc91ca2362c907a2b76c19e29ea00ff9a006895fa7147d907e",
+    "sdks/typescript/src/user-input-validator.gen.js": "8de2679202a1b694005637a67e444c189987ae40190fcffe385befe91a9d706a",
+    "sdks/typescript/src/user-input-validator.gen.d.ts": "ef72f4c7e8018608b757bfe4d8d9d4466b476f7645d97614d4bb83fa56effb1c",
+    "sdks/rust/user-input/types.gen.rs": "f122c02f42e7ba2309bbdec370fed6ef506ca6b91f62245a406fa1b2704c220b"
+  }
+}

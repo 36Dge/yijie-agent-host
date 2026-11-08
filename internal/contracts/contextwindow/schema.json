@@ -1,0 +1,173 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "ContextWindowQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Private Desktop IPC payload inside the existing contextId/requestId envelope. sessionId is the local authorized session, never an arbitrary Runtime thread.",
+      "required": [
+        "sessionId",
+        "includeHistory"
+      ],
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "includeHistory": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ContextWindowSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "used_tokens",
+        "capacity_tokens",
+        "turn_id",
+        "window_id",
+        "observed_at"
+      ],
+      "properties": {
+        "used_tokens": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Native tokenUsage.last.totalTokens, never tokenUsage.total or a sum of requests. Includes all content counted by Runtime; may be a native recomputation after compaction. Display as latest statistics."
+        },
+        "capacity_tokens": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "description": "Same event's modelContextWindow: Runtime effective capacity, already adjusted by effective_context_window_percent. Null means unknown; no catalog fallback."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "window_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Disposable observation epoch, not a fabricated native window ID. Changes on model binding changes and native contextCompaction start."
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Time of the native observation. Restored samples retain the persisted native event timestamp, never the time the UI was reopened."
+        }
+      }
+    },
+    "ContextCompaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Original native contextCompaction identity. This native item does not distinguish summarization from new_context; display neutral context-update copy, never invent assistant text/phase or an automatic/manual cause.",
+      "required": [
+        "item_id",
+        "turn_id",
+        "state"
+      ],
+      "properties": {
+        "item_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "in_progress",
+            "completed",
+            "interrupted",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "ContextWindowSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "thread_id",
+        "model_profile",
+        "model_revision",
+        "sample",
+        "compactions"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "enum": [
+            1
+          ]
+        },
+        "thread_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 512
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model_profile": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model_revision": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sample": {
+          "anyOf": [
+            {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/definitions/ContextWindowSample"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "compactions": {
+          "type": "array",
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/definitions/ContextCompaction"
+          }
+        }
+      }
+    }
+  }
+}

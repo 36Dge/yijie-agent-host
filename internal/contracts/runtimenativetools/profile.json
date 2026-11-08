@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-169",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "native_config": {
+    "features": {
+      "multi_agent": false,
+      "multi_agent_v2": {
+        "enabled": true,
+        "plaintext_messages": true,
+        "upgrade_existing_threads": true,
+        "inherit_mcp_servers": false,
+        "max_concurrent_threads_per_session": 4
+      },
+      "code_mode": {
+        "enabled": true,
+        "function_input": true,
+        "function_namespaces": ["collaboration", "memories"]
+      },
+      "memories": true
+    },
+    "memories": {
+      "generate_memories": false,
+      "use_memories": true,
+      "dedicated_tools": true
+    }
+  },
+  "model_metadata": {
+    "apply_patch_tool_type": "function",
+    "tool_mode": "code_mode",
+    "multi_agent_version": "v2"
+  },
+  "root_native_methods": ["thread/start", "thread/resume", "thread/read", "turn/start", "turn/interrupt"],
+  "approval_scope": "native-child-to-owned-root-current-generation",
+  "child_mcp_policy": "disabled-in-native-spawn-config",
+  "memory_policy": "manual-native-tools-no-startup-generation-or-pruning"
+}

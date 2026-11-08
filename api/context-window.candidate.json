@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "contract_version": "0.2.0",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "base_commit": "c24d73fde83a01b5dd2a9ded8defb5bbef34e311",
+  "sources": {
+    "openapi/context-window/context-window.yaml": "bec4f865330aa187e9902c459ef19e6d570298c933bdac36b07ed5dc86e97850",
+    "scripts/generate-context-window.mjs": "7ab3867ef0c7a3a150b681b552d60caafc627ef416033d5763b510a60342ff0b",
+    "compatibility/runtime-interaction-tools/source.lock.json": "bfd9bac1c621f276552c976e3ca3066c5d54b3b9c68a0d3fc9945c980c744d20",
+    "../yijie-codex/.yijie/build/interaction-tools-v1/038d498bda0d4cb8899e15ea81dfa777b6928adc0e389aebf5e20b3038332086/aarch64-apple-darwin/generated-json-schema/v2/ThreadTokenUsageUpdatedNotification.json": "0ab6f22fa3f6e8227a6d2f9d6241ed7cb45beb8bacc8a18a307aa7526d4f8bd1",
+    "../yijie-codex/codex-rs/protocol/src/protocol.rs": "375808be883656cf1d1e2fe591696ac547b20f90362ac8f17ce61eb9031e4bc3",
+    "../yijie-codex/codex-rs/core/src/session/mod.rs": "0a1045a7c54655df6743f2bab9275001e772c5b3e695dc8e07d63d1fd9d39a14",
+    "docs/context-window-restore.md": "fbbbec64ebe92824acbdb0211bb933b99af83e7f1a7f966fdbf6233ba223f807"
+  },
+  "generated": {
+    "sdks/jsonschema/context-window.schema.json": "0cfad69c87c626bc417e1d668b9c2d471b99d98e5fd1d9542132e9876adb24f0",
+    "sdks/jsonschema/context-window-native.schema.json": "0ab6f22fa3f6e8227a6d2f9d6241ed7cb45beb8bacc8a18a307aa7526d4f8bd1",
+    "sdks/typescript/src/openapi/context-window.gen.ts": "5cbb97ab574a612af2cb52d98a818eed078aa0e3e2baa1c2092b23d00de9637d",
+    "sdks/typescript/src/context-window-validator.gen.js": "d636b0cb000dde060e11784ea86c05bc294e143c011c5587a5f2a1655d99765f",
+    "sdks/typescript/src/context-window-validator.gen.d.ts": "b3a75479408bd3c31f1a03e9e8d40225ac061b5e9de4c4cfe263a5c19f624718",
+    "sdks/go/openapi/context-window/types.gen.go": "f958357e35e8ec6d250b4717e40793af63a99829c60196bf731d6a1862990dd6",
+    "sdks/go/openapi/context-window/runtime.gen.go": "6b558957c8a53fd77bbec4924abe12883a4e9468c4ae6fe9f9d0ce5de3d36ee3",
+    "sdks/rust/context-window/types.gen.rs": "ecb86ff08e2253234adda3eeb33d2da54367f7b2e75f95f436aaeb35214954b7"
+  }
+}

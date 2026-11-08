@@ -1,0 +1,689 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Native user input adapter",
+    "version": "0.2.0",
+    "description": "Local owner-only question/answer transport, separate from permission approval. Never persists answers in Host or Desktop. Optional native timeout 60–240s; interaction pauses it; expiration returns empty answers. Closing skips the whole group; task cancellation remains native turn/interrupt."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1"
+    }
+  ],
+  "security": [
+    {
+      "HostBearer": []
+    }
+  ],
+  "paths": {
+    "/v1/agent-sessions/{agent_session_id}/user-input": {
+      "get": {
+        "operationId": "getUserInputSnapshot",
+        "summary": "Current pending native questions",
+        "description": "Current pending native questions. Reading does not create or resume a native thread.",
+        "tags": [
+          "User input"
+        ],
+        "parameters": [
+          {
+            "name": "agent_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CanonicalID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current native interaction state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Host bearer required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Session permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request absent or from an old Host generation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Ended or different operation; do not replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime unavailable; outcome must be queried",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent-sessions/{agent_session_id}/user-input/{request_id}": {
+      "get": {
+        "operationId": "getUserInputRequest",
+        "summary": "Current request or short-lived content-free receipt; no automatic replay",
+        "description": "Current request or short-lived content-free receipt; no automatic replay. A terminal receipt may expire after ten minutes or bounded-capacity eviction. A valid not_found response together with an authoritative snapshot that no longer lists the request retires only the local form; it does not establish answered/cancelled or authorize replay.",
+        "tags": [
+          "User input"
+        ],
+        "parameters": [
+          {
+            "name": "agent_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CanonicalID"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CanonicalID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current native interaction state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Host bearer required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Session permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request absent or from an old Host generation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Ended or different operation; do not replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime unavailable; outcome must be queried",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent-sessions/{agent_session_id}/user-input/{request_id}/answer": {
+      "post": {
+        "operationId": "answerUserInput",
+        "summary": "Submit once to the bound native request",
+        "description": "Submit once to the bound native request. Identical operation and content is idempotent; conflicting operation is rejected. Success means native transport write completed, not provider consumption. Admission is serialized with the current native turn/request lifecycle. Once native turn completion is known, a new answer is rejected; an already-admitted identical operation may still read its original receipt.",
+        "tags": [
+          "User input"
+        ],
+        "parameters": [
+          {
+            "name": "agent_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CanonicalID"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CanonicalID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current native interaction state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Host bearer required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Session permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request absent or from an old Host generation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Ended or different operation; do not replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime unavailable; outcome must be queried",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserInputAnswerRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent-sessions/{agent_session_id}/user-input/{request_id}/touch": {
+      "post": {
+        "operationId": "pauseUserInputTimeout",
+        "summary": "Pause optional timeout on first actual user interaction",
+        "description": "Pause optional timeout on first actual user interaction. Does not select or submit answers. Native clients require the same task interaction permission as answering (task.read and task.create); read-only permission must not pause the deadline.",
+        "tags": [
+          "User input"
+        ],
+        "parameters": [
+          {
+            "name": "agent_session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CanonicalID"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CanonicalID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current native interaction state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounded input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Host bearer required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Session permission denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Request absent or from an old Host generation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Ended or different operation; do not replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime unavailable; outcome must be queried",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInputError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "HostBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "CanonicalID": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "ToolRequestUserInputQuestion": {
+        "description": "EXPERIMENTAL. Represents one request_user_input question and its required options.",
+        "properties": {
+          "header": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "isOther": {
+            "default": false,
+            "type": "boolean"
+          },
+          "isSecret": {
+            "default": false,
+            "type": "boolean"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ToolRequestUserInputOption"
+            },
+            "type": "array",
+            "nullable": true
+          },
+          "question": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "header",
+          "id",
+          "question"
+        ],
+        "type": "object"
+      },
+      "ToolRequestUserInputAnswer": {
+        "description": "EXPERIMENTAL. Captures a user's answer to a request_user_input question.",
+        "properties": {
+          "answers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "answers"
+        ],
+        "type": "object"
+      },
+      "InputState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "submitting",
+          "answered",
+          "skipped",
+          "timed_out",
+          "cancelled",
+          "unknown"
+        ]
+      },
+      "UserInputRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "$ref": "#/components/schemas/CanonicalID"
+          },
+          "turn_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "item_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "state": {
+            "$ref": "#/components/schemas/InputState"
+          },
+          "questions": {
+            "type": "array",
+            "maxItems": 3,
+            "items": {
+              "$ref": "#/components/schemas/ToolRequestUserInputQuestion"
+            }
+          },
+          "deadline_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timeout_paused": {
+            "type": "boolean"
+          },
+          "operation_id": {
+            "$ref": "#/components/schemas/CanonicalID"
+          }
+        },
+        "required": [
+          "request_id",
+          "turn_id",
+          "item_id",
+          "state",
+          "questions",
+          "timeout_paused"
+        ]
+      },
+      "UserInputSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "requests": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "$ref": "#/components/schemas/UserInputRequest"
+            }
+          },
+          "generation": {
+            "$ref": "#/components/schemas/CanonicalID",
+            "description": "Current Host Runtime generation; omitted only for an unbound local session. A change invalidates prior pending UI state, never replays answers."
+          }
+        },
+        "required": [
+          "enabled",
+          "requests"
+        ]
+      },
+      "UserInputAnswerRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operation_id": {
+            "$ref": "#/components/schemas/CanonicalID"
+          },
+          "answers": {
+            "type": "object",
+            "maxProperties": 3,
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ToolRequestUserInputAnswer"
+            },
+            "description": "Exact original question IDs only. At most one answer string per question, at most 8192 Unicode characters each. Empty map/arrays skip; never approval. Values go to the original native model/rollout, never additional Host/UI storage."
+          }
+        },
+        "required": [
+          "operation_id",
+          "answers"
+        ]
+      },
+      "UserInputError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "invalid_request",
+                  "unavailable",
+                  "not_found",
+                  "conflict",
+                  "unauthorized"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "maxLength": 160
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "description": "Keep these closed codes across adapters. not_found, conflict and unavailable must remain distinguishable; unknown or malformed errors must never be interpreted as definitive request absence."
+      },
+      "ToolRequestUserInputParams": {
+        "description": "EXPERIMENTAL. Params sent with a request_user_input event.",
+        "properties": {
+          "autoResolutionMs": {
+            "default": null,
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer",
+            "nullable": true
+          },
+          "itemId": {
+            "type": "string"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/ToolRequestUserInputQuestion"
+            },
+            "type": "array"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "turnId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "itemId",
+          "questions",
+          "threadId",
+          "turnId"
+        ],
+        "type": "object"
+      },
+      "ToolRequestUserInputOption": {
+        "description": "EXPERIMENTAL. Defines a single selectable option for request_user_input.",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "label"
+        ],
+        "type": "object"
+      },
+      "ToolRequestUserInputResponse": {
+        "description": "EXPERIMENTAL. Response payload mapping question ids to answers.",
+        "properties": {
+          "answers": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ToolRequestUserInputAnswer"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "answers"
+        ],
+        "type": "object"
+      }
+    }
+  }
+}

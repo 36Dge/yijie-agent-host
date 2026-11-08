@@ -14,27 +14,30 @@ const nativeTextLimit = 256 << 10
 // These are transient decoders for the pinned native protocol, not a second
 // conversation model. Public values below use generated contract types.
 type nativeWireItem struct {
-	ID               string                `json:"id"`
-	Type             string                `json:"type"`
-	ClientID         *string               `json:"clientId"`
-	Text             *string               `json:"text"`
-	Phase            *string               `json:"phase"`
-	Summary          []string              `json:"summary"`
-	Content          json.RawMessage       `json:"content"`
-	Status           *string               `json:"status"`
-	Command          string                `json:"command"`
-	Cwd              string                `json:"cwd"`
-	AggregatedOutput *string               `json:"aggregatedOutput"`
-	ExitCode         *int32                `json:"exitCode"`
-	DurationMS       *int64                `json:"durationMs"`
-	Server           string                `json:"server"`
-	Tool             string                `json:"tool"`
-	Arguments        json.RawMessage       `json:"arguments"`
-	Result           json.RawMessage       `json:"result"`
-	Query            string                `json:"query"`
-	Action           json.RawMessage       `json:"action"`
-	CommandActions   []nativeWireAction    `json:"commandActions"`
-	AppContext       *nativeWireAppContext `json:"appContext"`
+	ID               string                 `json:"id"`
+	Type             string                 `json:"type"`
+	ClientID         *string                `json:"clientId"`
+	Text             *string                `json:"text"`
+	Phase            *string                `json:"phase"`
+	Summary          []string               `json:"summary"`
+	Content          json.RawMessage        `json:"content"`
+	Status           *string                `json:"status"`
+	Command          string                 `json:"command"`
+	Cwd              string                 `json:"cwd"`
+	AggregatedOutput *string                `json:"aggregatedOutput"`
+	ExitCode         *int32                 `json:"exitCode"`
+	DurationMS       *int64                 `json:"durationMs"`
+	Server           string                 `json:"server"`
+	Tool             string                 `json:"tool"`
+	Arguments        json.RawMessage        `json:"arguments"`
+	Result           json.RawMessage        `json:"result"`
+	Query            string                 `json:"query"`
+	Action           json.RawMessage        `json:"action"`
+	CommandActions   []nativeWireAction     `json:"commandActions"`
+	AppContext       *nativeWireAppContext  `json:"appContext"`
+	Changes          []nativeWireFileChange `json:"changes"`
+	AgentPath        string                 `json:"agentPath"`
+	Kind             string                 `json:"kind"`
 }
 
 type nativeWireTurn struct {
@@ -177,6 +180,10 @@ func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) 
 		projectNativeToolDisplay(wire, &out)
 	case native.NativeItemTypeWebSearch:
 		projectNativeWebSearch(wire, &out)
+	case native.NativeItemTypeFileChange:
+		projectNativeFileChange(wire, cwd, &out)
+	case native.NativeItemTypeSubAgentActivity:
+		projectNativeAgentActivity(wire, &out)
 	}
 	return out, nil
 }

@@ -23,12 +23,16 @@ parser.add_argument('--key-file', type=Path)
 parser.add_argument('--kimi-key-file', type=Path, required=True)
 parser.add_argument('--limit', type=int, help='Optional batch ceiling within the approved ledger total.')
 parser.add_argument('--qualify-host-images', action='store_true', help='FEAT-168 isolated image candidate; preserve real request/response payloads and bound chat HTTP count.')
+parser.add_argument('--qualify-tool-search', action='store_true', help='FEAT-170 Kimi-only tool-search acceptance; unchanged payloads, maximum twelve model HTTP requests.')
+parser.add_argument('--qualify-native-tools', action='store_true', help='FEAT-169 Kimi-only native tool acceptance; preserve payloads and count parent plus child HTTP requests.')
 parser.add_argument('--observe-tool-stream', action='store_true',
                     help='Record only tool argument byte counts/digests, never content.')
 parser.add_argument('--observe-conversation', action='store_true',
                     help='Use a task-specific Kimi-only ledger; record only public message/source metadata, never text.')
 parser.add_argument('--observe-public-progress', action='store_true',
                     help='Current-model task-specific passive wire audit; do not modify request or response payloads.')
+parser.add_argument('--observe-context-window', action='store_true',
+                    help='Current-task two-model context-window validation, at most eight real HTTP requests; payloads are unchanged.')
 parser.add_argument('--shutdown-on-stdin-eof', action='store_true',
                     help='Owned diagnostic process exits normally when its parent closes stdin.')
 args = parser.parse_args()
@@ -49,7 +53,36 @@ ledger=json.loads(args.ledger.read_text())
 authorization=ledger.get('authorization',{})
 approved_limit = authorization.get('max_http_requests')
 approved_images = authorization.get('max_image_understanding_requests')
-if args.qualify_host_images:
+if args.qualify_tool_search and (args.qualify_native_tools or args.qualify_host_images or args.observe_context_window or args.observe_conversation or args.observe_public_progress):
+    raise SystemExit('Tool-search qualification cannot share another task mode.')
+if args.observe_context_window:
+    if (args.qualify_native_tools or args.qualify_host_images or args.observe_conversation or args.observe_public_progress or
+            authorization.get('purpose') != 'current_context_window' or
+            authorization.get('models') != ['kimi-k3.1-pro', 'MiniMax-M3'] or
+            authorization.get('preserve_payloads') is not True or
+            type(approved_limit) is not int or not 1 <= approved_limit <= 8 or approved_images != 0 or
+            not args.shutdown_on_stdin_eof or args.key_file is None):
+        raise SystemExit('Explicit current-task context-window authorization is required.')
+    providers = {'MiniMax-M3': ('api.minimaxi.com', read_key(args.key_file), 'high'),
+                 'kimi-k3.1-pro': ('api.moonshot.cn', read_key(args.kimi_key_file), 'max')}
+elif args.qualify_tool_search:
+    if (authorization.get('purpose') != 'FEAT-170-tool-search' or
+            authorization.get('models') != ['kimi-k3.1-pro'] or
+            authorization.get('preserve_payloads') is not True or
+            type(approved_limit) is not int or not 1 <= approved_limit <= 12 or
+            approved_images != 0 or not args.shutdown_on_stdin_eof or args.key_file is not None):
+        raise SystemExit('Explicit current-task Kimi tool-search budget required.')
+    providers = {'kimi-k3.1-pro': ('api.moonshot.cn', read_key(args.kimi_key_file), 'max')}
+elif args.qualify_native_tools:
+    if (args.qualify_host_images or args.observe_conversation or args.observe_public_progress or
+            authorization.get('purpose') != 'FEAT-169-native-tools' or
+            authorization.get('models') != ['kimi-k3.1-pro'] or
+            authorization.get('preserve_payloads') is not True or
+            type(approved_limit) is not int or not 1 <= approved_limit <= 40 or
+            approved_images != 0 or not args.shutdown_on_stdin_eof or args.key_file is not None):
+        raise SystemExit('Explicit current-task Kimi-only native tool budget required.')
+    providers = {'kimi-k3.1-pro': ('api.moonshot.cn', read_key(args.kimi_key_file), 'max')}
+elif args.qualify_host_images:
     if (args.observe_conversation or args.observe_public_progress or
             authorization.get('purpose') != 'FEAT-168-isolated-images' or
             authorization.get('models') != ['kimi-k3.1-pro','MiniMax-M3'] or
@@ -205,7 +238,7 @@ class Meter(http.server.BaseHTTPRequestHandler):
                 if isinstance(value,dict): return value.get('type')=='input_image' or any(image_input(v) for v in value.values())
                 return isinstance(value,list) and any(image_input(v) for v in value)
             images=image_input(body.get('input'))
-            if not (args.observe_public_progress or args.qualify_host_images):
+            if not (args.observe_public_progress or args.qualify_host_images or args.qualify_native_tools or args.qualify_tool_search or args.observe_context_window):
                 body['max_output_tokens']=min(body.get('max_output_tokens') or 8192,8192)
                 payload=json.dumps(body).encode()
             output_format = (body.get('text') or {}).get('format') or {}
@@ -256,7 +289,7 @@ class Meter(http.server.BaseHTTPRequestHandler):
                     message=re.sub(r'sk-[A-Za-z0-9_-]+','[redacted]',message)
                     with lock:
                         item['error_code']=str(detail.get('code',''))[:80]
-                        if not (args.observe_conversation or args.observe_public_progress or args.qualify_host_images):
+                        if not (args.observe_conversation or args.observe_public_progress or args.qualify_host_images or args.qualify_native_tools or args.qualify_tool_search or args.observe_context_window):
                             item['error_message']=message
                         save()
                 except (ValueError,AttributeError): pass

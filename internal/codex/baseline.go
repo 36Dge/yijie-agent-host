@@ -17,7 +17,10 @@ import (
 	chatmodels "github.com/36Dge/yijie-agent-host/internal/contracts/runtimechatmodels"
 	hostimage "github.com/36Dge/yijie-agent-host/internal/contracts/runtimehostimages"
 	inputonly "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeinputonly"
+	interaction "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeinteraction"
 	kimik31 "github.com/36Dge/yijie-agent-host/internal/contracts/runtimekimik31pro"
+	nativetools "github.com/36Dge/yijie-agent-host/internal/contracts/runtimenativetools"
+	toolsearch "github.com/36Dge/yijie-agent-host/internal/contracts/runtimetoolsearch"
 )
 
 const (
@@ -181,11 +184,44 @@ func VerifyArtifact(ctx context.Context, binaryPath, manifestPath string, timeou
 		}
 		policy = artifactPolicy{runtimeSHA256: hostimage.RuntimeBinarySHA256, runtimeSize: hostimage.RuntimeBinarySize, manifestSHA256: hostimage.RuntimeManifestSHA256, schemaTreeSHA256: hostimage.RuntimeSchemaTreeSHA256, patches: patches, schemaFileCount: hostimage.RuntimeSchemaFileCount}
 	}
+	if digest == nativetools.RuntimeManifestSHA256 {
+		var patches []ManifestPatch
+		if err := json.Unmarshal([]byte(nativetools.RuntimePatchManifest), &patches); err != nil {
+			return ArtifactInfo{}, errors.New("native tools artifact authority unavailable")
+		}
+		policy = artifactPolicy{runtimeSHA256: nativetools.RuntimeBinarySHA256, runtimeSize: nativetools.RuntimeBinarySize, manifestSHA256: nativetools.RuntimeManifestSHA256, schemaTreeSHA256: nativetools.RuntimeSchemaTreeSHA256, patches: patches, schemaFileCount: nativetools.RuntimeSchemaFileCount}
+	}
+	if digest == interaction.RuntimeManifestSHA256 {
+		var patches []ManifestPatch
+		if err := json.Unmarshal([]byte(interaction.RuntimePatchManifest), &patches); err != nil {
+			return ArtifactInfo{}, errors.New("interaction tools artifact authority unavailable")
+		}
+		policy = artifactPolicy{runtimeSHA256: interaction.RuntimeBinarySHA256, runtimeSize: interaction.RuntimeBinarySize, manifestSHA256: interaction.RuntimeManifestSHA256, schemaTreeSHA256: interaction.RuntimeSchemaTreeSHA256, patches: patches, schemaFileCount: interaction.RuntimeSchemaFileCount}
+	}
+	if digest == toolsearch.RuntimeManifestSHA256 {
+		var patches []ManifestPatch
+		if err := json.Unmarshal([]byte(toolsearch.RuntimePatchManifest), &patches); err != nil {
+			return ArtifactInfo{}, errors.New("tool search artifact authority unavailable")
+		}
+		policy = artifactPolicy{runtimeSHA256: toolsearch.RuntimeBinarySHA256, runtimeSize: toolsearch.RuntimeBinarySize, manifestSHA256: toolsearch.RuntimeManifestSHA256, schemaTreeSHA256: toolsearch.RuntimeSchemaTreeSHA256, patches: patches, schemaFileCount: toolsearch.RuntimeSchemaFileCount}
+	}
 	return verifyArtifactWithPolicy(ctx, binaryPath, manifestPath, timeout, policy)
 }
 
+func (a ArtifactInfo) supportsToolSearch() bool {
+	return a.BinarySHA256 == toolsearch.RuntimeBinarySHA256 && a.ManifestSHA256 == toolsearch.RuntimeManifestSHA256
+}
+
+func (a ArtifactInfo) supportsInteractionTools() bool {
+	return a.supportsToolSearch() || a.BinarySHA256 == interaction.RuntimeBinarySHA256 && a.ManifestSHA256 == interaction.RuntimeManifestSHA256
+}
+
+func (a ArtifactInfo) supportsNativeTools() bool {
+	return a.supportsInteractionTools() || a.BinarySHA256 == nativetools.RuntimeBinarySHA256 && a.ManifestSHA256 == nativetools.RuntimeManifestSHA256
+}
+
 func (a ArtifactInfo) supportsHostImages() bool {
-	return a.BinarySHA256 == hostimage.RuntimeBinarySHA256 && a.ManifestSHA256 == hostimage.RuntimeManifestSHA256
+	return a.supportsNativeTools() || a.BinarySHA256 == hostimage.RuntimeBinarySHA256 && a.ManifestSHA256 == hostimage.RuntimeManifestSHA256
 }
 
 func (a ArtifactInfo) SupportsKimiK31() bool {
