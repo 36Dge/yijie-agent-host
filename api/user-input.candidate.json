@@ -4,12 +4,12 @@
   "contract_version": "0.2.0",
   "mode": "local_worktree_candidate",
   "release": false,
-  "base_commit": "c24d73fde83a01b5dd2a9ded8defb5bbef34e311",
+  "base_commit": "d348fc565af341ebd8a2088efea2aa6ff7460709",
   "sources": {
     "openapi/user-input/user-input.yaml": "5c6fe2da9d8f175866fb7e737df830acca0b192d3186f323cc0337d3b91a5040",
-    "scripts/generate-user-input.mjs": "75d33dbad52ca589b3af1a9c4c242e20eff0604890b2aa53497eec237e249e45",
+    "scripts/generate-user-input.mjs": "d3b1dd1e6f8ac921e1649c40bff2e64315e822127fd2b33522a7e7ac490c1aaa",
     "compatibility/runtime-interaction-tools/types.openapi.json": "16af36b8fe31ea8571255b767f0b8294be6e338befff4e6e852b6bda99ccb0ec",
-    "compatibility/runtime-interaction-tools/source.lock.json": "bfd9bac1c621f276552c976e3ca3066c5d54b3b9c68a0d3fc9945c980c744d20"
+    "compatibility/runtime-interaction-tools/source.lock.json": "0d63d0869051de1a60e3fdfdf5f6e005bf19de36285e066f4b72c97cf30c38f5"
   },
   "generated": {
     "sdks/openapi/user-input.resolved.json": "ac9dc4dbc715a55d2c909959fb7a86885596f9f45bdc7a86885704a19d064103",
