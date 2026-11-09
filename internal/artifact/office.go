@@ -20,12 +20,16 @@ func validOfficeDocument(content []byte, mainPart, mainType string) bool {
 	total := uint64(0)
 	mainFound := false
 	typeFound := false
+	printerFound := false
+	printerTypeFound := false
 	for _, f := range archive.File {
 		if f.FileInfo().IsDir() {
 			continue
 		}
 		name := f.Name
-		if seen[name] || strings.Contains(strings.ToLower(name), "vbaproject") || strings.HasSuffix(strings.ToLower(name), ".bin") || (f.Method != zip.Store && f.Method != zip.Deflate) || name == "" || strings.HasPrefix(name, "/") || path.Clean(name) != name || strings.ContainsAny(name, "\\\x00") || strings.HasPrefix(name, "../") || !f.Mode().IsRegular() {
+		printer := normalPrinterSettings(name, f.UncompressedSize64)
+		printerFound = printerFound || printer
+		if seen[name] || strings.Contains(strings.ToLower(name), "vbaproject") || (strings.HasSuffix(strings.ToLower(name), ".bin") && !printer) || (f.Method != zip.Store && f.Method != zip.Deflate) || name == "" || strings.HasPrefix(name, "/") || path.Clean(name) != name || strings.ContainsAny(name, "\\\x00") || strings.HasPrefix(name, "../") || !f.Mode().IsRegular() {
 			return false
 		}
 		seen[name] = true
@@ -65,6 +69,24 @@ func validOfficeDocument(content []byte, mainPart, mainType string) bool {
 					if depth > 64 {
 						return false
 					}
+					if t.Name.Local == "Default" {
+						extension, contentType := "", ""
+						for _, attribute := range t.Attr {
+							if attribute.Name.Local == "Extension" {
+								extension = attribute.Value
+							}
+							if attribute.Name.Local == "ContentType" {
+								contentType = attribute.Value
+							}
+						}
+						if extension == "bin" {
+							expected := "application/vnd.openxmlformats-officedocument." + map[string]string{"word": "wordprocessingml", "ppt": "presentationml", "xl": "spreadsheetml"}[strings.Split(mainPart, "/")[0]] + ".printerSettings"
+							if printerTypeFound || contentType != expected {
+								return false
+							}
+							printerTypeFound = true
+						}
+					}
 					if t.Name.Local == "Override" {
 						part, kind := "", ""
 						for _, a := range t.Attr {
@@ -85,5 +107,28 @@ func validOfficeDocument(content []byte, mainPart, mainType string) bool {
 			}
 		}
 	}
-	return mainFound && typeFound
+	return mainFound && typeFound && (!printerFound || printerTypeFound)
+}
+
+// OOXML printer settings are bounded data, not macro/OLE executables. Keep all
+// other .bin parts rejected; require the corresponding declared content type.
+func normalPrinterSettings(name string, size uint64) bool {
+	if size == 0 || size > 64<<10 {
+		return false
+	}
+	for _, prefix := range []string{"word/printerSettings/printerSettings", "ppt/printerSettings/printerSettings", "xl/printerSettings/printerSettings"} {
+		if suffix, ok := strings.CutPrefix(name, prefix); ok && strings.HasSuffix(suffix, ".bin") {
+			serial := strings.TrimSuffix(suffix, ".bin")
+			if len(serial) == 0 || len(serial) > 8 {
+				return false
+			}
+			for _, c := range serial {
+				if c < '0' || c > '9' {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	return false
 }

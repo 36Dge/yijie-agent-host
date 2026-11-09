@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-171",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "base_commit": "babc097206fb4edc772532d1d19e41597b6d6e50",
+  "sources": [
+    {
+      "path": "jsonschema/document-runtime/v1.schema.json",
+      "sha256": "47ba4c6a4b16dfe97c2229201ab49e8ab3835ddcb7ad360e378c9d17826526c3"
+    },
+    {
+      "path": "scripts/generate-document-runtime.mjs",
+      "sha256": "34c27e091adb978a5aa9e92aaf1e0726ba23d1fc44a22fecaa132de0d8cd1bae"
+    }
+  ],
+  "generated": [
+    {
+      "path": "sdks/go/documentruntime/types.gen.go",
+      "sha256": "b12acfb5e98382c41f36eaea73118d60d81ed596d11980e2ff4eac307260b941"
+    },
+    {
+      "path": "sdks/rust/documentruntime/types.gen.rs",
+      "sha256": "966658127763ad6b0f44284e6822647e7f9b3efca910827f44833b28d4867172"
+    },
+    {
+      "path": "sdks/typescript/src/jsonschema/document-runtime.gen.ts",
+      "sha256": "40dba6a8be348fffa4f9da3c79c4435c19a649f21d45bb38740fc21a1c8a0300"
+    }
+  ]
+}

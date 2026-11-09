@@ -65,6 +65,7 @@ type Config struct {
 	DynamicToolsEnabled            bool
 	HostImagesEnabled              bool
 	NativeToolsEnabled             bool
+	DocumentRuntimeEnabled         bool
 	InteractionToolsEnabled        bool
 	ToolSearchEnabled              bool
 	CommandApprovalEnabled         bool
@@ -108,6 +109,10 @@ func (c Config) Configured() bool {
 }
 
 func (c Config) validate() error {
+	if c.DocumentRuntimeEnabled && (!c.NativeToolsEnabled || !c.InteractionToolsEnabled || !c.RuntimePermissionsEnabled) {
+		return errors.New("document environment requires the paired cooperative native profile")
+	}
+
 	if c.ToolSearchEnabled && (!c.InteractionToolsEnabled || !c.NativeToolsEnabled || !c.KimiK31Candidate) {
 		return errors.New("tool search requires the paired native interaction profile")
 	}
@@ -372,7 +377,7 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 		m.fail("artifact_verification_failed")
 		return err
 	}
-	if (m.config.ToolSearchEnabled && !artifact.supportsToolSearch()) || m.config.InteractionToolsEnabled != artifact.supportsInteractionTools() || m.config.NativeToolsEnabled != artifact.supportsNativeTools() ||
+	if (m.config.DocumentRuntimeEnabled && !artifact.supportsDocuments()) || (m.config.ToolSearchEnabled && !artifact.supportsToolSearch()) || m.config.InteractionToolsEnabled != artifact.supportsInteractionTools() || m.config.NativeToolsEnabled != artifact.supportsNativeTools() ||
 		(!m.config.NativeToolsEnabled && m.config.HostImagesEnabled != artifact.supportsHostImages()) ||
 		(m.config.HostImagesEnabled && !artifact.supportsHostImages()) || m.config.KimiK31Candidate != artifact.SupportsKimiK31() {
 		m.fail("artifact_verification_failed")
@@ -480,6 +485,13 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 	if providerErr == nil && m.config.NativeToolsEnabled {
 		var extra []string
 		extra, providerErr = prepareNativeToolsLayer(authority)
+		if providerErr == nil {
+			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
+		}
+	}
+	if providerErr == nil && m.config.DocumentRuntimeEnabled {
+		var extra []string
+		extra, providerErr = documentRuntimeArguments()
 		if providerErr == nil {
 			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
 		}
@@ -601,7 +613,7 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 			return errors.Join(errors.New("native configuration unavailable"), m.abortStartup("native_config_unavailable"))
 		}
 		if m.MarketEnabled() {
-			if err := validateMarketEffectiveIsolationForTools(effective.Config, m.config.NativeToolsEnabled); err != nil {
+			if err := validateMarketEffectiveIsolationForTools(effective.Config, m.config.NativeToolsEnabled, m.config.DocumentRuntimeEnabled); err != nil {
 				return errors.Join(err, m.abortStartup("market_isolation_mismatch"))
 			}
 		}

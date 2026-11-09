@@ -211,6 +211,13 @@ func (s *Service) startTurnV2Locked(ctx context.Context, input StartTurnV2Input,
 		return codex.TurnInfo{}, err
 	}
 	runtimeInputs = append(runtimeInputs, skillInputs...)
+	// Deployment-owned raw-file bindings are not part of the old input digest.
+	// Accepted operations above return unchanged, before cache access or dispatch.
+	documentInputs, err := s.documentInputs(input, draft)
+	if err != nil {
+		return codex.TurnInfo{}, err
+	}
+	runtimeInputs = append(runtimeInputs, documentInputs...)
 	operation, record, err := s.store.prepareModelTurnOperation(
 		input.AgentSessionID,
 		input.OperationID,

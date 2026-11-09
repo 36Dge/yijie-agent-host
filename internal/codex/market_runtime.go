@@ -169,7 +169,7 @@ func validateMarketEffectiveIsolation(config map[string]json.RawMessage) error {
 	return validateMarketEffectiveIsolationForTools(config, false)
 }
 
-func validateMarketEffectiveIsolationForTools(config map[string]json.RawMessage, nativeTools bool) error {
+func validateMarketEffectiveIsolationForTools(config map[string]json.RawMessage, nativeTools bool, documentsEnabled ...bool) error {
 	var features map[string]any
 	if json.Unmarshal(config["features"], &features) != nil {
 		return errors.New("market execution isolation unavailable")
@@ -195,8 +195,14 @@ func validateMarketEffectiveIsolationForTools(config map[string]json.RawMessage,
 		return errors.New("market native elicitation unavailable")
 	}
 	var environment map[string]any
+	allowedSet := map[string]any{}
+	if nativeTools && len(documentsEnabled) > 0 && documentsEnabled[0] {
+		for key, value := range documentShellEnvironment() {
+			allowedSet[key] = value
+		}
+	}
 	if json.Unmarshal(config["shell_environment_policy"], &environment) != nil || !reflect.DeepEqual(environment, map[string]any{
-		"inherit": "core", "exclude": marketExcludedEnvironment(), "set": map[string]any{}, "ignore_default_excludes": nil, "include_only": nil, "experimental_use_profile": nil,
+		"inherit": "core", "exclude": marketExcludedEnvironment(), "set": allowedSet, "ignore_default_excludes": nil, "include_only": nil, "experimental_use_profile": nil,
 	}) {
 		return errors.New("market capability environment isolation mismatch")
 	}
@@ -217,7 +223,7 @@ func (m *Manager) validateMarketIsolation(ctx context.Context, cwd string) error
 	if err := m.request(ctx, "config/read", params, &response); err != nil {
 		return errors.New("market native configuration unavailable")
 	}
-	return validateMarketEffectiveIsolationForTools(response.Config, m.config.NativeToolsEnabled)
+	return validateMarketEffectiveIsolationForTools(response.Config, m.config.NativeToolsEnabled, m.config.DocumentRuntimeEnabled)
 }
 
 // CloseMarketAdmission is an irreversible Native authority boundary. It closes

@@ -52,6 +52,8 @@ type Config struct {
 	MultimodalV2Enabled            bool
 	ArtifactV3Enabled              bool
 	ArtifactMediaEnabled           bool
+	DocumentBundleRoot             string
+	DocumentBundleSHA256           string
 	ArtifactSynthetic              bool
 	ArtifactManifest               string
 	ImageGenerationEnabled         bool
@@ -234,6 +236,15 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		return Config{}, errors.New("native tools require the local managed profile")
 	}
 	runtimeConfig.NativeToolsEnabled = nativeTools
+	documentRuntime, err := exactBoolEnv("YIJIE_FEAT171_DOCUMENT_RUNTIME")
+	if err != nil {
+		return Config{}, err
+	}
+	if documentRuntime && (!nativeTools || environment != "local" || os.Getenv("YIJIE_LOCAL_PROFILE") != "demo_fast" || !artifactV3 || os.Getenv("YIJIE_ARTIFACT_MEDIA_ENABLED") != "true") {
+		return Config{}, errors.New("document runtime requires the local native media profile")
+	}
+	runtimeConfig.DocumentRuntimeEnabled = documentRuntime
+
 	interactionTools, err := exactBoolEnv("YIJIE_FEAT169_INTERACTION_TOOLS")
 	if err != nil {
 		return Config{}, err
@@ -391,6 +402,8 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		CleanupV2Enabled:               cleanupV2,
 		MultimodalV2Enabled:            multimodalV2,
 		ArtifactV3Enabled:              artifactV3,
+		DocumentBundleRoot:             os.Getenv("YIJIE_DOCUMENT_BUNDLE_DIR"),
+		DocumentBundleSHA256:           os.Getenv("YIJIE_DOCUMENT_BUNDLE_SHA256"),
 		ArtifactMediaEnabled:           artifactV3 && os.Getenv("YIJIE_ARTIFACT_MEDIA_ENABLED") == "true" && os.Getenv("YIJIE_ENV") == "local" && os.Getenv("YIJIE_LOCAL_PROFILE") == "demo_fast",
 		ArtifactSynthetic:              syntheticArtifact,
 		ArtifactManifest:               artifactManifest,
@@ -909,6 +922,10 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 			mux.Handle("POST /v2/agent-sessions/{agent_session_id}/turns", handler.authorize(http.HandlerFunc(handler.startTurnV2)))
 		}
 		if config.ArtifactMediaEnabled {
+			if config.Runtime.DocumentRuntimeEnabled {
+				mux.Handle("POST /internal/document-runtime/v1/environment", handler.authorize(http.HandlerFunc(handler.documentEnvironment)))
+				mux.Handle("POST /internal/document-runtime/v1/status", handler.authorize(http.HandlerFunc(handler.documentArtifactStatus)))
+			}
 			mux.Handle("GET /v9/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.mediaEvents)))
 			mux.Handle("GET /v12/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.fileMediaEvents)))
 			mux.Handle("POST /internal/artifact-media/v1/publish", handler.authorize(http.HandlerFunc(handler.publishArtifact)))

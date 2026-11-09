@@ -15,6 +15,7 @@ import (
 	"time"
 
 	chatmodels "github.com/36Dge/yijie-agent-host/internal/contracts/runtimechatmodels"
+	documents "github.com/36Dge/yijie-agent-host/internal/contracts/runtimedocuments"
 	hostimage "github.com/36Dge/yijie-agent-host/internal/contracts/runtimehostimages"
 	inputonly "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeinputonly"
 	interaction "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeinteraction"
@@ -205,11 +206,21 @@ func VerifyArtifact(ctx context.Context, binaryPath, manifestPath string, timeou
 		}
 		policy = artifactPolicy{runtimeSHA256: toolsearch.RuntimeBinarySHA256, runtimeSize: toolsearch.RuntimeBinarySize, manifestSHA256: toolsearch.RuntimeManifestSHA256, schemaTreeSHA256: toolsearch.RuntimeSchemaTreeSHA256, patches: patches, schemaFileCount: toolsearch.RuntimeSchemaFileCount}
 	}
+	if digest == documents.RuntimeManifestSHA256 {
+		var patches []ManifestPatch
+		if err := json.Unmarshal([]byte(documents.RuntimePatchManifest), &patches); err != nil {
+			return ArtifactInfo{}, errors.New("document Runtime authority unavailable")
+		}
+		policy = artifactPolicy{runtimeSHA256: documents.RuntimeBinarySHA256, runtimeSize: documents.RuntimeBinarySize, manifestSHA256: documents.RuntimeManifestSHA256, schemaTreeSHA256: documents.RuntimeSchemaTreeSHA256, patches: patches, schemaFileCount: documents.RuntimeSchemaFileCount}
+	}
 	return verifyArtifactWithPolicy(ctx, binaryPath, manifestPath, timeout, policy)
 }
 
+func (a ArtifactInfo) supportsDocuments() bool {
+	return a.BinarySHA256 == documents.RuntimeBinarySHA256 && a.ManifestSHA256 == documents.RuntimeManifestSHA256
+}
 func (a ArtifactInfo) supportsToolSearch() bool {
-	return a.BinarySHA256 == toolsearch.RuntimeBinarySHA256 && a.ManifestSHA256 == toolsearch.RuntimeManifestSHA256
+	return a.supportsDocuments() || a.BinarySHA256 == toolsearch.RuntimeBinarySHA256 && a.ManifestSHA256 == toolsearch.RuntimeManifestSHA256
 }
 
 func (a ArtifactInfo) supportsInteractionTools() bool {

@@ -221,6 +221,7 @@ const (
 	NativeItemTypeAgentMessage     NativeItemType = "agentMessage"
 	NativeItemTypeCommandExecution NativeItemType = "commandExecution"
 	NativeItemTypeFileChange       NativeItemType = "fileChange"
+	NativeItemTypeImageView        NativeItemType = "imageView"
 	NativeItemTypeMcpToolCall      NativeItemType = "mcpToolCall"
 	NativeItemTypeReasoning        NativeItemType = "reasoning"
 	NativeItemTypeSubAgentActivity NativeItemType = "subAgentActivity"
@@ -237,6 +238,8 @@ func (e NativeItemType) Valid() bool {
 	case NativeItemTypeCommandExecution:
 		return true
 	case NativeItemTypeFileChange:
+		return true
+	case NativeItemTypeImageView:
 		return true
 	case NativeItemTypeMcpToolCall:
 		return true

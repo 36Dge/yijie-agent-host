@@ -205,6 +205,7 @@
               "webSearch",
               "fileChange",
               "subAgentActivity",
+              "imageView",
               "unknown"
             ]
           },

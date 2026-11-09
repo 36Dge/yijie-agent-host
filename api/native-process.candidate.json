@@ -4,9 +4,9 @@
   "published": false,
   "provenance": "local-working-tree-candidate",
   "sources": {
-    "openapi/native-conversation-v6/native-conversation-v6.yaml": "ea81480d92ee14d240b11b1718790108371b563791337e471883cef28c6d4710",
-    "sdks/go/openapi/native-conversation-v6/client.gen.go": "43a61017741b366d9c3c0d3b165e90b857835fc0903915320ba3113ffa889949",
-    "sdks/typescript/src/openapi/native-conversation-v6.gen.ts": "0cb2814e7a464c4478166d7d5c4bb96fa792b917e554686e215a87414f9d9b30",
+    "openapi/native-conversation-v6/native-conversation-v6.yaml": "c9d251b210f66bacc1de90fb0cfb586165ec4ff030b196194f9c27962b6372d3",
+    "sdks/go/openapi/native-conversation-v6/client.gen.go": "75edcfe16017834759fdb7dbf89bac6fa09d9d38c44e42496fa1a0801c964652",
+    "sdks/typescript/src/openapi/native-conversation-v6.gen.ts": "cfdfc498d6428ab87ae8f0b1e7d4f53d5c89865b641687c4000cfb4f72675aee",
     "tests/fixtures/agent/native-search-sources/ordinary-url-components.json": "79b5d56d803b7dba0f0c05bff6be6129b12786bca5fd96336ce288a7442cae9f",
     "openapi/native-conversation-v3/native-conversation-v3.yaml": "484ab1edc3d5673721c8b822fb8d99427dbf62be32b610083903c3786230fb62",
     "sdks/go/openapi/native-conversation-v3/client.gen.go": "9826f5f65a44e803787a4989f1cc7375a881a73de5a492871ff73719e515699f",

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-171",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "base_profile": "runtime-tool-search",
+  "native_config": {
+    "exec_shutdown_policy": "cooperative_only",
+    "features": {
+      "unified_exec": true
+    }
+  },
+  "qualified_backend": "local macOS arm64 direct; remote exec-server rejected before spawn",
+  "shutdown": "normal cooperation; retain ownership until process/output exit; no force-kill fallback"
+}

@@ -1,0 +1,587 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.yijie.ai/document-runtime/v1.schema.json",
+  "title": "DocumentRuntimeV1",
+  "description": "FEAT-171 local application-owned document environment and ACK status; no command execution and no market dependency.",
+  "definitions": {
+    "EnvironmentInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "txt",
+            "md",
+            "html",
+            "csv",
+            "json",
+            "docx",
+            "pptx",
+            "xlsx",
+            "pdf"
+          ]
+        }
+      },
+      "required": []
+    },
+    "StatusInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [
+        "artifact_id"
+      ]
+    },
+    "EnvironmentRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "thread_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "input": {
+          "$ref": "#/definitions/EnvironmentInput"
+        }
+      },
+      "required": [
+        "thread_id",
+        "turn_id",
+        "input"
+      ]
+    },
+    "StatusRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "thread_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "input": {
+          "$ref": "#/definitions/StatusInput"
+        }
+      },
+      "required": [
+        "thread_id",
+        "turn_id",
+        "input"
+      ]
+    },
+    "Guide": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "txt",
+            "md",
+            "html",
+            "csv",
+            "json",
+            "docx",
+            "pptx",
+            "xlsx",
+            "pdf"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      },
+      "required": [
+        "format",
+        "path"
+      ]
+    },
+    "Limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "generated_file_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "const": 10485760
+        },
+        "text_source_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "const": 1048576
+        },
+        "max_pages": {
+          "type": "integer",
+          "minimum": 0,
+          "const": 50
+        },
+        "max_sheets": {
+          "type": "integer",
+          "minimum": 0,
+          "const": 10
+        },
+        "max_cells": {
+          "type": "integer",
+          "minimum": 0,
+          "const": 12000
+        },
+        "max_visual_tiles": {
+          "type": "integer",
+          "minimum": 0,
+          "const": 32
+        },
+        "max_artifacts": {
+          "type": "integer",
+          "minimum": 0,
+          "const": 12
+        },
+        "step_soft_timeout_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "const": 180
+        },
+        "job_soft_timeout_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "const": 900
+        }
+      },
+      "required": [
+        "generated_file_bytes",
+        "text_source_bytes",
+        "max_pages",
+        "max_sheets",
+        "max_cells",
+        "max_visual_tiles",
+        "max_artifacts",
+        "step_soft_timeout_seconds",
+        "job_soft_timeout_seconds"
+      ]
+    },
+    "EnvironmentResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "minimum": 0,
+          "const": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "unavailable"
+          ]
+        },
+        "code": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "missing",
+            "incompatible",
+            "integrity_failed",
+            "not_ready"
+          ]
+        },
+        "bundle_id": {
+          "type": "string",
+          "pattern": "^([a-f0-9]{64})?$"
+        },
+        "platform": {
+          "type": "string",
+          "const": "macos-arm64"
+        },
+        "python_path": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "helper_path": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "renderer_path": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "guides": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Guide"
+          },
+          "maxItems": 9
+        },
+        "limits": {
+          "$ref": "#/definitions/Limits"
+        }
+      },
+      "required": [
+        "schema_version",
+        "status",
+        "code",
+        "bundle_id",
+        "platform",
+        "python_path",
+        "helper_path",
+        "renderer_path",
+        "guides",
+        "limits"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ready"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "code": {
+                "const": "ok"
+              },
+              "bundle_id": {
+                "minLength": 64,
+                "type": "string"
+              },
+              "python_path": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "helper_path": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "renderer_path": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "guides": {
+                "minItems": 1,
+                "type": "array"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "python_path": {
+                "maxLength": 0,
+                "type": "string"
+              },
+              "helper_path": {
+                "maxLength": 0,
+                "type": "string"
+              },
+              "renderer_path": {
+                "maxLength": 0,
+                "type": "string"
+              },
+              "guides": {
+                "maxItems": 0,
+                "type": "array"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "StatusResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "minimum": 0,
+          "const": 1
+        },
+        "artifact_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "staged",
+            "committed",
+            "expired",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "schema_version",
+        "artifact_id",
+        "status"
+      ]
+    },
+    "BundleFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "file",
+            "symlink"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483648
+        },
+        "link_target": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "sha256",
+        "size_bytes",
+        "link_target"
+      ]
+    },
+    "BundleManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "minimum": 0,
+          "const": 1
+        },
+        "bundle_id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "platform": {
+          "type": "string",
+          "const": "macos-arm64"
+        },
+        "minimum_macos": {
+          "type": "string",
+          "const": "14.0"
+        },
+        "python_version": {
+          "type": "string",
+          "const": "3.12.16"
+        },
+        "libreoffice_version": {
+          "type": "string",
+          "const": "26.8.2"
+        },
+        "python": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "helper": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "renderer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "libreoffice": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "fonts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "guides": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Guide"
+          },
+          "minItems": 9,
+          "maxItems": 9
+        },
+        "limits": {
+          "$ref": "#/definitions/Limits"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BundleFile"
+          },
+          "minItems": 1,
+          "maxItems": 30000
+        }
+      },
+      "required": [
+        "schema_version",
+        "bundle_id",
+        "platform",
+        "minimum_macos",
+        "python_version",
+        "libreoffice_version",
+        "python",
+        "helper",
+        "renderer",
+        "libreoffice",
+        "fonts",
+        "guides",
+        "limits",
+        "files"
+      ]
+    },
+    "AdapterStartup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host_origin",
+        "host_token",
+        "capability"
+      ],
+      "properties": {
+        "host_origin": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "host_token": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "capability": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "document_runtime_enabled": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "InputReceipt": {
+      "type": "object",
+      "description": "Native-only private input cache binding; source bytes are copied after existing outbox/scope authorization. Not model input or a new business ledger. Host matches all fields against the current accepted request and uses no model-provided path.",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "const": 1
+        },
+        "operation_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "attachment_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10485760
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "txt",
+            "md",
+            "html",
+            "csv",
+            "json",
+            "docx",
+            "pptx",
+            "xlsx",
+            "pdf"
+          ]
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "schema_version",
+        "operation_id",
+        "attachment_id",
+        "sha256",
+        "size_bytes",
+        "format",
+        "expires_at"
+      ]
+    }
+  },
+  "x-version": "0.1.0",
+  "x-tools": {
+    "load_document_environment": {
+      "input": "EnvironmentInput",
+      "output": "EnvironmentResponse",
+      "readOnly": true
+    },
+    "get_artifact_status": {
+      "input": "StatusInput",
+      "output": "StatusResponse",
+      "readOnly": true
+    }
+  },
+  "x-http": {
+    "environment": "/internal/document-runtime/v1/environment",
+    "status": "/internal/document-runtime/v1/status"
+  },
+  "x-authority": {
+    "owner": "段成威",
+    "producer": "yijie-agent-host",
+    "consumers": [
+      "yijie-codex",
+      "yijie-desktop"
+    ],
+    "authentication": "existing owner bearer and private artifact MCP capability",
+    "scope": "local/demo_fast current native thread/turn metadata",
+    "failure": "unavailable paths are empty; unknown is not failure or permission to re-execute; ACK checked before spool expiration",
+    "release": false,
+    "input_cache": "Native stages only after scoped outbox validation under application state inputs/<operation_id>/<attachment_id>.<format>; paired InputReceipt is <attachment_id>.receipt.json. Host checks current request identity/size/SHA/expiry after unchanged idempotency checks. Copies expire within 24h; retained encrypted originals keep existing 7-day policy. No model-controlled roots and no new persisted execution state."
+  }
+}

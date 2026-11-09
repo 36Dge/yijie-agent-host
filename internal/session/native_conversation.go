@@ -184,6 +184,10 @@ func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) 
 		projectNativeFileChange(wire, cwd, &out)
 	case native.NativeItemTypeSubAgentActivity:
 		projectNativeAgentActivity(wire, &out)
+	case native.NativeItemTypeImageView:
+		// Canonical native view_image fact only; no image bytes, new reader or
+		// lifecycle inference. item/started and item/completed remain authority.
+		nativeOperationDisplay(&out, "查看图片", "原生工具")
 	}
 	return out, nil
 }

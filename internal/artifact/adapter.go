@@ -22,7 +22,7 @@ type Adapter struct {
 	URL, Token string
 }
 
-func StartAdapter(binary, hostOrigin, hostToken string) (*Adapter, error) {
+func StartAdapter(binary, hostOrigin, hostToken string, documentsEnabled ...bool) (*Adapter, error) {
 	info, e := os.Lstat(binary)
 	if e != nil || !info.Mode().IsRegular() {
 		return nil, errors.New("artifact adapter missing")
@@ -63,7 +63,11 @@ func StartAdapter(binary, hostOrigin, hostToken string) (*Adapter, error) {
 		return nil, e
 	}
 	go func() { a.done <- cmd.Wait() }()
-	e = json.NewEncoder(a.input).Encode(map[string]string{"host_origin": hostOrigin, "host_token": hostToken, "capability": a.Token})
+	startup := map[string]any{"host_origin": hostOrigin, "host_token": hostToken, "capability": a.Token}
+	if len(documentsEnabled) > 0 && documentsEnabled[0] {
+		startup["document_runtime_enabled"] = true
+	}
+	e = json.NewEncoder(a.input).Encode(startup)
 	if e != nil {
 		_ = a.Stop(context.Background())
 		return nil, e

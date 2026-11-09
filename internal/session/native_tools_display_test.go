@@ -16,3 +16,14 @@ func TestNativeToolsFileAndAgentProjection(t *testing.T) {
 		t.Fatalf("native task activity projection failed: %v", err)
 	}
 }
+
+func TestDocumentNativeImageViewKeepsCanonicalIdentity(t *testing.T) {
+	item, err := projectNativeItem(json.RawMessage(`{"id":"view-page","type":"imageView","path":"/workspace/qa/page-001.png"}`), "/workspace", false)
+	if err != nil || item.Type != "imageView" || item.Id != "view-page" || item.Availability != "available" || item.Status != nil || item.ToolLabel == nil || *item.ToolLabel != "查看图片" || item.ToolDisplay == nil {
+		t.Fatalf("native image view projection missing: %v", err)
+	}
+	encoded, err := json.Marshal(item)
+	if err != nil || strings.Contains(string(encoded), "page-001") || strings.Contains(string(encoded), "path") || item.Mcp != nil {
+		t.Fatal("image display must not expose paths/pixels or invent an MCP execution")
+	}
+}

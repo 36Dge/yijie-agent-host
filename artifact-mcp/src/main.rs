@@ -18,19 +18,16 @@ use rmcp::{
         StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
     },
 };
-use serde::Deserialize;
 use std::{sync::Arc, time::Duration};
 use subtle::ConstantTimeEq;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::sync::CancellationToken;
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Startup {
-    host_origin: String,
-    host_token: String,
-    capability: String,
+#[allow(dead_code)]
+mod document_wire {
+    include!("document_types.gen.rs");
 }
+type Startup = document_wire::AdapterStartup;
 #[derive(Clone)]
 struct Gateway {
     config: Arc<Startup>,
@@ -54,8 +51,47 @@ impl ServerHandler for Gateway {
         ))
         .map_err(|_| unavailable())?;
         let tool=Tool::new("publish_artifact","将本轮工作区中已生成的 HTML、SVG、MP4 或文件登记为易界聊天产物，以便内置预览和保存。只接受工作区相对路径；不能用于读取任意磁盘文件。先生成文件，再登记；返回 staged 表示宿主接收，界面持久化独立完成。",Arc::new(source["definitions"]["PublishInput"].as_object().ok_or_else(unavailable)?.clone())).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).idempotent(true).open_world(false));
+        let mut tools = vec![tool];
+        if self.config.document_runtime_enabled.unwrap_or(false) {
+            let schema: serde_json::Value = serde_json::from_str(include_str!(
+                "../../api/schemas/document-runtime-v1.schema.json"
+            ))
+            .map_err(|_| unavailable())?;
+            for (name, definition, description) in [
+                (
+                    "load_document_environment",
+                    "EnvironmentInput",
+                    "查询应用内置九格式文档环境和对应指南。生成或解析文档前先调用，使用返回的专用Python/helper路径；不使用系统环境或安装市场技能。此工具只读，不执行代码。",
+                ),
+                (
+                    "get_artifact_status",
+                    "StatusInput",
+                    "查询当前会话产物在本Host代际的交付事实。只有committed表示已收到Native提交ACK；staged仅暂存，unknown不能推断失败或重放生成。",
+                ),
+            ] {
+                tools.push(
+                    Tool::new(
+                        name,
+                        description,
+                        Arc::new(
+                            schema["definitions"][definition]
+                                .as_object()
+                                .ok_or_else(unavailable)?
+                                .clone(),
+                        ),
+                    )
+                    .with_annotations(
+                        ToolAnnotations::new()
+                            .read_only(true)
+                            .destructive(false)
+                            .idempotent(true)
+                            .open_world(false),
+                    ),
+                );
+            }
+        }
         Ok(ListToolsResult {
-            tools: vec![tool],
+            tools,
             ..Default::default()
         })
     }
@@ -64,6 +100,12 @@ impl ServerHandler for Gateway {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
+        if matches!(
+            request.name.as_ref(),
+            "load_document_environment" | "get_artifact_status"
+        ) {
+            return self.document_tool(request, context).await;
+        }
         if request.name != "publish_artifact" {
             return Err(unavailable());
         }
@@ -113,6 +155,93 @@ impl ServerHandler for Gateway {
         )]))
     }
 }
+impl Gateway {
+    async fn document_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, ErrorData> {
+        if !self.config.document_runtime_enabled.unwrap_or(false) {
+            return Err(unavailable());
+        }
+        let thread = context
+            .meta
+            .0
+            .get("threadId")
+            .and_then(|v| v.as_str())
+            .ok_or_else(unavailable)?;
+        let turn = context
+            .meta
+            .0
+            .get("x-codex-turn-metadata")
+            .and_then(|v| v.get("turn_id"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(unavailable)?;
+        let args = serde_json::Value::Object(request.arguments.unwrap_or_default());
+        let (path, body) = if request.name == "load_document_environment" {
+            let input: document_wire::EnvironmentInput =
+                serde_json::from_value(args).map_err(|_| unavailable())?;
+            (
+                "environment",
+                serde_json::to_value(document_wire::EnvironmentRequest {
+                    thread_id: thread.into(),
+                    turn_id: turn.into(),
+                    input,
+                })
+                .map_err(|_| unavailable())?,
+            )
+        } else {
+            let input: document_wire::StatusInput =
+                serde_json::from_value(args).map_err(|_| unavailable())?;
+            (
+                "status",
+                serde_json::to_value(document_wire::StatusRequest {
+                    thread_id: thread.into(),
+                    turn_id: turn.into(),
+                    input,
+                })
+                .map_err(|_| unavailable())?,
+            )
+        };
+        let send = self
+            .client
+            .post(format!(
+                "{}/internal/document-runtime/v1/{path}",
+                self.config.host_origin
+            ))
+            .bearer_auth(&self.config.host_token)
+            .timeout(Duration::from_secs(10))
+            .json(&body)
+            .send();
+        let mut response = tokio::select! {_=context.ct.cancelled()=>return Err(unavailable()),r=send=>r.map_err(|_|unavailable())?};
+        if !response.status().is_success() {
+            return Ok(CallToolResult::error(vec![Content::text(
+                "内置文档能力当前不可用；未执行生成或安装，也未回落系统环境。",
+            )]));
+        }
+        let mut bytes = Vec::new();
+        loop {
+            let chunk = tokio::select! {_=context.ct.cancelled()=>return Err(unavailable()),r=response.chunk()=>r.map_err(|_|unavailable())?};
+            let Some(chunk) = chunk else { break };
+            if bytes.len() + chunk.len() > 16 * 1024 {
+                return Err(unavailable());
+            };
+            bytes.extend_from_slice(&chunk);
+        }
+        let normalized = if path == "environment" {
+            let value: document_wire::EnvironmentResponse =
+                serde_json::from_slice(&bytes).map_err(|_| unavailable())?;
+            serde_json::to_string(&value)
+        } else {
+            let value: document_wire::StatusResponse =
+                serde_json::from_slice(&bytes).map_err(|_| unavailable())?;
+            serde_json::to_string(&value)
+        }
+        .map_err(|_| unavailable())?;
+        Ok(CallToolResult::success(vec![Content::text(normalized)]))
+    }
+}
+
 async fn authorize(
     State(capability): State<Arc<String>>,
     request: Request,

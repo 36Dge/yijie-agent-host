@@ -17,6 +17,7 @@ import (
 
 	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	"github.com/36Dge/yijie-agent-host/internal/documents"
 	"github.com/36Dge/yijie-agent-host/internal/imagegen"
 )
 
@@ -205,6 +206,7 @@ type syntheticTerminalBarrier struct {
 }
 
 type Service struct {
+	documentEnvironment  *documents.Environment
 	contextWindowMu      sync.Mutex
 	contextWindows       map[string]*contextObservation
 	media                *mediaAuthority

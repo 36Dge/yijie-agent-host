@@ -560,7 +560,7 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		Cwd:                   cwd,
 		ApprovalPolicy:        m.sessionApprovalPolicy(),
 		Sandbox:               SessionSandbox,
-		DeveloperInstructions: m.sessionDeveloperInstructions() + m.imageToolInstructions(ctx),
+		DeveloperInstructions: m.sessionDeveloperInstructions() + m.imageToolInstructions(ctx) + m.documentInstructions(),
 		Ephemeral:             false,
 	}
 	if m.config.RuntimePermissionsEnabled {
@@ -655,7 +655,7 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	if m.config.CommandApprovalEnabled || m.config.RuntimePermissionsEnabled {
 		approvalPolicy := m.sessionApprovalPolicy()
 		sandbox := SessionSandbox
-		developerInstructions := m.sessionDeveloperInstructions() + m.imageToolInstructions(ctx)
+		developerInstructions := m.sessionDeveloperInstructions() + m.imageToolInstructions(ctx) + m.documentInstructions()
 		params.ApprovalPolicy = &approvalPolicy
 		params.Sandbox = &sandbox
 		params.DeveloperInstructions = &developerInstructions

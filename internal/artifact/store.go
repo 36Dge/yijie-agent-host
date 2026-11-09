@@ -260,6 +260,31 @@ func (s *Store) Get(sessionID, artifactID string, kind ResourceKind) (Resource, 
 	return Resource{Bytes: content, MediaType: resource.mediaType, DisplayName: resource.displayName, SHA256: resource.sha256}, nil
 }
 
+// Status reads only current-generation facts. ACK survives spool cleanup and
+// is checked first. Unknown after restart never authorizes replay.
+func (s *Store) Status(sessionID, artifactID string) string {
+	if !canonicalUUID(sessionID) || !canonicalUUID(artifactID) {
+		return "unknown"
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return "unknown"
+	}
+	s.cleanupExpiredLocked(s.now().UTC())
+	value := s.entries[artifactKey(sessionID, artifactID)]
+	if value == nil {
+		return "unknown"
+	}
+	if value.ack != nil {
+		return "committed"
+	}
+	if value.expired {
+		return "expired"
+	}
+	return "staged"
+}
+
 func (s *Store) Acknowledge(sessionID, artifactID string, request Acknowledgement) (Receipt, error) {
 	if !canonicalUUID(sessionID) || !canonicalUUID(artifactID) || !canonicalUUID(request.AckID) ||
 		request.SizeBytes < 1 || !lowerHexDigest(request.SHA256) || request.LocalCommittedAt.IsZero() {

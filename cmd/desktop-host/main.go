@@ -16,6 +16,7 @@ import (
 	"github.com/36Dge/yijie-agent-host/internal/app"
 	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	"github.com/36Dge/yijie-agent-host/internal/documents"
 	"github.com/36Dge/yijie-agent-host/internal/imagegen"
 	"github.com/36Dge/yijie-agent-host/internal/security"
 	"github.com/36Dge/yijie-agent-host/internal/session"
@@ -173,6 +174,9 @@ func run(logger *slog.Logger) error {
 			logger,
 			serviceOptions...,
 		)
+		if config.Runtime.DocumentRuntimeEnabled {
+			sessionService.SetDocumentEnvironment(documents.New(config.DocumentBundleRoot, config.DocumentBundleSHA256, os.Getenv("YIJIE_DOCUMENT_STATE_ROOT")))
+		}
 		if config.ImageGenerationEnabled {
 			if err := runtime.SetHostImageHandler(sessionService.HandleHostImage); err != nil {
 				return err
@@ -211,7 +215,7 @@ func run(logger *slog.Logger) error {
 		if e != nil {
 			return e
 		}
-		adapter, e := artifact.StartAdapter(filepath.Join(filepath.Dir(executable), "yijie-artifact-mcp"), "http://127.0.0.1:"+config.Port, apiToken)
+		adapter, e := artifact.StartAdapter(filepath.Join(filepath.Dir(executable), "yijie-artifact-mcp"), "http://127.0.0.1:"+config.Port, apiToken, config.Runtime.DocumentRuntimeEnabled)
 		if e != nil {
 			return e
 		}
