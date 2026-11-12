@@ -14,12 +14,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	document "github.com/36Dge/yijie-agent-host/internal/contracts/documentruntime"
 )
 
 type Adapter struct {
-	input      io.WriteCloser
-	done       chan error
-	URL, Token string
+	input                                io.WriteCloser
+	done                                 chan error
+	URL, Token                           string
+	MediaURL, MediaToken, MediaHostToken string
 }
 
 func StartAdapter(binary, hostOrigin, hostToken string, documentsEnabled ...bool) (*Adapter, error) {
@@ -45,6 +48,16 @@ func StartAdapter(binary, hostOrigin, hostToken string, documentsEnabled ...bool
 		return nil, e
 	}
 	a := &Adapter{done: make(chan error, 1), Token: hex.EncodeToString(random)}
+	if len(documentsEnabled) > 1 && documentsEnabled[1] {
+		if _, e = rand.Read(random); e != nil {
+			return nil, e
+		}
+		a.MediaToken = hex.EncodeToString(random)
+		if _, e = rand.Read(random); e != nil {
+			return nil, e
+		}
+		a.MediaHostToken = hex.EncodeToString(random)
+	}
 	cmd := exec.Command(binary)
 	cmd.Dir = filepath.Dir(binary)
 	cmd.Env = []string{"PATH=/usr/bin:/bin"}
@@ -63,9 +76,12 @@ func StartAdapter(binary, hostOrigin, hostToken string, documentsEnabled ...bool
 		return nil, e
 	}
 	go func() { a.done <- cmd.Wait() }()
-	startup := map[string]any{"host_origin": hostOrigin, "host_token": hostToken, "capability": a.Token}
+	startup := document.AdapterStartup{HostOrigin: hostOrigin, HostToken: hostToken, Capability: a.Token}
 	if len(documentsEnabled) > 0 && documentsEnabled[0] {
-		startup["document_runtime_enabled"] = true
+		startup.DocumentRuntimeEnabled = &documentsEnabled[0]
+	}
+	if a.MediaToken != "" {
+		startup.Media = &document.MediaAdapterCapability{Capability: a.MediaToken, HostToken: a.MediaHostToken}
 	}
 	e = json.NewEncoder(a.input).Encode(startup)
 	if e != nil {
@@ -92,6 +108,10 @@ func StartAdapter(binary, hostOrigin, hostToken string, documentsEnabled ...bool
 	if e != nil || parsed.Scheme != "http" || parsed.Hostname() != "127.0.0.1" || parsed.Port() == "" || parsed.Path != "/mcp" || parsed.RawQuery != "" {
 		_ = a.Stop(context.Background())
 		return nil, errors.New("artifact adapter endpoint invalid")
+	}
+	if a.MediaToken != "" {
+		parsed.Path = "/media/mcp"
+		a.MediaURL = parsed.String()
 	}
 	return a, nil
 }

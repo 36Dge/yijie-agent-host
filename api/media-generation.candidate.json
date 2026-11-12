@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-172",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "base_commit": "d658a2bd5dd6ebd5ae5c79a547489eca205d6ede",
+  "sources": [
+    {
+      "path": "jsonschema/media-generation/v1.schema.json",
+      "sha256": "3772664c7f8a6a757fd7794ca154ab8526fd825f3a5775e9f8be179a0e312a37"
+    },
+    {
+      "path": "scripts/generate-media-generation.mjs",
+      "sha256": "eb9cf91bf310dabe8f04e5b6bb9bece9347321439b0fa999bad96083399caad2"
+    },
+    {
+      "path": "scripts/market-broker-codegen.mjs",
+      "sha256": "d4218c6515c669f4a80a4f48f857bdd20d0509345fdb184df1da355c97856221"
+    }
+  ],
+  "generated": [
+    {
+      "path": "sdks/go/mediageneration/types.gen.go",
+      "sha256": "ffb99df551c6a69bed638aa529c638ae1112e79706748d628ca6026123406907"
+    },
+    {
+      "path": "sdks/rust/mediageneration/types.gen.rs",
+      "sha256": "380e46e5ebd4ec22c824e97a434a27fab452d6a3e9949274a02503ac140508ac"
+    },
+    {
+      "path": "sdks/typescript/src/jsonschema/media-generation.gen.ts",
+      "sha256": "7d0524753e6262edd6b43b58914dfd5f8ee3d1335e226d49fba53ebfd0f6a3c7"
+    }
+  ]
+}

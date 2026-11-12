@@ -7,7 +7,7 @@
   "sources": [
     {
       "path": "jsonschema/document-runtime/v1.schema.json",
-      "sha256": "47ba4c6a4b16dfe97c2229201ab49e8ab3835ddcb7ad360e378c9d17826526c3"
+      "sha256": "addc9444926da75c1de4bab706dfd81d179b41a69f4c8d9d28aa6898c565b8c1"
     },
     {
       "path": "scripts/generate-document-runtime.mjs",
@@ -17,15 +17,15 @@
   "generated": [
     {
       "path": "sdks/go/documentruntime/types.gen.go",
-      "sha256": "b12acfb5e98382c41f36eaea73118d60d81ed596d11980e2ff4eac307260b941"
+      "sha256": "7d36c0480ed85e5ada13abee66503e0a04e9e898600c1d0bc6e5d93509a22992"
     },
     {
       "path": "sdks/rust/documentruntime/types.gen.rs",
-      "sha256": "966658127763ad6b0f44284e6822647e7f9b3efca910827f44833b28d4867172"
+      "sha256": "fc97d511ebb51fab661c7fc6fa509b13f6e4b13d663705fc972ee85acf9dd6a2"
     },
     {
       "path": "sdks/typescript/src/jsonschema/document-runtime.gen.ts",
-      "sha256": "40dba6a8be348fffa4f9da3c79c4435c19a649f21d45bb38740fc21a1c8a0300"
+      "sha256": "66c90a6af15630e222825cadfb2901a2798664d174834afb19535bbded391255"
     }
   ]
 }

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	hostimage "github.com/36Dge/yijie-agent-host/internal/contracts/runtimehostimages"
+	media "github.com/36Dge/yijie-agent-host/internal/contracts/mediageneration"
 )
 
 type imageRouteKey struct{}
@@ -15,7 +15,7 @@ type imageRouteKey struct{}
 // image method. An upgrade of a known image expert must be reviewed again.
 func WithExpertImageRoute(ctx context.Context, expertID, version, roleDigest string) (context.Context, error) {
 	known := false
-	for _, route := range hostimage.ExpertImageRoutes {
+	for _, route := range media.ExpertImageRoutes {
 		if route.ExpertID != expertID {
 			continue
 		}
@@ -27,7 +27,7 @@ func WithExpertImageRoute(ctx context.Context, expertID, version, roleDigest str
 	if known {
 		return nil, errors.New("expert image tool configuration unavailable")
 	}
-	return ctx, nil
+	return context.WithValue(ctx, imageRouteKey{}, "expert-only"), nil
 }
 
 func ImageRoute(ctx context.Context) string {

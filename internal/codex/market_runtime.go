@@ -196,13 +196,17 @@ func validateMarketEffectiveIsolationForTools(config map[string]json.RawMessage,
 	}
 	var environment map[string]any
 	allowedSet := map[string]any{}
+	excluded := marketExcludedEnvironment()
+	if len(documentsEnabled) > 1 && documentsEnabled[1] {
+		excluded = append(excluded, MediaMCPTokenEnv)
+	}
 	if nativeTools && len(documentsEnabled) > 0 && documentsEnabled[0] {
 		for key, value := range documentShellEnvironment() {
 			allowedSet[key] = value
 		}
 	}
 	if json.Unmarshal(config["shell_environment_policy"], &environment) != nil || !reflect.DeepEqual(environment, map[string]any{
-		"inherit": "core", "exclude": marketExcludedEnvironment(), "set": allowedSet, "ignore_default_excludes": nil, "include_only": nil, "experimental_use_profile": nil,
+		"inherit": "core", "exclude": excluded, "set": allowedSet, "ignore_default_excludes": nil, "include_only": nil, "experimental_use_profile": nil,
 	}) {
 		return errors.New("market capability environment isolation mismatch")
 	}
@@ -223,7 +227,7 @@ func (m *Manager) validateMarketIsolation(ctx context.Context, cwd string) error
 	if err := m.request(ctx, "config/read", params, &response); err != nil {
 		return errors.New("market native configuration unavailable")
 	}
-	return validateMarketEffectiveIsolationForTools(response.Config, m.config.NativeToolsEnabled, m.config.DocumentRuntimeEnabled)
+	return validateMarketEffectiveIsolationForTools(response.Config, m.config.NativeToolsEnabled, m.config.DocumentRuntimeEnabled, m.config.BuiltinMediaEnabled)
 }
 
 // CloseMarketAdmission is an irreversible Native authority boundary. It closes

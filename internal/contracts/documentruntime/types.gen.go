@@ -73,10 +73,11 @@ type BundleManifest struct {
 	Files              []BundleFile `json:"files"`
 }
 type AdapterStartup struct {
-	HostOrigin             string `json:"host_origin"`
-	HostToken              string `json:"host_token"`
-	Capability             string `json:"capability"`
-	DocumentRuntimeEnabled *bool  `json:"document_runtime_enabled,omitempty"`
+	HostOrigin             string                  `json:"host_origin"`
+	HostToken              string                  `json:"host_token"`
+	Capability             string                  `json:"capability"`
+	DocumentRuntimeEnabled *bool                   `json:"document_runtime_enabled,omitempty"`
+	Media                  *MediaAdapterCapability `json:"media,omitempty"`
 }
 type InputReceipt struct {
 	SchemaVersion int64  `json:"schema_version"`
@@ -86,6 +87,10 @@ type InputReceipt struct {
 	SizeBytes     int64  `json:"size_bytes"`
 	Format        string `json:"format"`
 	ExpiresAt     int64  `json:"expires_at"`
+}
+type MediaAdapterCapability struct {
+	Capability string `json:"capability"`
+	HostToken  string `json:"host_token"`
 }
 
 func FormatAllowed(value string) bool {

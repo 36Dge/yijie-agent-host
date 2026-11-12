@@ -54,7 +54,14 @@ func (s *Service) documentInputs(input StartTurnV2Input, draft bool) ([]codex.Us
 }
 
 func (s *Service) documentSession(thread, turn string) (Record, error) {
-	if s.documentEnvironment == nil || s.media == nil || s.artifacts == nil || thread == "" || turn == "" {
+	if s.documentEnvironment == nil {
+		return Record{}, errors.New("document capability unavailable")
+	}
+	return s.artifactSession(thread, turn)
+}
+
+func (s *Service) artifactSession(thread, turn string) (Record, error) {
+	if s.media == nil || s.artifacts == nil || thread == "" || turn == "" {
 		return Record{}, errors.New("document capability unavailable")
 	}
 	record, err := s.store.GetByThread(thread)
@@ -79,7 +86,7 @@ func (s *Service) DocumentEnvironment(ctx context.Context, req wire.EnvironmentR
 }
 
 func (s *Service) DocumentArtifactStatus(ctx context.Context, req wire.StatusRequest) (wire.StatusResponse, error) {
-	record, err := s.documentSession(req.ThreadId, req.TurnId)
+	record, err := s.artifactSession(req.ThreadId, req.TurnId)
 	if err != nil {
 		return wire.StatusResponse{}, err
 	}

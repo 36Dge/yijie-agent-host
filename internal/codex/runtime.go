@@ -64,6 +64,7 @@ type Config struct {
 	ManagedReasoningProfile        ManagedReasoningProfile
 	DynamicToolsEnabled            bool
 	HostImagesEnabled              bool
+	BuiltinMediaEnabled            bool
 	NativeToolsEnabled             bool
 	DocumentRuntimeEnabled         bool
 	InteractionToolsEnabled        bool
@@ -133,6 +134,9 @@ func (c Config) validate() error {
 	}
 	if c.HostImagesEnabled && (!c.KimiK31Candidate || !c.RuntimePermissionsEnabled || c.DynamicToolsEnabled) {
 		return errors.New("Host image generation requires the managed stable candidate")
+	}
+	if c.BuiltinMediaEnabled && (!c.NativeToolsEnabled || c.HostImagesEnabled || c.DynamicToolsEnabled) {
+		return errors.New("builtin MCP images require native tools with the legacy image producers disabled")
 	}
 	if c.KimiK31Candidate && (!c.ChatModelsEnabled || c.DynamicToolsEnabled) {
 		return errors.New("Kimi K3.1 candidate requires managed models; independent dynamic image generation is not enabled")
@@ -228,6 +232,8 @@ type Status struct {
 type Manager struct {
 	artifactMCPURL      string
 	artifactMCPToken    string
+	mediaMCPURL         string
+	mediaMCPToken       string
 	market              marketRuntimeState
 	permissionCallbacks runtimeApprovalCallbacks
 	userInputs          userInputCallbacks
@@ -507,6 +513,13 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
 		}
 	}
+	if providerErr == nil && m.config.BuiltinMediaEnabled {
+		var extra []string
+		extra, providerErr = mediaNativeLayerArguments()
+		if providerErr == nil {
+			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
+		}
+	}
 
 	if providerErr == nil && m.config.KimiK31Candidate {
 		var extra []string
@@ -613,7 +626,7 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 			return errors.Join(errors.New("native configuration unavailable"), m.abortStartup("native_config_unavailable"))
 		}
 		if m.MarketEnabled() {
-			if err := validateMarketEffectiveIsolationForTools(effective.Config, m.config.NativeToolsEnabled, m.config.DocumentRuntimeEnabled); err != nil {
+			if err := validateMarketEffectiveIsolationForTools(effective.Config, m.config.NativeToolsEnabled, m.config.DocumentRuntimeEnabled, m.config.BuiltinMediaEnabled); err != nil {
 				return errors.Join(err, m.abortStartup("market_isolation_mismatch"))
 			}
 		}
@@ -621,6 +634,12 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 			if err := validateInteractionToolsEffectiveConfig(effective.Config); err != nil {
 				return errors.Join(err, m.abortStartup("interaction_config_mismatch"))
 			}
+		}
+	}
+
+	if m.config.BuiltinMediaEnabled {
+		if err := m.disableLegacySystemImageSkill(requestCtx, client); err != nil {
+			return errors.Join(err, m.abortStartup("media_skill_config_unavailable"))
 		}
 	}
 
@@ -851,6 +870,9 @@ func (m *Manager) startProcess() (io.WriteCloser, io.ReadCloser, *exec.Cmd, *tai
 	}
 	if m.artifactMCPToken != "" {
 		cmd.Env = append(cmd.Env, ArtifactMCPTokenEnv+"="+m.artifactMCPToken)
+	}
+	if m.mediaMCPToken != "" {
+		cmd.Env = append(cmd.Env, MediaMCPTokenEnv+"="+m.mediaMCPToken)
 	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -1163,6 +1185,7 @@ func runtimeEnvironment(
 	current = marketbroker.ScrubRuntimeCapability(current)
 	blocked := map[string]struct{}{
 		ArtifactMCPTokenEnv:    {},
+		MediaMCPTokenEnv:       {},
 		"OPENAI_API_KEY":       {},
 		"CODEX_API_KEY":        {},
 		"CODEX_ACCESS_TOKEN":   {},

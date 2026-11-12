@@ -28,6 +28,7 @@ mod document_wire {
     include!("document_types.gen.rs");
 }
 type Startup = document_wire::AdapterStartup;
+mod media;
 #[derive(Clone)]
 struct Gateway {
     config: Arc<Startup>,
@@ -52,7 +53,7 @@ impl ServerHandler for Gateway {
         .map_err(|_| unavailable())?;
         let tool=Tool::new("publish_artifact","将本轮工作区中已生成的 HTML、SVG、MP4 或文件登记为易界聊天产物，以便内置预览和保存。只接受工作区相对路径；不能用于读取任意磁盘文件。先生成文件，再登记；返回 staged 表示宿主接收，界面持久化独立完成。",Arc::new(source["definitions"]["PublishInput"].as_object().ok_or_else(unavailable)?.clone())).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).idempotent(true).open_world(false));
         let mut tools = vec![tool];
-        if self.config.document_runtime_enabled.unwrap_or(false) {
+        {
             let schema: serde_json::Value = serde_json::from_str(include_str!(
                 "../../api/schemas/document-runtime-v1.schema.json"
             ))
@@ -69,6 +70,11 @@ impl ServerHandler for Gateway {
                     "查询当前会话产物在本Host代际的交付事实。只有committed表示已收到Native提交ACK；staged仅暂存，unknown不能推断失败或重放生成。",
                 ),
             ] {
+                if name == "load_document_environment"
+                    && !self.config.document_runtime_enabled.unwrap_or(false)
+                {
+                    continue;
+                }
                 tools.push(
                     Tool::new(
                         name,
@@ -161,7 +167,9 @@ impl Gateway {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        if !self.config.document_runtime_enabled.unwrap_or(false) {
+        if request.name == "load_document_environment"
+            && !self.config.document_runtime_enabled.unwrap_or(false)
+        {
             return Err(unavailable());
         }
         let thread = context
@@ -287,9 +295,24 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     {
         return Err("local authority required".into());
     }
+    let media_capability = match &config.media {
+        None => None,
+        Some(media)
+            if media.capability.len() == 64
+                && media.host_token.len() == 64
+                && media.capability != media.host_token
+                && media.capability != config.capability
+                && media.host_token != config.host_token =>
+        {
+            Some(Arc::new(media.capability.clone()))
+        }
+        _ => return Err("separate media authority required".into()),
+    };
     let capability = Arc::new(config.capability.clone());
+    let config = Arc::new(config);
+    let media_gateway = media::MediaGateway::new(config.clone())?;
     let gateway = Gateway {
-        config: Arc::new(config),
+        config,
         client: reqwest::Client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
@@ -306,9 +329,23 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .with_cancellation_token(shutdown.clone())
             .with_allowed_hosts([addr.to_string()]),
     );
-    let router = Router::new()
+    let mut router = Router::new()
         .route_service("/mcp", service)
         .layer(middleware::from_fn_with_state(capability, authorize));
+    if let Some(capability) = media_capability {
+        let service = StreamableHttpService::new(
+            move || Ok(media_gateway.clone()),
+            Arc::new(LocalSessionManager::default()),
+            StreamableHttpServerConfig::default()
+                .with_cancellation_token(shutdown.clone())
+                .with_allowed_hosts([addr.to_string()]),
+        );
+        router = router.merge(
+            Router::new()
+                .route_service("/media/mcp", service)
+                .layer(middleware::from_fn_with_state(capability, authorize)),
+        );
+    }
     println!("http://{addr}/mcp");
     let stop = shutdown.clone();
     let server = tokio::spawn(async move {

@@ -57,6 +57,7 @@ type Config struct {
 	ArtifactSynthetic              bool
 	ArtifactManifest               string
 	ImageGenerationEnabled         bool
+	MediaBridgeToken               string
 	InstanceNonce                  string
 	FEAT126TestParentPID           int
 	FEAT126TestRunID               string
@@ -224,10 +225,10 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if err != nil {
 		return Config{}, err
 	}
-	if hostImages && (environment != "local" || os.Getenv("YIJIE_LOCAL_PROFILE") != "demo_fast" || !artifactV3 || !multimodalV2 || runtimeConfig.FakeResponses.Enabled || syntheticArtifact) {
-		return Config{}, errors.New("managed image generation requires the local media profile")
+	if hostImages {
+		return Config{}, errors.New("FEAT-168 native image entry is retired; builtin images use the application MCP")
 	}
-	runtimeConfig.HostImagesEnabled = hostImages
+	runtimeConfig.HostImagesEnabled = false
 	nativeTools, err := exactBoolEnv("YIJIE_FEAT169_NATIVE_TOOLS")
 	if err != nil {
 		return Config{}, err
@@ -236,6 +237,7 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		return Config{}, errors.New("native tools require the local managed profile")
 	}
 	runtimeConfig.NativeToolsEnabled = nativeTools
+	runtimeConfig.BuiltinMediaEnabled = nativeTools && artifactV3 && multimodalV2 && !syntheticArtifact && os.Getenv("YIJIE_ARTIFACT_MEDIA_ENABLED") == "true"
 	documentRuntime, err := exactBoolEnv("YIJIE_FEAT171_DOCUMENT_RUNTIME")
 	if err != nil {
 		return Config{}, err
@@ -407,7 +409,7 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		ArtifactMediaEnabled:           artifactV3 && os.Getenv("YIJIE_ARTIFACT_MEDIA_ENABLED") == "true" && os.Getenv("YIJIE_ENV") == "local" && os.Getenv("YIJIE_LOCAL_PROFILE") == "demo_fast",
 		ArtifactSynthetic:              syntheticArtifact,
 		ArtifactManifest:               artifactManifest,
-		ImageGenerationEnabled:         hostImages,
+		ImageGenerationEnabled:         runtimeConfig.BuiltinMediaEnabled,
 		InstanceNonce:                  instanceNonce,
 		FEAT126TestParentPID:           testParentPID,
 		FEAT126TestRunID:               fakeProfile.RunID,
@@ -924,11 +926,15 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 		if config.ArtifactMediaEnabled {
 			if config.Runtime.DocumentRuntimeEnabled {
 				mux.Handle("POST /internal/document-runtime/v1/environment", handler.authorize(http.HandlerFunc(handler.documentEnvironment)))
-				mux.Handle("POST /internal/document-runtime/v1/status", handler.authorize(http.HandlerFunc(handler.documentArtifactStatus)))
 			}
+			mux.Handle("POST /internal/document-runtime/v1/status", handler.authorize(http.HandlerFunc(handler.documentArtifactStatus)))
 			mux.Handle("GET /v9/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.mediaEvents)))
 			mux.Handle("GET /v12/agent-sessions/{agent_session_id}/events", handler.authorize(http.HandlerFunc(handler.fileMediaEvents)))
 			mux.Handle("POST /internal/artifact-media/v1/publish", handler.authorize(http.HandlerFunc(handler.publishArtifact)))
+		}
+		if config.ImageGenerationEnabled && len(config.MediaBridgeToken) == 64 {
+			mediaHandler := &sessionHandler{service: sessions, apiToken: config.MediaBridgeToken}
+			mux.Handle("POST /internal/media-generation/v1/generate-image", mediaHandler.authorize(http.HandlerFunc(mediaHandler.generateImage)))
 		}
 		if config.ArtifactV3Enabled {
 			if _, ok := sessions.(artifactSessionService); ok {

@@ -1038,7 +1038,6 @@ func (s *Service) processNotification(method string, params json.RawMessage) (re
 		}
 		s.resolveApprovalForTurn(record, notification.Turn.ID)
 
-		s.clearImageTurn(notification.ThreadID)
 		status := normalizeTurnStatus(notification.Turn.Status)
 		payload := EventPayload{Status: status}
 		var detail turnError
@@ -1254,6 +1253,7 @@ func (s *Service) completeTerminal(record Record, terminal syntheticTerminal) er
 	if err != nil {
 		return err
 	}
+	s.clearImageTurnForID(record.CodexThreadID, terminal.turnID)
 	defer s.clearMediaRegistrations(record.AgentSessionID + "/" + terminal.turnID + "/")
 	if len(terminal.nativeParams) > 0 {
 		s.publishNativeNotification(RuntimeNotificationTurnCompleted, terminal.nativeParams)

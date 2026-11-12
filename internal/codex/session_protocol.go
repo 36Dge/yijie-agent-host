@@ -604,6 +604,10 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		params.Config["yijie_host_images"] = ImageRoute(ctx) == "builtin" && !isScheduledDraft(ctx)
 	}
 	params.Config = m.artifactThreadConfig(params.Config)
+	params.Config, err = m.mediaThreadConfig(ctx, params.Config, selected.Provider)
+	if err != nil {
+		return ThreadInfo{}, err
+	}
 	params.Config = m.executionProgressConfig(ctx, params.Config)
 	params.Config, err = m.toolSearchThreadConfig(params.Config)
 	if err != nil {
@@ -697,6 +701,10 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 		params.Config["yijie_host_images"] = ImageRoute(ctx) == "builtin" && !isScheduledDraft(ctx)
 	}
 	params.Config = m.artifactThreadConfig(params.Config)
+	params.Config, err = m.mediaThreadConfig(ctx, params.Config, selected.Provider)
+	if err != nil {
+		return ThreadInfo{}, err
+	}
 	params.Config = m.executionProgressConfig(ctx, params.Config)
 	params.Config, err = m.toolSearchThreadConfig(params.Config)
 	if err != nil {

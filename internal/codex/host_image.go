@@ -9,13 +9,13 @@ import (
 )
 
 func (m *Manager) imageToolInstructions(ctx context.Context) string {
-	if !m.config.HostImagesEnabled || isScheduledDraft(ctx) {
+	if !m.config.BuiltinMediaEnabled || isScheduledDraft(ctx) {
 		return ""
 	}
 	if ImageRoute(ctx) != "builtin" {
-		return "\nFor an image creation request, use only the bound expert's configured image service under its normal approval policy. If unavailable, report that state."
+		return "\nYiJie images: the explicitly selected expert owns this conversation's image capability. Use only its configured MCP tools. If the expert, tool, credential or required capability is unavailable, or execution fails or has an unknown outcome, report that status and retain the expert selection. Never switch to YiJie's builtin image generation, another provider, or an image CLI. Do not ask for provider keys."
 	}
-	return "\nYiJie image generation: when the user asks to create an image, directly call the native function generate_image as your first tool action. Its schema is the complete workflow for this deployment; skip the OpenAI imagegen skill files, command-line utilities, scripts and tool searches. Set use_current_reference=true only when the user wants to use their single attached reference in this turn. Do not call it for image analysis. The desktop displays the published image. If the call fails, report the failure and stop. A new paid attempt requires a new user request."
+	return "\nYiJie images: use yijie_media.generate_image for an explicit image creation request, discovering it with native tool search when its definition is not visible. Do not use an image CLI or ask for provider keys. Set use_current_reference only for the user's single current-turn reference, never for image analysis. A staged image is not yet committed; use the existing get_artifact_status to check delivery. Failed or unknown results do not authorize automatic resubmission."
 }
 
 type HostImageHandler func(context.Context, wire.HostImageGenerateParams) bool

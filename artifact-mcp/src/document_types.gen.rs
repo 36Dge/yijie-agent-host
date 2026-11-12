@@ -99,6 +99,8 @@ pub struct AdapterStartup {
     pub capability: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub document_runtime_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media: Option<MediaAdapterCapability>,
 }
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -110,4 +112,10 @@ pub struct InputReceipt {
     pub size_bytes: u64,
     pub format: String,
     pub expires_at: u64,
+}
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MediaAdapterCapability {
+    pub capability: String,
+    pub host_token: String,
 }

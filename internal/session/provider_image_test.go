@@ -13,6 +13,7 @@ import (
 
 	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	media "github.com/36Dge/yijie-agent-host/internal/contracts/mediageneration"
 	"github.com/36Dge/yijie-agent-host/internal/imagegen"
 )
 
@@ -44,8 +45,8 @@ func TestProviderImagePublishesTextAndSingleCharacterReferenceArtifacts(t *testi
 				request = received
 				return imagegen.Result{Bytes: pngBytes, MediaType: "image/png", Width: 1, Height: 1}, nil
 			}), test.references)
-			result := service.HandleDynamicToolCall(context.Background(), providerImageCall(t, test.arguments))
-			if !result.Success || request.ReferenceDataURL != test.wantRef {
+			result := service.GenerateImage(context.Background(), providerMediaCall(test.arguments))
+			if result.Code != media.GenerateCodeOk || request.ReferenceDataURL != test.wantRef {
 				t.Fatalf("unexpected provider result=%+v request=%+v", result, request)
 			}
 			_, replay, _, cancel, err := service.SubscribeEventsV3(testSessionID, "", 0)
@@ -79,19 +80,19 @@ func TestProviderImageAllowsOnlyOneConcurrentPaidCallAndInterruptCancelsIt(t *te
 		<-ctx.Done()
 		return imagegen.Result{}, &imagegen.ProviderError{Code: imagegen.ErrorRequestCanceled}
 	}), nil)
-	call := providerImageCall(t, map[string]any{"prompt": "one image", "mode": imagegen.ModeTextToImage})
-	first := make(chan codex.DynamicToolResult, 1)
-	go func() { first <- service.HandleDynamicToolCall(context.Background(), call) }()
+	call := providerMediaCall(map[string]any{"prompt": "one image", "mode": imagegen.ModeTextToImage})
+	first := make(chan media.GenerateResult, 1)
+	go func() { first <- service.GenerateImage(context.Background(), call) }()
 	<-entered
-	duplicate := service.HandleDynamicToolCall(context.Background(), call)
-	if duplicate.Success || !strings.Contains(duplicate.Text, "protocol_error") {
+	duplicate := service.GenerateImage(context.Background(), call)
+	if duplicate.Code != media.GenerateCodeStatePending {
 		t.Fatalf("duplicate provider call was not rejected: %+v", duplicate)
 	}
 	if err := service.InterruptTurn(context.Background(), testSessionID, testTurnID, TraceContext{}); err != nil {
 		t.Fatal(err)
 	}
 	result := <-first
-	if result.Success || !strings.Contains(result.Text, "turn_interrupted") {
+	if result.Code != media.GenerateCodeCancelled {
 		t.Fatalf("interrupted provider call returned %+v", result)
 	}
 	callsMu.Lock()
@@ -105,10 +106,10 @@ func TestProviderImageFailureIsContentFreeAndPublishesStableFailure(t *testing.T
 	service, _ := newProviderImageService(t, imageGeneratorFunc(func(context.Context, imagegen.Request) (imagegen.Result, error) {
 		return imagegen.Result{}, errors.New("PROVIDER-SECRET-CANARY")
 	}), nil)
-	result := service.HandleDynamicToolCall(context.Background(), providerImageCall(t, map[string]any{
+	result := service.GenerateImage(context.Background(), providerMediaCall(map[string]any{
 		"prompt": "safe prompt", "mode": imagegen.ModeTextToImage,
 	}))
-	if result.Success || strings.Contains(result.Text, "CANARY") {
+	if result.Code != media.GenerateCodeGenerationFailed {
 		t.Fatalf("raw provider failure escaped: %+v", result)
 	}
 	_, replay, _, cancel, err := service.SubscribeEventsV3(testSessionID, "", 0)
@@ -149,7 +150,7 @@ func newProviderImageService(t *testing.T, generator imagegen.Generator, referen
 	t.Cleanup(func() { _ = spool.Close() })
 	service := NewService(&fakeRuntime{}, store, NewEventHub(16, 8), nil,
 		WithV3Artifacts(NewEventHubVersion(EventSchemaVersionV3, 32, 8), spool, false),
-		WithImageGenerator(generator),
+		WithImageGenerator(generator), WithArtifactMedia(),
 	)
 	if err := service.beginImageTurn(context.Background(), record, references); err != nil {
 		t.Fatal(err)
@@ -173,4 +174,9 @@ func providerImageCall(t *testing.T, arguments map[string]any) codex.DynamicTool
 		ThreadID: testThreadID, TurnID: testTurnID, CallID: "provider-call-1",
 		Tool: codex.DynamicToolGenerateImage, Arguments: raw,
 	}
+}
+
+func providerMediaCall(arguments map[string]any) media.GenerateRequest {
+	prompt, _ := arguments["prompt"].(string)
+	return media.GenerateRequest{ThreadId: testThreadID, TurnId: testTurnID, Input: media.GenerateInput{Prompt: prompt, UseCurrentReference: arguments["mode"] == imagegen.ModeSubject}}
 }

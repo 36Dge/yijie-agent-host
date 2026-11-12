@@ -24,6 +24,9 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 2 && (os.Args[1] == "--check-media-credential" || os.Args[1] == "--authorize-media-credential") {
+		os.Exit(checkMediaCredential(os.Args[1] == "--authorize-media-credential"))
+	}
 	logOutput := os.Stdout
 	marketMode := os.Getenv("YIJIE_MARKET_CONNECTORS_ENABLED") == "true"
 	if marketMode {
@@ -177,11 +180,6 @@ func run(logger *slog.Logger) error {
 		if config.Runtime.DocumentRuntimeEnabled {
 			sessionService.SetDocumentEnvironment(documents.New(config.DocumentBundleRoot, config.DocumentBundleSHA256, os.Getenv("YIJIE_DOCUMENT_STATE_ROOT")))
 		}
-		if config.ImageGenerationEnabled {
-			if err := runtime.SetHostImageHandler(sessionService.HandleHostImage); err != nil {
-				return err
-			}
-		}
 		if config.FEAT137CommandApprovalEnabled {
 			if err := runtime.SetCommandApprovalHandler(sessionService); err != nil {
 				return err
@@ -215,13 +213,23 @@ func run(logger *slog.Logger) error {
 		if e != nil {
 			return e
 		}
-		adapter, e := artifact.StartAdapter(filepath.Join(filepath.Dir(executable), "yijie-artifact-mcp"), "http://127.0.0.1:"+config.Port, apiToken, config.Runtime.DocumentRuntimeEnabled)
+		adapter, e := artifact.StartAdapter(filepath.Join(filepath.Dir(executable), "yijie-artifact-mcp"), "http://127.0.0.1:"+config.Port, apiToken, config.Runtime.DocumentRuntimeEnabled, config.ImageGenerationEnabled)
 		if e != nil {
-			return e
-		}
-		defer func() { _ = adapter.Stop(context.Background()) }()
-		if e = runtime.SetArtifactMCP(adapter.URL, adapter.Token); e != nil {
-			return e
+			if !config.ImageGenerationEnabled {
+				return e
+			}
+			logger.Warn("application MCP tools unavailable", "failure_code", "application_mcp_unavailable")
+		} else {
+			defer func() { _ = adapter.Stop(context.Background()) }()
+			if e = runtime.SetArtifactMCP(adapter.URL, adapter.Token); e != nil {
+				return e
+			}
+			if config.ImageGenerationEnabled {
+				config.MediaBridgeToken = adapter.MediaHostToken
+				if e = runtime.SetMediaMCP(adapter.MediaURL, adapter.MediaToken); e != nil {
+					return e
+				}
+			}
 		}
 	}
 	server := &http.Server{

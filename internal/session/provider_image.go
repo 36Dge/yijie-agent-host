@@ -1,23 +1,14 @@
 package session
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"strings"
-	"unicode/utf8"
 
-	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	media "github.com/36Dge/yijie-agent-host/internal/contracts/mediageneration"
 	hostimage "github.com/36Dge/yijie-agent-host/internal/contracts/runtimehostimages"
 	"github.com/36Dge/yijie-agent-host/internal/imagegen"
 )
-
-const maxImageToolArguments = 8 << 10
 
 type imageReference struct {
 	mediaType string
@@ -25,19 +16,20 @@ type imageReference struct {
 }
 
 type imageTurn struct {
-	route      string
-	sessionID  string
-	turnID     string
-	references []imageReference
-	context    context.Context
-	cancel     context.CancelFunc
-	called     bool
-}
-
-type imageToolArguments struct {
-	Prompt      string `json:"prompt"`
-	Mode        string `json:"mode"`
-	AspectRatio string `json:"aspect_ratio,omitempty"`
+	route            string
+	sessionID        string
+	turnID           string
+	bound            chan struct{}
+	references       []imageReference
+	context          context.Context
+	cancel           context.CancelFunc
+	called           bool
+	inputDigest      string
+	result           *media.GenerateResult
+	stopped          bool
+	artifactID       string
+	artifactItemID   string
+	artifactFinished bool
 }
 
 func imageReferences(blocks []TurnContentBlock) []imageReference {
@@ -73,6 +65,7 @@ func (s *Service) beginImageTurn(ctx context.Context, record Record, references 
 		references: append([]imageReference(nil), references...),
 		context:    turnContext,
 		cancel:     cancel,
+		bound:      make(chan struct{}),
 	}
 	return nil
 }
@@ -90,204 +83,106 @@ func (s *Service) bindImageTurn(threadID, turnID string) error {
 	if turn.turnID != "" && turn.turnID != turnID {
 		return errors.New("image turn identity conflict")
 	}
+	// The native terminal can beat the turn/start response. Store.BindTurn
+	// already preserves that terminal; mirror it instead of retaining a turn
+	// which can never dispatch or release its reference image.
+	record, err := s.store.Get(turn.sessionID)
+	if err != nil {
+		return err
+	}
+	if record.ActiveTurnID == "" && record.LastTurnID == turnID && record.LastTurnStatus != "" {
+		s.stopImageTurnLocked(turn)
+		delete(s.imageTurns, threadID)
+		return nil
+	}
+	if turn.turnID == "" {
+		close(turn.bound)
+	}
 	turn.turnID = turnID
 	return nil
 }
 
+func (s *Service) clearImageTurnForID(threadID, turnID string) {
+	s.imageMu.Lock()
+	defer s.imageMu.Unlock()
+	if turn := s.imageTurns[threadID]; turn != nil && turn.turnID == turnID {
+		s.stopImageTurnLocked(turn)
+		delete(s.imageTurns, threadID)
+	}
+}
+
 func (s *Service) clearImageTurn(threadID string) {
 	s.imageMu.Lock()
-	turn := s.imageTurns[threadID]
-	delete(s.imageTurns, threadID)
-	s.imageMu.Unlock()
-	if turn != nil {
-		turn.cancel()
-		for index := range turn.references {
-			turn.references[index].dataURL = ""
-		}
+	defer s.imageMu.Unlock()
+	if turn := s.imageTurns[threadID]; turn != nil {
+		s.stopImageTurnLocked(turn)
 	}
+	delete(s.imageTurns, threadID)
 }
 
 func (s *Service) clearImageSession(sessionID string) {
 	s.imageMu.Lock()
-	turns := make([]*imageTurn, 0, 1)
+	defer s.imageMu.Unlock()
 	for threadID, turn := range s.imageTurns {
 		if turn.sessionID == sessionID {
-			turns = append(turns, turn)
+			s.stopImageTurnLocked(turn)
 			delete(s.imageTurns, threadID)
-		}
-	}
-	s.imageMu.Unlock()
-	for _, turn := range turns {
-		turn.cancel()
-		for index := range turn.references {
-			turn.references[index].dataURL = ""
 		}
 	}
 }
 
 func (s *Service) cancelImageTurn(threadID, turnID string) {
 	s.imageMu.Lock()
-	turn := s.imageTurns[threadID]
-	if turn != nil && (turn.turnID == "" || turn.turnID == turnID) {
-		turn.cancel()
-	}
-	s.imageMu.Unlock()
-}
-
-// HandleDynamicToolCall is the closed Host-owned implementation of the
-// Runtime item/tool/call reverse request. Provider content never returns to
-// Runtime; only a short, stable outcome string does.
-func (s *Service) HandleDynamicToolCall(callContext context.Context, call codex.DynamicToolCall) codex.DynamicToolResult {
-	if s.imageGenerator == nil || call.Tool != codex.DynamicToolGenerateImage ||
-		requireUUID("codex_thread_id", call.ThreadID) != nil || requireUUID("turn_id", call.TurnID) != nil ||
-		call.CallID == "" || len(call.CallID) > 256 {
-		return imageToolFailure("protocol_error")
-	}
-
-	arguments, err := decodeImageToolArguments(call.Arguments)
-	if err != nil {
-		return imageToolFailure("generation_failed")
-	}
-	return s.generateTurnImage(callContext, call, arguments)
-}
-
-func (s *Service) HandleHostImage(ctx context.Context, call hostimage.HostImageGenerateParams) bool {
-	mode := imagegen.ModeTextToImage
-	if call.UseCurrentReference {
-		mode = imagegen.ModeSubject
-	}
-	if requireUUID("codex_thread_id", call.ThreadID) != nil || requireUUID("turn_id", call.TurnID) != nil ||
-		call.CallID == "" || len(call.CallID) > 256 || strings.TrimSpace(call.Prompt) == "" || utf8.RuneCountInString(call.Prompt) > 1500 {
-		return false
-	}
-	return s.generateTurnImage(ctx, codex.DynamicToolCall{ThreadID: call.ThreadID, TurnID: call.TurnID, CallID: call.CallID}, imageToolArguments{Prompt: call.Prompt, Mode: mode}).Success
-}
-
-func (s *Service) generateTurnImage(callContext context.Context, call codex.DynamicToolCall, arguments imageToolArguments) codex.DynamicToolResult {
-	if s.imageGenerator == nil {
-		return imageToolFailure("resource_unavailable")
-	}
-	s.imageMu.Lock()
-	turn := s.imageTurns[call.ThreadID]
-	if turn == nil || turn.called || turn.route != "builtin" || (turn.turnID != "" && turn.turnID != call.TurnID) {
-		s.imageMu.Unlock()
-		return imageToolFailure("protocol_error")
-	}
-	turn.turnID = call.TurnID
-	turn.called = true
-	sessionID := turn.sessionID
-	references := append([]imageReference(nil), turn.references...)
-	turnContext := turn.context
-	s.imageMu.Unlock()
-
-	record, err := s.store.GetByThread(call.ThreadID)
-	if err != nil || record.AgentSessionID != sessionID || record.ActiveTurnID != call.TurnID {
-		return imageToolFailure("protocol_error")
-	}
-	if len(references) > 1 {
-		return imageToolFailure("generation_failed")
-	}
-	request := imagegen.Request{
-		Prompt: arguments.Prompt, Mode: arguments.Mode, AspectRatio: arguments.AspectRatio,
-	}
-	if arguments.Mode == imagegen.ModeSubject {
-		if len(references) != 1 || (references[0].mediaType != "image/png" && references[0].mediaType != "image/jpeg") {
-			return imageToolFailure("generation_failed")
-		}
-		request.ReferenceDataURL = references[0].dataURL
-	}
-
-	artifactID, err := newUUID()
-	if err != nil {
-		return imageToolFailure("resource_unavailable")
-	}
-	itemID := "provider-image-" + artifactID
-	ordinal := 0
-	displayName := imagegen.DisplayName("image/png")
-	if err := s.publishV3(record, Event{
-		TurnID: call.TurnID, ItemID: itemID, EventType: EventItemArtifactStarted,
-		Payload: EventPayload{
-			ArtifactID: artifactID, Kind: "image", Provenance: "provider", Status: "in_progress",
-			Ordinal: &ordinal, DisplayName: displayName,
-		},
-	}); err != nil {
-		return imageToolFailure("resource_unavailable")
-	}
-	providerContext, cancel := context.WithCancel(turnContext)
-	stop := context.AfterFunc(callContext, cancel)
-	result, generateErr := s.imageGenerator.Generate(providerContext, request)
-	stop()
-	if generateErr == nil && (providerContext.Err() != nil || callContext.Err() != nil) {
-		generateErr = &imagegen.ProviderError{Code: imagegen.ErrorRequestCanceled}
-	}
-	cancel()
-	if generateErr != nil {
-		failureCode := providerFailureCode(generateErr)
-		retryable := imagegen.Retryable(generateErr)
-		_ = s.publishProviderImageFailure(record, call.TurnID, itemID, artifactID, ordinal, failureCode, retryable, imagegen.Diagnostic(generateErr))
-		return imageToolFailure(failureCode)
-	}
-	// Linearize publishing against turn interruption/removal. The paid HTTP
-	// request and image decoding above do not hold this lock.
-	s.imageMu.Lock()
 	defer s.imageMu.Unlock()
-	if s.imageTurns[call.ThreadID] != turn || turnContext.Err() != nil || callContext.Err() != nil {
-		_ = s.publishProviderImageFailure(record, call.TurnID, itemID, artifactID, ordinal, "turn_interrupted", false, "Image delivery was interrupted.")
-		return imageToolFailure("turn_interrupted")
+	turn := s.imageTurns[threadID]
+	if turn == nil {
+		return
 	}
-	displayName = imagegen.DisplayName(result.MediaType)
-	if err := s.artifacts.Put(artifact.Manifest{
-		SessionID: sessionID, ArtifactID: artifactID, Kind: "image", DisplayName: displayName,
-		MediaType: result.MediaType, Content: result.Bytes,
-	}); err != nil {
-		failureCode := artifactFailureCode(err)
-		retryable := failureCode == "resource_unavailable"
-		_ = s.publishProviderImageFailure(record, call.TurnID, itemID, artifactID, ordinal, failureCode, retryable, "Local image staging failed.")
-		return imageToolFailure(failureCode)
+	if turn.turnID == "" {
+		// InterruptTurn may have read the old active turn before a terminal
+		// and a new submission. An unbound image turn is not a wildcard.
+		record, err := s.store.Get(turn.sessionID)
+		if err != nil || record.ActiveTurnID != turnID {
+			return
+		}
+	} else if turn.turnID != turnID {
+		return
 	}
-
-	digest := sha256.Sum256(result.Bytes)
-	size := int64(len(result.Bytes))
-	baseHref := fmt.Sprintf("/v3/agent-sessions/%s/artifacts/%s", sessionID, artifactID)
-	if err := s.publishV3(record, Event{
-		TurnID: call.TurnID, ItemID: itemID, EventType: EventItemArtifactCompleted,
-		Payload: EventPayload{
-			ArtifactID: artifactID, Kind: "image", Provenance: "provider", Status: "ready",
-			Ordinal: &ordinal, DisplayName: displayName, MediaType: result.MediaType,
-			SizeBytes: &size, SHA256: fmt.Sprintf("%x", digest), ContentHref: baseHref + "/content",
-		},
-	}); err != nil {
-		return imageToolFailure("resource_unavailable")
-	}
-	return codex.DynamicToolResult{Success: true, Text: "Image generation succeeded and the image was published in the conversation."}
+	s.stopImageTurnLocked(turn)
 }
 
-func decodeImageToolArguments(raw json.RawMessage) (imageToolArguments, error) {
-	if len(raw) == 0 || len(raw) > maxImageToolArguments {
-		return imageToolArguments{}, errors.New("invalid image tool arguments")
+// Close the published Artifact immediately when its owning turn ends. A slow
+// credential/provider callback must not keep the UI in progress or publish a
+// second terminal after cancellation. This reuses the existing failure event.
+func (s *Service) stopImageTurnLocked(turn *imageTurn) {
+	turn.stopped = true
+	turn.cancel()
+	for index := range turn.references {
+		turn.references[index].dataURL = ""
 	}
-	var arguments imageToolArguments
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&arguments); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
-		return imageToolArguments{}, errors.New("invalid image tool arguments")
+	if turn.artifactID != "" && !turn.artifactFinished {
+		if record, err := s.store.Get(turn.sessionID); err == nil {
+			s.finishImageFailureLocked(record, turn, "turn_interrupted", "Image delivery ended with the turn.")
+		} else {
+			turn.artifactFinished = true
+		}
 	}
-	if !utf8.ValidString(arguments.Prompt) || strings.TrimSpace(arguments.Prompt) == "" ||
-		utf8.RuneCountInString(arguments.Prompt) > 1500 || strings.ContainsRune(arguments.Prompt, '\x00') {
-		return imageToolArguments{}, errors.New("invalid image prompt")
+}
+
+func (s *Service) finishImageFailureLocked(record Record, turn *imageTurn, code, message string) {
+	if turn.artifactID == "" || turn.artifactFinished {
+		return
 	}
-	if arguments.Mode != imagegen.ModeTextToImage && arguments.Mode != imagegen.ModeSubject {
-		return imageToolArguments{}, errors.New("invalid image mode")
-	}
-	if arguments.AspectRatio == "" {
-		arguments.AspectRatio = "1:1"
-	}
-	switch arguments.AspectRatio {
-	case "1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9":
-	default:
-		return imageToolArguments{}, errors.New("invalid image aspect ratio")
-	}
-	return arguments, nil
+	turn.artifactFinished = true
+	_ = s.publishProviderImageFailure(record, turn.turnID, turn.artifactItemID, turn.artifactID, 0, code, false, message)
+}
+
+// Retired entry points cannot dispatch a provider, including direct internal callers.
+func (s *Service) HandleDynamicToolCall(context.Context, codex.DynamicToolCall) codex.DynamicToolResult {
+	return imageToolFailure("retired_image_entry")
+}
+func (s *Service) HandleHostImage(context.Context, hostimage.HostImageGenerateParams) bool {
+	return false
 }
 
 func (s *Service) publishProviderImageFailure(record Record, turnID, itemID, artifactID string, ordinal int, code string, retryable bool, message string) error {

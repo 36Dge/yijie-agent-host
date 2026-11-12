@@ -203,7 +203,7 @@ func (s *Store) Put(manifest Manifest) error {
 	}
 	content, err := s.writeSealed(directory, manifest.ArtifactID+".content.sealed", manifest.Content, manifest.MediaType, manifest.DisplayName)
 	if err != nil {
-		_ = os.RemoveAll(directory)
+		_ = os.Remove(directory) // only an empty directory belongs to this failed Put
 		return err
 	}
 	var poster *sealedResource
@@ -384,10 +384,15 @@ func (s *Store) writeSealed(directory, name string, plaintext []byte, mediaType,
 	encoded := append([]byte{1}, nonce...)
 	encoded = append(encoded, sealed...)
 	path := filepath.Join(directory, name)
-	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
 		return sealedResource{}, ErrUnavailable
 	}
-	if err := os.Chmod(path, 0o600); err != nil {
+	_, writeErr := file.Write(encoded)
+	modeErr := file.Chmod(0o600)
+	closeErr := file.Close()
+	if writeErr != nil || modeErr != nil || closeErr != nil {
+		// Only remove the file created by this call, including partial writes.
 		_ = os.Remove(path)
 		return sealedResource{}, ErrUnavailable
 	}

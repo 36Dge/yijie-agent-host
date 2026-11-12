@@ -9,7 +9,7 @@ import (
 
 	broker "github.com/36Dge/yijie-agent-host/internal/contracts/marketbrokercontrol"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
-	hostimage "github.com/36Dge/yijie-agent-host/internal/contracts/runtimehostimages"
+	hostimage "github.com/36Dge/yijie-agent-host/internal/contracts/mediageneration"
 	"github.com/google/uuid"
 )
 
@@ -119,7 +119,7 @@ func (m *Manager) handleMarketElicitation(ctx context.Context, request serverReq
 	if view.Validate() != nil || marketDecisionExpiry(view) <= time.Now().UnixMilli() {
 		return decline()
 	}
-	if m.config.HostImagesEnabled {
+	if m.config.BuiltinMediaEnabled {
 		create, err := authorizeImageMethod(view, state.prepared.ImageRoute)
 		if err != nil {
 			return decline()

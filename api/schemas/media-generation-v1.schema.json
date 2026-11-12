@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.yijie.ai/media-generation/v1",
+  "title": "BuiltinMediaGenerationV1",
+  "description": "FEAT-172 application-owned MCP image generation. Existing Runtime, provider and Artifact lifecycle; no public media service or generation job database.",
+  "$defs": {
+    "GenerateInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prompt",
+        "use_current_reference"
+      ],
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1500
+        },
+        "use_current_reference": {
+          "type": "boolean"
+        }
+      }
+    },
+    "GenerateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "thread_id",
+        "turn_id",
+        "input"
+      ],
+      "properties": {
+        "thread_id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36
+        },
+        "input": {
+          "$ref": "#/$defs/GenerateInput"
+        }
+      }
+    },
+    "GenerateStatus": {
+      "type": "string",
+      "enum": [
+        "staged",
+        "committed",
+        "blocked",
+        "failed",
+        "unknown"
+      ]
+    },
+    "GenerateCode": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "expert_required",
+        "state_pending",
+        "outcome_unknown",
+        "cancelled",
+        "service_unavailable",
+        "generation_failed",
+        "input_unsupported",
+        "operation_conflict",
+        "content_rejected"
+      ]
+    },
+    "NextAction": {
+      "type": "string",
+      "enum": [
+        "check_artifact",
+        "use_expert",
+        "report_failure"
+      ]
+    },
+    "GenerateResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "code",
+        "next_action",
+        "source"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/GenerateStatus"
+        },
+        "code": {
+          "$ref": "#/$defs/GenerateCode"
+        },
+        "next_action": {
+          "$ref": "#/$defs/NextAction"
+        },
+        "source": {
+          "type": "string",
+          "const": "builtin"
+        },
+        "artifact_id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "ok"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "artifact_id"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "staged",
+                  "committed"
+                ]
+              },
+              "next_action": {
+                "const": "check_artifact"
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "artifact_id"
+              ]
+            },
+            "properties": {
+              "status": {
+                "enum": [
+                  "blocked",
+                  "failed",
+                  "unknown"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "x-mcp": {
+    "server": "yijie_media",
+    "path": "/media/mcp",
+    "tool": "generate_image",
+    "description": "易界内置图片生成 / Seedream image generation. For conversations with no selected expert, generate one image explicitly requested by the user, optionally using their single current-turn reference. A selected expert never falls back to this tool, including unavailable, failed, unsupported or unknown outcomes. Do not generate for image analysis. A blocked/unknown result does not authorize retry or a different provider. Images use the desktop Artifact viewer; staged is not yet committed. Discover this tool through native tool search; do not use an image CLI or ask for provider keys.",
+    "input": "#/$defs/GenerateInput",
+    "output": "#/$defs/GenerateResult",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "openWorldHint": true,
+      "idempotentHint": false
+    },
+    "tool_timeout_seconds": 150,
+    "parallel_calls": false,
+    "approval_mode": "approve"
+  },
+  "x-private-http": {
+    "method": "POST",
+    "path": "/internal/media-generation/v1/generate-image",
+    "authentication": "Dedicated Host-owned media bridge bearer, never the Runtime MCP token",
+    "request": "#/$defs/GenerateRequest",
+    "response": "#/$defs/GenerateResult",
+    "max_request_bytes": 16384,
+    "max_response_bytes": 16384,
+    "binding_wait_milliseconds": 5000
+  },
+  "x-authority": {
+    "identity": "Gateway reads threadId and x-codex-turn-metadata.turn_id from native MCP metadata. Host validates its owned root operation and waits only for that prepared turn to receive the authoritative Runtime binding; timeout, cancellation or a different binding never dispatches a provider.",
+    "idempotency": "One builtin attempt per accepted root turn; route rejection does not reserve; identical input reuses the receipt, different input after reservation conflicts; unknown never permits automatic resubmission.",
+    "delivery": "Reuse Artifact store and Native commit ACK; use existing get_artifact_status, no new generation state service.",
+    "credentials": "Operator-provisioned application credential; non-interactive lookup, never model or end-user supplied.",
+    "runtime": "Existing fixed Runtime; yijie_host_images=false and features.image_generation=false. No dynamic image tool or host image reverse producer.",
+    "selection": "An explicitly selected expert excludes builtin generation. Unavailable resources, credentials, tools, unsupported input, failure and unknown outcomes preserve that selection and report status; only an explicit user change/removal of the expert can change routing.",
+    "terminal": "A terminal notification or delayed interruption can close only its matching image turn, using native persisted identity if binding is still pending. A published success is immutable: a later cancellation must not replace that receipt or publish a second terminal."
+  },
+  "x-expert-routes": [
+    {
+      "route": "linkfox-mannequin-v1",
+      "expertId": "linkfox-expert-aigc-imagegen-mannequin-to-model",
+      "version": "0.1.0",
+      "roleSha256": "042a9acb59429f68adccd0a925fa9d83ea8ba1890b2a1b3f23ecd9049703b80c",
+      "service": "linkfox",
+      "proxy": "proxy_call",
+      "method": "aigc/imageGenAsync"
+    }
+  ]
+}

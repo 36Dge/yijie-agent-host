@@ -31,6 +31,10 @@ type nativeToolsHarness struct {
 // Real canonical Runtime and real native executors, with a normal loopback
 // provider. No account credentials, supplier requests or substituted executable.
 func newNativeToolsHarness(t *testing.T, respond func(*nativeToolsHarness, map[string]any, int64) map[string]any, configure ...func(*Config)) *nativeToolsHarness {
+	return newNativeToolsHarnessWithSetup(t, respond, nil, configure...)
+}
+
+func newNativeToolsHarnessWithSetup(t *testing.T, respond func(*nativeToolsHarness, map[string]any, int64) map[string]any, setup func(*Manager), configure ...func(*Config)) *nativeToolsHarness {
 	t.Helper()
 	binary, manifest := integrationArtifactPaths(t)
 	root, err := os.MkdirTemp("", "feat169-native-")
@@ -117,6 +121,9 @@ func newNativeToolsHarness(t *testing.T, respond func(*nativeToolsHarness, map[s
 		apply(&cfg)
 	}
 	h.manager = NewManager(cfg, nil)
+	if setup != nil {
+		setup(h.manager)
+	}
 	if cfg.HostImagesEnabled {
 		if err := h.manager.SetHostImageHandler(func(context.Context, imagewire.HostImageGenerateParams) bool {
 			t.Error("unrequested image generation")

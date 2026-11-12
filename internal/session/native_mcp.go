@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	media "github.com/36Dge/yijie-agent-host/internal/contracts/mediageneration"
 	legacy "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversation"
 	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv6"
 )
@@ -64,6 +65,50 @@ func projectNativeMcp(wire nativeWireItem, out *native.NativeItem) {
 			}
 			display.ResultKind = native.Omitted
 		}
+		return
+	}
+	if wire.Server == "yijie_media" && wire.Tool == media.ToolName {
+		nativeOperationDisplay(out, "生成图片", "易界内置")
+		out.ArgumentsSummary = nativeString("生成一张图片")
+		if len(wire.Result) == 0 || string(wire.Result) == "null" {
+			return
+		}
+		var envelope struct {
+			Structured json.RawMessage `json:"structuredContent"`
+		}
+		var receipt media.GenerateResult
+		if json.Unmarshal(wire.Result, &envelope) != nil || json.Unmarshal(envelope.Structured, &receipt) != nil || receipt.Validate() != nil {
+			display.ResultKind = native.Omitted
+			out.ResultSummary = nativeString("生图结果暂未确认")
+			return
+		}
+		label := "生图服务暂不可用"
+		switch receipt.Code {
+		case media.GenerateCodeOk:
+			label = "图片已生成，正在确认交付"
+			if receipt.Status == media.GenerateStatusCommitted {
+				label = "图片已交付"
+			}
+		case media.GenerateCodeExpertRequired:
+			label = "已选专家；不会调用内置生图"
+		case media.GenerateCodeStatePending:
+			label = "图片生成正在处理中"
+		case media.GenerateCodeOutcomeUnknown:
+			label = "生成结果暂未确认，未重复提交"
+		case media.GenerateCodeCancelled:
+			label = "图片生成已停止"
+		case media.GenerateCodeInputUnsupported:
+			label = "当前图片输入不受支持"
+		case media.GenerateCodeContentRejected:
+			label = "生成内容未获接受"
+		case media.GenerateCodeGenerationFailed:
+			label = "图片生成失败"
+		case media.GenerateCodeOperationConflict:
+			label = "本轮已有生成请求，未重复提交"
+		}
+		display.ResultKind = native.Text
+		display.Texts = []native.NativeMcpText{{Index: 0, Text: label}}
+		out.ResultSummary = nativeString(label)
 		return
 	}
 	out.ToolLabel = nativeString("工具调用")
