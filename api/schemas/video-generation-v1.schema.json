@@ -1,0 +1,640 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.yijie.ai/video-generation/v1",
+  "title": "BuiltinVideoGenerationV1",
+  "description": "FEAT-173 additive builtin MCP video operations. Existing image, expert and Artifact contracts remain unchanged.",
+  "$defs": {
+    "ImageMode": {
+      "type": "string",
+      "enum": [
+        "none",
+        "first_frame",
+        "first_last_frames",
+        "reference_images"
+      ]
+    },
+    "VideoStatus": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "staged",
+        "committed",
+        "blocked",
+        "failed",
+        "unknown"
+      ]
+    },
+    "VideoCode": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "provider_pending",
+        "existing_operation",
+        "selection_required",
+        "operation_not_found",
+        "expert_required",
+        "input_unsupported",
+        "operation_conflict",
+        "service_unavailable",
+        "outcome_unknown",
+        "provider_failed",
+        "provider_expired",
+        "delivery_rejected",
+        "delivery_unconfirmed",
+        "local_cancelled"
+      ]
+    },
+    "NextAction": {
+      "type": "string",
+      "enum": [
+        "get_video_result",
+        "select_operation",
+        "check_artifact",
+        "report_status",
+        "use_expert"
+      ]
+    },
+    "ProviderStatus": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "expired"
+      ]
+    },
+    "OperationPhase": {
+      "type": "string",
+      "enum": [
+        "submitting",
+        "pending",
+        "succeeded",
+        "handed_off",
+        "failed",
+        "unknown"
+      ]
+    },
+    "GenerateInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prompt",
+        "image_mode",
+        "image_indices"
+      ],
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "pattern": "\\S",
+          "not": {
+            "pattern": "(^|\\s)--(resolution|rs|ratio|rt|ar|duration|dur|frames|fps|framespersecond|seed|camera_fixed|cf|watermark|wm|output_format|generate_audio|draft|return_last_frame|service_tier|execution_expires_after|priority|tools|callback_url)(\\s|=|$)"
+          }
+        },
+        "image_mode": {
+          "$ref": "#/$defs/ImageMode"
+        },
+        "image_indices": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "image_mode": {
+                "const": "none"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "image_indices": {
+                "minItems": 0,
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "image_mode": {
+                "const": "first_frame"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "image_indices": {
+                "minItems": 1,
+                "maxItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "image_mode": {
+                "const": "first_last_frames"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "image_indices": {
+                "minItems": 2,
+                "maxItems": 2
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "image_mode": {
+                "const": "reference_images"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "image_indices": {
+                "minItems": 1,
+                "maxItems": 10,
+                "uniqueItems": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    "GetInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "video_operation_id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "not": {
+            "const": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      }
+    },
+    "GenerateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "thread_id",
+        "turn_id",
+        "input"
+      ],
+      "properties": {
+        "thread_id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "not": {
+            "const": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "not": {
+            "const": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "input": {
+          "$ref": "#/$defs/GenerateInput"
+        }
+      }
+    },
+    "GetRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "thread_id",
+        "turn_id",
+        "input"
+      ],
+      "properties": {
+        "thread_id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "not": {
+            "const": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "turn_id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "not": {
+            "const": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "input": {
+          "$ref": "#/$defs/GetInput"
+        }
+      }
+    },
+    "OperationCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "video_operation_id",
+        "created_at",
+        "image_mode",
+        "phase"
+      ],
+      "properties": {
+        "video_operation_id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "not": {
+            "const": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "created_at": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "image_mode": {
+          "$ref": "#/$defs/ImageMode"
+        },
+        "phase": {
+          "$ref": "#/$defs/OperationPhase"
+        }
+      }
+    },
+    "VideoResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "code",
+        "next_action",
+        "source"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/VideoStatus"
+        },
+        "code": {
+          "$ref": "#/$defs/VideoCode"
+        },
+        "next_action": {
+          "$ref": "#/$defs/NextAction"
+        },
+        "source": {
+          "type": "string",
+          "const": "builtin"
+        },
+        "video_operation_id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "not": {
+            "const": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "provider_status": {
+          "$ref": "#/$defs/ProviderStatus"
+        },
+        "provider_observed_at": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "artifact_id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "not": {
+            "const": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "delivery_turn_id": {
+          "type": "string",
+          "minLength": 36,
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "not": {
+            "const": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "candidates": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/$defs/OperationCandidate"
+          }
+        },
+        "candidates_complete": {
+          "type": "boolean"
+        }
+      },
+      "dependentRequired": {
+        "artifact_id": [
+          "delivery_turn_id",
+          "video_operation_id"
+        ],
+        "delivery_turn_id": [
+          "artifact_id",
+          "video_operation_id"
+        ],
+        "provider_status": [
+          "provider_observed_at"
+        ],
+        "provider_observed_at": [
+          "provider_status"
+        ],
+        "candidates": [
+          "candidates_complete"
+        ],
+        "candidates_complete": [
+          "candidates"
+        ]
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "ok"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "artifact_id",
+              "delivery_turn_id",
+              "video_operation_id"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "staged",
+                  "committed"
+                ]
+              },
+              "next_action": {
+                "enum": [
+                  "check_artifact",
+                  "report_status"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "pending",
+                  "blocked",
+                  "failed",
+                  "unknown"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "artifact_id"
+            ]
+          },
+          "then": {
+            "properties": {
+              "code": {
+                "enum": [
+                  "ok",
+                  "delivery_unconfirmed"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "delivery_unconfirmed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "artifact_id",
+              "delivery_turn_id",
+              "video_operation_id"
+            ],
+            "properties": {
+              "status": {
+                "const": "unknown"
+              },
+              "next_action": {
+                "const": "report_status"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "selection_required"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "candidates",
+              "candidates_complete"
+            ],
+            "properties": {
+              "status": {
+                "const": "blocked"
+              },
+              "next_action": {
+                "const": "select_operation"
+              }
+            },
+            "not": {
+              "required": [
+                "video_operation_id"
+              ]
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "candidates"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "next_action": {
+                "enum": [
+                  "get_video_result",
+                  "check_artifact"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "video_operation_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "staged"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "next_action": {
+                "const": "check_artifact"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "expert_required"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "status": {
+                "const": "blocked"
+              },
+              "next_action": {
+                "const": "use_expert"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "x-mcp": {
+    "server": "yijie_media",
+    "path": "/media/mcp",
+    "tool_timeout_seconds": 150,
+    "approval_mode": "approve",
+    "parallel_calls": false,
+    "generate": {
+      "name": "generate_video",
+      "description": "易界内置视频生成 / Seedance video generation. Use for an explicit new video request with no selected expert. One creation per root; an unresolved video in this conversation blocks another creation. Fixed model and provider defaults; never add --parameter suffixes. Only text-to-video and current-turn images are supported. Video/audio reference, editing or extending an existing clip are unavailable. Do not promise exact duration, resolution, aspect ratio or audio settings. A revision requires an explicitly requested new generation, not an in-place update. image_indices are 1-based current-turn images; first_last_frames allows the same image twice. Do not use for image/video analysis or script writing. A selected expert never falls back here. After acceptance, await get_video_result for the original operation using native Code Mode exec/wait; do not repeat creation, use a CLI, or ask for provider keys.",
+      "input": "GenerateInput",
+      "readOnlyHint": false,
+      "idempotentHint": false
+    },
+    "get": {
+      "name": "get_video_result",
+      "description": "查询并取回易界内置视频 / get the original Seedance video result. Never creates a provider task. Omit video_operation_id to resolve this root or the unique unresolved operation in the same conversation; ambiguity returns local candidates only. pending means continue the SAME operation, not failure. Stop cancels local waiting; the remote task may continue. After Artifact handoff, only report the existing Artifact state; never re-register with publish_artifact or download through a CLI. A selected expert blocks builtin recovery. staged is not Native commit; check the existing get_artifact_status.",
+      "input": "GetInput",
+      "readOnlyHint": false,
+      "idempotentHint": true
+    }
+  },
+  "x-private-http": {
+    "generate_path": "/internal/media-generation/v1/generate-video",
+    "get_path": "/internal/media-generation/v1/get-video-result",
+    "max_request_bytes": 16384,
+    "max_response_bytes": 16384,
+    "binding_wait_milliseconds": 5000,
+    "generate_timeout_seconds": 30,
+    "get_timeout_seconds": 120
+  },
+  "x-provider": {
+    "model": "doubao-seedance-2-5-260628",
+    "endpoint": "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks",
+    "optional_parameters": "omitted",
+    "poll_interval_seconds": 10,
+    "query_timeout_seconds": 15,
+    "download_timeout_seconds": 60,
+    "max_video_bytes": 67108864,
+    "max_downloads": 2,
+    "allowed_video_hosts": [
+      "ark-content-generation-cn-beijing.tos-cn-beijing.volces.com",
+      "ark-acg-cn-beijing.tos-cn-beijing.volces.com"
+    ],
+    "forbidden_prompt_parameters": [
+      "resolution",
+      "rs",
+      "ratio",
+      "rt",
+      "ar",
+      "duration",
+      "dur",
+      "frames",
+      "fps",
+      "framespersecond",
+      "seed",
+      "camera_fixed",
+      "cf",
+      "watermark",
+      "wm",
+      "output_format",
+      "generate_audio",
+      "draft",
+      "return_last_frame",
+      "service_tier",
+      "execution_expires_after",
+      "priority",
+      "tools",
+      "callback_url"
+    ]
+  },
+  "x-authority": {
+    "identity": "Native MCP metadata supplies current owned root. Operation ID reuses creation root turn ID; ownership is session + creation root + video. No model-supplied provider ID/URL/key.",
+    "selection": "Any current selected expert or pending selection rejects creation/recovery/download; retain selection. Recheck after waits and before each new provider action or handoff.",
+    "idempotency": "Persist reservation before the single POST. One unresolved operation per conversation; no new-root bypass, automatic POST retry, account-list reconciliation or force option.",
+    "recovery": "No-ID get resolves only deterministic owned local records or returns up to five candidates. Root stop cancels current observation, not remote task. Unknown submission is not retry authorization.",
+    "handoff": "Persist one handoff marker before the first Artifact event. Marker is not success. Reuse original Artifact/ACK/Status; never reconstruct spool or duplicate handoff after uncertainty/restart.",
+    "credentials": "Reuse the Seedream operator Keychain resolver non-interactively. No new secret, user setup, runtime key, DELETE, callback or background worker.",
+    "observation": "The get timeout is one overall budget, including admission, waits and delivery. Query/download timeouts are maxima, each capped by the remaining overall deadline, not minimum admission durations. A budget expiry never turns an observed terminal provider state into pending or implies user stop. Explicit local/root cancellation still wins delivery. A query transport/body-read timeout remains retryable within the remaining observation budget; a complete invalid provider response remains unknown.",
+    "backoff": "Persist a received Retry-After for task queries and video downloads before returning on a simultaneous cancellation/deadline. A new observation cannot shorten that throttle. No provider state is invented from a throttle timestamp.",
+    "pending": "provider_pending may mean preparation before a durable operation exists, remote processing, or successful generation awaiting local delivery. Use operation identity and last observed provider status to distinguish them; no operation ID is not proof of provider acceptance.",
+    "capabilities": "Builtin first release supports text and current-turn images only. Video/audio references, edits/extensions of an existing clip and user-selected output settings are unavailable. Expert tools keep their own separately configured capabilities."
+  }
+}

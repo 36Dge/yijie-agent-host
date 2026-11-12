@@ -614,6 +614,9 @@ func (s *Store) DeleteSessionWithReceipt(operationID, sessionID string) error {
 		if err := deleteTurnOperationsForSession(tx, sessionID); err != nil {
 			return err
 		}
+		if err := deleteVideoOperationsForSession(tx, sessionID); err != nil {
+			return err
+		}
 		if err := tx.Bucket(sessionsBucket).Delete([]byte(sessionID)); err != nil {
 			return err
 		}

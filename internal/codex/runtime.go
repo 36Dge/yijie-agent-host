@@ -65,6 +65,7 @@ type Config struct {
 	DynamicToolsEnabled            bool
 	HostImagesEnabled              bool
 	BuiltinMediaEnabled            bool
+	BuiltinVideoEnabled            bool
 	NativeToolsEnabled             bool
 	DocumentRuntimeEnabled         bool
 	InteractionToolsEnabled        bool
@@ -134,6 +135,9 @@ func (c Config) validate() error {
 	}
 	if c.HostImagesEnabled && (!c.KimiK31Candidate || !c.RuntimePermissionsEnabled || c.DynamicToolsEnabled) {
 		return errors.New("Host image generation requires the managed stable candidate")
+	}
+	if c.BuiltinVideoEnabled && !c.BuiltinMediaEnabled {
+		return errors.New("builtin video requires the existing native media profile")
 	}
 	if c.BuiltinMediaEnabled && (!c.NativeToolsEnabled || c.HostImagesEnabled || c.DynamicToolsEnabled) {
 		return errors.New("builtin MCP images require native tools with the legacy image producers disabled")

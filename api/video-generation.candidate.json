@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-173",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "base_commit": "cca445ca30c8d13b11185212b3d709bae67cf4aa",
+  "sources": [
+    {
+      "path": "jsonschema/video-generation/v1.schema.json",
+      "sha256": "7f3480d1ae94dc59fe7415b2c22995bd4e806f990d359aa4fa39763402182aeb"
+    },
+    {
+      "path": "compatibility/video-generation/examples.json",
+      "sha256": "dd635bb4016e7df2fcfc4b66e1b844251603513acf10f106f24f3d499addf10f"
+    },
+    {
+      "path": "scripts/generate-video-generation.mjs",
+      "sha256": "1112b327f0cee62a6fe50c03f248dc6a88c793d365e4f25caa938ab973e54def"
+    },
+    {
+      "path": "scripts/market-broker-codegen.mjs",
+      "sha256": "d4218c6515c669f4a80a4f48f857bdd20d0509345fdb184df1da355c97856221"
+    }
+  ],
+  "generated": [
+    {
+      "path": "sdks/go/videogeneration/types.gen.go",
+      "sha256": "16168f01cabc1861cbe746d4175e2dc4e460c4bf992539016e770c3a3204db3f"
+    },
+    {
+      "path": "sdks/rust/videogeneration/types.gen.rs",
+      "sha256": "fb83a0fe0d77bd33dc7e4689a70b6662d1ac77c3ca89d239c60b36be5eb83ed1"
+    },
+    {
+      "path": "sdks/typescript/src/jsonschema/video-generation.gen.ts",
+      "sha256": "ac0cf86d847d6f0a66bbbeb6ef343810f1573699cd6592019084159fa45c8bdf"
+    },
+    {
+      "path": "sdks/jsonschema/video-generation-tools.gen.json",
+      "sha256": "7d168da6d4390e6eb4bcf1ea7714bf581ac4998927c97aef26deff0a42dc3ed3"
+    }
+  ]
+}

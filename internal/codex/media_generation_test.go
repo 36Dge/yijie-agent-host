@@ -47,3 +47,56 @@ func TestMediaMCPConfigurationFollowsExplicitSelection(t *testing.T) {
 		t.Fatal("unreviewed expert version accepted")
 	}
 }
+
+func TestVideoMCPConfigurationKeepsNativePolicyAndRollback(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		m := NewManager(Config{BuiltinMediaEnabled: true, BuiltinVideoEnabled: enabled}, nil)
+		if err := m.SetMediaMCP("http://127.0.0.1:18091/media/mcp", strings.Repeat("a", 64)); err != nil {
+			t.Fatal(err)
+		}
+		for _, provider := range []string{"kimi", MiniMaxProviderID} {
+			config, err := m.mediaThreadConfig(context.Background(), map[string]any{}, provider)
+			if err != nil {
+				t.Fatal(err)
+			}
+			server := config["mcp_servers"].(map[string]any)["yijie_media"].(map[string]any)
+			tools := server["enabled_tools"].([]string)
+			want := 1
+			if enabled {
+				want = 3
+			}
+			if len(tools) != want || tools[0] != media.ToolName || server["supports_parallel_tool_calls"] != false || server["tool_timeout_sec"] != media.ToolTimeoutSeconds {
+				t.Fatal("native policy mismatch", server)
+			}
+			if enabled {
+				for _, name := range []string{"generate_video", "get_video_result"} {
+					if server["tools"].(map[string]any)[name].(map[string]any)["approval_mode"] != "approve" {
+						t.Fatal("missing exact tool policy")
+					}
+				}
+			}
+			config, err = m.mediaThreadConfig(WithScheduledDraft(context.Background(), "/ordinary-workspace"), map[string]any{}, provider)
+			if err != nil || config["mcp_servers"].(map[string]any)["yijie_media"].(map[string]any)["enabled"] != false {
+				t.Fatal("scheduled draft exposed video")
+			}
+		}
+	}
+}
+
+func TestVideoMCPInstructionsKeepBuiltinCapabilityBoundary(t *testing.T) {
+	m := NewManager(Config{BuiltinMediaEnabled: true, BuiltinVideoEnabled: true}, nil)
+	instructions := m.videoToolInstructions(context.Background())
+	for _, required := range []string{"Video/audio references, editing or extending an existing clip are unavailable", "exact output duration", "explicit intent for a new generation"} {
+		if !strings.Contains(instructions, required) {
+			t.Fatal("builtin scope missing", required)
+		}
+	}
+	selected, err := WithExpertImageRoute(context.Background(), "video-reference-expert", "0.1.0", strings.Repeat("c", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expert := m.videoToolInstructions(selected)
+	if !strings.Contains(expert, "retain the explicitly selected expert") || strings.Contains(expert, "editing or extending an existing clip are unavailable") {
+		t.Fatal("builtin restrictions leaked into expert capabilities")
+	}
+}

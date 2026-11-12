@@ -1,4 +1,4 @@
-//! Application-owned image MCP; the Host retains admission, provider and Artifact ownership.
+//! Application-owned media MCP; the Host retains admission, provider and Artifact ownership.
 use crate::Startup;
 use rmcp::{ErrorData, RoleServer, ServerHandler, model::*, service::RequestContext};
 use std::{sync::Arc, time::Duration};
@@ -63,8 +63,10 @@ impl ServerHandler for MediaGateway {
                 .idempotent(false)
                 .open_world(true),
         );
+        let mut tools = vec![tool];
+        tools.extend(crate::video::tools()?);
         Ok(ListToolsResult {
-            tools: vec![tool],
+            tools,
             ..Default::default()
         })
     }
@@ -74,6 +76,9 @@ impl ServerHandler for MediaGateway {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
+        if crate::video::is_tool(&request.name) {
+            return crate::video::call(&self.config, &self.client, request, context).await;
+        }
         if request.name != wire::TOOL_NAME {
             return Err(unavailable());
         }

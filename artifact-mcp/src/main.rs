@@ -29,6 +29,7 @@ mod document_wire {
 }
 type Startup = document_wire::AdapterStartup;
 mod media;
+mod video;
 #[derive(Clone)]
 struct Gateway {
     config: Arc<Startup>,

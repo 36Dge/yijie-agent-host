@@ -24,6 +24,7 @@ parser.add_argument('--kimi-key-file', type=Path, required=True)
 parser.add_argument('--limit', type=int, help='Optional batch ceiling within the approved ledger total.')
 parser.add_argument('--qualify-host-images', action='store_true', help='FEAT-168 isolated image candidate; preserve real request/response payloads and bound chat HTTP count.')
 parser.add_argument('--qualify-media-mcp', action='store_true', help='FEAT-172 image MCP acceptance; unchanged payloads and the explicitly approved task-level HTTP cap.')
+parser.add_argument('--qualify-video-mcp', action='store_true', help='FEAT-173 video MCP acceptance; unchanged payloads and a separate approved task ledger.')
 parser.add_argument('--qualify-tool-search', action='store_true', help='FEAT-170 Kimi-only tool-search acceptance; unchanged payloads, maximum twelve model HTTP requests.')
 parser.add_argument('--qualify-native-tools', action='store_true', help='FEAT-169 Kimi-only native tool acceptance; preserve payloads and count parent plus child HTTP requests.')
 parser.add_argument('--observe-tool-stream', action='store_true',
@@ -54,11 +55,25 @@ ledger=json.loads(args.ledger.read_text())
 authorization=ledger.get('authorization',{})
 approved_limit = authorization.get('max_http_requests')
 approved_images = authorization.get('max_image_understanding_requests')
+if args.qualify_video_mcp and any((args.qualify_media_mcp, args.qualify_tool_search, args.qualify_native_tools, args.qualify_host_images, args.observe_context_window, args.observe_conversation, args.observe_public_progress)):
+    raise SystemExit('Video MCP acceptance cannot share another task mode.')
 if args.qualify_media_mcp and any((args.qualify_tool_search, args.qualify_native_tools, args.qualify_host_images, args.observe_context_window, args.observe_conversation, args.observe_public_progress)):
     raise SystemExit('Media MCP acceptance cannot share another task mode.')
 if args.qualify_tool_search and (args.qualify_native_tools or args.qualify_host_images or args.observe_context_window or args.observe_conversation or args.observe_public_progress):
     raise SystemExit('Tool-search qualification cannot share another task mode.')
-if args.qualify_media_mcp:
+if args.qualify_video_mcp:
+    if (authorization.get('purpose') != 'FEAT-173-video-mcp' or
+            authorization.get('models') != ['kimi-k3.1-pro', 'MiniMax-M3'] or
+            authorization.get('preserve_payloads') is not True or
+            type(approved_limit) is not int or not 1 <= approved_limit <= 32 or
+            approved_images != approved_limit or authorization.get('max_seedance_creates') != 4 or
+            authorization.get('max_seedance_queries') != 120 or authorization.get('max_video_downloads') != 8 or
+            authorization.get('max_seedream_generations') != 0 or authorization.get('max_linkfox_calls') != 0 or
+            not args.shutdown_on_stdin_eof or args.key_file is None):
+        raise SystemExit('Explicit FEAT-173 task-level video acceptance budget required.')
+    providers = {'MiniMax-M3': ('api.minimaxi.com', read_key(args.key_file), 'high'),
+                 'kimi-k3.1-pro': ('api.moonshot.cn', read_key(args.kimi_key_file), 'max')}
+elif args.qualify_media_mcp:
     if (authorization.get('purpose') != 'FEAT-172-media-mcp' or
             authorization.get('models') != ['kimi-k3.1-pro', 'MiniMax-M3'] or
             authorization.get('preserve_payloads') is not True or
@@ -253,7 +268,7 @@ class Meter(http.server.BaseHTTPRequestHandler):
                 if isinstance(value,dict): return value.get('type')=='input_image' or any(image_input(v) for v in value.values())
                 return isinstance(value,list) and any(image_input(v) for v in value)
             images=image_input(body.get('input'))
-            if not (args.observe_public_progress or args.qualify_host_images or args.qualify_native_tools or args.qualify_tool_search or args.qualify_media_mcp or args.observe_context_window):
+            if not (args.observe_public_progress or args.qualify_host_images or args.qualify_native_tools or args.qualify_tool_search or args.qualify_media_mcp or args.qualify_video_mcp or args.observe_context_window):
                 body['max_output_tokens']=min(body.get('max_output_tokens') or 8192,8192)
                 payload=json.dumps(body).encode()
             output_format = (body.get('text') or {}).get('format') or {}
@@ -304,7 +319,7 @@ class Meter(http.server.BaseHTTPRequestHandler):
                     message=re.sub(r'sk-[A-Za-z0-9_-]+','[redacted]',message)
                     with lock:
                         item['error_code']=str(detail.get('code',''))[:80]
-                        if not (args.observe_conversation or args.observe_public_progress or args.qualify_host_images or args.qualify_native_tools or args.qualify_tool_search or args.qualify_media_mcp or args.observe_context_window):
+                        if not (args.observe_conversation or args.observe_public_progress or args.qualify_host_images or args.qualify_native_tools or args.qualify_tool_search or args.qualify_media_mcp or args.qualify_video_mcp or args.observe_context_window):
                             item['error_message']=message
                         save()
                 except (ValueError,AttributeError): pass

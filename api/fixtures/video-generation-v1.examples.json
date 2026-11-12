@@ -1,0 +1,362 @@
+[
+  {
+    "name": "none",
+    "type": "GenerateInput",
+    "valid": true,
+    "value": {
+      "prompt": "一只蓝色陶瓷杯，缓慢转动镜头。",
+      "image_mode": "none",
+      "image_indices": []
+    }
+  },
+  {
+    "name": "first_frame",
+    "type": "GenerateInput",
+    "valid": true,
+    "value": {
+      "prompt": "一只蓝色陶瓷杯，缓慢转动镜头。",
+      "image_mode": "first_frame",
+      "image_indices": [
+        1
+      ]
+    }
+  },
+  {
+    "name": "first_last_frames",
+    "type": "GenerateInput",
+    "valid": true,
+    "value": {
+      "prompt": "一只蓝色陶瓷杯，缓慢转动镜头。",
+      "image_mode": "first_last_frames",
+      "image_indices": [
+        1,
+        1
+      ]
+    }
+  },
+  {
+    "name": "reference_images",
+    "type": "GenerateInput",
+    "valid": true,
+    "value": {
+      "prompt": "一只蓝色陶瓷杯，缓慢转动镜头。",
+      "image_mode": "reference_images",
+      "image_indices": [
+        1,
+        2
+      ]
+    }
+  },
+  {
+    "name": "unsupported_none",
+    "type": "GenerateInput",
+    "valid": false,
+    "value": {
+      "prompt": "A cup",
+      "image_mode": "none",
+      "image_indices": [
+        1
+      ]
+    }
+  },
+  {
+    "name": "unsupported_first_frame",
+    "type": "GenerateInput",
+    "valid": false,
+    "value": {
+      "prompt": "A cup",
+      "image_mode": "first_frame",
+      "image_indices": []
+    }
+  },
+  {
+    "name": "unsupported_first_last_frames",
+    "type": "GenerateInput",
+    "valid": false,
+    "value": {
+      "prompt": "A cup",
+      "image_mode": "first_last_frames",
+      "image_indices": [
+        1
+      ]
+    }
+  },
+  {
+    "name": "unsupported_reference_images",
+    "type": "GenerateInput",
+    "valid": false,
+    "value": {
+      "prompt": "A cup",
+      "image_mode": "reference_images",
+      "image_indices": []
+    }
+  },
+  {
+    "name": "unsupported_reference_images",
+    "type": "GenerateInput",
+    "valid": false,
+    "value": {
+      "prompt": "A cup",
+      "image_mode": "reference_images",
+      "image_indices": [
+        1,
+        1
+      ]
+    }
+  },
+  {
+    "name": "blank_prompt",
+    "type": "GenerateInput",
+    "valid": false,
+    "value": {
+      "prompt": " ",
+      "image_mode": "none",
+      "image_indices": []
+    }
+  },
+  {
+    "name": "keep_defaults",
+    "type": "GenerateInput",
+    "valid": false,
+    "value": {
+      "prompt": "A cup --duration 5",
+      "image_mode": "none",
+      "image_indices": []
+    }
+  },
+  {
+    "name": "no_extra_options",
+    "type": "GenerateInput",
+    "valid": false,
+    "value": {
+      "prompt": "A cup",
+      "image_mode": "none",
+      "image_indices": [],
+      "duration": 5
+    }
+  },
+  {
+    "name": "lookup_owned_record",
+    "type": "GetInput",
+    "valid": true,
+    "value": {}
+  },
+  {
+    "name": "lookup_exact",
+    "type": "GetInput",
+    "valid": true,
+    "value": {
+      "video_operation_id": "17300000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "missing_identity_value",
+    "type": "GetInput",
+    "valid": false,
+    "value": {
+      "video_operation_id": null
+    }
+  },
+  {
+    "name": "accepted",
+    "type": "VideoResult",
+    "valid": true,
+    "value": {
+      "status": "pending",
+      "code": "provider_pending",
+      "next_action": "get_video_result",
+      "source": "builtin",
+      "video_operation_id": "17300000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "staged",
+    "type": "VideoResult",
+    "valid": true,
+    "value": {
+      "status": "staged",
+      "code": "ok",
+      "next_action": "check_artifact",
+      "source": "builtin",
+      "video_operation_id": "17300000-0000-4000-8000-000000000001",
+      "artifact_id": "17300000-0000-4000-8000-000000000002",
+      "delivery_turn_id": "17300000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "committed",
+    "type": "VideoResult",
+    "valid": true,
+    "value": {
+      "status": "committed",
+      "code": "ok",
+      "next_action": "report_status",
+      "source": "builtin",
+      "video_operation_id": "17300000-0000-4000-8000-000000000001",
+      "artifact_id": "17300000-0000-4000-8000-000000000002",
+      "delivery_turn_id": "17300000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "unknown_create",
+    "type": "VideoResult",
+    "valid": true,
+    "value": {
+      "status": "unknown",
+      "code": "outcome_unknown",
+      "next_action": "report_status",
+      "source": "builtin",
+      "video_operation_id": "17300000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "unknown_handoff",
+    "type": "VideoResult",
+    "valid": true,
+    "value": {
+      "status": "unknown",
+      "code": "delivery_unconfirmed",
+      "next_action": "report_status",
+      "source": "builtin",
+      "video_operation_id": "17300000-0000-4000-8000-000000000001",
+      "artifact_id": "17300000-0000-4000-8000-000000000002",
+      "delivery_turn_id": "17300000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "expert_required",
+    "type": "VideoResult",
+    "valid": true,
+    "value": {
+      "status": "blocked",
+      "code": "expert_required",
+      "next_action": "use_expert",
+      "source": "builtin"
+    }
+  },
+  {
+    "name": "choose_original",
+    "type": "VideoResult",
+    "valid": true,
+    "value": {
+      "status": "blocked",
+      "code": "selection_required",
+      "next_action": "select_operation",
+      "source": "builtin",
+      "candidates": [
+        {
+          "video_operation_id": "17300000-0000-4000-8000-000000000001",
+          "created_at": 1794474000,
+          "image_mode": "none",
+          "phase": "handed_off"
+        }
+      ],
+      "candidates_complete": true
+    }
+  },
+  {
+    "name": "provider_observation",
+    "type": "VideoResult",
+    "valid": true,
+    "value": {
+      "status": "pending",
+      "code": "provider_pending",
+      "next_action": "get_video_result",
+      "source": "builtin",
+      "video_operation_id": "17300000-0000-4000-8000-000000000001",
+      "provider_status": "running",
+      "provider_observed_at": 1794474000
+    }
+  },
+  {
+    "name": "not_an_ack",
+    "type": "VideoResult",
+    "valid": false,
+    "value": {
+      "status": "committed",
+      "code": "ok",
+      "next_action": "report_status",
+      "source": "builtin",
+      "video_operation_id": "17300000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "no_partial_artifact_identity",
+    "type": "VideoResult",
+    "valid": false,
+    "value": {
+      "status": "staged",
+      "code": "ok",
+      "next_action": "check_artifact",
+      "source": "builtin",
+      "video_operation_id": "17300000-0000-4000-8000-000000000001",
+      "artifact_id": "17300000-0000-4000-8000-000000000002"
+    }
+  },
+  {
+    "name": "no_failed_artifact_success",
+    "type": "VideoResult",
+    "valid": false,
+    "value": {
+      "status": "failed",
+      "code": "provider_failed",
+      "next_action": "report_status",
+      "source": "builtin",
+      "video_operation_id": "17300000-0000-4000-8000-000000000001",
+      "artifact_id": "17300000-0000-4000-8000-000000000002",
+      "delivery_turn_id": "17300000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "staged_needs_ack",
+    "type": "VideoResult",
+    "valid": false,
+    "value": {
+      "status": "staged",
+      "code": "ok",
+      "next_action": "report_status",
+      "source": "builtin",
+      "video_operation_id": "17300000-0000-4000-8000-000000000001",
+      "artifact_id": "17300000-0000-4000-8000-000000000002",
+      "delivery_turn_id": "17300000-0000-4000-8000-000000000001"
+    }
+  },
+  {
+    "name": "status_observation_pair",
+    "type": "VideoResult",
+    "valid": false,
+    "value": {
+      "status": "pending",
+      "code": "provider_pending",
+      "next_action": "get_video_result",
+      "source": "builtin",
+      "video_operation_id": "17300000-0000-4000-8000-000000000001",
+      "provider_status": "running"
+    }
+  },
+  {
+    "name": "pending_preparation_without_acceptance",
+    "type": "VideoResult",
+    "valid": true,
+    "value": {
+      "source": "builtin",
+      "status": "pending",
+      "code": "provider_pending",
+      "next_action": "report_status"
+    }
+  },
+  {
+    "name": "pending_local_delivery_after_provider_success",
+    "type": "VideoResult",
+    "valid": true,
+    "value": {
+      "source": "builtin",
+      "status": "pending",
+      "code": "provider_pending",
+      "next_action": "get_video_result",
+      "video_operation_id": "17300000-0000-4000-8000-000000000001",
+      "provider_status": "succeeded",
+      "provider_observed_at": 1794490000
+    }
+  }
+]

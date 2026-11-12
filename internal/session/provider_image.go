@@ -16,6 +16,7 @@ type imageReference struct {
 }
 
 type imageTurn struct {
+	video            *videoDelivery
 	route            string
 	sessionID        string
 	turnID           string
@@ -46,7 +47,7 @@ func imageReferences(blocks []TurnContentBlock) []imageReference {
 }
 
 func (s *Service) beginImageTurn(ctx context.Context, record Record, references []imageReference) error {
-	if s.imageGenerator == nil {
+	if s.imageGenerator == nil && s.videoGenerator == nil {
 		return nil
 	}
 	if s.eventsV3 == nil || s.artifacts == nil || record.CodexThreadID == "" {
@@ -71,7 +72,7 @@ func (s *Service) beginImageTurn(ctx context.Context, record Record, references 
 }
 
 func (s *Service) bindImageTurn(threadID, turnID string) error {
-	if s.imageGenerator == nil {
+	if s.imageGenerator == nil && s.videoGenerator == nil {
 		return nil
 	}
 	s.imageMu.Lock()
@@ -159,6 +160,13 @@ func (s *Service) stopImageTurnLocked(turn *imageTurn) {
 	turn.cancel()
 	for index := range turn.references {
 		turn.references[index].dataURL = ""
+	}
+	if turn.video != nil && !turn.video.finished {
+		if record, err := s.store.Get(turn.sessionID); err == nil {
+			s.finishVideoFailureLocked(record, turn, "turn_interrupted")
+		} else {
+			turn.video.finished = true
+		}
 	}
 	if turn.artifactID != "" && !turn.artifactFinished {
 		if record, err := s.store.Get(turn.sessionID); err == nil {

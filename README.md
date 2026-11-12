@@ -163,3 +163,7 @@ FEAT-155受限草案使用新原生候选及同源策略回执，实施、启动
 
 
 FEAT-155 4D-1新增[原生时间只读查询](docs/native-turn-timing.md)，仅显式候选注册，Store5/6保持。
+
+## FEAT-173 内置视频候选
+
+普通聊天默认装配现有媒体 MCP 的视频创建与查询工具，复用 Seedream 运营凭据和视频 Artifact 链；显式专家从不回落内置视频。生命周期、当前验证边界及正常回退见 [内置视频](docs/feat173-video-generation.md)。

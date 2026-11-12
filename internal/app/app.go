@@ -238,6 +238,11 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	}
 	runtimeConfig.NativeToolsEnabled = nativeTools
 	runtimeConfig.BuiltinMediaEnabled = nativeTools && artifactV3 && multimodalV2 && !syntheticArtifact && os.Getenv("YIJIE_ARTIFACT_MEDIA_ENABLED") == "true"
+	videoSelector := os.Getenv("YIJIE_FEAT173_VIDEO_MCP")
+	if videoSelector != "" && videoSelector != "true" && videoSelector != "false" {
+		return Config{}, errors.New("invalid builtin video selector")
+	}
+	runtimeConfig.BuiltinVideoEnabled = runtimeConfig.BuiltinMediaEnabled && videoSelector != "false"
 	documentRuntime, err := exactBoolEnv("YIJIE_FEAT171_DOCUMENT_RUNTIME")
 	if err != nil {
 		return Config{}, err
@@ -935,6 +940,9 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 		if config.ImageGenerationEnabled && len(config.MediaBridgeToken) == 64 {
 			mediaHandler := &sessionHandler{service: sessions, apiToken: config.MediaBridgeToken}
 			mux.Handle("POST /internal/media-generation/v1/generate-image", mediaHandler.authorize(http.HandlerFunc(mediaHandler.generateImage)))
+			if config.Runtime.BuiltinVideoEnabled {
+				registerVideoGeneration(mux, mediaHandler)
+			}
 		}
 		if config.ArtifactV3Enabled {
 			if _, ok := sessions.(artifactSessionService); ok {

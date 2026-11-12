@@ -19,6 +19,7 @@ import (
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	"github.com/36Dge/yijie-agent-host/internal/documents"
 	"github.com/36Dge/yijie-agent-host/internal/imagegen"
+	"github.com/36Dge/yijie-agent-host/internal/videogen"
 )
 
 const (
@@ -245,6 +246,10 @@ type Service struct {
 	titleGenerator  TitleGenerator
 	selectedSkills  SelectedSkillResources
 	titleOperations map[titleOperationKey]*titleOperation
+	videoGenerator  videogen.Provider
+	videoMu         sync.Mutex
+	videoCalls      map[string]bool // true only while a create is in flight
+	videoDownloads  chan struct{}
 	imageGenerator  imagegen.Generator
 	imageMu         sync.Mutex
 	imageTurns      map[string]*imageTurn

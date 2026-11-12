@@ -21,6 +21,7 @@ import (
 	"github.com/36Dge/yijie-agent-host/internal/security"
 	"github.com/36Dge/yijie-agent-host/internal/session"
 	"github.com/36Dge/yijie-agent-host/internal/skills"
+	"github.com/36Dge/yijie-agent-host/internal/videogen"
 )
 
 func main() {
@@ -166,6 +167,9 @@ func run(logger *slog.Logger) error {
 		if config.ImageGenerationEnabled {
 			imageClient := imagegen.NewSeedreamClient(imagegen.ArkCredential(config.HostHome))
 			serviceOptions = append(serviceOptions, session.WithImageGenerator(imageClient))
+		}
+		if config.Runtime.BuiltinVideoEnabled {
+			serviceOptions = append(serviceOptions, session.WithVideoGenerator(videogen.NewSeedanceClient(imagegen.ArkCredential(config.HostHome))))
 		}
 		if config.ScheduledCandidate != nil {
 			serviceOptions = append(serviceOptions, session.WithScheduledDraftWorkspaceRoot(config.ScheduledCandidate.WorkspaceRoot))

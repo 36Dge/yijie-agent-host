@@ -111,6 +111,9 @@ func projectNativeMcp(wire nativeWireItem, out *native.NativeItem) {
 		out.ResultSummary = nativeString(label)
 		return
 	}
+	if projectNativeVideo(wire, out) {
+		return
+	}
 	out.ToolLabel = nativeString("工具调用")
 	if display.Server != nil && display.Tool != nil {
 		out.ToolLabel = nativeString(wire.Server + " / " + wire.Tool)

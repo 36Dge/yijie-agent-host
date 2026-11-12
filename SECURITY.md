@@ -64,3 +64,7 @@ FEAT-155日常入口经Owner明确授权后复用原数据目录及Store6兼容�
 Host仅生成受管普通聊天模型目录并通过原生thread/start/resume config选择；不新增搜索器、执行路由、凭据或审批状态。默认进程目录和辅助线程不开搜索，未资格MiniMax保持旧路径。ToolSearchEnabled只在匹配的local候选可开；关能力仍使用兼容reader并显式恢复基线目录。
 
 选集准备复用既有ForTools隔离校验，修复旧入口误用memories关闭假设；当前选集、generation、thread/turn、参数和一次审批检查保持。真实产品Gateway拒绝测试确认发现不会代替批准。模型验收由独立FEAT-170最多12次Kimi计数器约束，实用5次且正常EOF退出；没有外部业务调用或数据迁移。
+
+## FEAT-173 视频适配
+
+复用现有独立 media bridge bearer、原生根轮次/专家 authority 和 Seedream 运营 Keychain 条目。仅新增封闭视频工具契约与 Host 私有最小任务索引；不持久化内容/URL/ACK，不向模型/前端传递凭据。精确固定 Ark 创建/查询端点；下载仅允许已审 TOS 主机、无重定向/代理/Ark Authorization。操作预占在 POST 前，停止后不重新创建，不自动 DELETE。完整实现边界、默认参数、交付与回退见 [视频适配](docs/feat173-video-generation.md)。

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	media "github.com/36Dge/yijie-agent-host/internal/contracts/mediageneration"
+	video "github.com/36Dge/yijie-agent-host/internal/contracts/videogeneration"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -48,11 +49,19 @@ func (m *Manager) mediaThreadConfig(ctx context.Context, config map[string]any, 
 		servers = make(map[string]any)
 	}
 	if m.mediaMCPURL != "" && !isScheduledDraft(ctx) && ImageRoute(ctx) == "builtin" {
+		enabledTools := []string{media.ToolName}
+		toolPolicy := map[string]any{media.ToolName: map[string]any{"approval_mode": media.ToolApprovalMode}}
+		if m.config.BuiltinVideoEnabled {
+			for _, name := range []string{video.GenerateToolName, video.GetToolName} {
+				enabledTools = append(enabledTools, name)
+				toolPolicy[name] = map[string]any{"approval_mode": video.ToolApprovalMode}
+			}
+		}
 		servers["yijie_media"] = map[string]any{
 			"url": m.mediaMCPURL, "bearer_token_env_var": MediaMCPTokenEnv,
-			"enabled": true, "enabled_tools": []string{media.ToolName},
+			"enabled": true, "enabled_tools": enabledTools,
 			"default_tools_approval_mode": "auto", "startup_timeout_sec": 10,
-			"tools":            map[string]any{media.ToolName: map[string]any{"approval_mode": media.ToolApprovalMode}},
+			"tools":            toolPolicy,
 			"tool_timeout_sec": media.ToolTimeoutSeconds, "supports_parallel_tool_calls": false,
 		}
 	} else {
