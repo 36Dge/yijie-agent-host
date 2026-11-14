@@ -381,6 +381,16 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if err != nil {
 		return Config{}, err
 	}
+	runtimeConfig.NativeSkillMarketplaceEnabled = skillFeature.NativeMarketEnabled
+	if skillFeature.NativeMarketEnabled {
+		if pathsOverlap(skillFeature.NativeMarketRoot, hostHome) || pathsOverlap(skillFeature.NativeMarketRoot, runtimeConfig.CodexHome) {
+			return Config{}, errors.New("native Skill source and runtime/state roots overlap")
+		}
+		runtimeConfig.SkillMarketplaceRoots = []string{filepath.Join(skillFeature.NativeMarketRoot, "builtin"), filepath.Join(skillFeature.NativeMarketRoot, "user")}
+		if !nativeTools || !runtimeConfig.KimiK31Candidate {
+			return Config{}, errors.New("native Skill marketplace requires the managed native candidate")
+		}
+	}
 	if err := validateSkillHostAuthority(skillFeature, hostHome); err != nil {
 		return Config{}, err
 	}
@@ -984,6 +994,7 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 		registerMarketRoutes(mux, sessions, apiToken, config.InstanceNonce)
 	}
 	registerSkillRoutes(mux, config.Skills, handlerOptions.skillService, apiToken)
+	registerNativeSkillRoutes(mux, config.Skills, handlerOptions.nativeSkillMarket, apiToken)
 	return mux
 }
 

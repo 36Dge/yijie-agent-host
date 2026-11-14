@@ -34,6 +34,9 @@ var nativeUserConfigSchema = sync.OnceValues(func() (*jsonschema.Schema, error) 
 })
 
 func validateNativeProjectConfig(content []byte) error {
+	return validateNativeProjectConfigWithMarkets(content, nil)
+}
+func validateNativeProjectConfigWithMarkets(content []byte, roots []string) error {
 	var config map[string]any
 	if err := toml.Unmarshal(content, &config); err != nil {
 		// TOML errors can quote source contents. Do not surface them.
@@ -46,13 +49,31 @@ func validateNativeProjectConfig(content []byte) error {
 	// permission and executable settings remain in the exact managed -c layer.
 	// Native ConfigEdits owns project trust and skill enabled-state persistence.
 	for key := range config {
-		if key != "projects" && key != "skills" {
+		if key != "projects" && key != "skills" && !(len(roots) == 2 && (key == "plugins" || key == "marketplaces")) {
 			return errors.New("native configuration contains an unowned setting")
 		}
 	}
 	schema, err := nativeUserConfigSchema()
 	if err != nil || schema.Validate(config) != nil {
 		return errors.New("native configuration differs from the pinned Runtime schema")
+	}
+	if len(roots) == 2 {
+		admitted := map[string]string{"yijie-builtin": roots[0], "yijie-user": roots[1]}
+		markets, _ := config["marketplaces"].(map[string]any)
+		for name, raw := range markets {
+			entry, ok := raw.(map[string]any)
+			root, allowed := admitted[name]
+			if !ok || !allowed || entry["source_type"] != "local" || entry["source"] != root {
+				return errors.New("native Skill marketplace configuration is outside its owned roots")
+			}
+		}
+		plugins, _ := config["plugins"].(map[string]any)
+		for id := range plugins {
+			_, market, ok := strings.Cut(id, "@")
+			if !ok || admitted[market] == "" {
+				return errors.New("native Skill plugin configuration is outside its owned markets")
+			}
+		}
 	}
 	projects, _ := config["projects"].(map[string]any)
 	for path := range projects {
@@ -97,12 +118,12 @@ func (a *managedCodexHomeAuthority) preflightNativeProjectConfig(legacy [][]byte
 		return managedFilePlan{}, errors.New("native project configuration is missing")
 	}
 	native := content
-	if err := validateNativeProjectConfig(native); err != nil {
+	if err := validateNativeProjectConfigWithMarkets(native, a.nativeSkillRoots); err != nil {
 		matched := false
 		for _, template := range legacy {
 			if bytes.HasPrefix(content, template) {
 				suffix := content[len(template):]
-				if validateNativeProjectConfig(suffix) == nil {
+				if validateNativeProjectConfigWithMarkets(suffix, a.nativeSkillRoots) == nil {
 					native = suffix
 					matched = true
 					break

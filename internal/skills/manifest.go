@@ -47,6 +47,7 @@ type BundleSource struct {
 }
 
 type ManifestSkill struct {
+	legacyRetired    bool
 	AssetKind        string                     `json:"asset_kind,omitempty"`
 	Expert           *expertwire.ExpertMetadata `json:"expert,omitempty"`
 	ID               string                     `json:"id"`

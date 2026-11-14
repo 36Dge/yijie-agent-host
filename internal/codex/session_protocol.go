@@ -968,6 +968,13 @@ func IsThreadNotFound(err error, threadID string) bool {
 }
 
 func (m *Manager) request(ctx context.Context, method string, params, result any) error {
+	if method == RuntimeMethodTurnStart && m.config.NativeSkillMarketplaceEnabled && !m.skillSubmissionReady.Load() && ctx.Value(skillAdmissionContextKey{}) != m {
+		return errors.New("Skill maintenance is pending")
+	}
+	if method == RuntimeMethodTurnStart && m.config.NativeSkillMarketplaceEnabled && ctx.Value(skillAdmissionContextKey{}) != m {
+		m.skillResourceAdmission.RLock()
+		defer m.skillResourceAdmission.RUnlock()
+	}
 	m.mu.Lock()
 	client := m.client
 	ready := m.status.Ready && m.status.State == StateReady

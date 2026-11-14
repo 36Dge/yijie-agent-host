@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-174",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "base_commit": "eb11719423acae7760003bc5eb2e2b3501fae485",
+  "sources": [
+    {
+      "path": "jsonschema/agent/market-submission-rejection-v1.schema.json",
+      "sha256": "d59bd51f03edc5097bd531850a4cf4478814546b2b62d49a18d8f60978a4834c"
+    },
+    {
+      "path": "openapi/agent-host/market-submission-rejection-v1.yaml",
+      "sha256": "3f642053a1d67413013b64efc7221ea928f41b09a34e3323e52ba05fdef6d6a7"
+    },
+    {
+      "path": "openapi/market-connectors/market-connectors.yaml",
+      "sha256": "f7e375ec4bfa2f51a71f98b6ba0c4cf325049f1718d4997e84bd2879923ebe20"
+    },
+    {
+      "path": "compatibility/market-selection/wire.schema.json",
+      "sha256": "7651ee4d674c4fd23a7045ac6a80e77d96d1998c6cb873a47d03c850fab2b514"
+    },
+    {
+      "path": "scripts/generate-submission-rejection.mjs",
+      "sha256": "8499f19b1d155c43fb5e1dda789aff4081cdb171b998b5cc1bda6c8b75fd085e"
+    },
+    {
+      "path": "scripts/market-broker-codegen.mjs",
+      "sha256": "d4218c6515c669f4a80a4f48f857bdd20d0509345fdb184df1da355c97856221"
+    },
+    {
+      "path": "scripts/format-source-file.mjs",
+      "sha256": "566cd886cc84172208cc66438472739404d39a88ace31a587f2a25abdc43de46"
+    }
+  ],
+  "generated": [
+    {
+      "path": "sdks/go/submissionrejection/types.gen.go",
+      "sha256": "4817e3afe179462e253a65faafd3101e1d2374e95f2652241cde77c4c229ab25"
+    },
+    {
+      "path": "sdks/rust/submissionrejection/types.gen.rs",
+      "sha256": "773a0a8bf61996efea1daf77a44bfbc09c4e0e57a5a7019f41666341a4aa6f5b"
+    },
+    {
+      "path": "sdks/jsonschema/market-submission-rejection-v1.schema.json",
+      "sha256": "610dc8add0c74c5405fd7ccb6de928adf5007bbed591ecd4d5385a636d5b2818"
+    }
+  ]
+}

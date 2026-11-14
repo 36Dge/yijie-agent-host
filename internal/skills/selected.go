@@ -11,6 +11,10 @@ import (
 // ResolveSelectedSkills performs only managed installation/identity admission.
 // Native discovery supplies names and paths; Runtime reads the actual SKILL.md.
 func (s *Service) ResolveSelectedSkills(ctx context.Context, refs []agenthostcontract.SelectedSkillRef) ([]codex.UserInput, error) {
+	return s.ResolveSelectedSkillsInDirectory(ctx, refs, s.managedRoot)
+}
+
+func (s *Service) ResolveSelectedSkillsInDirectory(ctx context.Context, refs []agenthostcontract.SelectedSkillRef, cwd string) ([]codex.UserInput, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed || s.runtime == nil || len(refs) == 0 || len(refs) > 256 {
@@ -20,7 +24,7 @@ func (s *Service) ResolveSelectedSkills(ctx context.Context, refs []agenthostcon
 	if err != nil {
 		return nil, err
 	}
-	entries, err := s.runtime.ListSkills(ctx, []string{s.managedRoot}, true)
+	entries, err := s.runtime.ListSkills(ctx, []string{cwd}, true)
 	if err != nil {
 		return nil, errorWithCode(CodeRuntimeUnavailable, err)
 	}
@@ -32,11 +36,11 @@ func (s *Service) ResolveSelectedSkills(ctx context.Context, refs []agenthostcon
 		}
 		seen[ref.Id] = true
 		skill, err := manifestSkill(current, ref.Id)
-		if err != nil || isExpertResource(skill) || !installableSkill(skill) || skill.Version != ref.Version {
+		if err != nil || isExpertResource(skill) || (!installableSkill(skill) && !(s.nativeReader && skill.legacyRetired)) || (!s.nativeReader && skill.Version != ref.Version) {
 			return nil, errorWithCode(CodeCapabilityUnavailable, errors.New("selected Skill version unavailable"))
 		}
 		installed := inspectInstallation(s.managed, skill)
-		if !installed.valid || !installed.enabled {
+		if !installed.valid || !installed.enabled || installed.receipt.Version != ref.Version {
 			return nil, errorWithCode(CodeCapabilityUnavailable, errors.New("selected Skill installation unavailable"))
 		}
 		entrypoint, safe := safeEntrypointPath(s.managedRoot, s.managed, skill)

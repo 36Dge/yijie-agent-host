@@ -36,7 +36,7 @@ func selectedSkillReferences(blocks []TurnContentBlock) ([]agenthostcontract.Sel
 	return refs, nil
 }
 
-func (s *Service) resolveSelectedSkillInputs(ctx context.Context, blocks []TurnContentBlock, draft bool) ([]codex.UserInput, error) {
+func (s *Service) resolveSelectedSkillInputs(ctx context.Context, blocks []TurnContentBlock, draft bool, cwd string) ([]codex.UserInput, error) {
 	refs, err := selectedSkillReferences(blocks)
 	if err != nil || len(refs) == 0 {
 		return nil, err
@@ -44,9 +44,25 @@ func (s *Service) resolveSelectedSkillInputs(ctx context.Context, blocks []TurnC
 	if draft || s.selectedSkills == nil {
 		return nil, fmt.Errorf("%w: selected Skills are unavailable", ErrInvalidArgument)
 	}
-	inputs, err := s.selectedSkills.ResolveSelectedSkills(ctx, refs)
+	var inputs []codex.UserInput
+	if scoped, ok := s.selectedSkills.(interface {
+		ResolveSelectedSkillsInDirectory(context.Context, []agenthostcontract.SelectedSkillRef, string) ([]codex.UserInput, error)
+	}); ok {
+		inputs, err = scoped.ResolveSelectedSkillsInDirectory(ctx, refs, cwd)
+	} else {
+		inputs, err = s.selectedSkills.ResolveSelectedSkills(ctx, refs)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: selected Skill installation or version is unavailable", ErrInvalidArgument)
 	}
 	return inputs, nil
+}
+
+func (s *Service) holdSkillResources(ctx context.Context) (context.Context, func(), error) {
+	if runtime, ok := s.runtime.(interface {
+		HoldSkillResources(context.Context) (context.Context, func(), error)
+	}); ok {
+		return runtime.HoldSkillResources(ctx)
+	}
+	return ctx, func() {}, nil
 }

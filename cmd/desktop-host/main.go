@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/36Dge/yijie-agent-host/internal/imagegen"
 	"github.com/36Dge/yijie-agent-host/internal/security"
 	"github.com/36Dge/yijie-agent-host/internal/session"
+	"github.com/36Dge/yijie-agent-host/internal/skillmarket"
 	"github.com/36Dge/yijie-agent-host/internal/skills"
 	"github.com/36Dge/yijie-agent-host/internal/videogen"
 )
@@ -53,6 +55,9 @@ func logProcessFailure(logger *slog.Logger, err error, feat126ExactProfile bool)
 }
 
 func run(logger *slog.Logger) error {
+	if len(os.Args) == 2 && strings.HasPrefix(os.Args[1], "--skill-market-maintenance=") {
+		return runSkillMaintenance(logger, strings.TrimPrefix(os.Args[1], "--skill-market-maintenance="))
+	}
 	config, err := app.LoadConfig()
 	if err != nil {
 		return err
@@ -62,8 +67,9 @@ func run(logger *slog.Logger) error {
 	var sessionStore *session.Store
 	var artifactStore *artifact.Store
 	var skillService *skills.Service
+	var nativeSkills *skillmarket.Service
 	var apiToken string
-	if config.ExpertsEnabled {
+	if config.ExpertsEnabled && !config.Runtime.NativeSkillMarketplaceEnabled {
 		// Verify and open the real managed resources before the opt-in schema 10
 		// writer. Ordinary launch keeps its original initialization order.
 		skillService, err = configuredSkillService(config, runtime)
@@ -71,6 +77,19 @@ func run(logger *slog.Logger) error {
 			return err
 		}
 		defer skillService.Close()
+	}
+	if config.Runtime.NativeSkillMarketplaceEnabled {
+		artifact, checkErr := codex.VerifyArtifact(context.Background(), config.Runtime.BinaryPath, config.Runtime.ManifestPath, config.Runtime.RequestTimeout)
+		if checkErr != nil || !artifact.SupportsNativeSkillMarketplace() {
+			return errors.New("native Skill marketplace Runtime is unqualified")
+		}
+		resourceConfig := skills.Config{BundleRoot: config.Skills.BundleRoot, ManagedRoot: config.Skills.InstallRoot, Runtime: runtime}
+		if config.ExpertsEnabled {
+			resourceConfig.ExpertCatalogDigest = skills.ExpertCatalogDigestForProfile(config.Runtime.KimiK31Candidate)
+		}
+		if err := skills.ValidateResourceAuthority(resourceConfig); err != nil {
+			return err
+		}
 	}
 	if config.HostHome != "" {
 		storeOptions := make([]session.StoreOption, 0, 1)
@@ -103,6 +122,29 @@ func run(logger *slog.Logger) error {
 			return err
 		}
 		defer sessionStore.Close()
+		if config.Runtime.NativeSkillMarketplaceEnabled {
+			// The existing bbolt Host store lock now owns the process boundary;
+			// only after it is acquired may legacy recovery and v3 handoff run.
+			if err := skills.SnapshotNativeMigrationInput(config.Skills.InstallRoot, config.HostHome); err != nil {
+				return err
+			}
+			skillService, err = configuredSkillService(config, runtime)
+			if err != nil {
+				return err
+			}
+			defer skillService.Close()
+			nativeSkills, err = skillmarket.Open(skillmarket.Config{BundleRoot: config.Skills.NativeBundleRoot, BundleSHA256: config.Skills.NativeBundleSHA256, DataRoot: config.Skills.NativeMarketRoot, HostHome: config.HostHome, Runtime: runtime})
+			if err != nil {
+				return err
+			}
+			defer nativeSkills.Close()
+			if err := skillService.FinalizeRecoveredOrdinaryOperations(nativeSkills.RecordLegacyRecovery); err != nil {
+				return err
+			}
+			if err = nativeSkills.PrepareMigration(skillService); err != nil {
+				return err
+			}
+		}
 		apiToken, err = security.LoadOrCreateAPIToken(config.HostHome)
 		if err != nil {
 			return err
@@ -110,6 +152,9 @@ func run(logger *slog.Logger) error {
 		serviceOptions := make([]session.ServiceOption, 0, 8)
 		if skillService != nil {
 			serviceOptions = append(serviceOptions, session.WithSelectedSkillResources(skillService))
+		}
+		if nativeSkills != nil {
+			serviceOptions = append(serviceOptions, session.WithSelectedSkillResources(nativeSkills))
 		}
 		if config.ExpertsEnabled {
 			serviceOptions = append(serviceOptions, session.WithExpertResources(skillService))
@@ -238,7 +283,7 @@ func run(logger *slog.Logger) error {
 	}
 	server := &http.Server{
 		Addr:              "127.0.0.1:" + config.Port,
-		Handler:           app.NewHandler(config, runtime, sessionService, apiToken, app.WithSkillService(skillService)),
+		Handler:           app.NewHandler(config, runtime, sessionService, apiToken, app.WithSkillService(skillService), app.WithNativeSkillMarket(nativeSkills)),
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      0,
 		IdleTimeout:       30 * time.Second,
@@ -249,8 +294,13 @@ func run(logger *slog.Logger) error {
 	if artifactStore != nil {
 		go artifactStore.RunJanitor(runtimeCtx, time.Minute)
 	}
-	if skillService != nil {
+	if skillService != nil && nativeSkills == nil {
 		go skillService.Run(runtimeCtx)
+	}
+	if nativeSkills != nil {
+		nativeWorkerDone := make(chan struct{})
+		go func() { defer close(nativeWorkerDone); nativeSkills.Run(runtimeCtx) }()
+		defer func() { cancelRuntime(); <-nativeWorkerDone }()
 	}
 	go func() {
 		if config.MarketProviderOnly {
@@ -261,6 +311,28 @@ func run(logger *slog.Logger) error {
 		}
 		if err := runtime.Start(runtimeCtx); err != nil {
 			logger.Error("Codex Runtime unavailable", "failure_code", runtime.Snapshot().FailureCode)
+			return
+		}
+		if nativeSkills != nil {
+			if err := nativeSkills.Initialize(runtimeCtx); err != nil {
+				nativeSkills.SetStartupError(err)
+				logger.Error("Skill marketplace initialization pending", "failure_code", skillmarket.ErrorCode(err))
+				return
+			}
+			if err := nativeSkills.Migrate(runtimeCtx, skillService); err != nil {
+				nativeSkills.SetStartupError(err)
+				logger.Error("Skill migration pending", "failure_code", skillmarket.ErrorCode(err))
+				return
+			}
+			if err := nativeSkills.PrepareOfferUpdates(runtimeCtx); err != nil {
+				nativeSkills.SetStartupError(err)
+				logger.Error("Skill catalog update pending", "failure_code", skillmarket.ErrorCode(err))
+				return
+			}
+			nativeSkills.MarkReady()
+			if !nativeSkills.CompatibleMode() {
+				go skillService.Run(runtimeCtx)
+			}
 		}
 	}()
 	var marketControlErrors <-chan error

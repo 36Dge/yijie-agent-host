@@ -169,13 +169,20 @@ func validateMarketEffectiveIsolation(config map[string]json.RawMessage) error {
 	return validateMarketEffectiveIsolationForTools(config, false)
 }
 
+// Startup, submission, and resume must validate the same paired native policy.
+// Keep the complete profile here instead of optional booleans at each caller.
+func (m *Manager) validateMarketIsolationConfig(config map[string]json.RawMessage) error {
+	return validateMarketEffectiveIsolationForTools(config, m.config.NativeToolsEnabled,
+		m.config.DocumentRuntimeEnabled, m.config.BuiltinMediaEnabled, m.config.NativeSkillMarketplaceEnabled)
+}
+
 func validateMarketEffectiveIsolationForTools(config map[string]json.RawMessage, nativeTools bool, documentsEnabled ...bool) error {
 	var features map[string]any
 	if json.Unmarshal(config["features"], &features) != nil {
 		return errors.New("market execution isolation unavailable")
 	}
 	for _, name := range []string{"hooks", "plugins", "apps", "tool_suggest", "shell_snapshot", "multi_agent", "js_repl", "memories"} {
-		expected := nativeTools && name == "memories"
+		expected := nativeTools && name == "memories" || name == "plugins" && len(documentsEnabled) > 2 && documentsEnabled[2]
 		if features[name] != expected {
 			return errors.New("market execution isolation mismatch")
 		}
@@ -227,7 +234,7 @@ func (m *Manager) validateMarketIsolation(ctx context.Context, cwd string) error
 	if err := m.request(ctx, "config/read", params, &response); err != nil {
 		return errors.New("market native configuration unavailable")
 	}
-	return validateMarketEffectiveIsolationForTools(response.Config, m.config.NativeToolsEnabled, m.config.DocumentRuntimeEnabled, m.config.BuiltinMediaEnabled)
+	return m.validateMarketIsolationConfig(response.Config)
 }
 
 // CloseMarketAdmission is an irreversible Native authority boundary. It closes

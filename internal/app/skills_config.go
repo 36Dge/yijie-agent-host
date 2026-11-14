@@ -16,10 +16,14 @@ const (
 // consumer. Capabilities are derived only from the exact native Desktop
 // profile; neither a request nor possession of the Host bearer can grant them.
 type SkillFeatureConfig struct {
-	BundleRoot  string
-	InstallRoot string
-	Read        bool
-	Manage      bool
+	NativeMarketEnabled bool
+	NativeMarketRoot    string
+	NativeBundleRoot    string
+	NativeBundleSHA256  string
+	BundleRoot          string
+	InstallRoot         string
+	Read                bool
+	Manage              bool
 }
 
 func (c SkillFeatureConfig) Configured() bool {
@@ -49,7 +53,21 @@ func loadSkillFeatureConfig() (SkillFeatureConfig, error) {
 		}
 	}
 
+	nativeEnabled, err := exactBoolEnv("YIJIE_FEAT174_NATIVE_SKILLS")
+	if err != nil {
+		return SkillFeatureConfig{}, err
+	}
+	nativeRoot := os.Getenv("YIJIE_SKILL_MARKET_ROOT")
+	nativeBundle := os.Getenv("YIJIE_NATIVE_SKILL_BUNDLE_ROOT")
+	nativeSHA := os.Getenv("YIJIE_NATIVE_SKILL_BUNDLE_SHA256")
+	if nativeEnabled && (!exactLocalProfile || bundleRoot == "" || !canonicalAbsolutePath(nativeRoot) || !canonicalAbsolutePath(nativeBundle) || len(nativeSHA) != 64 || pathsOverlap(nativeRoot, nativeBundle) || pathsOverlap(nativeRoot, installRoot)) {
+		return SkillFeatureConfig{}, errors.New("native Skill marketplace assembly is invalid")
+	}
+	if !nativeEnabled && (nativeRoot != "" || nativeBundle != "" || nativeSHA != "") {
+		return SkillFeatureConfig{}, errors.New("native Skill marketplace roots require the feature profile")
+	}
 	return SkillFeatureConfig{
+		NativeMarketEnabled: nativeEnabled, NativeMarketRoot: nativeRoot, NativeBundleRoot: nativeBundle, NativeBundleSHA256: nativeSHA,
 		BundleRoot:  bundleRoot,
 		InstallRoot: installRoot,
 		Read:        exactLocalProfile,

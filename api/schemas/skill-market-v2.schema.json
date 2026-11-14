@@ -1,0 +1,530 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.yijie.ai/skills/market-v2",
+  "title": "SkillMarketplaceV2",
+  "$defs": {
+    "Origin": {
+      "type": "string",
+      "enum": [
+        "builtin",
+        "user",
+        "unknown"
+      ]
+    },
+    "InstallState": {
+      "type": "string",
+      "enum": [
+        "not_installed",
+        "installed",
+        "partial",
+        "invalid",
+        "unknown"
+      ]
+    },
+    "DependencyState": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "missing",
+        "needs_authorization",
+        "unknown"
+      ]
+    },
+    "OperationState": {
+      "description": "pending and needs_attention are both unresolved durable intents. Neither permits compatibility rollback or new task admission until reconciliation or cancellation completes.",
+      "type": "string",
+      "enum": [
+        "pending",
+        "complete",
+        "cancelled",
+        "needs_attention"
+      ]
+    },
+    "MutationKind": {
+      "type": "string",
+      "enum": [
+        "install",
+        "enable",
+        "disable",
+        "uninstall",
+        "refresh",
+        "rollback"
+      ]
+    },
+    "FileEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "bytes"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "sha256": {
+          "type": "string",
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 67108864
+        }
+      }
+    },
+    "CatalogSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "content_version",
+        "content_sha256",
+        "source_revision",
+        "native_package_version",
+        "plugin_name",
+        "display_name",
+        "description",
+        "category",
+        "order",
+        "icon_key",
+        "required_tools",
+        "source_path",
+        "files"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 256,
+          "minLength": 1
+        },
+        "content_version": {
+          "type": "string",
+          "maxLength": 64,
+          "minLength": 1
+        },
+        "content_sha256": {
+          "type": "string",
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "source_revision": {
+          "type": "string",
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "native_package_version": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "plugin_name": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "display_name": {
+          "type": "string",
+          "maxLength": 256,
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "icon_key": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "required_tools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "maxItems": 128
+        },
+        "source_path": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FileEntry"
+          },
+          "maxItems": 2048
+        }
+      }
+    },
+    "Bundle": {
+      "description": "Current redistributable built-in offers, from zero to 512 entries. The initial release has 38 offers; this is not a fixed inventory size. Removed or blocked offers do not erase previously installed identities or their sources.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "marketplace_name",
+        "skills"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "const": 2
+        },
+        "marketplace_name": {
+          "type": "string",
+          "const": "yijie-builtin"
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CatalogSource"
+          },
+          "maxItems": 512
+        }
+      }
+    },
+    "Skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "runtime_name",
+        "display_name",
+        "description",
+        "category",
+        "order",
+        "icon_key",
+        "origin",
+        "installation_state",
+        "enabled",
+        "runtime_visible",
+        "retired",
+        "dependency_state",
+        "required_tools",
+        "epoch",
+        "failure_code"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 256,
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 64,
+          "minLength": 1
+        },
+        "runtime_name": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "display_name": {
+          "type": "string",
+          "maxLength": 256,
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "category": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "icon_key": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "origin": {
+          "$ref": "#/$defs/Origin"
+        },
+        "installation_state": {
+          "$ref": "#/$defs/InstallState"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "runtime_visible": {
+          "type": "boolean"
+        },
+        "retired": {
+          "type": "boolean",
+          "description": "No longer offered by the current App, including receipt-validated installations first discovered during migration. Existing native inventory remains manageable; this does not authorize a fresh installation."
+        },
+        "dependency_state": {
+          "$ref": "#/$defs/DependencyState"
+        },
+        "required_tools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "maxItems": 128
+        },
+        "epoch": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failure_code": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    },
+    "Catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "revision",
+        "skills",
+        "operations"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "const": 2
+        },
+        "revision": {
+          "type": "string",
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Skill"
+          },
+          "maxItems": 1024
+        },
+        "operations": {
+          "type": "array",
+          "maxItems": 512,
+          "items": {
+            "$ref": "#/$defs/PendingOperation"
+          }
+        },
+        "notice": {
+          "type": "string",
+          "maxLength": 256
+        }
+      },
+      "description": "At most 512 current built-in offers plus 512 authoritative native/pending installation identities. Durable tombstones do not consume a live installation slot. Installation admission reserves slots before side effects; no installed user identity is dropped to fit an upgraded offer catalog. The local catalog transport is bounded at 256 MiB, sufficient for 1024 fully populated schema-valid rows (including JSON escaping); it must not inherit the unrelated 1 MiB chat envelope limit."
+    },
+    "Mutation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "skill_id",
+        "kind",
+        "expected_epoch"
+      ],
+      "properties": {
+        "operation_id": {
+          "type": "string",
+          "maxLength": 36,
+          "minLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "not": {
+            "const": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "skill_id": {
+          "type": "string",
+          "maxLength": 256,
+          "minLength": 1
+        },
+        "kind": {
+          "$ref": "#/$defs/MutationKind"
+        },
+        "expected_epoch": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "ImportRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "file_name",
+        "format",
+        "sha256",
+        "bytes"
+      ],
+      "properties": {
+        "operation_id": {
+          "type": "string",
+          "maxLength": 36,
+          "minLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "not": {
+            "const": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "file_name": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "zip",
+            "markdown"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "maxLength": 64,
+          "minLength": 64,
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 67108864
+        }
+      }
+    },
+    "Operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "state",
+        "skill_id",
+        "epoch",
+        "error_code"
+      ],
+      "properties": {
+        "operation_id": {
+          "type": "string",
+          "maxLength": 36,
+          "minLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "not": {
+            "const": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "state": {
+          "$ref": "#/$defs/OperationState"
+        },
+        "skill_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "epoch": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error_code": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "catalog": {
+          "$ref": "#/$defs/Catalog"
+        }
+      }
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "retryable"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "PendingOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id",
+        "state",
+        "skill_id",
+        "epoch",
+        "error_code"
+      ],
+      "properties": {
+        "operation_id": {
+          "type": "string",
+          "maxLength": 36,
+          "minLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "not": {
+            "const": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "state": {
+          "$ref": "#/$defs/OperationState"
+        },
+        "skill_id": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "epoch": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "error_code": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    }
+  },
+  "x-feature": "FEAT-174",
+  "x-authority": "This schema owns Yijie bundle, Host HTTP and native/renderer skill-v2 payloads; Codex wire remains the generated Runtime authority.",
+  "x-http": {
+    "catalog": "GET /v2/skills",
+    "mutation": "POST /v2/skills/operations",
+    "import": "POST /v2/skills/imports/{operation_id}",
+    "operation": "GET /v2/skills/operations/{operation_id}",
+    "cancel": "POST /v2/skills/operations/{operation_id}/cancel",
+    "import_body": "application/octet-stream; query filename; bounded 64 MiB; markdown <=1 MiB; private bearer and plugin.manage required",
+    "authorization": "existing owner-only Host bearer and exact local native scope; requests cannot choose roots or provider endpoints"
+  },
+  "x-semantics": {
+    "operation_id": "UUID; immutable request fingerprint; same ID and different bytes/conflicting input rejected",
+    "content_version": "UI selection identity, distinct from native package version",
+    "snapshot": "installed/enabled facts derive from native state/read; publication registry is not installation authority",
+    "import": "stable identity reserved before catalog publication; complete means native confirmed and journal published; caller original file is never removed",
+    "cancellation": "record intent before reconcile; only compensate a new installation owned by the same operation and epoch",
+    "legacy": "v1 readers remain separate; no imported items inserted into v1 catalog",
+    "revision": "source/identity catalog generation; no absolute runtime path in public Skill"
+  },
+  "x-constants": {
+    "maxCatalogResponseBytes": 268435456
+  }
+}

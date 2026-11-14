@@ -220,6 +220,9 @@ func (s *Store) beginExpertOperation(record Record, operation expertOperation) e
 			}
 		}
 		id := []byte(operation.Receipt.OperationId)
+		if b := tx.Bucket(marketRejectionsBucket); b != nil && b.Get(id) != nil {
+			return ErrTurnOperationConflict
+		}
 		for _, bucket := range [][]byte{expertOperationsBucket, marketOperationsBucket, cleanupOperationsBucket} {
 			if tx.Bucket(bucket).Get(id) != nil {
 				return ErrTurnOperationConflict

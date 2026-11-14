@@ -85,6 +85,14 @@ func (s *Service) submitMarket(ctx context.Context, input wire.SubmitPayload, ex
 	if ctx.Err() != nil {
 		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeBusy)
 	}
+	if prior, e := s.store.readMarketRejection(string(input.TurnOperationId)); e == nil {
+		if prior.IntentDigest != grant.digest || prior.ScopeHash != grant.scopeHash {
+			return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeRequestConflict)
+		}
+		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeBusy)
+	} else if !errors.Is(e, ErrNotFound) {
+		return wire.SubmissionReceipt{}, e
+	}
 	if grant.body == nil || grant.revoked || !time.Now().Before(grant.deadline) {
 		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeGrantExpired)
 	}
@@ -92,6 +100,11 @@ func (s *Service) submitMarket(ctx context.Context, input wire.SubmitPayload, ex
 	if submission.Validate() != nil {
 		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeInvalidRequest)
 	}
+	ctx, releaseSkills, holdErr := s.holdSkillResources(ctx)
+	if holdErr != nil {
+		return wire.SubmissionReceipt{}, s.rejectMarketBeforeDispatch(input, grant, "skill_maintenance_busy")
+	}
+	defer releaseSkills()
 	runtime, ok := s.runtime.(marketDeliveryRuntime)
 	if !ok {
 		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeNotReady)
@@ -111,8 +124,8 @@ func (s *Service) submitMarket(ctx context.Context, input wire.SubmitPayload, ex
 	if _, err = validateAndMapTurnV2Blocks(blocks); err != nil {
 		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeInvalidRequest)
 	}
-	if _, err = s.resolveSelectedSkillInputs(ctx, blocks, false); err != nil {
-		return wire.SubmissionReceipt{}, marketFail(wire.ErrorCodeInvalidRequest)
+	if _, err = s.resolveSelectedSkillInputs(ctx, blocks, false, cwd); err != nil {
+		return wire.SubmissionReceipt{}, s.rejectMarketBeforeDispatch(input, grant, "skill_unavailable")
 	}
 	ctx = codex.WithModelProfile(ctx, string(submission.Intent.ProfileId))
 	ctx = codex.WithPermissionMode(ctx, codex.PermissionMode(submission.PermissionMode))

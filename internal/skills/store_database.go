@@ -28,7 +28,7 @@ func (s *Service) openOperationDatabase(create bool) (*bolt.DB, error) {
 	} else if !create || !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	return bolt.Open(filepath.Join(s.managedRoot, stateDirectoryName, operationsDatabaseName), 0o600, &bolt.Options{
+	return bolt.Open(filepath.Join(s.statePath, operationsDatabaseName), 0o600, &bolt.Options{
 		Timeout: time.Second,
 		OpenFile: func(_ string, flags int, mode os.FileMode) (*os.File, error) {
 			return s.state.OpenFile(operationsDatabaseName, flags|syscall.O_NOFOLLOW, mode)

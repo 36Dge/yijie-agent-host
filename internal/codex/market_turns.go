@@ -277,7 +277,7 @@ func (m *Manager) marketDisabledServers(ctx context.Context, cwd string) (map[st
 	if err := m.request(ctx, "config/read", map[string]any{"includeLayers": false, "cwd": cwd}, &effective); err != nil {
 		return nil, err
 	}
-	if err := validateMarketEffectiveIsolationForTools(effective.Config, m.config.NativeToolsEnabled, m.config.DocumentRuntimeEnabled, m.config.BuiltinMediaEnabled); err != nil {
+	if err := m.validateMarketIsolationConfig(effective.Config); err != nil {
 		return nil, err
 	}
 	var inherited map[string]json.RawMessage

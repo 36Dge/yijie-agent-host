@@ -511,6 +511,11 @@ func (s *Service) GetSession(sessionID string) (Record, error) {
 }
 
 func (s *Service) StartTurn(ctx context.Context, input StartTurnInput) (codex.TurnInfo, error) {
+	ctx, releaseSkills, holdErr := s.holdSkillResources(ctx)
+	if holdErr != nil {
+		return codex.TurnInfo{}, holdErr
+	}
+	defer releaseSkills()
 	s.modelOperationMu.Lock()
 	defer s.modelOperationMu.Unlock()
 	if r, e := s.store.Get(input.AgentSessionID); e != nil {

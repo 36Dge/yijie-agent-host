@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.yijie.ai/agent/market-submission-rejection-v1",
+  "$defs": {
+    "CanonicalId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "not": {
+        "const": "00000000-0000-0000-0000-000000000000"
+      }
+    },
+    "SelectionDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "Proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "hostInstanceId",
+        "taskId",
+        "localSessionId",
+        "submissionOperationId",
+        "turnOperationId",
+        "selectionDigest",
+        "reason",
+        "outcome"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "hostInstanceId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "taskId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "localSessionId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "submissionOperationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "turnOperationId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "selectionDigest": {
+          "$ref": "#/$defs/SelectionDigest"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "skill_maintenance_busy",
+            "skill_unavailable"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "not_dispatched"
+          ]
+        }
+      },
+      "description": "Durable same-owner proof, atomically reserved before any native thread/turn mutation. An existing operation or different full intent cannot be overwritten. A transport error, busy error or missing receipt alone is not this proof. No automatic resubmission. A later explicit new operation may reuse an unbound local conversation only when every previous turn has this validated non-dispatch classification. Require create authority again; retain the failed messages and original receipts. Native stores a versioned initial-host-turn marker, maps its Host expectedRevision to zero, and binds only that new accepted turn. This never authorizes replay of the rejected operation."
+    },
+    "Response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/Proof"
+        }
+      }
+    }
+  }
+}

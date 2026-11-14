@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-174",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "base_commit": "eb11719423acae7760003bc5eb2e2b3501fae485",
+  "sources": [
+    {
+      "path": "jsonschema/skills/market-v2.schema.json",
+      "sha256": "5b1c135356d5c40c278b4949884006e368a61c94a9670d407f1c9725498e1d05"
+    },
+    {
+      "path": "openapi/agent-host/skill-market-v2.yaml",
+      "sha256": "7bee6c7f79cd6a10b7bfeedcc52d43f0a718914d21ae8d06b85ece4ed3cb8c17"
+    },
+    {
+      "path": "scripts/generate-skill-market-v2.mjs",
+      "sha256": "5a96ef288da69b4301b9e065c837934cbc47d983510da0e8538a2b5765385c86"
+    },
+    {
+      "path": "scripts/market-broker-codegen.mjs",
+      "sha256": "d4218c6515c669f4a80a4f48f857bdd20d0509345fdb184df1da355c97856221"
+    }
+  ],
+  "generated": [
+    {
+      "path": "sdks/go/skillmarketv2/types.gen.go",
+      "sha256": "b0ef06f855ac689e1031cce48c0576f08a1371056b58d97c27fe9f8c009c98de"
+    },
+    {
+      "path": "sdks/rust/skillmarketv2/types.gen.rs",
+      "sha256": "1f00f08d2fc16cee02192be4c02f77a8d6617eadebebb85671335f69d74678a7"
+    },
+    {
+      "path": "sdks/typescript/src/jsonschema/skill-market-v2.gen.ts",
+      "sha256": "95c564f3cef2ecf57c03888286784674f51e04dade53eb0fada5857defc2ee82"
+    },
+    {
+      "path": "sdks/typescript/src/jsonschema/skill-market-v2.validator.gen.js",
+      "sha256": "7b407a52d442cb1667bbe881d6cc31dd60e35cbc05605f6843bdf8861379402e"
+    },
+    {
+      "path": "sdks/typescript/src/jsonschema/skill-market-v2.validator.gen.d.ts",
+      "sha256": "6f027848c081c7cd3acd388d442b2e9a7f2580d343ea05202fe8b57880c37da0"
+    }
+  ]
+}

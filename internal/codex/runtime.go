@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/36Dge/yijie-agent-host/internal/marketbroker"
@@ -68,6 +69,8 @@ type Config struct {
 	BuiltinVideoEnabled            bool
 	NativeToolsEnabled             bool
 	DocumentRuntimeEnabled         bool
+	NativeSkillMarketplaceEnabled  bool
+	SkillMarketplaceRoots          []string
 	InteractionToolsEnabled        bool
 	ToolSearchEnabled              bool
 	CommandApprovalEnabled         bool
@@ -111,6 +114,9 @@ func (c Config) Configured() bool {
 }
 
 func (c Config) validate() error {
+	if err := c.validateSkillMarketplace(); err != nil {
+		return err
+	}
 	if c.DocumentRuntimeEnabled && (!c.NativeToolsEnabled || !c.InteractionToolsEnabled || !c.RuntimePermissionsEnabled) {
 		return errors.New("document environment requires the paired cooperative native profile")
 	}
@@ -234,16 +240,18 @@ type Status struct {
 }
 
 type Manager struct {
-	artifactMCPURL      string
-	artifactMCPToken    string
-	mediaMCPURL         string
-	mediaMCPToken       string
-	market              marketRuntimeState
-	permissionCallbacks runtimeApprovalCallbacks
-	userInputs          userInputCallbacks
-	threadOperation     sync.Mutex // Shared starts, model changes and scheduled operations.
-	config              Config
-	logger              *slog.Logger
+	skillResourceAdmission sync.RWMutex
+	skillSubmissionReady   atomic.Bool
+	artifactMCPURL         string
+	artifactMCPToken       string
+	mediaMCPURL            string
+	mediaMCPToken          string
+	market                 marketRuntimeState
+	permissionCallbacks    runtimeApprovalCallbacks
+	userInputs             userInputCallbacks
+	threadOperation        sync.Mutex // Shared starts, model changes and scheduled operations.
+	config                 Config
+	logger                 *slog.Logger
 
 	mu               sync.Mutex
 	status           Status
@@ -387,7 +395,7 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 		m.fail("artifact_verification_failed")
 		return err
 	}
-	if (m.config.DocumentRuntimeEnabled && !artifact.supportsDocuments()) || (m.config.ToolSearchEnabled && !artifact.supportsToolSearch()) || m.config.InteractionToolsEnabled != artifact.supportsInteractionTools() || m.config.NativeToolsEnabled != artifact.supportsNativeTools() ||
+	if (m.config.NativeSkillMarketplaceEnabled && !artifact.supportsNativeSkillMarketplace()) || (m.config.DocumentRuntimeEnabled && !artifact.supportsDocuments()) || (m.config.ToolSearchEnabled && !artifact.supportsToolSearch()) || m.config.InteractionToolsEnabled != artifact.supportsInteractionTools() || m.config.NativeToolsEnabled != artifact.supportsNativeTools() ||
 		(!m.config.NativeToolsEnabled && m.config.HostImagesEnabled != artifact.supportsHostImages()) ||
 		(m.config.HostImagesEnabled && !artifact.supportsHostImages()) || m.config.KimiK31Candidate != artifact.SupportsKimiK31() {
 		m.fail("artifact_verification_failed")
@@ -403,6 +411,9 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 	if err != nil {
 		m.fail("provider_config_failed")
 		return err
+	}
+	if m.config.NativeSkillMarketplaceEnabled {
+		authority.nativeSkillRoots = append([]string(nil), m.config.SkillMarketplaceRoots...)
 	}
 	m.mu.Lock()
 	if m.shutdownRequested || startupCtx.Err() != nil {
@@ -525,6 +536,13 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 		}
 	}
 
+	if providerErr == nil && m.config.NativeSkillMarketplaceEnabled {
+		var extra []string
+		extra, providerErr = m.skillMarketplaceArguments()
+		if providerErr == nil {
+			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
+		}
+	}
 	if providerErr == nil && m.config.KimiK31Candidate {
 		var extra []string
 		extra, providerErr = m.kimiK31MeterArguments()
@@ -630,8 +648,13 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 			return errors.Join(errors.New("native configuration unavailable"), m.abortStartup("native_config_unavailable"))
 		}
 		if m.MarketEnabled() {
-			if err := validateMarketEffectiveIsolationForTools(effective.Config, m.config.NativeToolsEnabled, m.config.DocumentRuntimeEnabled, m.config.BuiltinMediaEnabled); err != nil {
+			if err := m.validateMarketIsolationConfig(effective.Config); err != nil {
 				return errors.Join(err, m.abortStartup("market_isolation_mismatch"))
+			}
+		}
+		if m.config.NativeSkillMarketplaceEnabled {
+			if err := m.validateSkillMarketplaceEffective(effective.Config); err != nil {
+				return errors.Join(err, m.abortStartup("skill_marketplace_policy_mismatch"))
 			}
 		}
 		if m.config.InteractionToolsEnabled {

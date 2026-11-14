@@ -106,6 +106,9 @@ func (s *Service) loadOperations() error {
 	if err := strictJSON(raw, &stored); err != nil {
 		return errors.New("Skill operation journal is invalid")
 	}
+	if stored.SchemaVersion == 3 && len(stored.Operations) == 0 && !s.nativeReader {
+		return s.openNativeLegacyBackend()
+	}
 	if stored.SchemaVersion == 2 && len(stored.Operations) == 0 {
 		return s.loadOperationDatabase()
 	}

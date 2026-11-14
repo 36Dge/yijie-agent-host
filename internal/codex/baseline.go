@@ -21,6 +21,7 @@ import (
 	interaction "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeinteraction"
 	kimik31 "github.com/36Dge/yijie-agent-host/internal/contracts/runtimekimik31pro"
 	nativetools "github.com/36Dge/yijie-agent-host/internal/contracts/runtimenativetools"
+	skillmarket "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeskillmarket"
 	toolsearch "github.com/36Dge/yijie-agent-host/internal/contracts/runtimetoolsearch"
 )
 
@@ -213,11 +214,24 @@ func VerifyArtifact(ctx context.Context, binaryPath, manifestPath string, timeou
 		}
 		policy = artifactPolicy{runtimeSHA256: documents.RuntimeBinarySHA256, runtimeSize: documents.RuntimeBinarySize, manifestSHA256: documents.RuntimeManifestSHA256, schemaTreeSHA256: documents.RuntimeSchemaTreeSHA256, patches: patches, schemaFileCount: documents.RuntimeSchemaFileCount}
 	}
+	if digest == skillmarket.RuntimeManifestSHA256 {
+		var patches []ManifestPatch
+		if err := json.Unmarshal([]byte(skillmarket.RuntimePatchManifest), &patches); err != nil {
+			return ArtifactInfo{}, errors.New("native Skill marketplace authority unavailable")
+		}
+		policy = artifactPolicy{runtimeSHA256: skillmarket.RuntimeBinarySHA256, runtimeSize: skillmarket.RuntimeBinarySize, manifestSHA256: skillmarket.RuntimeManifestSHA256, schemaTreeSHA256: skillmarket.RuntimeSchemaTreeSHA256, patches: patches, schemaFileCount: skillmarket.RuntimeSchemaFileCount}
+	}
 	return verifyArtifactWithPolicy(ctx, binaryPath, manifestPath, timeout, policy)
 }
 
+func (a ArtifactInfo) SupportsNativeSkillMarketplace() bool {
+	return a.supportsNativeSkillMarketplace()
+}
+func (a ArtifactInfo) supportsNativeSkillMarketplace() bool {
+	return a.BinarySHA256 == skillmarket.RuntimeBinarySHA256 && a.ManifestSHA256 == skillmarket.RuntimeManifestSHA256
+}
 func (a ArtifactInfo) supportsDocuments() bool {
-	return a.BinarySHA256 == documents.RuntimeBinarySHA256 && a.ManifestSHA256 == documents.RuntimeManifestSHA256
+	return a.supportsNativeSkillMarketplace() || a.BinarySHA256 == documents.RuntimeBinarySHA256 && a.ManifestSHA256 == documents.RuntimeManifestSHA256
 }
 func (a ArtifactInfo) supportsToolSearch() bool {
 	return a.supportsDocuments() || a.BinarySHA256 == toolsearch.RuntimeBinarySHA256 && a.ManifestSHA256 == toolsearch.RuntimeManifestSHA256

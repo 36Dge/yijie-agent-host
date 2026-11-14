@@ -30,7 +30,8 @@ const (
 // termination. Runtime may therefore reload *.rules for every new session
 // without another conforming Host deleting or replacing its authority.
 type managedCodexHomeAuthority struct {
-	mu sync.Mutex
+	nativeSkillRoots []string
+	mu               sync.Mutex
 
 	path               string
 	root               *os.File

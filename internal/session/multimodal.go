@@ -200,13 +200,18 @@ func (s *Service) startTurnV2Locked(ctx context.Context, input StartTurnV2Input,
 	} else if !errors.Is(e, ErrNotFound) {
 		return codex.TurnInfo{}, e
 	}
+	ctx, releaseSkills, holdErr := s.holdSkillResources(ctx)
+	if holdErr != nil {
+		return codex.TurnInfo{}, holdErr
+	}
+	defer releaseSkills()
 	if err := s.checkModelRequest(ctx, recordPurpose); err != nil {
 		return codex.TurnInfo{}, err
 	}
 	// An accepted operation above is read-only even if its Skill was later
 	// removed. Fresh dispatch resolves the frozen references before reserving
 	// an operation, so unavailable selections cannot cause a model request.
-	skillInputs, err := s.resolveSelectedSkillInputs(ctx, input.ContentBlocks, draft)
+	skillInputs, err := s.resolveSelectedSkillInputs(ctx, input.ContentBlocks, draft, recordPurpose.Cwd)
 	if err != nil {
 		return codex.TurnInfo{}, err
 	}

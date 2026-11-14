@@ -20,14 +20,17 @@ func WithChatModelV2Storage() StoreOption {
 
 func domainStoreVersion(tx *bolt.Tx) string {
 	m := tx.Bucket(metadataBucket)
-	if version := string(m.Get(storeSchemaVersionKey)); version == "11" || version == "12" || version == "13" {
+	if version := storageEnvelopeVersion(tx); version == "11" || version == "12" || version == "13" {
 		return string(m.Get(modelBaseVersionKey))
 	}
-	return string(m.Get(storeSchemaVersionKey))
+	return storageEnvelopeVersion(tx)
 }
 
 func putDomainStoreVersion(tx *bolt.Tx, version string) error {
 	key := storeSchemaVersionKey
+	if string(tx.Bucket(metadataBucket).Get(key)) == "14" {
+		key = rejectionBaseVersionKey
+	}
 	if version := string(tx.Bucket(metadataBucket).Get(key)); version == "11" || version == "12" || version == "13" {
 		key = modelBaseVersionKey
 	}
@@ -45,7 +48,7 @@ func (s *Store) prepareModelV2Format(tx *bolt.Tx) error {
 	if _, err := tx.CreateBucketIfNotExists(modelOperationsV2Bucket); err != nil {
 		return err
 	}
-	if string(tx.Bucket(metadataBucket).Get(storeSchemaVersionKey)) == "12" {
+	if storageEnvelopeVersion(tx) == "12" {
 		if err := retireToolPreference(tx); err != nil {
 			return err
 		}
@@ -53,7 +56,11 @@ func (s *Store) prepareModelV2Format(tx *bolt.Tx) error {
 	if err := tx.Bucket(metadataBucket).Put(modelBaseVersionKey, []byte(v)); err != nil {
 		return err
 	}
-	return tx.Bucket(metadataBucket).Put(storeSchemaVersionKey, []byte("13"))
+	key := storeSchemaVersionKey
+	if string(tx.Bucket(metadataBucket).Get(key)) == "14" {
+		key = rejectionBaseVersionKey
+	}
+	return tx.Bucket(metadataBucket).Put(key, []byte("13"))
 }
 
 // Data retirement only. There is no selector, runtime feature projection or

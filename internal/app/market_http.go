@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
+	rejection "github.com/36Dge/yijie-agent-host/internal/contracts/submissionrejection"
 	"github.com/36Dge/yijie-agent-host/internal/security"
 	"github.com/36Dge/yijie-agent-host/internal/session"
 )
@@ -115,6 +116,20 @@ func registerMarketRoutes(mux *http.ServeMux, candidate any, apiToken, nonce str
 		data, err := service.ReadMarketApprovals(r.Context(), agent)
 		marketReply(w, requestID, http.StatusOK, wire.ApprovalsResponse{SchemaVersion: 1, RequestId: requestID, Data: data}, err)
 	})
+	if proofs, ok := candidate.(interface {
+		ReadMarketSubmissionRejection(string, string) (rejection.Proof, error)
+	}); ok {
+		register("GET /v1/market-chat/tasks/{taskId}/operations/{turnOperationId}/rejection", func(w http.ResponseWriter, r *http.Request) {
+			task, operation := r.PathValue("taskId"), r.PathValue("turnOperationId")
+			id, ok := marketReadID(r, task, operation)
+			if !ok {
+				marketErrorReply(w, nil, wire.ErrorCodeInvalidRequest)
+				return
+			}
+			data, err := proofs.ReadMarketSubmissionRejection(task, operation)
+			marketReply(w, id, http.StatusOK, rejection.Response{SchemaVersion: 1, RequestId: rejection.CanonicalId(id), Data: data}, err)
+		})
+	}
 	register("GET /v1/market-chat/agent-sessions/{agentSessionId}/turns/{nativeTurnId}/tools", func(w http.ResponseWriter, r *http.Request) {
 		agent, turn := r.PathValue("agentSessionId"), r.PathValue("nativeTurnId")
 		requestID, ok := marketReadID(r, agent, turn)

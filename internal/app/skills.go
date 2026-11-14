@@ -26,7 +26,8 @@ type SkillService interface {
 type HandlerOption func(*handlerOptions)
 
 type handlerOptions struct {
-	skillService SkillService
+	nativeSkillMarket NativeSkillMarket
+	skillService      SkillService
 }
 
 func WithSkillService(service SkillService) HandlerOption {

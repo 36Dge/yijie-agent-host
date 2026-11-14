@@ -234,6 +234,12 @@ func OpenStore(hostHome string, options ...StoreOption) (*Store, error) {
 		}
 		metadata := tx.Bucket(metadataBucket)
 		version := metadata.Get(storeSchemaVersionKey)
+		if string(version) == "14" {
+			version = metadata.Get(rejectionBaseVersionKey)
+			if tx.Bucket(marketRejectionsBucket) == nil || string(version) == "14" || version == nil {
+				return ErrMarketPurpose
+			}
+		}
 		if string(version) == "11" || string(version) == "12" || string(version) == "13" {
 			if !store.modelV2Writer || tx.Bucket(modelOperationsV2Bucket) == nil {
 				return ErrModelUnavailable

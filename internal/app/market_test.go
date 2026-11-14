@@ -17,6 +17,7 @@ import (
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
 	provider "github.com/36Dge/yijie-agent-host/internal/contracts/marketprovider"
+	rejection "github.com/36Dge/yijie-agent-host/internal/contracts/submissionrejection"
 	"github.com/36Dge/yijie-agent-host/internal/session"
 )
 
@@ -171,5 +172,41 @@ func TestMarketProviderOnlyConfigurationAndReadiness(t *testing.T) {
 	handler.ServeHTTP(live, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if ready.Code != http.StatusServiceUnavailable || live.Code != http.StatusOK {
 		t.Fatal("provider-only fabricated Runtime readiness")
+	}
+}
+
+type marketRejectionFixture struct{ marketAdapterFixture }
+
+func (f *marketRejectionFixture) ReadMarketSubmissionRejection(task, operation string) (rejection.Proof, error) {
+	f.reads++
+	return rejection.Proof{SchemaVersion: 1, HostInstanceId: rejection.CanonicalId(marketID(1)), TaskId: rejection.CanonicalId(task), LocalSessionId: rejection.CanonicalId(marketID(3)), SubmissionOperationId: rejection.CanonicalId(marketID(4)), TurnOperationId: rejection.CanonicalId(operation), SelectionDigest: rejection.SelectionDigest(strings.Repeat("a", 64)), Reason: "skill_maintenance_busy", Outcome: "not_dispatched"}, nil
+}
+func TestFEAT174RejectionReadUsesOwnerHTTPAndCorrelatedGeneratedProof(t *testing.T) {
+	service := &marketRejectionFixture{marketAdapterFixture: marketAdapterFixture{enabled: true}}
+	mux := http.NewServeMux()
+	const token = "ordinary-local-proof-token"
+	registerMarketRoutes(mux, service, token, string(marketID(1)))
+	path := "/v1/market-chat/tasks/" + string(marketID(2)) + "/operations/" + string(marketID(5)) + "/rejection"
+	for _, authorized := range []bool{false, true} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		if authorized {
+			request.Header.Set("Authorization", "Bearer "+token)
+		}
+		request.Header.Set("X-Yijie-Market-Request-Id", string(marketID(10)))
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, request)
+		if !authorized {
+			if response.Code != http.StatusUnauthorized || service.reads != 0 {
+				t.Fatal("missing local authority accepted")
+			}
+			continue
+		}
+		var proof rejection.Response
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &proof) != nil || proof.RequestId != rejection.CanonicalId(marketID(10)) || proof.Data.Reason != "skill_maintenance_busy" || response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatal("proof response invalid", response.Code)
+		}
+	}
+	if service.submits != 0 || service.reads != 1 {
+		t.Fatal("read mutated execution")
 	}
 }

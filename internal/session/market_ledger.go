@@ -48,6 +48,9 @@ func (s *Store) beginMarketOperation(record Record, operation marketOperation, a
 			return ErrMarketPurpose
 		}
 		for _, key := range []wire.CanonicalId{operation.Receipt.SubmissionOperationId, operation.Receipt.TurnOperationId} {
+			if b := tx.Bucket(marketRejectionsBucket); b != nil && b.Get([]byte(key)) != nil {
+				return ErrTurnOperationConflict
+			}
 			if bucket.Get([]byte(key)) != nil || (tx.Bucket(expertOperationsBucket) != nil && tx.Bucket(expertOperationsBucket).Get([]byte(key)) != nil) {
 				return ErrTurnOperationConflict
 			}

@@ -43,6 +43,9 @@ func (s *Service) loadCurrentCatalog() (catalog, error) {
 	if err == nil {
 		err = validateExpertCatalogAuthority(current, s.expertCatalogDigest)
 	}
+	if err == nil && s.nativeReader {
+		current, err = s.includeRetiredOrdinary(current)
+	}
 	return current, err
 }
 

@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-174",
+  "mode": "local_worktree_candidate",
+  "release": false,
+  "runtime_source": {
+    "base_commit": "5c64ed3f03808639faf7c11674e87636a94ab221",
+    "sources": {
+      ".yijie/patches/0001-feat-126-filter-persistent-diagnostics.patch": "6b337a02caf064c6819fab5c7367a485004c85cce0d42acb06fa6d5003e599a0",
+      ".yijie/patches/0002-feat-136-unified-exec-pre-emitter-command-lifecycle.patch": "43de168e1443f4b9ca60d7f61e3de2daf20e1cfea14d2e196d28ba417bf3e06d",
+      ".yijie/patches/input-only/0003-input-only-execution.patch": "c340b6fc17419bcdc1ff45eebe3da40e5fde740c029102eb7a188f6b14eb41d8",
+      ".yijie/patches/chat-models/0004-feat-156-upstream-tool-choice.patch": "828f913fead29da08c015d73ef6c7102a8adf9afd3811ab5469891ec5efc2abf",
+      ".yijie/patches/chat-models/0005-feat-156-terminal-tool-arguments.patch": "f1d6689f44056c252530ad940bb253e8a0ace60e810b88857440699ba908917e",
+      ".yijie/patches/chat-models/0006-native-web-search-sources.patch": "8fdb9d2f7d7708a603a8d08906a4d3cd6ce098ca9165471f95cb0816ed6718ee",
+      ".yijie/patches/chat-models/0007-feat-164-kimi-k31-pro.patch": "c666c066ec1235d016e7479805242d049def542b9f8c684970ac8e5b4cee8ae6",
+      ".yijie/patches/chat-models/0008-feat-164-kimi-responses-include.patch": "c3dc2b58e6ae9d1a2335bc4937defbbaf9da99848575d1e554fc579ef9aec475",
+      ".yijie/patches/chat-models/0009-feat-164-native-failure-terminals.patch": "ae74c11488a31644e9b052f1864fd4a76ecdc05e9019206efd2e7d82f8595886",
+      ".yijie/patches/chat-models/0010-feat-164-sanitized-persistence-metrics.patch": "bcffb5337101c7d2032acaa0dc633cd92f2d12110eff0be10a79884f38eb85a7",
+      ".yijie/patches/chat-models/0011-feat-164-graceful-state-close.patch": "b5054bce23e12f5638cddbf54f4936a8116d62f6ba62208efa58132580c95e83",
+      ".yijie/patches/chat-models/0012-web-retrieval-execution-guard.patch": "235fc906fe30868fab8135909701f6bdaf21f422eb90959ea10de4bd58c1ff09",
+      ".yijie/patches/chat-models/0013-answer-completion.patch": "36b9b9b245971493120b3f6d334ef7daa15b310b94b11de1440d28a4c2c1ce73",
+      ".yijie/patches/chat-models/0014-execution-progress.patch": "453ca48015787976b063ebc89c56965a7cdfa82fb980c98f03c57216cbd0940b",
+      ".yijie/patches/chat-models/0015-public-progress-completion.patch": "41e8fd2e1a9497d5424e50307aa31b7114c632a8e59c7c7adb2acb5cd0a12ba4",
+      ".yijie/patches/chat-models/0016-native-public-messages.patch": "2351e6a7941f3cf24a4f1efe2ec40b6f43254d320c3ae09469cbf18e64e86945",
+      ".yijie/patches/chat-models/0017-native-public-message-validation.patch": "392a4c4141cabedcad148e2ce9b0133a64287152cefb16c576295409da9bb84b",
+      ".yijie/patches/chat-models/0018-native-public-message-spelling.patch": "91deb2b8fda2c6e2d0f64a835f5fcf30930715c44e63943a763419a39276dff2",
+      ".yijie/patches/chat-models/0019-host-image-generation.patch": "5c202edda265bdec4a8af87ed4d1b7101ab4e4fbb3e48f1fa59bb09947272f6a",
+      ".yijie/patches/chat-models/0020-native-tool-integration.patch": "0dabd01b0e3d9195eb5b949999a075c3bb5183a4a1586bb2eb1ede5c5b0920a2",
+      ".yijie/patches/chat-models/0021-native-tool-policy-audit.patch": "c210fd77202411c8f6b4827296284e6a62e19005176af11780fcb64ce94b46a8",
+      ".yijie/patches/chat-models/0022-user-input-context-tools.patch": "a4ea07269228bb428e89236e1882e0bf48294e0c35a3848c0795c05ec7c8877f",
+      ".yijie/patches/chat-models/0023-tool-search-function-transport.patch": "34ba57c1cd38af909979a4e74df37ba63e02e61a2b9e67ef2dbf99518ecb5bd6",
+      ".yijie/patches/chat-models/0024-cooperative-exec-shutdown.patch": "09fa17f39f7e1b1d4969ee1ee644ba6539b7fe3d3892b9416151601aadf8dab9",
+      ".yijie/patches/chat-models/0025-native-skill-marketplace.patch": "0b93c9ac1a236199b6fb7b6bd781b2ed0d29e9329c5e237e5ace90aacc7bbc85",
+      "scripts/build-native-skill-marketplace.sh": "e88e6775a23e0bdd21166b3795b46eb650aa881f87c57b50c3e2b629f1d68612",
+      "scripts/prepare-native-skill-marketplace.py": "ca4f889fc8a0be1e9326543bfb5e581b707827001fe7c875bf675a4526824f9e",
+      "scripts/write-native-skill-marketplace-runtime-manifest.py": "632019800f8df61f054266f3bd88534655bbf093f6c7161100a56053d0ebd397",
+      "scripts/prepare-answer-completion.py": "06ca45a8f0fcd5f66ea470cf0c813aee75dbf68a002862d650cedf1c8caa3de9"
+    }
+  },
+  "upstream": {
+    "commit": "5d1fbf26c43abc65a203928b2e31561cb039e06d",
+    "tag": "rust-v0.144.6",
+    "url": "https://github.com/openai/codex.git"
+  },
+  "runtime_artifact": {
+    "binary": "codex",
+    "reportedVersion": "codex-cli 0.144.6",
+    "sha256": "e03bdbd2b4167022ee85c2df86dacff1a0a5c082321a9aa19875b29136a96cf5",
+    "sizeBytes": 358227400,
+    "target": "aarch64-apple-darwin",
+    "version": "0.144.6"
+  },
+  "runtime_manifest_sha256": "eed98a79cd1fb1687faf295df32d2087504f28704d3cb9775afe902d7e6399aa",
+  "runtime_schema": {
+    "experimentalApi": false,
+    "schemaFileCount": 275,
+    "schemaTreeSha256": "97489c7264dfd3b827210c6a4132716a1983b2ad89e383a7a80316ec0d8c258c",
+    "transport": "stdio"
+  },
+  "runtime_relative_path": ".yijie/build/native-skill-marketplace-v1/8d1ac11567b3a7c47296c89ecad1272d6f886c2904a5c23f546874b3a0ba508c/aarch64-apple-darwin",
+  "patches": [
+    {
+      "path": ".yijie/patches/0001-feat-126-filter-persistent-diagnostics.patch",
+      "sha256": "6b337a02caf064c6819fab5c7367a485004c85cce0d42acb06fa6d5003e599a0"
+    },
+    {
+      "path": ".yijie/patches/0002-feat-136-unified-exec-pre-emitter-command-lifecycle.patch",
+      "sha256": "43de168e1443f4b9ca60d7f61e3de2daf20e1cfea14d2e196d28ba417bf3e06d"
+    },
+    {
+      "path": ".yijie/patches/input-only/0003-input-only-execution.patch",
+      "sha256": "c340b6fc17419bcdc1ff45eebe3da40e5fde740c029102eb7a188f6b14eb41d8"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0004-feat-156-upstream-tool-choice.patch",
+      "sha256": "828f913fead29da08c015d73ef6c7102a8adf9afd3811ab5469891ec5efc2abf"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0005-feat-156-terminal-tool-arguments.patch",
+      "sha256": "f1d6689f44056c252530ad940bb253e8a0ace60e810b88857440699ba908917e"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0006-native-web-search-sources.patch",
+      "sha256": "8fdb9d2f7d7708a603a8d08906a4d3cd6ce098ca9165471f95cb0816ed6718ee"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0007-feat-164-kimi-k31-pro.patch",
+      "sha256": "c666c066ec1235d016e7479805242d049def542b9f8c684970ac8e5b4cee8ae6"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0008-feat-164-kimi-responses-include.patch",
+      "sha256": "c3dc2b58e6ae9d1a2335bc4937defbbaf9da99848575d1e554fc579ef9aec475"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0009-feat-164-native-failure-terminals.patch",
+      "sha256": "ae74c11488a31644e9b052f1864fd4a76ecdc05e9019206efd2e7d82f8595886"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0010-feat-164-sanitized-persistence-metrics.patch",
+      "sha256": "bcffb5337101c7d2032acaa0dc633cd92f2d12110eff0be10a79884f38eb85a7"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0011-feat-164-graceful-state-close.patch",
+      "sha256": "b5054bce23e12f5638cddbf54f4936a8116d62f6ba62208efa58132580c95e83"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0012-web-retrieval-execution-guard.patch",
+      "sha256": "235fc906fe30868fab8135909701f6bdaf21f422eb90959ea10de4bd58c1ff09"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0013-answer-completion.patch",
+      "sha256": "36b9b9b245971493120b3f6d334ef7daa15b310b94b11de1440d28a4c2c1ce73"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0014-execution-progress.patch",
+      "sha256": "453ca48015787976b063ebc89c56965a7cdfa82fb980c98f03c57216cbd0940b"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0015-public-progress-completion.patch",
+      "sha256": "41e8fd2e1a9497d5424e50307aa31b7114c632a8e59c7c7adb2acb5cd0a12ba4"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0016-native-public-messages.patch",
+      "sha256": "2351e6a7941f3cf24a4f1efe2ec40b6f43254d320c3ae09469cbf18e64e86945"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0017-native-public-message-validation.patch",
+      "sha256": "392a4c4141cabedcad148e2ce9b0133a64287152cefb16c576295409da9bb84b"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0018-native-public-message-spelling.patch",
+      "sha256": "91deb2b8fda2c6e2d0f64a835f5fcf30930715c44e63943a763419a39276dff2"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0019-host-image-generation.patch",
+      "sha256": "5c202edda265bdec4a8af87ed4d1b7101ab4e4fbb3e48f1fa59bb09947272f6a"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0020-native-tool-integration.patch",
+      "sha256": "0dabd01b0e3d9195eb5b949999a075c3bb5183a4a1586bb2eb1ede5c5b0920a2"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0021-native-tool-policy-audit.patch",
+      "sha256": "c210fd77202411c8f6b4827296284e6a62e19005176af11780fcb64ce94b46a8"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0022-user-input-context-tools.patch",
+      "sha256": "a4ea07269228bb428e89236e1882e0bf48294e0c35a3848c0795c05ec7c8877f"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0023-tool-search-function-transport.patch",
+      "sha256": "34ba57c1cd38af909979a4e74df37ba63e02e61a2b9e67ef2dbf99518ecb5bd6"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0024-cooperative-exec-shutdown.patch",
+      "sha256": "09fa17f39f7e1b1d4969ee1ee644ba6539b7fe3d3892b9416151601aadf8dab9"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0025-native-skill-marketplace.patch",
+      "sha256": "0b93c9ac1a236199b6fb7b6bd781b2ed0d29e9329c5e237e5ace90aacc7bbc85"
+    }
+  ],
+  "config_schema_sha256": "0e6e4d1882bd59630c27979f01575843a0ae932b7129de8ea4f1ea706b6f442a",
+  "generator_sha256": "2c838e733007f459cd6dcd7791088ce450cc677837e658f2e7d40f3d457a4f36"
+}

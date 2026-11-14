@@ -35,6 +35,13 @@ var validScanReasons = map[string]struct{}{
 }
 
 type Service struct {
+	nativeProjection             func(context.Context, string) (State, error)
+	publicState                  *os.Root
+	statePath                    string
+	nativeReader                 bool
+	nativeOwned                  map[string]bool
+	nativeAuthority              func(string) bool
+	ordinaryReadOnly             bool
 	mu                           sync.Mutex
 	opMu                         sync.Mutex
 	bundleRoot                   string
@@ -127,6 +134,7 @@ func NewService(config Config) (*Service, error) {
 		bundle:              bundle,
 		managed:             managed,
 		state:               state,
+		statePath:           filepath.Join(managedRoot, stateDirectoryName),
 		runtime:             config.Runtime,
 		now:                 now,
 		changed:             make(chan struct{}, 1),
@@ -171,6 +179,9 @@ func (s *Service) Close() error {
 	bundleErr := s.bundle.Close()
 	managedErr := s.managed.Close()
 	stateErr := s.state.Close()
+	if s.publicState != nil {
+		stateErr = errors.Join(stateErr, s.publicState.Close())
+	}
 	return errors.Join(operationErr, bundleErr, managedErr, stateErr)
 }
 
@@ -248,7 +259,7 @@ func (s *Service) Install(ctx context.Context, input InstallInput) (State, error
 	}
 	defer s.finishMutation()
 	s.mu.Lock()
-	state, installErr := s.installLocked(ctx, input, record)
+	state, installErr := s.withResourceMaintenance(ctx, func(guarded context.Context) (State, error) { return s.installLocked(guarded, input, record) })
 	s.mu.Unlock()
 	if finishErr := s.finishStateOperation(record, state, installErr, true); finishErr != nil {
 		installErr = errors.Join(finishErr, installErr)
@@ -267,6 +278,9 @@ func (s *Service) installLocked(ctx context.Context, input InstallInput, record 
 	skill, err := manifestSkill(catalog, input.SkillID)
 	if err != nil {
 		return State{}, err
+	}
+	if !isExpertResource(skill) && (s.ordinaryReadOnly || s.nativeReader && s.nativeOwns(skill.ID)) {
+		return State{}, errorWithCode(CodeCapabilityUnavailable, errors.New("ordinary Skill uses native marketplace"))
 	}
 	if !installableSkill(skill) {
 		return State{}, errorWithCode(CodeNotInstallable, errors.New("Skill is not installable"))
@@ -425,7 +439,7 @@ func (s *Service) SetEnabled(ctx context.Context, input EnabledInput) (State, er
 	}
 	defer s.finishMutation()
 	s.mu.Lock()
-	state, enabledErr := s.setEnabledLocked(ctx, input, record)
+	state, enabledErr := s.withResourceMaintenance(ctx, func(guarded context.Context) (State, error) { return s.setEnabledLocked(guarded, input, record) })
 	s.mu.Unlock()
 	if finishErr := s.finishStateOperation(record, state, enabledErr, true); finishErr != nil {
 		enabledErr = errors.Join(finishErr, enabledErr)
@@ -444,6 +458,9 @@ func (s *Service) setEnabledLocked(ctx context.Context, input EnabledInput, reco
 	skill, err := manifestSkill(catalog, input.SkillID)
 	if err != nil {
 		return State{}, err
+	}
+	if !isExpertResource(skill) && (s.ordinaryReadOnly || s.nativeReader && s.nativeOwns(skill.ID)) {
+		return State{}, errorWithCode(CodeCapabilityUnavailable, errors.New("ordinary Skill uses native marketplace"))
 	}
 	if isExpertResource(skill) && !input.Enabled {
 		return State{}, errorWithCode(CodeBusy, errors.New("expert resource disable requires released references"))
@@ -517,7 +534,7 @@ func (s *Service) Uninstall(ctx context.Context, input UninstallInput) (State, e
 	}
 	defer s.finishMutation()
 	s.mu.Lock()
-	state, uninstallErr := s.uninstallLocked(ctx, input, record)
+	state, uninstallErr := s.withResourceMaintenance(ctx, func(guarded context.Context) (State, error) { return s.uninstallLocked(guarded, input, record) })
 	s.mu.Unlock()
 	if finishErr := s.finishStateOperation(record, state, uninstallErr, true); finishErr != nil {
 		uninstallErr = errors.Join(finishErr, uninstallErr)
@@ -536,6 +553,9 @@ func (s *Service) uninstallLocked(ctx context.Context, input UninstallInput, rec
 	skill, err := manifestSkill(catalog, input.SkillID)
 	if err != nil {
 		return State{}, err
+	}
+	if !isExpertResource(skill) && (s.ordinaryReadOnly || s.nativeReader && s.nativeOwns(skill.ID)) {
+		return State{}, errorWithCode(CodeCapabilityUnavailable, errors.New("ordinary Skill uses native marketplace"))
 	}
 	if isExpertResource(skill) && !expertResourceMutationAllowed(ctx, skill.ID, "remove") {
 		return State{}, errorWithCode(CodeBusy, errors.New("expert resource removal requires released references"))
@@ -733,11 +753,11 @@ func (s *Service) syncRuntimeLocked(
 	expectedPathByID := make(map[string]string, len(catalog.manifest.Skills))
 	for _, skill := range catalog.manifest.Skills {
 		installed := installations[skill.ID]
-		if isExpertResource(skill) {
+		if isExpertResource(skill) || s.nativeOwns(skill.ID) {
 			desired[skill.ID] = false
 			continue
 		}
-		enabled := installed.valid && installed.enabled && installableSkill(skill)
+		enabled := installed.valid && installed.enabled && (installableSkill(skill) || s.nativeReader && skill.legacyRetired)
 		desired[skill.ID] = enabled
 		entrypoint := filepath.Join(s.managedRoot, skill.ID, skill.Entrypoint)
 		if !installed.valid {
@@ -748,8 +768,10 @@ func (s *Service) syncRuntimeLocked(
 		if _, safe := safeEntrypointPath(s.managedRoot, s.managed, skill); !safe {
 			return errorWithCode(CodeRuntimeSyncFailed, errors.New("validated Skill entrypoint became unsafe"))
 		}
-		if _, err := s.runtime.WriteSkillConfig(ctx, entrypoint, enabled); err != nil {
-			return errorWithCode(CodeRuntimeSyncFailed, err)
+		if !s.nativeReader || !s.ordinaryReadOnly {
+			if _, err := s.runtime.WriteSkillConfig(ctx, entrypoint, enabled); err != nil {
+				return errorWithCode(CodeRuntimeSyncFailed, err)
+			}
 		}
 	}
 	entries, err := s.runtime.ListSkills(ctx, []string{s.managedRoot}, true)
@@ -768,7 +790,7 @@ func (s *Service) syncRuntimeLocked(
 		for _, runtimeSkill := range entry.Skills {
 			skill, expected := expectedPaths[runtimeSkill.Path]
 			if !expected {
-				if pathInside(s.managedRoot, runtimeSkill.Path) && runtimeSkill.Enabled {
+				if pathInside(s.managedRoot, runtimeSkill.Path) && runtimeSkill.Enabled && !s.nativePathOwned(runtimeSkill.Path) {
 					if _, writeErr := s.runtime.WriteSkillConfig(ctx, runtimeSkill.Path, false); writeErr != nil {
 						return errorWithCode(CodeRuntimeSyncFailed, writeErr)
 					}
@@ -777,7 +799,7 @@ func (s *Service) syncRuntimeLocked(
 				continue
 			}
 			if seenExpected[runtimeSkill.Path] || runtimeSkill.Name != skill.RuntimeName ||
-				runtimeSkill.Enabled != desired[skill.ID] {
+				(!(s.nativeReader && s.ordinaryReadOnly) && runtimeSkill.Enabled != desired[skill.ID]) {
 				return errorWithCode(CodeRuntimeSyncFailed, errors.New("Runtime managed Skill projection is inconsistent"))
 			}
 			seenExpected[runtimeSkill.Path] = true
@@ -788,6 +810,24 @@ func (s *Service) syncRuntimeLocked(
 		return errorWithCode(CodeRuntimeSyncFailed, errors.New("Runtime exposed an unmanaged Skill"))
 	}
 	for index := range states {
+		if s.nativeOwns(states[index].ID) {
+			if s.nativeProjection != nil {
+				projected, err := s.nativeProjection(ctx, states[index].ID)
+				if err != nil {
+					return err
+				}
+				states[index].InstallationStatus = projected.InstallationStatus
+				states[index].Enabled = projected.Enabled
+				states[index].RuntimeVisible = projected.RuntimeVisible
+				states[index].Version = projected.Version
+				states[index].FailureCode = projected.FailureCode
+			} else {
+				states[index].Enabled = false
+				states[index].RuntimeVisible = false
+				states[index].FailureCode = string(CodeRuntimeUnavailable)
+			}
+			continue
+		}
 		if desired[states[index].ID] && !seenExpected[expectedPathByID[states[index].ID]] {
 			return errorWithCode(CodeRuntimeSyncFailed, errors.New("Runtime did not project an enabled managed Skill"))
 		}
@@ -799,7 +839,7 @@ func (s *Service) syncRuntimeLocked(
 func (s *Service) runtimeRootsLocked(catalog catalog, installations map[string]installation) ([]string, error) {
 	roots := make([]string, 0, len(catalog.manifest.Skills))
 	for _, skill := range catalog.manifest.Skills {
-		if isExpertResource(skill) || !installations[skill.ID].valid {
+		if isExpertResource(skill) || s.nativeOwns(skill.ID) || !installations[skill.ID].valid {
 			continue
 		}
 		entrypoint, safe := safeEntrypointPath(s.managedRoot, s.managed, skill)
@@ -999,6 +1039,9 @@ func (s *Service) recoverTransactionsLocked() error {
 	managedNeedsSync := false
 	for _, entry := range entries {
 		name := entry.Name()
+		if id, _, ok := parseSkillTransactionName(name); ok && s.nativeOwns(id) {
+			continue
+		}
 		switch {
 		case validStageTransactionName(name):
 			if err := s.managed.RemoveAll(name); err != nil {
@@ -1073,6 +1116,9 @@ func (s *Service) recoverTransactionsLocked() error {
 	// conservatively removes that unconfirmed copy. Enabled marker changes are
 	// likewise restored to their previous desired state.
 	for _, record := range records {
+		if s.nativeOwns(record.SkillID) {
+			continue
+		}
 		if record.Status != "in_progress" || record.Phase == "reserved" || record.Phase == "runtime_confirmed" {
 			continue
 		}
@@ -1112,6 +1158,9 @@ func (s *Service) recoverTransactionsLocked() error {
 
 	s.opMu.Lock()
 	for _, record := range s.operations {
+		if s.nativeOwns(record.SkillID) {
+			continue
+		}
 		if record.Status == "in_progress" {
 			if record.ErrorCode != "" {
 				record.Status = "complete"
