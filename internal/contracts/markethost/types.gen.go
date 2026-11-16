@@ -1324,17 +1324,20 @@ func (v *ApprovalSnapshot) UnmarshalJSON(b []byte) error {
 }
 
 type ToolObservation struct {
-	NativeItemId   NativeId        `json:"nativeItemId"`
-	NativeThreadId NativeId        `json:"nativeThreadId"`
-	NativeTurnId   NativeId        `json:"nativeTurnId"`
-	ServerName     string          `json:"serverName"`
-	ToolName       string          `json:"toolName"`
-	State          string          `json:"state"`
-	Service        *ServiceBinding `json:"service,omitempty"`
-	CallRef        *CanonicalId    `json:"callRef,omitempty"`
-	ResultText     *string         `json:"resultText,omitempty"`
-	ErrorCode      *string         `json:"errorCode,omitempty"`
-	Truncated      bool            `json:"truncated"`
+	NativeItemId         NativeId            `json:"nativeItemId"`
+	NativeThreadId       NativeId            `json:"nativeThreadId"`
+	NativeTurnId         NativeId            `json:"nativeTurnId"`
+	ServerName           string              `json:"serverName"`
+	ToolName             string              `json:"toolName"`
+	State                string              `json:"state"`
+	Service              *ServiceBinding     `json:"service,omitempty"`
+	CallRef              *CanonicalId        `json:"callRef,omitempty"`
+	ResultText           *string             `json:"resultText,omitempty"`
+	ErrorCode            *string             `json:"errorCode,omitempty"`
+	Truncated            bool                `json:"truncated"`
+	Correlation          *GatewayCallReceipt `json:"correlation,omitempty"`
+	ResultTextSource     *ResultTextSource   `json:"resultTextSource,omitempty"`
+	StructuredResultText *string             `json:"structuredResultText,omitempty"`
 }
 
 func (v ToolObservation) Validate() error {
@@ -1384,6 +1387,21 @@ func (v ToolObservation) Validate() error {
 		case "tool_failed", "cancelled", "runtime_unavailable", "unsupported_result":
 		default:
 			return errors.New("invalid broker enum")
+		}
+	}
+	if v.Correlation != nil {
+		if err := (*v.Correlation).Validate(); err != nil {
+			return err
+		}
+	}
+	if v.ResultTextSource != nil {
+		if err := (*v.ResultTextSource).Validate(); err != nil {
+			return err
+		}
+	}
+	if v.StructuredResultText != nil {
+		if utf8.RuneCountInString(string((*v.StructuredResultText))) > 65536 {
+			return errors.New("invalid broker text")
 		}
 	}
 	return nil
@@ -1446,6 +1464,15 @@ func (v *ToolObservation) UnmarshalJSON(b []byte) error {
 		return errors.New("missing broker field")
 	}
 	if x, ok := raw["truncated"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["correlation"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["resultTextSource"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["structuredResultText"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
 		return errors.New("null broker field")
 	}
 	var w wire
@@ -3102,8 +3129,9 @@ func (v *ProbeResponse) UnmarshalJSON(b []byte) error {
 
 type SelectionDisplay = market.SelectionDisplay
 type NativeObservePayload struct {
-	SessionId    CanonicalId `json:"sessionId"`
-	NativeTurnId *NativeId   `json:"nativeTurnId,omitempty"`
+	SessionId    CanonicalId    `json:"sessionId"`
+	NativeTurnId *NativeId      `json:"nativeTurnId,omitempty"`
+	ToolsRead    *ToolsReadMode `json:"toolsRead,omitempty"`
 }
 
 func (v NativeObservePayload) Validate() error {
@@ -3112,6 +3140,11 @@ func (v NativeObservePayload) Validate() error {
 	}
 	if v.NativeTurnId != nil {
 		if err := (*v.NativeTurnId).Validate(); err != nil {
+			return err
+		}
+	}
+	if v.ToolsRead != nil {
+		if err := (*v.ToolsRead).Validate(); err != nil {
 			return err
 		}
 	}
@@ -3132,6 +3165,9 @@ func (v *NativeObservePayload) UnmarshalJSON(b []byte) error {
 	if x, ok := raw["nativeTurnId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
 		return errors.New("null broker field")
 	}
+	if x, ok := raw["toolsRead"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
 	var w wire
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.DisallowUnknownFields()
@@ -3150,12 +3186,15 @@ func (v *NativeObservePayload) UnmarshalJSON(b []byte) error {
 }
 
 type NativeObservation struct {
-	Managed          bool               `json:"managed"`
-	SelectionDisplay []SelectionDisplay `json:"selectionDisplay"`
-	Approvals        *ApprovalSnapshot  `json:"approvals,omitempty"`
-	Tools            *ToolSnapshot      `json:"tools,omitempty"`
-	AvailableTurns   *[]ObservedTurn    `json:"availableTurns,omitempty"`
-	TurnsTruncated   *bool              `json:"turnsTruncated,omitempty"`
+	Managed                bool               `json:"managed"`
+	SelectionDisplay       []SelectionDisplay `json:"selectionDisplay"`
+	Approvals              *ApprovalSnapshot  `json:"approvals,omitempty"`
+	Tools                  *ToolSnapshot      `json:"tools,omitempty"`
+	AvailableTurns         *[]ObservedTurn    `json:"availableTurns,omitempty"`
+	TurnsTruncated         *bool              `json:"turnsTruncated,omitempty"`
+	DecisionFacts          *[]DecisionFact    `json:"decisionFacts,omitempty"`
+	DecisionFactsTruncated *bool              `json:"decisionFactsTruncated,omitempty"`
+	RemoteIssue            *ErrorCode         `json:"remoteIssue,omitempty"`
 }
 
 func (v NativeObservation) Validate() error {
@@ -3195,6 +3234,26 @@ func (v NativeObservation) Validate() error {
 	}
 	if v.TurnsTruncated != nil {
 	}
+	if v.DecisionFacts != nil {
+		if (*v.DecisionFacts) == nil {
+			return errors.New("null broker collection")
+		}
+		if len((*v.DecisionFacts)) > 128 {
+			return errors.New("invalid broker collection")
+		}
+		for _, item := range *v.DecisionFacts {
+			if err := item.Validate(); err != nil {
+				return err
+			}
+		}
+	}
+	if v.DecisionFactsTruncated != nil {
+	}
+	if v.RemoteIssue != nil {
+		if err := (*v.RemoteIssue).Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 func (v *NativeObservation) UnmarshalJSON(b []byte) error {
@@ -3225,6 +3284,15 @@ func (v *NativeObservation) UnmarshalJSON(b []byte) error {
 		return errors.New("null broker field")
 	}
 	if x, ok := raw["turnsTruncated"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["decisionFacts"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["decisionFactsTruncated"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["remoteIssue"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
 		return errors.New("null broker field")
 	}
 	var w wire
@@ -3760,6 +3828,288 @@ func (v *SuspendResponse) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+type GatewayCallReceipt = broker.GatewayCallReceipt
+type GatewayDecisionReceipt = broker.GatewayDecisionReceipt
+type ArgsDigest = broker.ArgsDigest
+type ToolsReadMode string
+
+const (
+	ToolsReadModeNone    ToolsReadMode = "none"
+	ToolsReadModeEvents  ToolsReadMode = "events"
+	ToolsReadModeHistory ToolsReadMode = "history"
+)
+
+func (v ToolsReadMode) Validate() error {
+	switch v {
+	case ToolsReadModeNone, ToolsReadModeEvents, ToolsReadModeHistory:
+		return nil
+	default:
+		return errors.New("invalid broker enum")
+	}
+}
+func (v *ToolsReadMode) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return errors.New("invalid broker enum")
+	}
+	x := ToolsReadMode(s)
+	if err := x.Validate(); err != nil {
+		return err
+	}
+	*v = x
+	return nil
+}
+
+type ResultTextSource string
+
+const (
+	ResultTextSourceContent    ResultTextSource = "content"
+	ResultTextSourceStructured ResultTextSource = "structured"
+)
+
+func (v ResultTextSource) Validate() error {
+	switch v {
+	case ResultTextSourceContent, ResultTextSourceStructured:
+		return nil
+	default:
+		return errors.New("invalid broker enum")
+	}
+}
+func (v *ResultTextSource) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return errors.New("invalid broker enum")
+	}
+	x := ResultTextSource(s)
+	if err := x.Validate(); err != nil {
+		return err
+	}
+	*v = x
+	return nil
+}
+
+type DecisionFactKind string
+
+const (
+	DecisionFactKindRequested    DecisionFactKind = "requested"
+	DecisionFactKindAcknowledged DecisionFactKind = "acknowledged"
+	DecisionFactKindUnconfirmed  DecisionFactKind = "unconfirmed"
+)
+
+func (v DecisionFactKind) Validate() error {
+	switch v {
+	case DecisionFactKindRequested, DecisionFactKindAcknowledged, DecisionFactKindUnconfirmed:
+		return nil
+	default:
+		return errors.New("invalid broker enum")
+	}
+}
+func (v *DecisionFactKind) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return errors.New("invalid broker enum")
+	}
+	x := DecisionFactKind(s)
+	if err := x.Validate(); err != nil {
+		return err
+	}
+	*v = x
+	return nil
+}
+
+type ToolName = broker.ToolName
+type DecisionFact struct {
+	ApprovalId       CanonicalId      `json:"approvalId"`
+	DecisionId       CanonicalId      `json:"decisionId"`
+	CallRef          CanonicalId      `json:"callRef"`
+	ServiceId        ServiceId        `json:"serviceId"`
+	Reference        SelectionRef     `json:"reference"`
+	NativeThreadId   NativeId         `json:"nativeThreadId"`
+	NativeTurnId     NativeId         `json:"nativeTurnId"`
+	TurnOperationId  CanonicalId      `json:"turnOperationId"`
+	SelectionDigest  SelectionDigest  `json:"selectionDigest"`
+	ToolName         ToolName         `json:"toolName"`
+	ArgsDigest       ArgsDigest       `json:"argsDigest"`
+	Decision         Decision         `json:"decision"`
+	Kind             DecisionFactKind `json:"kind"`
+	SchemaVersion    int64            `json:"schemaVersion"`
+	ArgsEncoding     string           `json:"argsEncoding"`
+	ObservedAtUnixMs int64            `json:"observedAtUnixMs"`
+}
+
+func (v DecisionFact) Validate() error {
+	if err := v.ApprovalId.Validate(); err != nil {
+		return err
+	}
+	if err := v.DecisionId.Validate(); err != nil {
+		return err
+	}
+	if err := v.CallRef.Validate(); err != nil {
+		return err
+	}
+	if err := v.ServiceId.Validate(); err != nil {
+		return err
+	}
+	if err := v.Reference.Validate(); err != nil {
+		return err
+	}
+	if err := v.NativeThreadId.Validate(); err != nil {
+		return err
+	}
+	if err := v.NativeTurnId.Validate(); err != nil {
+		return err
+	}
+	if err := v.TurnOperationId.Validate(); err != nil {
+		return err
+	}
+	if err := v.SelectionDigest.Validate(); err != nil {
+		return err
+	}
+	if err := v.ToolName.Validate(); err != nil {
+		return err
+	}
+	if err := v.ArgsDigest.Validate(); err != nil {
+		return err
+	}
+	if err := v.Decision.Validate(); err != nil {
+		return err
+	}
+	if err := v.Kind.Validate(); err != nil {
+		return err
+	}
+	if v.SchemaVersion != 1 {
+		return errors.New("invalid broker constant")
+	}
+	if string(v.ArgsEncoding) != "worker-json-v1" {
+		return errors.New("invalid broker constant")
+	}
+	if v.ObservedAtUnixMs < 0 {
+		return errors.New("invalid broker number")
+	}
+	if v.ObservedAtUnixMs > 9007199254740991 {
+		return errors.New("invalid broker number")
+	}
+	return nil
+}
+func (v *DecisionFact) UnmarshalJSON(b []byte) error {
+	type wire DecisionFact
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil || raw == nil {
+		return errors.New("invalid broker object")
+	}
+	if _, ok := raw["approvalId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["approvalId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["decisionId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["decisionId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["callRef"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["callRef"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["serviceId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["serviceId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["reference"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["reference"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["nativeThreadId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["nativeThreadId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["nativeTurnId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["nativeTurnId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["turnOperationId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["turnOperationId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["selectionDigest"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["selectionDigest"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["toolName"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["toolName"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["argsDigest"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["argsDigest"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["decision"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["decision"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["kind"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["kind"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["schemaVersion"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["schemaVersion"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["argsEncoding"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["argsEncoding"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["observedAtUnixMs"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["observedAtUnixMs"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	var w wire
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&w); err != nil {
+		return errors.New("invalid broker object")
+	}
+	if err := d.Decode(new(any)); err != io.EOF {
+		return errors.New("invalid broker object")
+	}
+	x := DecisionFact(w)
+	if err := x.Validate(); err != nil {
+		return err
+	}
+	*v = x
+	return nil
+}
+
 type StartTurnV2TextBlock struct {
 	Type   string          `json:"type"`
 	Text   string          `json:"text"`
@@ -4222,3 +4572,6 @@ const MaxControlReceipts = 1024
 const MaxApprovalRecords = 128
 const MaxToolItems = 128
 const MaxResultTextBytes = 65536
+const MaxDecisionFacts = 128
+const MaxLiveToolTurns = 64
+const MaxLiveToolBytes = 8388608

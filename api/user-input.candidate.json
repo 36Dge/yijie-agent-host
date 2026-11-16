@@ -7,9 +7,9 @@
   "base_commit": "d348fc565af341ebd8a2088efea2aa6ff7460709",
   "sources": {
     "openapi/user-input/user-input.yaml": "5c6fe2da9d8f175866fb7e737df830acca0b192d3186f323cc0337d3b91a5040",
-    "scripts/generate-user-input.mjs": "d3b1dd1e6f8ac921e1649c40bff2e64315e822127fd2b33522a7e7ac490c1aaa",
+    "scripts/generate-user-input.mjs": "f00196c64c96f41d7dc96d0d5bd3126925022582c453cabd8d383c377017107e",
     "compatibility/runtime-interaction-tools/types.openapi.json": "16af36b8fe31ea8571255b767f0b8294be6e338befff4e6e852b6bda99ccb0ec",
-    "compatibility/runtime-interaction-tools/source.lock.json": "b98849d6285c46ed500cc71b7204357b5cb01450e5f15e47f0ce761ba099a00f"
+    "compatibility/runtime-interaction-tools/source.lock.json": "7ae18ff3c8b1e0389b83bdf162d580b714d307afaabc9bf2fbf3d3de81398735"
   },
   "generated": {
     "sdks/openapi/user-input.resolved.json": "ac9dc4dbc715a55d2c909959fb7a86885596f9f45bdc7a86885704a19d064103",

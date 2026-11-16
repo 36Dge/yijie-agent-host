@@ -20,12 +20,20 @@ import (
 
 type marketSessionRuntime struct {
 	modelTestRuntime
-	process         broker.ProcessBinding
-	order           []string
-	preparedThreads []*string
-	turns           int
-	deadlines       []time.Time
-	toolResult      any
+	process             broker.ProcessBinding
+	order               []string
+	preparedThreads     []*string
+	turns               int
+	deadlines           []time.Time
+	toolResult          any
+	toolTurnID          string
+	toolReads           int
+	toolReadHook        func()
+	toolRuntimeNotReady bool
+}
+
+func (r *marketSessionRuntime) Snapshot() codex.Status {
+	return codex.Status{Ready: !r.toolRuntimeNotReady}
 }
 
 func (r *marketSessionRuntime) CloseMarketAdmission(context.Context) error {
@@ -224,11 +232,21 @@ func TestFEAT157MarketExplicitAdoptionAndReadAfterRevocation(t *testing.T) {
 }
 
 func (r *marketSessionRuntime) ReadThread(_ context.Context, id string) (json.RawMessage, error) {
+	r.toolReads++
 	result := r.toolResult
 	if result == nil {
 		result = map[string]any{"content": []any{map[string]string{"type": "text", "text": "Public company profile"}}}
 	}
-	return json.Marshal(map[string]any{"id": id, "turns": []any{map[string]any{"id": testTurnID, "status": "completed", "items": []any{map[string]any{"id": "native-tool-item-1", "type": "mcpToolCall", "server": "yijie_market", "tool": "public_lookup", "status": "completed", "result": result}}}}})
+	turnID := r.toolTurnID
+	if turnID == "" {
+		turnID = testTurnID
+	}
+	raw, err := json.Marshal(map[string]any{"id": id, "turns": []any{map[string]any{"id": turnID, "status": "completed", "items": []any{map[string]any{"id": "native-tool-item-1", "type": "mcpToolCall", "server": "yijie_market", "tool": "public_lookup", "status": "completed", "result": result}}}}})
+	if hook := r.toolReadHook; hook != nil {
+		r.toolReadHook = nil
+		hook()
+	}
+	return raw, err
 }
 
 func TestFEAT157MarketToolProjectionKeepsNativeIdentityWithoutGuessingCall(t *testing.T) {
@@ -270,9 +288,9 @@ func TestFEAT157MarketUnsupportedResultRetainsObservedTool(t *testing.T) {
 
 func TestFEAT157MarketCompleteStructuredCopyIsNotTruncated(t *testing.T) {
 	for _, tc := range []struct {
-		name      string
-		text      string
-		truncated bool
+		name     string
+		text     string
+		separate bool
 	}{
 		{"complete", "{\n  \"rows\": []\n}", false},
 		{"different", "{\"rows\":[],\"count\":0}", true},
@@ -291,7 +309,7 @@ func TestFEAT157MarketCompleteStructuredCopyIsNotTruncated(t *testing.T) {
 				t.Fatal(result, err)
 			}
 			item := result.Items[0]
-			if item.Truncated != tc.truncated || item.ResultText == nil || *item.ResultText != tc.text {
+			if item.Truncated || item.ResultText == nil || (*item.ResultText != tc.text && !sameMarketJSON(*item.ResultText, []byte(tc.text))) || (item.StructuredResultText != nil) != tc.separate {
 				t.Fatal(item)
 			}
 		})

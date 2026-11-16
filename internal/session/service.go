@@ -214,6 +214,7 @@ type Service struct {
 	media                *mediaAuthority
 	expertResources      ExpertResources
 	market               *marketAuthority
+	marketTools          marketToolSnapshots
 	modelOperationMu     sync.Mutex
 	draftDirectory       func(string) (string, error)
 	runtime              Runtime

@@ -329,6 +329,7 @@ func (s *Service) publishNativeNotification(method string, raw json.RawMessage) 
 	if err != nil {
 		return
 	}
+	s.observeMarketToolNotification(record, method, p.TurnID, p.Item, p.Turn)
 	n := native.NativeNotification{Source: native.RuntimeNotification, Method: method, ThreadId: p.ThreadID, Availability: native.NativeNotificationAvailabilityAvailable}
 	if p.TurnID != "" {
 		n.TurnId = &p.TurnID

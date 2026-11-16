@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
 	rejection "github.com/36Dge/yijie-agent-host/internal/contracts/submissionrejection"
@@ -57,6 +58,24 @@ func marketReadID(r *http.Request, ids ...string) (wire.CanonicalId, bool) {
 	}
 	id := wire.CanonicalId(headers[0])
 	return id, id.Validate() == nil
+}
+
+func marketToolReadID(r *http.Request, ids ...string) (wire.CanonicalId, string, bool) {
+	if r.URL.RawQuery == "" {
+		id, ok := marketReadID(r, ids...)
+		return id, "", ok
+	}
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	sources := query["source"]
+	if err != nil || len(query) != 1 || len(sources) != 1 || (sources[0] != "history" && sources[0] != "events") {
+		return "", "", false
+	}
+	// Only this read route accepts the closed source selector. Keep the shared
+	// no-body/ID/header checks and all other routes' no-query rules unchanged.
+	withoutQuery := r.Clone(r.Context())
+	withoutQuery.URL.RawQuery = ""
+	id, ok := marketReadID(withoutQuery, ids...)
+	return id, sources[0], ok
 }
 func registerMarketRoutes(mux *http.ServeMux, candidate any, apiToken, nonce string) {
 	service, ok := candidate.(marketHTTPService)
@@ -132,12 +151,38 @@ func registerMarketRoutes(mux *http.ServeMux, candidate any, apiToken, nonce str
 	}
 	register("GET /v1/market-chat/agent-sessions/{agentSessionId}/turns/{nativeTurnId}/tools", func(w http.ResponseWriter, r *http.Request) {
 		agent, turn := r.PathValue("agentSessionId"), r.PathValue("nativeTurnId")
-		requestID, ok := marketReadID(r, agent, turn)
+		requestID, source, ok := marketToolReadID(r, agent, turn)
 		if !ok {
 			marketErrorReply(w, nil, wire.ErrorCodeInvalidRequest)
 			return
 		}
-		data, err := service.ReadMarketTools(r.Context(), agent, turn)
+		var data wire.ToolSnapshot
+		var err error
+		switch source {
+		case "", "history":
+			data, err = service.ReadMarketTools(r.Context(), agent, turn)
+		case "events":
+			reader, available := candidate.(interface {
+				ReadMarketToolEvents(context.Context, string, string) (wire.ToolSnapshot, error)
+			})
+			if !available {
+				marketErrorReply(w, &requestID, wire.ErrorCodeNotReady)
+				return
+			}
+			data, err = reader.ReadMarketToolEvents(r.Context(), agent, turn)
+		default:
+			marketErrorReply(w, &requestID, wire.ErrorCodeInvalidRequest)
+			return
+		}
+		// Legacy readers cannot render the new separate JSON field. Preserve
+		// their incompleteness warning unless the caller selected a new read mode.
+		if source == "" {
+			for i := range data.Items {
+				if data.Items[i].StructuredResultText != nil {
+					data.Items[i].Truncated = true
+				}
+			}
+		}
 		marketReply(w, requestID, http.StatusOK, wire.ToolsResponse{SchemaVersion: 1, RequestId: requestID, Data: data}, err)
 	})
 }

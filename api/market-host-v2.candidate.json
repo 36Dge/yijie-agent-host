@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contract_version": "0.6.0",
+  "contract_version": "0.8.1",
   "feature": "FEAT-164",
   "mode": "local_worktree_candidate",
   "release": false,
@@ -8,11 +8,11 @@
   "sources": [
     {
       "path": "compatibility/market-host-v2/wire.schema.json",
-      "sha256": "c26c24cc059f022bfc06d94ca783c825e45c45bae93bd5f91d5708ec2621dd54"
+      "sha256": "57c12af538ef68858d7a5200e21d495e81ea3414805b3605aaacbbde7229bad1"
     },
     {
       "path": "compatibility/market-host-v2/transport.json",
-      "sha256": "01e726ca1f887868e0fe870eba410ac47ccf84a58868de9a5dd296b885529ea7"
+      "sha256": "a60290c95c23879ae9baf7fbf8c02db33d51fe58a72ed375b29946cec99aad29"
     },
     {
       "path": "openapi/market-connectors/market-connectors.yaml",
@@ -28,7 +28,7 @@
     },
     {
       "path": "compatibility/market-broker-control/wire.schema.json",
-      "sha256": "614b37f68d13ce80f0a2f17573084507c11f888d283c092544bd84d6540c6c6f"
+      "sha256": "8e8cccb5ff5569f308205f01e56abd37a8ae582093652efafc1ad981123c5882"
     },
     {
       "path": "openapi/runtime-permissions-v2/runtime-permissions-v2.yaml",
@@ -52,11 +52,11 @@
     },
     {
       "path": "scripts/market-host-v2-source.mjs",
-      "sha256": "326cc24747f0b6e855b0da9884b7eb075ee85234ae9dec377db7c193dba6c084"
+      "sha256": "d34e5c31daf97da173c98ea21f04c72aa96eacf2d7491951dbfc535982dff128"
     },
     {
       "path": "scripts/generate-market-host-v2.mjs",
-      "sha256": "4c232c7c6b8689158915c16fd3111f313173d28236b6343453ba3da27b6b6aba"
+      "sha256": "51befca91392b0110cb84b007b35d565b13c222d9ae2f08b54b8613aa988816d"
     },
     {
       "path": "scripts/format-source-file.mjs",
@@ -68,7 +68,7 @@
     },
     {
       "path": "scripts/sync-model-call-surfaces-v2.mjs",
-      "sha256": "d61f7aeb4008a4caca96c72d56b5ec4f93b4461fc70b7f46027897baa011b232"
+      "sha256": "fd917ae26e5928824bca3fa9dd0e366da24d6b0c996ad33c6f881a27520e1036"
     },
     {
       "path": "pnpm-lock.yaml",
@@ -78,23 +78,23 @@
   "generated": [
     {
       "path": "sdks/rust/market-host-v2/types.gen.rs",
-      "sha256": "81a0411ddf6a82b3ae4927b1dd807270080cd956c0f783a3962be4280c2fd44e"
+      "sha256": "c496f7f1e9f1ecaf09a38b517d1d94c48b51a89a3596e87a5104db6bdba2dcc4"
     },
     {
       "path": "sdks/go/market-host-v2/types.gen.go",
-      "sha256": "a242506b27f55305a00a605f4989bb911a654b019231e90f4d59ce0bcfb26e14"
+      "sha256": "9a0817aaffa29efe3ffc2fad4ae21c23ae8b1259ee9a105aff0f93bfa9495971"
     },
     {
       "path": "sdks/jsonschema/market-host-v2.schema.json",
-      "sha256": "c443a604dac1af635795a803a4d453983ef61df7182f577269325a334f01a26b"
+      "sha256": "b4733f9641a79c325eb608b843af07dac7733b21e5f7bc5a7798b3fa05036916"
     },
     {
       "path": "sdks/typescript/src/domain/market-host-v2-native.generated.ts",
-      "sha256": "543dce98ec99317e75f7b7f8cd64dc77c0dacf1b0791a2b9e35e3dedbe52db65"
+      "sha256": "0d1845affd8465ebfcd5ae0304fbf705c6540c6c8f90ddd58d6f79aec44f90c0"
     },
     {
       "path": "sdks/typescript/src/api/generated/market-host-v2-native-validator.gen.js",
-      "sha256": "a8713eb09759733a5d6e7e051b3a623878c9b087e9f08257648cc5319023e74f"
+      "sha256": "d08a3519db8eaafe1436621d882c09cbbe002eba6c52b294b5611981cc1c086a"
     },
     {
       "path": "sdks/typescript/src/api/generated/market-host-v2-native-validator.gen.d.ts",
@@ -102,21 +102,22 @@
     },
     {
       "path": "sdks/jsonschema/market-host-v2-native.schema.json",
-      "sha256": "25d78704765c3181dad1e2138e2108582fa1b9c4773eaad880fc2edc04dad81a"
+      "sha256": "ae51e78f760b79714f37d8b48016ab1892262255f5350f733c550b83ffa00c3e"
     }
   ],
-  "source_commit": "a189ec6b66b24aefc59e9d766e6ae4b29c09fdec",
+  "local_candidate": "market-p1",
+  "worktree_head": "470425773a38595f745137a9d3f66c37f46287fc",
   "consumer": "agent-host",
   "consumer_generated": [
     {
       "source": "sdks/go/market-host-v2/types.gen.go",
       "path": "internal/contracts/markethost/types.gen.go",
-      "sha256": "f9c23289328b61b5ceb094b256f43ffa9b958b1b2cb4bed9f0e7f7320af943a2"
+      "sha256": "741fb8ff15cd9dcd6906b86f7f52d50344945754c6aed090753c927ba2774fd8"
     },
     {
       "source": "sdks/jsonschema/market-host-v2.schema.json",
       "path": "api/market-host-v2.schema.json",
-      "sha256": "c443a604dac1af635795a803a4d453983ef61df7182f577269325a334f01a26b"
+      "sha256": "b4733f9641a79c325eb608b843af07dac7733b21e5f7bc5a7798b3fa05036916"
     }
   ]
 }

@@ -129,6 +129,45 @@ func TestToolSearchRuntimeGatewayApprovalReject(t *testing.T) {
 	if h.calls.Load() != 3 {
 		t.Fatal("unexpected retry after rejection", h.calls.Load())
 	}
+	// The real owned worker result must carry the same rejected decision through
+	// the unchanged native MCP Item, without exposing an executable binding.
+	history, err := h.manager.ReadThread(ctx, thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var native struct {
+		Turns []struct {
+			Items []struct {
+				ID     string `json:"id"`
+				Type   string `json:"type"`
+				Result struct {
+					Meta map[string]json.RawMessage `json:"_meta"`
+				} `json:"result"`
+			} `json:"items"`
+		} `json:"turns"`
+	}
+	if json.Unmarshal(history, &native) != nil {
+		t.Fatal("native history unavailable")
+	}
+	linked := 0
+	for _, nativeTurn := range native.Turns {
+		for _, item := range nativeTurn.Items {
+			if item.Type != "mcpToolCall" {
+				continue
+			}
+			var link broker.GatewayCallReceipt
+			if json.Unmarshal(item.Result.Meta[broker.GatewayResultKey], &link) != nil || link.Validate() != nil {
+				t.Fatal("real Gateway receipt missing")
+			}
+			if item.ID == "" || link.CallRef != approval.Identity.CallRef || link.NativeThreadId != broker.NativeId(thread.ID) || link.NativeTurnId != broker.NativeId(turn.ID) || link.DecisionReceipt == nil || link.DecisionReceipt.ApprovalId != approval.ApprovalId || receipt.DecisionId == nil || link.DecisionReceipt.DecisionId != *receipt.DecisionId || link.DecisionReceipt.Decision != broker.DecisionReject || link.AdmissionConsumed {
+				t.Fatal("real approval and native result are not linked")
+			}
+			linked++
+		}
+	}
+	if linked != 1 {
+		t.Fatal("expected one actual linked MCP Item", linked)
+	}
 	if err = h.manager.DiscardMarketPrepared(ctx, prepared); err != nil {
 		t.Fatal(err)
 	}

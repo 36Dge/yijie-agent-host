@@ -1,14 +1,17 @@
 package session
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"strings"
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
 )
+
+func marketRuntimeReady(runtime Runtime) bool {
+	status, available := runtime.(interface{ Snapshot() codex.Status })
+	return !available || status.Snapshot().Ready
+}
 
 func (s *Service) marketRecord(id string) (Record, error) {
 	if wire.CanonicalId(id).Validate() != nil {
@@ -31,6 +34,9 @@ func (s *Service) ReadMarketApprovals(_ context.Context, id string) (wire.Approv
 	r, e := s.marketRecord(id)
 	if e != nil {
 		return wire.ApprovalSnapshot{}, e
+	}
+	if !marketRuntimeReady(s.runtime) {
+		return wire.ApprovalSnapshot{}, marketFail(wire.ErrorCodeNotReady)
 	}
 	rt, ok := s.runtime.(interface {
 		ListMarketApprovals(string) []wire.MarketApproval
@@ -87,9 +93,8 @@ func (s *Service) DecideMarketApproval(ctx context.Context, input wire.ApprovalD
 	return result, nil
 }
 
-// This is only a bounded projection of Runtime-owned complete MCP Items. The
-// elicitation carries no item ID, so a callRef/service is intentionally absent
-// unless the native protocol eventually supplies an explicit binding.
+// Bounded projection of Runtime-owned MCP Items. A Gateway-owned result receipt
+// can link a completed native Item; missing metadata never invites a guess.
 func (s *Service) ReadMarketTools(ctx context.Context, id, turnID string) (wire.ToolSnapshot, error) {
 	if wire.NativeId(turnID).Validate() != nil {
 		return wire.ToolSnapshot{}, marketFail(wire.ErrorCodeInvalidRequest)
@@ -104,6 +109,8 @@ func (s *Service) ReadMarketTools(ctx context.Context, id, turnID string) (wire.
 	if !ok {
 		return wire.ToolSnapshot{}, marketFail(wire.ErrorCodeNotReady)
 	}
+	key := marketSnapshotIdentity(r, turnID)
+	revision := s.marketTools.version(key)
 	raw, e := rt.ReadThread(ctx, r.CodexThreadID)
 	if e != nil {
 		return wire.ToolSnapshot{}, marketFail(wire.ErrorCodeTemporarilyUnavailable)
@@ -129,88 +136,15 @@ func (s *Service) ReadMarketTools(ctx context.Context, id, turnID string) (wire.
 				out.Truncated = true
 				break
 			}
-			if wire.NativeId(item.ID).Validate() != nil || len(item.Tool) > 128 || !nativeMcpIdentifier.MatchString(item.Tool) || v5SensitiveCommandLine(item.Tool) {
-				continue
-			}
-			state := "in_progress"
-			if item.Status != nil {
-				switch *item.Status {
-				case "completed":
-					state = "completed"
-				case "failed":
-					state = "failed"
-				}
-			}
-			view := wire.ToolObservation{NativeItemId: wire.NativeId(item.ID), NativeThreadId: wire.NativeId(native.ID), NativeTurnId: wire.NativeId(turnID), ServerName: item.Server, ToolName: item.Tool, State: state}
-			var result struct {
-				Content    []json.RawMessage `json:"content"`
-				Structured json.RawMessage   `json:"structuredContent"`
-				IsError    bool              `json:"isError"`
-			}
-			if len(item.Result) > 0 && string(item.Result) != "null" {
-				if json.Unmarshal(item.Result, &result) != nil {
-					code := "unsupported_result"
-					view.ErrorCode = &code
-				} else {
-					if result.IsError {
-						view.State = "failed"
-					}
-					var texts []string
-					remaining := wire.MaxResultTextBytes
-					for index, content := range result.Content {
-						if index >= 32 {
-							view.Truncated = true
-							break
-						}
-						var block struct {
-							Type string  `json:"type"`
-							Text *string `json:"text"`
-						}
-						if json.Unmarshal(content, &block) != nil || block.Type != "text" || block.Text == nil {
-							view.Truncated = true
-							continue
-						}
-						clean := redactV5CommandText(*block.Text)
-						if strings.ContainsRune(clean, 0) {
-							view.Truncated = true
-							continue
-						}
-						if len(texts) > 0 {
-							remaining--
-						}
-						if remaining < 0 {
-							view.Truncated = true
-							break
-						}
-						bounded, truncated := truncateV5UTF8(clean, remaining)
-						view.Truncated = view.Truncated || truncated
-						texts = append(texts, bounded)
-						remaining -= len(bounded)
-					}
-					if len(result.Structured) > 0 && string(result.Structured) != "null" &&
-						(view.Truncated || len(texts) != 1 || !sameMarketJSON(texts[0], result.Structured)) {
-						view.Truncated = true
-					}
-					if len(texts) > 0 {
-						text := strings.Join(texts, "\n")
-						view.ResultText = &text
-					}
-				}
-			}
-			if view.Validate() == nil {
-				out.Items = append(out.Items, view)
+			if view := s.projectMarketTool(r, turnID, item); view != nil {
+				out.Items = append(out.Items, *view)
 			} else {
 				out.Truncated = true
 			}
 		}
+		s.marketTools.seed(key, out, revision)
+		removeConflictingMarketLinks(out.Items)
 		return out, nil
 	}
 	return wire.ToolSnapshot{}, marketFail(wire.ErrorCodeSessionNotFound)
-}
-
-// rmcp's structured result also includes a JSON text block. Omitting that
-// identical second representation does not omit any result information.
-func sameMarketJSON(text string, structured json.RawMessage) bool {
-	var left, right bytes.Buffer
-	return json.Compact(&left, []byte(text)) == nil && json.Compact(&right, structured) == nil && bytes.Equal(left.Bytes(), right.Bytes())
 }

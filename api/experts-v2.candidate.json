@@ -32,7 +32,7 @@
     },
     {
       "path": "compatibility/market-broker-control/wire.schema.json",
-      "sha256": "614b37f68d13ce80f0a2f17573084507c11f888d283c092544bd84d6540c6c6f"
+      "sha256": "8e8cccb5ff5569f308205f01e56abd37a8ae582093652efafc1ad981123c5882"
     },
     {
       "path": "compatibility/market-selection-v2/wire.schema.json",
@@ -44,7 +44,7 @@
     },
     {
       "path": "compatibility/market-host-v2/wire.schema.json",
-      "sha256": "c26c24cc059f022bfc06d94ca783c825e45c45bae93bd5f91d5708ec2621dd54"
+      "sha256": "57c12af538ef68858d7a5200e21d495e81ea3414805b3605aaacbbde7229bad1"
     },
     {
       "path": "jsonschema/chat/model-selection-v2.schema.json",
@@ -72,7 +72,7 @@
     },
     {
       "path": "scripts/sync-model-call-surfaces-v2.mjs",
-      "sha256": "d61f7aeb4008a4caca96c72d56b5ec4f93b4461fc70b7f46027897baa011b232"
+      "sha256": "fd917ae26e5928824bca3fa9dd0e366da24d6b0c996ad33c6f881a27520e1036"
     },
     {
       "path": "pnpm-lock.yaml",
@@ -125,7 +125,8 @@
       "sha256": "a7ee6c00cd33741143e6733a934c8d596e9bb6a620911dd70894abccb84be0d8"
     }
   ],
-  "source_commit": "a189ec6b66b24aefc59e9d766e6ae4b29c09fdec",
+  "local_candidate": "market-p1",
+  "worktree_head": "470425773a38595f745137a9d3f66c37f46287fc",
   "consumer": "agent-host",
   "consumer_generated": [
     {

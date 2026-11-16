@@ -33,7 +33,8 @@ func projectNativeMcp(wire nativeWireItem, out *native.NativeItem) {
 	} else {
 		diagnostic(native.IdentityUnavailable)
 	}
-	if len(wire.Tool) <= 128 && nativeMcpIdentifier.MatchString(wire.Tool) && !v5SensitiveCommandLine(wire.Tool) {
+	if (wire.Server == "yijie_market" && safeMarketToolName(wire.Tool)) ||
+		(len(wire.Tool) <= 128 && nativeMcpIdentifier.MatchString(wire.Tool) && !v5SensitiveCommandLine(wire.Tool)) {
 		display.Tool = &wire.Tool
 	} else {
 		diagnostic(native.IdentityUnavailable)
@@ -112,6 +113,62 @@ func projectNativeMcp(wire nativeWireItem, out *native.NativeItem) {
 		return
 	}
 	if projectNativeVideo(wire, out) {
+		return
+	}
+	if wire.Server == "yijie_market" {
+		result := projectMarketResult(wire.Result)
+		if len(wire.Arguments) > 0 {
+			out.ArgumentsSummary = nativeString("参数不可展示")
+			diagnostic(native.ArgumentsUnavailable)
+		}
+		if wire.DurationMS != nil && *wire.DurationMS >= 0 {
+			out.DurationMs = wire.DurationMS
+		}
+		out.ToolLabel = nativeString("连接器工具")
+		if display.Tool != nil {
+			out.ToolLabel = display.Tool
+		}
+		if result.isError {
+			out.Status = nativeString(native.NativeItemStatusFailed)
+		}
+		if result.unsupported {
+			display.ResultKind = native.Unsupported
+			diagnostic(native.ResultUnavailable)
+			return
+		}
+		if len(wire.Result) == 0 {
+			return
+		}
+		if string(wire.Result) == "null" {
+			display.ResultKind = native.Null
+			return
+		}
+		display.ResultKind = native.Empty
+		display.Texts = append(display.Texts, result.content...)
+		if len(display.Texts) > 0 {
+			display.ResultKind = native.Text
+		} else if result.truncated {
+			display.ResultKind = native.Omitted
+		}
+		// v6 indexes are original native content positions. Never invent a text
+		// block for structuredContent; the market observation exposes its JSON.
+		structuredOnly := result.source != nil && *result.source == "structured"
+		if structuredOnly || result.structured != nil {
+			diagnostic(native.UnsupportedContent)
+			if len(display.Texts) == 0 {
+				display.ResultKind = native.Unsupported
+			}
+		}
+		if result.truncated {
+			diagnostic(native.ContentTruncated)
+		}
+		if result.redacted {
+			diagnostic(native.ContentRedacted)
+		}
+		out.ResultSummary = nativeString("结果已接收")
+		if structuredOnly {
+			out.ResultSummary = nativeString("结构化结果已接收")
+		}
 		return
 	}
 	out.ToolLabel = nativeString("工具调用")

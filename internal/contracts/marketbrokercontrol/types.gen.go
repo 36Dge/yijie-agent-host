@@ -2806,6 +2806,228 @@ func (v *ElicitationMetadata) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+type GatewayDecisionReceipt struct {
+	ApprovalId CanonicalId `json:"approvalId"`
+	DecisionId CanonicalId `json:"decisionId"`
+	Decision   Decision    `json:"decision"`
+}
+
+func (v GatewayDecisionReceipt) Validate() error {
+	if err := v.ApprovalId.Validate(); err != nil {
+		return err
+	}
+	if err := v.DecisionId.Validate(); err != nil {
+		return err
+	}
+	if err := v.Decision.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *GatewayDecisionReceipt) UnmarshalJSON(b []byte) error {
+	type wire GatewayDecisionReceipt
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil || raw == nil {
+		return errors.New("invalid broker object")
+	}
+	if _, ok := raw["approvalId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["approvalId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["decisionId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["decisionId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["decision"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["decision"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	var w wire
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&w); err != nil {
+		return errors.New("invalid broker object")
+	}
+	if err := d.Decode(new(any)); err != io.EOF {
+		return errors.New("invalid broker object")
+	}
+	x := GatewayDecisionReceipt(w)
+	if err := x.Validate(); err != nil {
+		return err
+	}
+	*v = x
+	return nil
+}
+
+type GatewayCallReceipt struct {
+	SchemaVersion     int64                   `json:"schemaVersion"`
+	CallRef           CanonicalId             `json:"callRef"`
+	ServiceId         ServiceId               `json:"serviceId"`
+	Reference         SelectionRef            `json:"reference"`
+	NativeThreadId    NativeId                `json:"nativeThreadId"`
+	NativeTurnId      NativeId                `json:"nativeTurnId"`
+	TurnOperationId   CanonicalId             `json:"turnOperationId"`
+	SelectionDigest   SelectionDigest         `json:"selectionDigest"`
+	ToolName          ToolName                `json:"toolName"`
+	ArgsDigest        ArgsDigest              `json:"argsDigest"`
+	ArgsEncoding      string                  `json:"argsEncoding"`
+	DecisionReceipt   *GatewayDecisionReceipt `json:"decisionReceipt"`
+	AdmissionConsumed bool                    `json:"admissionConsumed"`
+}
+
+func (v GatewayCallReceipt) Validate() error {
+	if v.SchemaVersion != 1 {
+		return errors.New("invalid broker constant")
+	}
+	if err := v.CallRef.Validate(); err != nil {
+		return err
+	}
+	if err := v.ServiceId.Validate(); err != nil {
+		return err
+	}
+	if err := v.Reference.Validate(); err != nil {
+		return err
+	}
+	if err := v.NativeThreadId.Validate(); err != nil {
+		return err
+	}
+	if err := v.NativeTurnId.Validate(); err != nil {
+		return err
+	}
+	if err := v.TurnOperationId.Validate(); err != nil {
+		return err
+	}
+	if err := v.SelectionDigest.Validate(); err != nil {
+		return err
+	}
+	if err := v.ToolName.Validate(); err != nil {
+		return err
+	}
+	if err := v.ArgsDigest.Validate(); err != nil {
+		return err
+	}
+	if string(v.ArgsEncoding) != "worker-json-v1" {
+		return errors.New("invalid broker constant")
+	}
+	if v.DecisionReceipt != nil {
+		if err := (*v.DecisionReceipt).Validate(); err != nil {
+			return err
+		}
+	}
+	if v.AdmissionConsumed && (v.DecisionReceipt == nil || v.DecisionReceipt.Decision != DecisionApproveOnce) {
+		return errors.New("consumed call requires its one-shot decision")
+	}
+	return nil
+}
+func (v *GatewayCallReceipt) UnmarshalJSON(b []byte) error {
+	type wire GatewayCallReceipt
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil || raw == nil {
+		return errors.New("invalid broker object")
+	}
+	if _, ok := raw["schemaVersion"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["schemaVersion"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["callRef"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["callRef"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["serviceId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["serviceId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["reference"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["reference"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["nativeThreadId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["nativeThreadId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["nativeTurnId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["nativeTurnId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["turnOperationId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["turnOperationId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["selectionDigest"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["selectionDigest"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["toolName"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["toolName"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["argsDigest"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["argsDigest"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["argsEncoding"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["argsEncoding"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["decisionReceipt"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if _, ok := raw["admissionConsumed"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["admissionConsumed"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	var w wire
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&w); err != nil {
+		return errors.New("invalid broker object")
+	}
+	if err := d.Decode(new(any)); err != io.EOF {
+		return errors.New("invalid broker object")
+	}
+	x := GatewayCallReceipt(w)
+	if err := x.Validate(); err != nil {
+		return err
+	}
+	*v = x
+	return nil
+}
+
+const GatewayResultKey = "yijie.market.call"
+const GatewayResultDefinition = "GatewayCallReceipt"
+const GatewayResultMaxMetadataBytes = 4096
+const GatewayResultMaxResultEnvelopeBytes = 73728
+
 // DecodeRequest chooses only a declared method, then runs its closed generated decoder.
 func DecodeRequest(b []byte) (any, error) {
 	var h struct {

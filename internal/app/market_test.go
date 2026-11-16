@@ -146,6 +146,74 @@ func TestMarketHTTPReadOnlyViewsAndOpaqueTrigger(t *testing.T) {
 		t.Fatal("opaque trigger did not preserve receipt")
 	}
 }
+
+type marketToolsFixture struct {
+	marketAdapterFixture
+	historyReads, eventReads int
+}
+
+func (f *marketToolsFixture) tools(id, turn string) wire.ToolSnapshot {
+	text, structured := "ordinary summary", `{"rows":[1]}`
+	return wire.ToolSnapshot{AgentSessionId: wire.CanonicalId(id), NativeTurnId: wire.NativeId(turn), Items: []wire.ToolObservation{{
+		NativeItemId: "ordinary-item", NativeThreadId: "ordinary-thread", NativeTurnId: wire.NativeId(turn),
+		ServerName: "yijie_market", ToolName: "public_lookup", State: "completed", ResultText: &text, StructuredResultText: &structured,
+	}}}
+}
+func (f *marketToolsFixture) ReadMarketTools(_ context.Context, id, turn string) (wire.ToolSnapshot, error) {
+	f.historyReads++
+	return f.tools(id, turn), nil
+}
+func (f *marketToolsFixture) ReadMarketToolEvents(_ context.Context, id, turn string) (wire.ToolSnapshot, error) {
+	f.eventReads++
+	return f.tools(id, turn), nil
+}
+
+func TestMarketP2HTTPRoutesExplicitSourcesAndPreservesLegacyWarning(t *testing.T) {
+	service := &marketToolsFixture{marketAdapterFixture: marketAdapterFixture{enabled: true}}
+	mux := http.NewServeMux()
+	const token = "ordinary-local-read-token"
+	registerMarketRoutes(mux, service, token, string(marketID(1)))
+	path := "/v1/market-chat/agent-sessions/" + string(marketID(11)) + "/turns/" + string(marketID(12)) + "/tools"
+	for _, source := range []string{"", "?source=history", "?source=events"} {
+		request := httptest.NewRequest(http.MethodGet, path+source, nil)
+		request.Header.Set("Authorization", "Bearer "+token)
+		request.Header.Set("X-Yijie-Market-Request-Id", string(marketID(10)))
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, request)
+		var result wire.ToolsResponse
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &result) != nil || result.RequestId != marketID(10) || len(result.Data.Items) != 1 {
+			t.Fatalf("source %q failed: %d %s", source, response.Code, response.Body.String())
+		}
+		if result.Data.Items[0].Truncated != (source == "") || result.Data.Items[0].StructuredResultText == nil {
+			t.Fatal("legacy/new reader completeness semantics lost", source)
+		}
+	}
+	if service.historyReads != 2 || service.eventReads != 1 || service.submits != 0 {
+		t.Fatal("source selection lost or read dispatched work", service)
+	}
+}
+
+func TestMarketP2HTTPKeepsToolReadQueryScopedAndBounded(t *testing.T) {
+	service := &marketToolsFixture{marketAdapterFixture: marketAdapterFixture{enabled: true}}
+	mux := http.NewServeMux()
+	const token = "ordinary-local-read-token"
+	registerMarketRoutes(mux, service, token, string(marketID(1)))
+	base := "/v1/market-chat/agent-sessions/" + string(marketID(11))
+	tools := base + "/turns/" + string(marketID(12)) + "/tools"
+	for _, path := range []string{tools + "?source=", tools + "?source=preview", tools + "?source=events&source=history", tools + "?source=events&page=2", base + "/approvals?source=events"} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.Header.Set("Authorization", "Bearer "+token)
+		request.Header.Set("X-Yijie-Market-Request-Id", string(marketID(10)))
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Fatal("unsupported read options accepted", path, response.Code)
+		}
+	}
+	if service.historyReads != 0 || service.eventReads != 0 || service.reads != 0 || service.submits != 0 {
+		t.Fatal("invalid read options dispatched work")
+	}
+}
 func TestMarketProviderOnlyConfigurationAndReadiness(t *testing.T) {
 	home := t.TempDir()
 	manifest := filepath.Join(home, "worker-manifest.json")

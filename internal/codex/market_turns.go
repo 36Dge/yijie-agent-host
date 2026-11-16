@@ -105,8 +105,17 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 	m.market.mu.Lock()
 	gateway := m.market.gatewayURL
 	m.market.mu.Unlock()
-	servers[marketServerName] = map[string]any{"url": gateway + "/" + string(lease.Data.Binding.CapabilityRef), "bearer_token_env_var": marketbroker.RuntimeCapabilityEnvironment, "enabled": true, "default_tools_approval_mode": "auto", "startup_timeout_sec": 30, "tool_timeout_sec": broker.WebMcpToolTimeoutMs / 1000, "supports_parallel_tool_calls": false}
+	servers[marketServerName] = ownedMarketServer(gateway, string(lease.Data.Binding.CapabilityRef))
 	return p, nil
+}
+
+// Only the prepared owned proxy uses approve. It suppresses Codex's duplicate
+// pre-call prompt, not server elicitation: that native path uses its default
+// context and still waits under ask/on-request with reviewer=user. The Gateway
+// requires both that response and the exact owner decide_call before HTTP IO.
+// Do not set tools={} here: native merging preserves explicit per-tool policy.
+func ownedMarketServer(gateway, capabilityRef string) map[string]any {
+	return map[string]any{"url": gateway + "/" + capabilityRef, "bearer_token_env_var": marketbroker.RuntimeCapabilityEnvironment, "enabled": true, "default_tools_approval_mode": "approve", "startup_timeout_sec": 30, "tool_timeout_sec": broker.WebMcpToolTimeoutMs / 1000, "supports_parallel_tool_calls": false}
 }
 
 // Called only after validated Native submission and successful worker admission.
