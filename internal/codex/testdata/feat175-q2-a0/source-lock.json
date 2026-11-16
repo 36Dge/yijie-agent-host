@@ -1,0 +1,266 @@
+{
+  "schema_version": 3,
+  "feature": "FEAT-175",
+  "package_sha256": "0fbed97c6b772b1d9e9767acee654fcafa721e2452a8ce9592e58b50b6e35ae7",
+  "provenance": "local source freeze, not release or paid-call approval",
+  "runtime_relative_path": "yijie-codex/.yijie/build/tool-search-v1/fac52ad79cc7e0a379fc597a7ecfcee573205d38a60c9d0ed3a2e96871ab0f45/aarch64-apple-darwin",
+  "runtime_binary_sha256": "7d49018c29704fa9863da72a34d780b8ad0e67c9ffe1821ebd1c1b94d9a46d49",
+  "sources": [
+    {
+      "file": "yijie-agent-host/internal/codex/testdata/feat175-q2/cases.json",
+      "sha256": "0fbed97c6b772b1d9e9767acee654fcafa721e2452a8ce9592e58b50b6e35ae7"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/testdata/feat175-q2/effective-profile.json",
+      "sha256": "070d70e5796f9d14a07feff0aaa35064291f2d37a28e7403116cb4fdd317e5f8"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/builtin_web_q2_snapshot_test.go",
+      "sha256": "096cf507f2b4c8d74421478e21d0edf7de95476f8e4ecb0058384f52784e92ba"
+    },
+    {
+      "file": "yijie-agent-host/scripts/feat175-q2.mjs",
+      "sha256": "b897660692fe412a24c0d914f3d9882e5b052c74c315075c9c28b7f634cc31f6"
+    },
+    {
+      "file": "yijie-agent-host/scripts/check-builtin-web-q2.sh",
+      "sha256": "1ef0830a828a716583b30fc5e12633788d53f89f4d62670cc6c7729661d1e0f1"
+    },
+    {
+      "file": "yijie-agent-host/internal/contracts/builtinweb/tools.json",
+      "sha256": "44097cb9ccd0742c00cdeb79e61f7b00091a63de54bcae82de5911355c31352d"
+    },
+    {
+      "file": "yijie-agent-host/internal/contracts/builtinweb/policy.gen.go",
+      "sha256": "3ea561197b4e9dff9fcb7e5fdd4c46f1e135e28620c74305a274497a3ee70169"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/builtin_web.go",
+      "sha256": "0902a413ad9e9c5b80995419cfcae4f434ba33f121ea9824f812dd20106a67ca"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/session_protocol.go",
+      "sha256": "0c6159b88cc9c332ed711efbde6fbb745fbd2b263ae5a0397520ad83f4aa15dd"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/runtime.go",
+      "sha256": "dacc985826b3aedcdd0bbd81f92cf962e2ebc5f52fd63de41d115ce9e851fbc1"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/market_runtime.go",
+      "sha256": "fada484843b8e661323c56f853e9dd8f8d41fdc180a4f11667fd36733b7738db"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/expert_instructions.go",
+      "sha256": "f042a391012c0cedb11c8e039f002cad79fc8968158798385e38dbef57123cdf"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/web_retrieval_instructions.go",
+      "sha256": "be76e3a3c31ba39d90f23fe09bd7e607818f56271124776d53b8d7cae0a50456"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/execution_progress.go",
+      "sha256": "19ce080242f2e12297da6f943f2adbd4924bfa74465c99237a2b1a250034891f"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/public_progress_policy.go",
+      "sha256": "dbb7eb03753b9801167025ce7bb151e456251f1ce2b23a9d86e35c6d2d7bc529"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/runtime_permissions.go",
+      "sha256": "3ca91b69b2ef9370370c16f9dff50e64d662b2f6d7659c7dd54fd384763c294a"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/chat_models.go",
+      "sha256": "40305aec0575b1799ee0c67837a5c477c0ce1c914d43267a9771ba67078f66ec"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/kimi_k31_candidate.go",
+      "sha256": "cc4560f08cce3a1fe391016316200e3bd00f82f557baa6e16a2e0bc784c3630c"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/provider.go",
+      "sha256": "f668e9ce9c73daa4ad1ba255227ea2e3ee433626fcae8a27c7415e4b362113dd"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/native_tools.go",
+      "sha256": "5aff3287b7251d8b3d13974225fe3790b8d83e51a400868d6d755960869bc7d7"
+    },
+    {
+      "file": "yijie-agent-host/internal/contracts/chatmodels/types.gen.go",
+      "sha256": "4ca2a482e18f83d5bea751f86ca89fa16c5fcc43371e7dbef2d087a8e7747f6b"
+    },
+    {
+      "file": "yijie-agent-host/internal/contracts/chatmodelsv2/types.gen.go",
+      "sha256": "be923ec69e9d4e70374b83ab2afa9d1c364bc57d0e052abd0e892d0fdce5b909"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/tool_search.go",
+      "sha256": "9549e3e522ce7e9a1c757cc467cc2dfaf9bf4d062bfdb8f23877f5708cd24b49"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/feat164_meter.go",
+      "sha256": "3ce38737b15d0d857305e947b01c2a6e95b53eba3cb68d99765fd0cac8d14e6f"
+    },
+    {
+      "file": "yijie-agent-host/internal/contracts/runtimetoolsearch/profile.json",
+      "sha256": "d88d3fc81d01448401f81e504ec6de69a2c1d63ff749096b59c5b1110dbf51ba"
+    },
+    {
+      "file": "yijie-agent-host/internal/contracts/runtimenativetools/profile.json",
+      "sha256": "ce798641e0bbb5cb6dd59fa8ee7c156e54c5f315834101a0fbe6ffb0efaffd00"
+    },
+    {
+      "file": "yijie-agent-host/scripts/chat-model-smoke-meter.py",
+      "sha256": "80396d51b227b5b028291ae2839f2ef0faeb5f466d484c6c4124b55eb68d09c2"
+    },
+    {
+      "file": "yijie-agent-host/scripts/responses_stream_observer.py",
+      "sha256": "18d914a197f6981ed734090153e6170cbcf39d3b4a72c07cb561482a53ca1b3f"
+    },
+    {
+      "file": "yijie-agent-host/scripts/feat175_q2_meter.py",
+      "sha256": "dbf86400d8a054bc006ffdcceec370da5c793919be314f1ff294558966aa15b8"
+    },
+    {
+      "file": "yijie-agent-host/scripts/feat175_q2_run.py",
+      "sha256": "d4e8fe94b701a7ce1a7fcaf4d3c41b7a7cb7256a961e393cbd87ec40e2b8c0aa"
+    },
+    {
+      "file": "yijie-agent-host/scripts/test_feat175_q2_meter.py",
+      "sha256": "4eb5bb5fd177501a8c05fbaee4c1cebc2651224f3ab40d697a5a808c6e8e6081"
+    },
+    {
+      "file": "yijie-agent-host/scripts/test-feat175-q2-fixtures.mjs",
+      "sha256": "f2e17be7bc39ae5c74e9714e4855049fd37007a277fd386aa8a21426f8050e75"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/builtin_web_q2_runner_test.go",
+      "sha256": "36addb1dbe358f05a38e4dbf61678d028ebbb81a8a6e1160c2bba4fb1b0c9c5e"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/builtin_web_integration_test.go",
+      "sha256": "d341dccdbaedfb047c1538a7e9193c213f2ac772cd70f7378ffad266ce4b3a57"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/runtime_integration_test.go",
+      "sha256": "e42c3a3b537a46d3a415a291f1f7a4f71459e62c42c59a10b782392cd5e15bd9"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/testdata/feat175-q2/pricing-snapshot.json",
+      "sha256": "b44d0c3bc6ba4a32a3c2656379cd7c17420fe683c1dd8a06e2b97bb1d1d09318"
+    },
+    {
+      "file": "yijie-desktop/scripts/feat164-budget-meter.py",
+      "sha256": "c1b339b38e7e842dc869393f93eff74c92d8f95f782e37803e818ca5900b0f13"
+    },
+    {
+      "file": "yijie-contracts/compatibility/builtin-web-retrieval/policy.json",
+      "sha256": "3e27fa8f3417ca466de16b173c4d9e5f254c46b47fcbdbe07f37fe1fc61d5b06"
+    },
+    {
+      "file": "yijie-contracts/compatibility/builtin-web-retrieval/wire.schema.json",
+      "sha256": "b121bf7c800f3a51e58de2e397c90b61b90630469f270acfbebf7f411d455668"
+    },
+    {
+      "file": "yijie-codex/.yijie/build/tool-search-v1/fac52ad79cc7e0a379fc597a7ecfcee573205d38a60c9d0ed3a2e96871ab0f45/aarch64-apple-darwin/runtime-manifest.json",
+      "sha256": "5d1113d0333e5b677fc9cfa5ae441872bc4797f1ca6328ad4936b1e99480ee89"
+    },
+    {
+      "file": "yijie-codex/.yijie/build/tool-search-v1/fac52ad79cc7e0a379fc597a7ecfcee573205d38a60c9d0ed3a2e96871ab0f45/aarch64-apple-darwin/config.schema.json",
+      "sha256": "433116e9d7527c56a4d958e8fae131e35674646d4610cf3de70f6833e71c0de4"
+    },
+    {
+      "file": "yijie-codex/.yijie/build/tool-search-v1/fac52ad79cc7e0a379fc597a7ecfcee573205d38a60c9d0ed3a2e96871ab0f45/aarch64-apple-darwin/model-catalog.schema.json",
+      "sha256": "6b51c8a5e0ce6f21867c19e3ce24d5d8ebbd3b767c29069b47bb4351b476b800"
+    },
+    {
+      "file": "yijie-codex/.yijie/build/tool-search-v1/fac52ad79cc7e0a379fc597a7ecfcee573205d38a60c9d0ed3a2e96871ab0f45/aarch64-apple-darwin/generated-json-schema/v2/ThreadReadResponse.json",
+      "sha256": "84f1212a57dbfe57b091be7811f1345b21ba7572748cbb55b959e51b88f75415"
+    },
+    {
+      "file": "yijie-agent-host/scripts/feat175-q2-v2.mjs",
+      "sha256": "70cdeaeb3c9b370862c4cfff5725e1b2dd2fb9d91faef3c93c5140986051e22e"
+    },
+    {
+      "file": "yijie-agent-host/scripts/feat175_q2_v2_meter.py",
+      "sha256": "25f399f7b5d2ce8209e0b1b5cbf718121306a3dccefebc2a7bc03201645ed027"
+    },
+    {
+      "file": "yijie-agent-host/scripts/feat175_q2_v2_run.py",
+      "sha256": "1b24609f205bbf7da8188696449a695686024a13c54ba6d5687fe2fc96c989e4"
+    },
+    {
+      "file": "yijie-agent-host/scripts/test_feat175_q2_v2_meter.py",
+      "sha256": "dbdd6896fe3c991c1576d046070377541b5b9421d8af0339f232c7d151f19383"
+    },
+    {
+      "file": "yijie-agent-host/scripts/test-feat175-q2-v2.mjs",
+      "sha256": "6be107f214dae57061883b5f9c908bd7bdb1560d2745def293723fccf96a3bb2"
+    },
+    {
+      "file": "yijie-agent-host/scripts/check-builtin-web-q2-v2.sh",
+      "sha256": "1859999d80703f723318af18662241ca725632119ba52477031a907f2a9f319f"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/builtin_web_q2_v2_test.go",
+      "sha256": "6efed8b1a76812fa3c552177c576be4f175e9751133c03606a621e39b22232d8"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/testdata/feat175-q2-v2/sampling.json",
+      "sha256": "6c3506791d29467e9ac40b3e365a4980e6dbb0fff9f356f99caa22de8d8151ed"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/testdata/feat175-q2/source-lock.json",
+      "sha256": "9b45f2ff3c1f347ba09c1a27d47dfc9ab174d131c2baf553334f111d2383d376"
+    },
+    {
+      "file": "yijie-agent-host/scripts/feat175_q2_a0_policy.py",
+      "sha256": "01ba5ca06fca8b5071077e0fd1f07228ebb45884684f32ecf0188e8c2e3fdcc8"
+    },
+    {
+      "file": "yijie-agent-host/scripts/feat175_q2_a0_meter.py",
+      "sha256": "3b19c5451f97495368d69bf51a45db16e7ac2489e08c5619b6f373556f1907b3"
+    },
+    {
+      "file": "yijie-agent-host/scripts/feat175_q2_a0_transport.py",
+      "sha256": "2efe1ea7f53a04a0a3969fcb8c3d4b0898168714597e96c561385c0c8f9811de"
+    },
+    {
+      "file": "yijie-agent-host/scripts/feat175_q2_a0_run.py",
+      "sha256": "e01a99454d53dbcd19a059f801040aff224fcd6cc94b11f02cf6e2f9caadabc3"
+    },
+    {
+      "file": "yijie-agent-host/scripts/feat175-q2-a0.mjs",
+      "sha256": "f3ac06db9ae5c9858686c7ddb27021048272c8418b24aa294e7678a6f5958d2a"
+    },
+    {
+      "file": "yijie-agent-host/scripts/test_feat175_q2_a0.py",
+      "sha256": "018a57518c77f55067e98b69a910000f62615413b6178a8b6acbe427f7bbaab9"
+    },
+    {
+      "file": "yijie-agent-host/scripts/test-feat175-q2-a0.mjs",
+      "sha256": "bb0d4ec71b9277e0e1565d75b5e223177b3b2a0c840b949f3a794dae8b79c80a"
+    },
+    {
+      "file": "yijie-agent-host/scripts/check-builtin-web-q2-a0.sh",
+      "sha256": "f0234fef3da1482200a9b12ddc1a18ea19f6cf4a1d0e8d0dac195d52b927248b"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/builtin_web_q2_a0_test.go",
+      "sha256": "3920d0d631b1f3b24c3ceb2b034e97093fd86fe901d9de5c4e81859f65067de4"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/testdata/feat175-q2-a0/policy.json",
+      "sha256": "ce3bc34d29bce4c1a872e91946352d1da45f765eea4c232a40fe26cbe126a888"
+    },
+    {
+      "file": "yijie-agent-host/internal/codex/testdata/feat175-q2-v2/source-lock.json",
+      "sha256": "358c4007d9243ced1fc75247cc7ed4430c35edf48f62feeed2aae06701f3e65f"
+    }
+  ],
+  "purpose": "Q2-v2A controlled first-action QA",
+  "predecessor_source_lock_sha256": "358c4007d9243ced1fc75247cc7ed4430c35edf48f62feeed2aae06701f3e65f",
+  "sampling_sha256": "6c3506791d29467e9ac40b3e365a4980e6dbb0fff9f356f99caa22de8d8151ed",
+  "policy_sha256": "ce3bc34d29bce4c1a872e91946352d1da45f765eea4c232a40fe26cbe126a888"
+}

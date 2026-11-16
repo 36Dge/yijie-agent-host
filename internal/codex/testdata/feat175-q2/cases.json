@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-175",
+  "package": "Q2-route-feasibility-v1",
+  "prepared_at": "2026-11-15",
+  "models": [
+    {
+      "model": "kimi-k3.1-pro",
+      "profile": "kimi-k3-1-pro-max-v1",
+      "effort": "max",
+      "organization": "native tool_search function_code_mode"
+    },
+    {
+      "model": "MiniMax-M3",
+      "profile": "minimax-m3-high-v1",
+      "effort": "high",
+      "organization": "native direct functions"
+    }
+  ],
+  "cases": [
+    {
+      "id": "Q2-01",
+      "category": "no_retrieval",
+      "prompt": "每箱有12件商品，一共有8箱，总共多少件？请直接给出计算结果。",
+      "expected": {
+        "first": "none",
+        "manual_query_review": false
+      }
+    },
+    {
+      "id": "Q2-02",
+      "category": "ordinary_current_fact",
+      "prompt": "请查询Python目前最新的稳定版本，告诉我版本号、发布日期，并提供官方来源。",
+      "expected": {
+        "first": "native",
+        "manual_query_review": true
+      }
+    },
+    {
+      "id": "Q2-03",
+      "category": "research",
+      "prompt": "研究Shopify GraphQL Admin API与REST Admin API的限流机制，比较它们对批量同步任务的影响。只采用shopify.dev的官方资料，时间范围限定为2026-01-01至2026-11-15，并列出依据。",
+      "expected": {
+        "first": "kimi_web_search_pro",
+        "sites": [
+          "shopify.dev"
+        ],
+        "time_window": {
+          "start": "2026-01-01",
+          "end": "2026-11-15"
+        },
+        "allowed_followups": [
+          "kimi_web_fetch"
+        ],
+        "manual_query_review": true
+      }
+    },
+    {
+      "id": "Q2-04",
+      "category": "source_list",
+      "prompt": "查找5个介绍Shopify应用webhook重试机制的文档页面，只给出标题和链接，不读取或整理网页正文。",
+      "expected": {
+        "first": "kimi_web_search",
+        "limit": 5,
+        "include_content": false,
+        "manual_query_review": true
+      }
+    },
+    {
+      "id": "Q2-05",
+      "category": "body_collection",
+      "prompt": "为资料库采集3篇解释WebP图片压缩的公开网页，保留每篇的标题、原链接和正文文本，暂时不要做汇总分析。",
+      "expected": {
+        "first": "kimi_web_search",
+        "limit": 3,
+        "include_content": true,
+        "manual_query_review": true
+      }
+    },
+    {
+      "id": "Q2-06",
+      "category": "explicit_url",
+      "prompt": "请读取https://www.rfc-editor.org/rfc/rfc9110，概述这份文档的主题，并摘出一条能支持概述的原文依据。",
+      "expected": {
+        "first": "kimi_web_fetch",
+        "url": "https://www.rfc-editor.org/rfc/rfc9110",
+        "manual_query_review": false
+      }
+    }
+  ],
+  "tasks": 12,
+  "repeats": 1,
+  "execution_status": "NOT RUN",
+  "mcp_data": "explicitly synthetic local material; never supplier REST",
+  "qualification": "12-case feasibility only; does not establish Q3 95 percent stability",
+  "capture": {
+    "order": "original item/started notifications; completion updates same item without reordering",
+    "canonical_schema": "v2/ThreadReadResponse.json#/definitions/ThreadItem",
+    "retain": "fresh test thread/turn, native events, provider trace/usage, original failures, final outcome",
+    "hosted_visibility": "must be declared complete/partial/unknown; absence alone does not prove no provider search"
+  },
+  "limits": {
+    "authorized_tasks": 0,
+    "authorized_model_http_requests": 0,
+    "authorized_hosted_searches": 0,
+    "authorized_supplier_rest_calls": 0,
+    "authorized_total_cny": 0,
+    "proposed_tasks": 12,
+    "proposed_max_model_http_requests": 48,
+    "proposed_max_model_http_requests_per_model": 24,
+    "proposed_max_model_http_requests_per_task": 4,
+    "proposed_max_local_mcp_calls_per_task": 4,
+    "proposed_hosted_observation_stop_count": 24,
+    "proposed_supplier_rest_calls": 0,
+    "amount_for_owner_approval": null,
+    "money_limit_rule": "no positive amount assumed; price snapshot and monetary admission must be reviewed before live execution",
+    "hosted_limit_rule": "observed stopping threshold is not a hard cap on unobservable provider-internal work"
+  },
+  "reuse": {
+    "reasoning_budget": "existing native token/rollout/Goal; no Host token counter",
+    "default_rollout_budget_tokens": 250000,
+    "goal": "do not create an extra Goal or change user budgets",
+    "request_meter": "scripts/chat-model-smoke-meter.py",
+    "meter_handoff": "existing two-model meter has no FEAT-175 purpose yet; add and qualify that scope before live use, never borrow other tasks authorization"
+  },
+  "stop_conditions": [
+    "any unapproved egress or actual supplier REST attempt",
+    "source/profile/tool/instruction drift",
+    "model or hosted evidence incomplete: preserve as inconclusive, not pass",
+    "current budget exhausted or an unknown-cost operation",
+    "structural hosted presearch versus MCP selection conflict",
+    "three equivalent failures require a root-cause review before further attempts"
+  ],
+  "live_execution_entry": "not enabled in this preparation package"
+}

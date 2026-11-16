@@ -79,15 +79,18 @@ func (m *Manager) expertBaseInstructions(ctx context.Context, ordinary *string) 
 	return &composed, nil
 }
 
-// The first expert package is a local-reference consultation. Reuse the native
-// config mode to remove built-in web search from its tool surface, rather than
-// relying on role prose or the command sandbox (hosted search is independent).
+// Apply the source-reviewed policy resolved by the real expert entry point.
+// Unreviewed internal role-only contexts keep their prior conservative behavior.
+// Inherit preserves the user's existing native mode; it never forces live search.
 // Explicit none and ordinary contexts retain the complete ordinary overrides.
 // SwitchThread unsubscribes before resume, whose native config loader reads the
 // ordinary cwd layers afresh; no expert web-search override is persisted here.
 func expertThreadConfig(ctx context.Context, ordinary map[string]any) map[string]any {
 	selected, ok := ctx.Value(expertInstructionsKey{}).(expertInstructions)
 	if !ok || selected.role == "" {
+		return ordinary
+	}
+	if policy, reviewed := ctx.Value(expertWebPolicyKey{}).(string); reviewed && policy == "inherit" {
 		return ordinary
 	}
 	config := make(map[string]any, len(ordinary)+1)

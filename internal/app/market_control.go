@@ -8,6 +8,7 @@ import (
 	"io"
 	"sync"
 
+	builtinweb "github.com/36Dge/yijie-agent-host/internal/contracts/builtinweb"
 	expert "github.com/36Dge/yijie-agent-host/internal/contracts/experts"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
 	provider "github.com/36Dge/yijie-agent-host/internal/contracts/marketprovider"
@@ -46,6 +47,17 @@ func routeMarketControl(ctx context.Context, service MarketControlService, frame
 		return nil, requestID, errMarketControlRequest
 	}
 	switch method {
+	case "web_capability_install", "web_capability_clear", "web_turn_revoke", "web_call_cancel":
+		web, ok := service.(builtinWebControlService)
+		if !ok || builtinweb.Validate("WebControlRequest", frame) != nil {
+			return nil, requestID, errMarketControlRequest
+		}
+		var request builtinweb.WebControlRequest
+		if json.Unmarshal(frame, &request) != nil {
+			return nil, requestID, errMarketControlRequest
+		}
+		response, err := web.BuiltinWebControl(ctx, request)
+		return webControlResponse{response}, requestID, err
 	case "hello":
 		var request wire.HelloRequest
 		if json.Unmarshal(frame, &request) != nil {

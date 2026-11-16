@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/marketbrokercontrol"
@@ -138,7 +139,16 @@ func (m *Manager) marketRuntimeEnvironment(current []string) ([]string, error) {
 	if owner == nil {
 		return nil, marketbroker.ErrNotStarted
 	}
-	return owner.ReserveRuntimeEnvironment(current, process)
+	environment, err := owner.ReserveRuntimeEnvironment(current, process)
+	if err == nil && m.config.BuiltinWebEnabled {
+		for _, entry := range environment {
+			if strings.HasPrefix(entry, marketbroker.RuntimeCapabilityEnvironment+"=") {
+				environment = append(environment, BuiltinWebMCPTokenEnv+"="+strings.TrimPrefix(entry, marketbroker.RuntimeCapabilityEnvironment+"="))
+				break
+			}
+		}
+	}
+	return environment, err
 }
 
 func marketExcludedEnvironment() []any {
@@ -173,7 +183,7 @@ func validateMarketEffectiveIsolation(config map[string]json.RawMessage) error {
 // Keep the complete profile here instead of optional booleans at each caller.
 func (m *Manager) validateMarketIsolationConfig(config map[string]json.RawMessage) error {
 	return validateMarketEffectiveIsolationForTools(config, m.config.NativeToolsEnabled,
-		m.config.DocumentRuntimeEnabled, m.config.BuiltinMediaEnabled, m.config.NativeSkillMarketplaceEnabled)
+		m.config.DocumentRuntimeEnabled, m.config.BuiltinMediaEnabled, m.config.NativeSkillMarketplaceEnabled, m.config.BuiltinWebEnabled)
 }
 
 func validateMarketEffectiveIsolationForTools(config map[string]json.RawMessage, nativeTools bool, documentsEnabled ...bool) error {
@@ -206,6 +216,9 @@ func validateMarketEffectiveIsolationForTools(config map[string]json.RawMessage,
 	excluded := marketExcludedEnvironment()
 	if len(documentsEnabled) > 1 && documentsEnabled[1] {
 		excluded = append(excluded, MediaMCPTokenEnv)
+	}
+	if len(documentsEnabled) > 3 && documentsEnabled[3] {
+		excluded = append(excluded, BuiltinWebMCPTokenEnv)
 	}
 	if nativeTools && len(documentsEnabled) > 0 && documentsEnabled[0] {
 		for key, value := range documentShellEnvironment() {

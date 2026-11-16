@@ -1,0 +1,17 @@
+{
+  "schema_version": 2,
+  "feature": "FEAT-175",
+  "base_cases_sha256": "0fbed97c6b772b1d9e9767acee654fcafa721e2452a8ce9592e58b50b6e35ae7",
+  "modes": ["first_action", "full_turn"],
+  "first_action": "Observe original native item/started for webSearch or mcpToolCall, close new admissions for that exact task, use native turn/interrupt, drain existing responses and keep terminal events. No MCP synthetic source body is delivered in this mode.",
+  "no_retrieval": "Absence is conclusive only after natural completion and complete native/provider evidence.",
+  "full_turn": "Record Runtime completed/failed/interrupted independently from answer/source review. Synthetic answers never grant real full-task success.",
+  "limits_unchanged": {"tasks": 12, "model_http": 48, "per_model_http": 24, "per_task_http": 4, "local_mcp_per_task": 4},
+  "sample_stop": "The meter acknowledgement is the admission cutoff; already admitted response data remains observable. It is not a guarantee of stopping all provider work at the first native event.",
+  "diagnostics": "Serialized journal sequence, closed reason code and surface, native task/thread/turn binding, counts and primary denial reference. Never raw exceptions, prompts or credentials.",
+  "supplier_model_calls": 0,
+  "supplier_rest_calls": 0,
+  "paid_entry": false,
+  "prior_paid_grant": "Consumed by v1; cannot be used by v2.",
+  "preservation": "v1 code, cases, source lock, real recording, score and consumed authorization remain byte-identical."
+}

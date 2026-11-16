@@ -320,6 +320,9 @@ func (m *Manager) handleServerRequest(ctx context.Context, request serverRequest
 		return m.handleHostImage(ctx, request)
 	}
 	if request.method == "mcpServer/elicitation/request" {
+		if result, handled := m.handleBuiltinWebElicitation(ctx, request); handled {
+			return result
+		}
 		if result, handled := m.handleMarketElicitation(ctx, request); handled {
 			return result
 		}
@@ -596,7 +599,9 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 	if err != nil {
 		return ThreadInfo{}, err
 	}
-	params.Config = expertThreadConfig(ctx, params.Config)
+	if !m.config.BuiltinWebEnabled {
+		params.Config = expertThreadConfig(ctx, params.Config)
+	}
 	if m.config.HostImagesEnabled {
 		if params.Config == nil {
 			params.Config = make(map[string]any)
@@ -615,6 +620,10 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 	}
 	if m.config.RuntimePermissionsEnabled {
 		params.DeveloperInstructions += retrievalCapabilityInstructions
+	}
+	params.Config, err = m.builtinWebThreadConfig(ctx, params.Config, selected.Provider)
+	if err != nil {
+		return ThreadInfo{}, err
 	}
 	var response threadResponse
 	if err := m.request(ctx, RuntimeMethodThreadStart, params, &response); err != nil {
@@ -693,7 +702,9 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	if err != nil {
 		return ThreadInfo{}, err
 	}
-	params.Config = expertThreadConfig(ctx, params.Config)
+	if !m.config.BuiltinWebEnabled {
+		params.Config = expertThreadConfig(ctx, params.Config)
+	}
 	if m.config.HostImagesEnabled {
 		if params.Config == nil {
 			params.Config = make(map[string]any)
@@ -713,6 +724,10 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	if m.config.RuntimePermissionsEnabled && params.DeveloperInstructions != nil {
 		instructions := *params.DeveloperInstructions + retrievalCapabilityInstructions
 		params.DeveloperInstructions = &instructions
+	}
+	params.Config, err = m.builtinWebThreadConfig(ctx, params.Config, selected.Provider)
+	if err != nil {
+		return ThreadInfo{}, err
 	}
 	m.forgetKimiK31Thread(threadID)
 	var response threadResponse
@@ -910,6 +925,7 @@ func (m *Manager) InterruptTurn(ctx context.Context, threadID, turnID string) er
 	if threadID == "" || turnID == "" {
 		return errors.New("Codex thread id and turn id are required")
 	}
+	m.builtinWebTurn(BuiltinWebTurnEvent{threadID, turnID, "stopped"})
 	var marketErr error
 	m.market.mu.Lock()
 	if state := m.market.turns[threadID]; state != nil && state.turn == turnID {

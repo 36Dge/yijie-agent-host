@@ -5,7 +5,40 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	web "github.com/36Dge/yijie-agent-host/internal/contracts/builtinweb"
 )
+
+func TestFEAT175ResolvedExpertWebPolicyPreservesNativeDefaults(t *testing.T) {
+	inherit, err := WithExpertWebPolicy(context.Background(), "reference-expert", "0.1.0", strings.Repeat("b", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inherit, err = WithExpertInstructions(inherit, "Verified reference role.", "Verified index.")
+	if err != nil || !ExpertWebAllowed(inherit) {
+		t.Fatal("ordinary verified expert cannot use web", err)
+	}
+	for _, mode := range []string{"cached", "live", "disabled"} {
+		ordinary := map[string]any{"web_search": mode, "approvals_reviewer": "user"}
+		if !reflect.DeepEqual(expertThreadConfig(inherit, ordinary), ordinary) {
+			t.Fatal("inherit changed user native mode")
+		}
+	}
+	for _, policy := range web.ExpertPolicies {
+		ctx, err := WithExpertWebPolicy(context.Background(), policy.ExpertID, policy.Version, policy.RoleSHA256)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, err = WithExpertInstructions(ctx, "Verified offline role.", "Verified index.")
+		if err != nil || ExpertWebAllowed(ctx) || expertThreadConfig(ctx, nil)["web_search"] != "disabled" {
+			t.Fatal("reviewed offline version was opened", err)
+		}
+		removed, err := WithExpertInstructions(ctx, "", "")
+		if err != nil || !ExpertWebAllowed(removed) || expertThreadConfig(removed, nil) != nil {
+			t.Fatal("removal retained offline override", err)
+		}
+	}
+}
 
 func TestFEAT158ExpertWebSearchOverridePreservesOrdinaryConfig(t *testing.T) {
 	selected, err := WithExpertInstructions(context.Background(), "Local reference role.", "Local reference index.")

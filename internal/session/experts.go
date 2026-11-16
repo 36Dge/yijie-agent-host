@@ -80,6 +80,13 @@ func (s *Service) contextForExpert(ctx context.Context, ref *expert.ExpertRef) (
 	if e != nil {
 		return nil, expertFail(expert.ErrorCodeResourceUnavailable)
 	}
+	// ResolveExpert has verified the installed archive/role/index identity.
+	// Web policy is independent of whether the builtin REST bridge is enabled:
+	// ordinary experts retain native search; reviewed offline versions do not.
+	ctx, e = codex.WithExpertWebPolicy(ctx, string(resolved.Reference.ExpertId), string(resolved.Reference.Version), string(resolved.Reference.RoleSha256))
+	if e != nil {
+		return nil, expertFail(expert.ErrorCodeQualificationRequired)
+	}
 	return codex.WithExpertInstructions(ctx, resolved.Role, resolved.Index)
 }
 func (s *Service) contextForStoredExpert(ctx context.Context, sessionID string) (context.Context, error) {

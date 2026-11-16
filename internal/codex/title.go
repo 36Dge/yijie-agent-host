@@ -142,6 +142,16 @@ func (m *Manager) GenerateTitle(ctx context.Context, input string) (string, erro
 	if m.config.ChatModelsEnabled {
 		startParams.Config = applyModelConfig(startParams.Config, selected)
 	}
+	if m.config.BuiltinWebEnabled {
+		if startParams.Config == nil {
+			startParams.Config = make(map[string]any)
+		}
+		// Titles are auxiliary work. Use native configuration, not a prose
+		// instruction, to keep hosted retrieval out of their tool plan.
+		startParams.Config["web_search"] = "disabled"
+		startParams.Config["mcp_servers.yijie_web.url"] = "http://127.0.0.1:1/disabled-web"
+		startParams.Config["mcp_servers.yijie_web.enabled"] = false
+	}
 	m.mu.Lock()
 	m.pendingTitleStarts++
 	m.mu.Unlock()

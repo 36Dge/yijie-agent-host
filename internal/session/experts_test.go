@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	web "github.com/36Dge/yijie-agent-host/internal/contracts/builtinweb"
 	model "github.com/36Dge/yijie-agent-host/internal/contracts/chatmodels"
 	expert "github.com/36Dge/yijie-agent-host/internal/contracts/experts"
 	broker "github.com/36Dge/yijie-agent-host/internal/contracts/marketbrokercontrol"
@@ -19,6 +20,29 @@ import (
 	"github.com/google/uuid"
 	bolt "go.etcd.io/bbolt"
 )
+
+func TestFEAT175RealExpertEntryResolvesWebPolicy(t *testing.T) {
+	s, _, resources, _, _ := feat158Session(t)
+	ctx, err := s.contextForExpert(context.Background(), feat158Ref())
+	if err != nil || !codex.ExpertWebAllowed(ctx) || resources.calls != 1 {
+		t.Fatal("real expert entry lost native web", err)
+	}
+	ref := *feat158Ref()
+	policy := web.ExpertPolicies[2]
+	ref.ExpertId, ref.Version, ref.RoleSha256 = expert.ExpertId(policy.ExpertID), expert.Version(policy.Version), expert.Digest(policy.RoleSHA256)
+	ctx, err = s.contextForExpert(context.Background(), &ref)
+	if err != nil || codex.ExpertWebAllowed(ctx) {
+		t.Fatal("offline expert policy missing at real entry", err)
+	}
+	ref.Version = expert.Version("0.1.3")
+	if _, err = s.contextForExpert(context.Background(), &ref); ExpertFailureCode(err) != expert.ErrorCodeQualificationRequired {
+		t.Fatal("unreviewed restricted version was accepted", err)
+	}
+	ctx, err = s.contextForExpert(ctx, nil)
+	if err != nil || !codex.ExpertWebAllowed(ctx) {
+		t.Fatal("ordinary context did not restore web", err)
+	}
+}
 
 type feat158Resources struct{ calls int }
 

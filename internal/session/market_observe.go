@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/36Dge/yijie-agent-host/internal/codex"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
 )
 
@@ -61,6 +62,23 @@ func (s *Service) DecideMarketApproval(ctx context.Context, input wire.ApprovalD
 	})
 	if !ok {
 		return wire.MarketApproval{}, marketFail(wire.ErrorCodeNotReady)
+	}
+	// The retired connector may still be present in a frozen selection. Its
+	// pending web call must honor the same verified offline expert policy.
+	// Completed historical decision receipts keep their original replay path.
+	if input.Decision == "approve_once" {
+		if lister, available := s.runtime.(interface {
+			ListMarketApprovals(string) []wire.MarketApproval
+		}); available {
+			for _, view := range lister.ListMarketApprovals(r.CodexThreadID) {
+				if view.State == wire.ApprovalStatePending && view.ApprovalId == input.ApprovalId && view.Identity.CallRef == input.CallRef && string(view.Identity.ServiceId) == "kimi-web" {
+					resolved, err := s.contextForStoredExpert(ctx, r.AgentSessionID)
+					if err != nil || !codex.ExpertWebAllowed(resolved) {
+						return wire.MarketApproval{}, marketFail(wire.ErrorCodePermissionDenied)
+					}
+				}
+			}
+		}
 	}
 	result, e := rt.DecideMarketApproval(ctx, r.CodexThreadID, input)
 	if e != nil {

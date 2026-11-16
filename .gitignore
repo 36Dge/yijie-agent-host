@@ -9,3 +9,4 @@ coverage/
 .local/
 
 artifact-mcp/target/
+__pycache__/

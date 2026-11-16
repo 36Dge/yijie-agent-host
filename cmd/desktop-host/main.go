@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +19,7 @@ import (
 	"github.com/36Dge/yijie-agent-host/internal/app"
 	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	builtinweb "github.com/36Dge/yijie-agent-host/internal/contracts/builtinweb"
 	"github.com/36Dge/yijie-agent-host/internal/documents"
 	"github.com/36Dge/yijie-agent-host/internal/imagegen"
 	"github.com/36Dge/yijie-agent-host/internal/security"
@@ -279,6 +282,25 @@ func run(logger *slog.Logger) error {
 					return e
 				}
 			}
+		}
+	}
+	if config.Runtime.BuiltinWebEnabled && sessionService != nil {
+		secret := make([]byte, 32)
+		if _, err := rand.Read(secret); err != nil {
+			return err
+		}
+		config.BuiltinWebAdmissionToken = hex.EncodeToString(secret)
+		origin := os.Getenv("YIJIE_WEB_API_ORIGIN")
+		profile := "product"
+		if config.Environment == "local" && os.Getenv("YIJIE_LOCAL_PROFILE") == "demo_fast" {
+			profile = "local_demo"
+			origin = builtinweb.LocalAPIOrigin
+		}
+		if origin == "" {
+			origin = "https://api.yijie.ai"
+		}
+		if err := runtime.ConfigureBuiltinWebProfile(origin, "http://127.0.0.1:"+config.Port+"/internal/web-retrieval/admit", config.BuiltinWebAdmissionToken, profile, sessionService.ObserveBuiltinWeb); err != nil {
+			return err
 		}
 	}
 	server := &http.Server{

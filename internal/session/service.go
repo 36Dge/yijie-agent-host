@@ -207,6 +207,7 @@ type syntheticTerminalBarrier struct {
 }
 
 type Service struct {
+	builtinWeb           builtinWebAuthority
 	documentEnvironment  *documents.Environment
 	contextWindowMu      sync.Mutex
 	contextWindows       map[string]*contextObservation

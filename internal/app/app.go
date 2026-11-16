@@ -21,6 +21,7 @@ import (
 	"github.com/36Dge/yijie-agent-host/internal/artifact"
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	agenthostcontract "github.com/36Dge/yijie-agent-host/internal/contracts"
+	builtinweb "github.com/36Dge/yijie-agent-host/internal/contracts/builtinweb"
 	"github.com/36Dge/yijie-agent-host/internal/security"
 	"github.com/36Dge/yijie-agent-host/internal/session"
 	"github.com/google/uuid"
@@ -33,6 +34,7 @@ const (
 )
 
 type Config struct {
+	BuiltinWebAdmissionToken       string
 	ExpertsEnabled                 bool
 	MarketProviderOnly             bool
 	Environment                    string
@@ -435,6 +437,7 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if err := loadMarketProfile(&config); err != nil {
 		return Config{}, err
 	}
+	config.Runtime.BuiltinWebEnabled = os.Getenv("YIJIE_BUILTIN_WEB_ENABLED") != "false" && config.Runtime.NativeToolsEnabled && config.Runtime.ToolSearchEnabled && config.Runtime.InteractionToolsEnabled && config.Runtime.Market.Manifest != "" && !config.MarketProviderOnly
 	if err := loadExpertProfile(&config); err != nil {
 		return Config{}, err
 	}
@@ -992,6 +995,11 @@ func NewHandler(config Config, runtime RuntimeStatusProvider, sessions SessionSe
 	}
 	if config.Runtime.Market.Manifest != "" {
 		registerMarketRoutes(mux, sessions, apiToken, config.InstanceNonce)
+	}
+	if web, ok := sessions.(interface {
+		AdmitBuiltinWeb(context.Context, builtinweb.WebAdmissionRequest) (builtinweb.WebAdmissionReceipt, error)
+	}); ok && config.Runtime.BuiltinWebEnabled {
+		registerBuiltinWeb(mux, web, config.BuiltinWebAdmissionToken)
 	}
 	registerSkillRoutes(mux, config.Skills, handlerOptions.skillService, apiToken)
 	registerNativeSkillRoutes(mux, config.Skills, handlerOptions.nativeSkillMarket, apiToken)

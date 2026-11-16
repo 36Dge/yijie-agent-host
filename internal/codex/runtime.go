@@ -66,6 +66,8 @@ type Config struct {
 	DynamicToolsEnabled            bool
 	HostImagesEnabled              bool
 	BuiltinMediaEnabled            bool
+	BuiltinWebEnabled              bool              // Native-managed delegation; unavailable until service/worker admission is installed.
+	BuiltinWebApprovals            map[string]string // Explicit native per-tool policy; empty uses auto.
 	BuiltinVideoEnabled            bool
 	NativeToolsEnabled             bool
 	DocumentRuntimeEnabled         bool
@@ -114,6 +116,14 @@ func (c Config) Configured() bool {
 }
 
 func (c Config) validate() error {
+	if c.BuiltinWebEnabled && (!c.NativeToolsEnabled || !c.RuntimePermissionsEnabled) {
+		return errors.New("builtin web requires the managed native tool profile")
+	}
+	for name, mode := range c.BuiltinWebApprovals {
+		if !c.BuiltinWebEnabled || !builtinWebTool(name) || (mode != "auto" && mode != "prompt") {
+			return errors.New("unsupported builtin web native approval policy")
+		}
+	}
 	if err := c.validateSkillMarketplace(); err != nil {
 		return err
 	}
@@ -246,6 +256,7 @@ type Manager struct {
 	artifactMCPToken       string
 	mediaMCPURL            string
 	mediaMCPToken          string
+	builtinWeb             builtinWebRuntime
 	market                 marketRuntimeState
 	permissionCallbacks    runtimeApprovalCallbacks
 	userInputs             userInputCallbacks
@@ -535,6 +546,13 @@ func (m *Manager) Start(ctx context.Context) (returnErr error) {
 			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
 		}
 	}
+	if providerErr == nil && m.config.BuiltinWebEnabled {
+		var extra []string
+		extra, providerErr = m.builtinWebNativeArguments()
+		if providerErr == nil {
+			m.nativeConfigArgs = append(m.nativeConfigArgs, extra...)
+		}
+	}
 
 	if providerErr == nil && m.config.NativeSkillMarketplaceEnabled {
 		var extra []string
@@ -783,6 +801,7 @@ func (m *Manager) Shutdown(ctx context.Context) (returnErr error) {
 	if startupCancel != nil {
 		startupCancel()
 	}
+	m.builtinWebTurn(BuiltinWebTurnEvent{State: "closed"})
 	// Broker admission closes before Runtime EOF. STOP_PENDING is mapped to
 	// the existing bounded graceful-wait contract; ownership is retained.
 	if err := m.closeMarketBroker(ctx); err != nil {
@@ -901,6 +920,9 @@ func (m *Manager) startProcess() (io.WriteCloser, io.ReadCloser, *exec.Cmd, *tai
 	if m.mediaMCPToken != "" {
 		cmd.Env = append(cmd.Env, MediaMCPTokenEnv+"="+m.mediaMCPToken)
 	}
+	if m.builtinWeb.token != "" {
+		cmd.Env = append(cmd.Env, BuiltinWebMCPTokenEnv+"="+m.builtinWeb.token)
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("open runtime stdin: %w", err)
@@ -986,6 +1008,7 @@ func (m *Manager) handleClientFailure(err error) {
 
 func (m *Manager) handleNotification(method string, params json.RawMessage) {
 	m.handlePermissionNotification(method, params)
+	m.observeBuiltinWebNotification(method, params)
 	m.observeUserInputNotification(method, params)
 	m.observeMarketNotification(method, params)
 	m.logger.Debug("Codex Runtime notification", "method", method)
@@ -1213,6 +1236,7 @@ func runtimeEnvironment(
 	blocked := map[string]struct{}{
 		ArtifactMCPTokenEnv:    {},
 		MediaMCPTokenEnv:       {},
+		BuiltinWebMCPTokenEnv:  {},
 		"OPENAI_API_KEY":       {},
 		"CODEX_API_KEY":        {},
 		"CODEX_ACCESS_TOKEN":   {},

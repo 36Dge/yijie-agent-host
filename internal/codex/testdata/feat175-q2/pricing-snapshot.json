@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-175",
+  "status": "official_public_snapshot",
+  "currency": "CNY",
+  "checked_at": "2026-11-15T09:59:41.723436+00:00",
+  "sources": [
+    {
+      "url": "https://platform.kimi.com/docs/pricing/chat",
+      "sha256": "9afe502615e0e0b9568f46545dd5fb5b4fb442b30e6c090ae0ba0d1373a63ffa",
+      "extraction": "official public HTML, including embedded MDX tables; no API or credential"
+    },
+    {
+      "url": "https://platform.kimi.com/docs/pricing/websearch",
+      "sha256": "a9d827003167e95c57754897fdfae9816cfc20892ca55ebf1792bac7119aff75",
+      "extraction": "official public HTML, including embedded MDX tables; no API or credential"
+    },
+    {
+      "url": "https://platform.minimax.cn/docs/pricing/overview",
+      "sha256": "b79de74753b001fdab6446b2c51d5ca8bca528d7ad748cf99be4e5bce1007117",
+      "extraction": "official public HTML, including embedded MDX tables; no API or credential"
+    }
+  ],
+  "models": {
+    "kimi-k3.1-pro": {
+      "input_cny_per_mtok": 13,
+      "output_cny_per_mtok": 68,
+      "cache_hit_cny_per_mtok": 1.3,
+      "cache_write_5m_cny_per_mtok": 13,
+      "cache_write_1h_cny_per_mtok": 26,
+      "input_upper_cny_per_mtok": 26,
+      "output_upper_cny_per_mtok": 68,
+      "hosted_search_micro_cny": 30000,
+      "accounting": "Conservative input plus full 5m write for every input token; no cache discount. 1h TTL/highspeed/tier changes rejected."
+    },
+    "MiniMax-M3": {
+      "standard_small_input_cny_per_mtok": 2.1,
+      "standard_small_output_cny_per_mtok": 8.4,
+      "standard_large_input_cny_per_mtok": 4.2,
+      "standard_large_output_cny_per_mtok": 16.8,
+      "input_upper_cny_per_mtok": 4.2,
+      "output_upper_cny_per_mtok": 16.8,
+      "hosted_search_micro_cny": 30000,
+      "accounting": "Use larger standard context tier conservatively; no cache discount; priority rejected."
+    }
+  },
+  "supplier_rest_calls": 0,
+  "notes": [
+    "Only post-observation conservative cost; no hard bound on in-flight model or hosted work.",
+    "Public list prices do not prove account access, bill settlement, Responses compatibility or route selection.",
+    "No API probes were made; first authorized real responses must establish provider evidence or stop."
+  ]
+}

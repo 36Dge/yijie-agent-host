@@ -1,0 +1,35 @@
+{
+  "schema_version": 3,
+  "feature": "FEAT-175",
+  "purpose": "Q2-v2A-first-action",
+  "base_cases_sha256": "0fbed97c6b772b1d9e9767acee654fcafa721e2452a8ce9592e58b50b6e35ae7",
+  "mode": "first_action",
+  "stages": [
+    {"id":"A1","tasks":4,"model_http":16,"per_model_http":8,"hosted_stop":8,"soft_stop_micro_cny":6000000},
+    {"id":"A2","tasks":12,"model_http":48,"per_model_http":24,"hosted_stop":24,"soft_stop_micro_cny":20000000}
+  ],
+  "schedule": [
+    {"model":"MiniMax-M3","case_id":"Q2-02"},
+    {"model":"kimi-k3.1-pro","case_id":"Q2-02"},
+    {"model":"MiniMax-M3","case_id":"Q2-06"},
+    {"model":"kimi-k3.1-pro","case_id":"Q2-06"},
+    {"model":"MiniMax-M3","case_id":"Q2-01"},
+    {"model":"kimi-k3.1-pro","case_id":"Q2-01"},
+    {"model":"MiniMax-M3","case_id":"Q2-03"},
+    {"model":"kimi-k3.1-pro","case_id":"Q2-03"},
+    {"model":"MiniMax-M3","case_id":"Q2-04"},
+    {"model":"kimi-k3.1-pro","case_id":"Q2-04"},
+    {"model":"MiniMax-M3","case_id":"Q2-05"},
+    {"model":"kimi-k3.1-pro","case_id":"Q2-05"}
+  ],
+  "per_task_http":4,
+  "per_task_mcp":4,
+  "model_inflight":1,
+  "supplier_rest_calls":0,
+  "deadlines_seconds":{"binding":5,"observation":180,"interrupt":10,"http_absolute":240,"http_idle":120,"drain_after_close":60,"shutdown":40},
+  "authorization":"New one-shot source/profile/price/schedule-bound grant. Local execution never accepts or consumes a live grant. Current paid allowance is zero.",
+  "ownership":"Only native active-turn bindings authorize dispatch. Unknown identities never inherit active_task. Closed root tombstones survive phase changes.",
+  "visibility":"Native first-action evidence and complete provider billing inventory are separate. Retain all late provider items; ambiguous earlier activity is inconclusive.",
+  "review":"Every task closes admission and drains before review; A2 opens only after four bound A1 reviews. No fee or count reset.",
+  "qualification":"A0 local protocol/transport qualification only; no real model routing or complete-answer qualification."
+}

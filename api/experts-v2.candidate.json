@@ -72,7 +72,7 @@
     },
     {
       "path": "scripts/sync-model-call-surfaces-v2.mjs",
-      "sha256": "cae9e5b8e458819c3c8c5dfa95d0e2c77b638105c95669e009b378378e50df19"
+      "sha256": "d61f7aeb4008a4caca96c72d56b5ec4f93b4461fc70b7f46027897baa011b232"
     },
     {
       "path": "pnpm-lock.yaml",
@@ -125,7 +125,7 @@
       "sha256": "a7ee6c00cd33741143e6733a934c8d596e9bb6a620911dd70894abccb84be0d8"
     }
   ],
-  "source_commit": "64ed36dfb2c4df7645d969e0eaf1b3f3bb0a50c4",
+  "source_commit": "a189ec6b66b24aefc59e9d766e6ae4b29c09fdec",
   "consumer": "agent-host",
   "consumer_generated": [
     {

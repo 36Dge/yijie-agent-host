@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "feature": "FEAT-175",
+  "purpose": "Q2-route-feasibility",
+  "status": "not_authorized",
+  "package_sha256": "0fbed97c6b772b1d9e9767acee654fcafa721e2452a8ce9592e58b50b6e35ae7",
+  "approved_by": null,
+  "approved_at": null,
+  "model_http_requests": 0,
+  "hosted_searches": 0,
+  "supplier_rest_calls": 0,
+  "total_cny": 0,
+  "review_inputs": {
+    "requested_tasks": 12,
+    "proposed_model_http_limit": 48,
+    "proposed_per_model_http_limit": 24,
+    "proposed_per_task_http_limit": 4,
+    "supplier_rest_calls": 0,
+    "amount_for_explicit_approval": 20,
+    "current_pricing_receipt": "pricing-snapshot.json",
+    "approved_model_profile_receipts": [],
+    "dedicated_FEAT175_meter_qualification": "../../../../../yijie/docs/features/FEAT-175-builtin-web-retrieval/references/q2-wiring-checks.json",
+    "money_mode": "soft_stop_after_observation",
+    "requires_explicit_inflight_overshoot_acceptance": true,
+    "proposed_hosted_observation_stop_count": 24,
+    "proposed_local_mcp_per_task": 4,
+    "authorization_validity_hours": 24
+  },
+  "note": "Not executable authority. Dedicated live entry rejects this zero grant before credentials or Runtime. The review amount is a proposed soft stop, not approved money or a hard bill cap."
+}

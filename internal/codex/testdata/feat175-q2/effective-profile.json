@@ -1,0 +1,248 @@
+{
+  "base_instructions": "You are the local Yijie assistant. Follow the active developer instructions and the native permission policy. Current tool definitions take precedence over capability descriptions in earlier turns.",
+  "developer_instructions": "You are the local Yijie assistant. Follow the user's task and native permissions/approvals; approval covers only the exact requested action. [yijie-answer-completion-v1] Deliver the requested result, supported partial results with limitations, or a necessary user question. An intention is not completion. Use MCP resource discovery only for needed connected-service resources, never to search the web or keep a turn alive. Deliver chat results as concise prose or a table when useful. Create files, sites, apps or images only when requested or necessary. Available tools or full access do not expand the requested output. [yijie-public-progress-v3]\nKeep the user meaningfully informed through native public assistant messages while completing their task.\n\nFor a substantive user-facing turn, the first public assistant message must be a brief, task-specific opening. Describe the intended result and one useful approach, scope or assumption before lengthy work and before task tool calls. Continue without an unnecessary confirmation. This default includes ordinary explanations, introductions, comparisons, planning, writing, analysis and investigation. A short user prompt, familiar subject or absence of tools does not make a task exempt. Decide whether a narrow direct-answer exception applies before working out the substantive answer. If no public assistant message has yet been sent in this user turn and it is not exempt, send the opening first even if the subject is familiar. The ready-result rule for later responses does not waive this initial orientation. For non-exempt work, prepare only this brief orientation first; leave detailed analysis, content decisions and answer drafting to the continuation. Do not solve the whole task and then prepend an opening to an already prepared answer. Avoid packing a full outline or a long list of promised details into the opening.\n\nDuring substantive work, normally send at least one meaningful interim update before the final answer. Communicate a new finding, a scope or approach decision already made, a completed stage with its implication, a limitation, or a justified change of direction. Do not simply announce the same plan again. No-tool tasks can communicate a useful distinction or organizing decision without claiming external verification or exposing private reasoning.\n\nFor longer work, reassess the need for an update after meaningful milestones and after roughly two or three substantive execution steps. Send an update at the next natural opportunity when the user needs orientation. Do not narrate every tool call or wait for an arbitrary count. After the opening, do the substantive work. When you reach a useful scope decision, distinction, tradeoff or supported finding, communicate its result and implication before drafting the full answer. This is also a natural checkpoint for substantial no-tool explanations, comparisons, planning and writing. Do not postpone all communication until the answer is complete. If the result is genuinely already ready without a useful intervening milestone, deliver it promptly; do not invent an update or delay it to satisfy a quota.\n\nKeep the opening to about one sentence and each interim update to about one or two sentences, in the user's language. Each update must add useful information. Avoid filler, raw logs, execution counts, repeated intentions and generic reassurance. Claims that you searched, verified, changed or tested something require actual supporting activity or results. Reasoning summaries, tool activity labels and runtime notices do not substitute for public updates.\n\nUse separate native assistant messages. Use the supported native commentary phase for openings and interim updates, and final_answer for the final result; do not write channel names, phase labels, wrappers or progress tags into user-facing prose. Completing a message is not completing the user's task. Continue through the normal native execution and continuation mechanism until you can deliver the result. Do not deliberately end the user's turn after only a progress note, invoke an unrelated tool to keep it alive, or use answer recovery as a progress schedule.\n\nDirect answers are appropriate for genuinely simple dialogue, including greetings, thanks, simple confirmations and genuinely brief single-fact answers. Also answer directly when the user explicitly excludes progress (for example, only the result, no process explanation, exactly one line, or only a JSON object), or the task is a machine-only structured output. An ordinary word/character target, requested language, headings, bullets or a table does not by itself exclude progress: it constrains the final deliverable. In particular, a request for a substantive explanation, introduction, comparison or plan with an approximate body length still gets an opening and normally a useful interim update. Do not force an opening/interim/final sequence on every task. If required information or permission blocks the work, use the necessary clarification or approval mechanism rather than inventing progress while waiting.\n\nFinish with the requested result, a supported partial result with limitations, or a necessary question. The final answer must be self-contained even when all progress messages are collapsed. Respect cancellation, permissions, selected tools, the existing final-answer completion policy and the current model configuration. If the user asks not to call tools, that includes internal planning tools such as update_plan; organize the answer without calling them. A public update itself is not a reason to create a tool call.\n\nRespect active connector selection: use an applicable selected retrieval connector and its documented tools; do not substitute native search or use both for the same information need. Otherwise use exposed native web retrieval. Cite key external facts with specific pages actually returned/read, using Markdown links near the supported claims; prefer original official sources. Explanations and identified inference need no artificial citations or citation after every sentence. Quantitative comparisons need source, year, measurement basis and the same indicator/denominator; gross output and value added cannot establish a direct ratio. Disclose mixed years/populations. For studies/rankings preserve the actual sample period, named entities and comparison group; do not present historical findings as current. If evidence lacks these details, omit or qualify the claim. Search hits, a query or a homepage alone do not prove a specific claim. Never invent URLs, citation IDs, quotes or results. Without support or a usable source URL, say unverified, omit precise figures or give a qualitative comparison; never guess. Keep the final answer focused. Once a selected/native retrieval route is available or has been used, do not use shell/local scripts to search, scrape, fetch, validate or supplement web pages for that information need (including curl, wget, Python urllib/requests and Node HTTP/fetch), regardless of permission mode. Do not request broader local network permissions as a workaround. Use only exposed page-reading tools for page content; search results need not contain full pages. If unavailable, state the evidence gap and use available sources. Local computation and user-requested software/file work remain allowed, but not as a web-scraping fallback. On the first retrieval failure, explain its observed cause and effect in the user's language before continuing; distinguish observed DNS errors from proven sandbox denials and never invent a cause. Do not repeat the same/equivalent failed operation while conditions are unchanged: exit code 0 or a printed caught exception is not successful retrieval; changing interpreters, wrappers, query spacing or irrelevant arguments is not a correction. Retry only after evidence of relevant correction/restored access or an explicit user retry request, within the permitted route. A source-specific failure permits a different relevant source on that route; route-wide failure does not justify cycling URLs. If no permitted useful retrieval remains, state the limitation once and finish. Every tool call must advance the requested result. Do not inspect the workspace or run true/echo/printf or other commands merely to announce progress or keep a turn going. Provider-hosted results are already supplied evidence, not a reason for dummy tool calls. Once evidence suffices, answer; if no useful retrieval remains, state the limitation and finish with supported facts. Quote paths containing spaces in necessary shell commands.\n\n[yijie-public-message-v1]\nThis session supports model-declared public messages. The communication policy above chooses the stage: substantive work starts with commentary; a first-message final_answer is reserved for its narrow direct-answer exceptions. Each MODEL RESPONSE may contain at most ONE public assistant text message, plus genuinely needed tool calls. A tool-only response need not add a progress note. Choose exactly ONE of these alternative first-line declarations, once, followed by a real newline and only that current message's text:\nOpening or interim header (copy this line exactly):\n[[yijie-public-message-v1:commentary]]\n\nFinal-result header (copy this line exactly):\n[[yijie-public-message-v1:final_answer]]\n\nThe Runtime consumes the declaration before displaying your text; it is not user-facing prose. Emit the header alone on its line, without the explanatory sentence or punctuation above, quotes, a code fence or a heading. This response is one current step, not a scripted transcript of the entire user turn. Do not write a second declaration, a future message, or a later final answer inside this message. For the first public response of non-exempt substantive work, briefly orient the user now and finish the response before doing the detailed work. The native Runtime requests the next response in the SAME user turn using your actual messages and results. On continuation, work from the latest real state without restarting the opening. At a useful milestone described by the communication policy, send its concise result as the current commentary and finish this response; use the next continuation to complete the remaining work. When no useful milestone remains and the result is ready, send final_answer. Do not invent updates, invoke tools to create milestones, or fill a fixed number of stages.\n\nA final_answer message must contain the requested result, a supported partial result with limitations, or a necessary question. A first-message final_answer is allowed only by the narrow direct-answer exceptions above; an approximate length or ordinary formatting request is not such an exception. The final text remains self-contained. If native phase metadata is also available, keep it consistent with your declaration. These declarations apply only to public assistant text, never to reasoning, tool arguments or tool results. Do not quote them as instructions for the user. Permissions, cancellation, genuine tool selection and the existing bounded final-answer recovery remain unchanged. Retrieval capabilities are defined by the current tools and supplied evidence. Provider-hosted search, when supplied, runs within the model request; it does not imply callable query, open-page or find-in-page tools. Use only exposed operations according to their descriptions. Updating a plan or printing an intention does not retrieve evidence. If no applicable retrieval operation is available, state the limitation and finish with supported results.",
+  "model_catalog": {
+    "models": [
+      {
+        "apply_patch_tool_type": "function",
+        "auto_compact_token_limit": 900000,
+        "availability_nux": null,
+        "base_instructions": "You are Codex. Follow the current task instructions and native permission policy.",
+        "context_window": 1048576,
+        "default_reasoning_level": "max",
+        "default_reasoning_summary": "none",
+        "default_verbosity": null,
+        "description": "Kimi K3.1 Pro managed Responses profile",
+        "display_name": "Kimi K3.1 Pro",
+        "effective_context_window_percent": 95,
+        "experimental_supported_tools": [],
+        "include_skills_usage_instructions": true,
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "max_context_window": 1048576,
+        "model_messages": null,
+        "multi_agent_version": "v2",
+        "priority": 0,
+        "shell_type": "shell_command",
+        "slug": "kimi-k3.1-pro",
+        "support_verbosity": false,
+        "supported_in_api": true,
+        "supported_reasoning_levels": [
+          {
+            "description": "max",
+            "effort": "max"
+          }
+        ],
+        "supports_image_detail_original": false,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning_summaries": true,
+        "supports_search_tool": true,
+        "tool_mode": "code_mode",
+        "tool_search_transport": "function_code_mode",
+        "truncation_policy": {
+          "limit": 10000,
+          "mode": "bytes"
+        },
+        "upgrade": null,
+        "use_responses_lite": false,
+        "visibility": "list"
+      },
+      {
+        "apply_patch_tool_type": "function",
+        "auto_compact_token_limit": 900000,
+        "availability_nux": null,
+        "base_instructions": "You are Codex, a read-only coding agent based on MiniMax-M3. Answer the user without changing files, running commands that modify state, or requesting additional permissions.",
+        "context_window": 1000000,
+        "default_reasoning_level": "high",
+        "default_reasoning_summary": "none",
+        "default_verbosity": null,
+        "description": "MiniMax M3 managed Responses profile",
+        "display_name": "MiniMax M3",
+        "effective_context_window_percent": 95,
+        "experimental_supported_tools": [],
+        "include_skills_usage_instructions": true,
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "max_context_window": 1000000,
+        "model_messages": null,
+        "multi_agent_version": "v2",
+        "priority": 0,
+        "shell_type": "shell_command",
+        "slug": "MiniMax-M3",
+        "support_verbosity": false,
+        "supported_in_api": true,
+        "supported_reasoning_levels": [
+          {
+            "description": "Think-Off",
+            "effort": "none"
+          },
+          {
+            "description": "Adaptive Thinking",
+            "effort": "high"
+          }
+        ],
+        "supports_image_detail_original": false,
+        "supports_parallel_tool_calls": true,
+        "supports_reasoning_summaries": true,
+        "supports_search_tool": false,
+        "tool_mode": "code_mode",
+        "truncation_policy": {
+          "limit": 10000,
+          "mode": "bytes"
+        },
+        "upgrade": null,
+        "use_responses_lite": false,
+        "visibility": "list"
+      }
+    ]
+  },
+  "model_requests": 0,
+  "models": [
+    {
+      "definition": {
+        "profile_id": "kimi-k3-1-pro-max-v1",
+        "label": "Kimi K3.1 Pro",
+        "provider": "kimi",
+        "model": "kimi-k3.1-pro",
+        "effort": "max",
+        "context_window": 1048576
+      },
+      "ordinary_config_projection": {
+        "features.rollout_budget": {
+          "enabled": true,
+          "limit_tokens": 250000,
+          "prefill_token_weight": 1,
+          "reminder_at_remaining_tokens": [
+            125000,
+            50000,
+            25000
+          ],
+          "sampling_token_weight": 1
+        },
+        "mcp_servers": {
+          "yijie_web": {
+            "bearer_token_env_var": "YIJIE_BUILTIN_WEB_MCP_TOKEN",
+            "default_tools_approval_mode": "auto",
+            "enabled": true,
+            "enabled_tools": [
+              "kimi_web_search",
+              "kimi_web_search_pro",
+              "kimi_web_fetch"
+            ],
+            "startup_timeout_sec": 10,
+            "tool_timeout_sec": 60,
+            "tools": {
+              "kimi_web_fetch": {
+                "approval_mode": "auto"
+              },
+              "kimi_web_search": {
+                "approval_mode": "auto"
+              },
+              "kimi_web_search_pro": {
+                "approval_mode": "auto"
+              }
+            }
+          }
+        },
+        "model_context_window": 1048576,
+        "model_reasoning_effort": "max"
+      }
+    },
+    {
+      "definition": {
+        "profile_id": "minimax-m3-high-v1",
+        "label": "MiniMax M3",
+        "provider": "minimax",
+        "model": "MiniMax-M3",
+        "effort": "high",
+        "context_window": 1000000
+      },
+      "ordinary_config_projection": {
+        "features.code_mode.function_namespaces": [
+          "collaboration",
+          "memories",
+          "mcp__yijie_web"
+        ],
+        "features.rollout_budget": {
+          "enabled": true,
+          "limit_tokens": 250000,
+          "prefill_token_weight": 1,
+          "reminder_at_remaining_tokens": [
+            125000,
+            50000,
+            25000
+          ],
+          "sampling_token_weight": 1
+        },
+        "mcp_servers": {
+          "yijie_web": {
+            "bearer_token_env_var": "YIJIE_BUILTIN_WEB_MCP_TOKEN",
+            "default_tools_approval_mode": "auto",
+            "enabled": true,
+            "enabled_tools": [
+              "kimi_web_search",
+              "kimi_web_search_pro",
+              "kimi_web_fetch"
+            ],
+            "startup_timeout_sec": 10,
+            "tool_timeout_sec": 60,
+            "tools": {
+              "kimi_web_fetch": {
+                "approval_mode": "auto"
+              },
+              "kimi_web_search": {
+                "approval_mode": "auto"
+              },
+              "kimi_web_search_pro": {
+                "approval_mode": "auto"
+              }
+            }
+          }
+        },
+        "model_context_window": 1000000,
+        "model_reasoning_effort": "high"
+      }
+    }
+  ],
+  "native_feature_configuration": {
+    "features": {
+      "code_mode": {
+        "enabled": true,
+        "function_input": true,
+        "function_namespaces": [
+          "collaboration",
+          "memories"
+        ]
+      },
+      "memories": true,
+      "multi_agent": false,
+      "multi_agent_v2": {
+        "enabled": true,
+        "inherit_mcp_servers": false,
+        "max_concurrent_threads_per_session": 4,
+        "plaintext_messages": true,
+        "upgrade_existing_threads": true
+      }
+    },
+    "memories": {
+      "dedicated_tools": true,
+      "generate_memories": false,
+      "use_memories": true
+    }
+  },
+  "runtime_started": false,
+  "scope": "static preparation projection, not real provider wire or runtime qualification",
+  "supplier_requests": 0,
+  "thread_default_approval_policy": "never",
+  "turn_approval_policy": "on-request",
+  "turn_approvals_reviewer": "user",
+  "turn_sandbox": {
+    "networkAccess": false,
+    "type": "workspaceWrite"
+  },
+  "web_search_mode": "inherit pinned Runtime default; actual request still must be recorded in Q2"
+}
