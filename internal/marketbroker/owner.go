@@ -64,6 +64,7 @@ type ownerState struct {
 	stdin                *os.File
 	modelKeyWriter       *os.File
 	kimiModelKey         string // existing model snapshot; private startup pipe only
+	localAcceptance      string // explicit isolated profile, never inherited ambient authority
 	done                 chan struct{}
 	exitErr              error // published before done closes
 	active               chan exchangeResult
@@ -219,6 +220,9 @@ func (o *Owner) start(ctx context.Context, processKey string) error {
 	}
 	// os.Pipe files are close-on-exec; only explicit descriptors are inherited.
 	command := exec.Command(build.Binary, "--broker-control-stdio")
+	if o.localAcceptance != "" {
+		command = exec.Command(build.Binary, localAcceptanceArgument(), o.localAcceptance)
+	}
 	command.Env = []string{"PATH=/usr/bin:/bin:/usr/sbin:/sbin", "LANG=en_US.UTF-8", RuntimeCapabilityEnvironment + "=" + capability}
 	if o.libraryHome != "" {
 		command.Env = append(command.Env, "YIJIE_MARKET_WORKER_HOME="+o.libraryHome, "CODEX_HOME="+o.libraryHome)
@@ -234,7 +238,7 @@ func (o *Owner) start(ctx context.Context, processKey string) error {
 	}
 	if err == nil {
 		key := ""
-		if build.ExternalCallsEnabled && build.ProviderProfile == "generic-mcp-v1" {
+		if o.localAcceptance == "" && build.ExternalCallsEnabled && build.ProviderProfile == "generic-mcp-v1" {
 			key = o.kimiModelKey
 		}
 		var reader, writer *os.File

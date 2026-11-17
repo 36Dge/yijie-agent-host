@@ -10,6 +10,7 @@ import (
 
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
 	rejection "github.com/36Dge/yijie-agent-host/internal/contracts/submissionrejection"
+	"github.com/36Dge/yijie-agent-host/internal/marketbroker"
 	"github.com/36Dge/yijie-agent-host/internal/security"
 	"github.com/36Dge/yijie-agent-host/internal/session"
 )
@@ -126,6 +127,7 @@ func registerMarketRoutes(mux *http.ServeMux, candidate any, apiToken, nonce str
 		marketReply(w, requestID, http.StatusOK, wire.OperationResponse{SchemaVersion: 1, RequestId: requestID, Data: data}, err)
 	})
 	register("GET /v1/market-chat/agent-sessions/{agentSessionId}/approvals", func(w http.ResponseWriter, r *http.Request) {
+		marketbroker.RecordLocalAcceptanceRead("approvals")
 		agent := r.PathValue("agentSessionId")
 		requestID, ok := marketReadID(r, agent)
 		if !ok {
@@ -157,6 +159,11 @@ func registerMarketRoutes(mux *http.ServeMux, candidate any, apiToken, nonce str
 			return
 		}
 		var data wire.ToolSnapshot
+		if source == "" {
+			marketbroker.RecordLocalAcceptanceRead("history")
+		} else {
+			marketbroker.RecordLocalAcceptanceRead(source)
+		}
 		var err error
 		switch source {
 		case "", "history":

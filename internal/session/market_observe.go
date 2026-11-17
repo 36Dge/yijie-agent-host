@@ -6,6 +6,7 @@ import (
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
+	"github.com/36Dge/yijie-agent-host/internal/marketbroker"
 )
 
 func marketRuntimeReady(runtime Runtime) bool {
@@ -112,6 +113,7 @@ func (s *Service) ReadMarketTools(ctx context.Context, id, turnID string) (wire.
 	key := marketSnapshotIdentity(r, turnID)
 	revision := s.marketTools.version(key)
 	raw, e := rt.ReadThread(ctx, r.CodexThreadID)
+	marketbroker.RecordLocalAcceptanceRead("thread_read")
 	if e != nil {
 		return wire.ToolSnapshot{}, marketFail(wire.ErrorCodeTemporarilyUnavailable)
 	}

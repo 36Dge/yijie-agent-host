@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	"github.com/36Dge/yijie-agent-host/internal/marketbroker"
 )
 
 // Market authority is only assembled for the parent-owned local Native pipe.
@@ -20,8 +21,9 @@ func loadMarketProfile(config *Config) error {
 		return err
 	}
 	manifest := os.Getenv("YIJIE_MARKET_WORKER_MANIFEST")
+	acceptance := os.Getenv("YIJIE_MARKET_LOCAL_ACCEPTANCE")
 	if !enabled {
-		if providerOnly || manifest != "" {
+		if providerOnly || manifest != "" || acceptance != "" {
 			return errors.New("market configuration requires explicit activation")
 		}
 		return nil
@@ -45,5 +47,17 @@ func loadMarketProfile(config *Config) error {
 	}
 	config.MarketProviderOnly = providerOnly
 	config.Runtime.Market = codex.MarketConfig{Manifest: manifest, LibraryHome: filepath.Join(config.HostHome, "market-worker", "library-home"), HostInstanceID: config.InstanceNonce}
+	if acceptance != "" {
+		if !config.Runtime.KimiK31Candidate || !config.Runtime.NativeToolsEnabled || !config.Runtime.InteractionToolsEnabled || !config.Runtime.ToolSearchEnabled {
+			return errors.New("local market acceptance requires the current native tool profile")
+		}
+		if providerOnly || os.Getenv("YIJIE_DEVELOPMENT_CLIENT") != "true" || !marketbroker.ValidLocalAcceptance(acceptance, config.Runtime.Market.LibraryHome) || config.Runtime.CodexHome != filepath.Join(filepath.Dir(config.HostHome), "codex-home") {
+			return errors.New("local market acceptance requires its explicit isolated development entry")
+		}
+		config.Runtime.Market.LocalAcceptance = acceptance
+		config.Runtime.BuiltinMediaEnabled = false
+		config.Runtime.BuiltinVideoEnabled = false
+		config.ImageGenerationEnabled = false
+	}
 	return nil
 }

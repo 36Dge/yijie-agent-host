@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv6"
+	"github.com/36Dge/yijie-agent-host/internal/marketbroker"
 )
 
 const nativeTextLimit = 256 << 10
@@ -270,6 +271,7 @@ func (s *Service) ReadNativeThreadV6(ctx context.Context, sessionID string) (nat
 		return native.NativeThreadSnapshot{}, ErrSessionNotUsable
 	}
 	raw, err := runtime.ReadThread(ctx, record.CodexThreadID)
+	marketbroker.RecordLocalAcceptanceRead("native_history")
 	if err != nil {
 		return native.NativeThreadSnapshot{}, ErrRuntimeRequest
 	}

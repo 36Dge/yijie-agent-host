@@ -15,15 +15,18 @@ import (
 )
 
 // MarketConfig is private process assembly, never a renderer or HTTP DTO.
-type MarketConfig struct{ Manifest, LibraryHome, HostInstanceID string }
+type MarketConfig struct{ Manifest, LibraryHome, HostInstanceID, LocalAcceptance string }
 
 func (c MarketConfig) enabled() bool { return c.Manifest != "" }
 func (c MarketConfig) validate() error {
-	if !c.enabled() && c.LibraryHome == "" && c.HostInstanceID == "" {
+	if !c.enabled() && c.LibraryHome == "" && c.HostInstanceID == "" && c.LocalAcceptance == "" {
 		return nil
 	}
 	if !filepath.IsAbs(c.Manifest) || !filepath.IsAbs(c.LibraryHome) || wire.CanonicalId(c.HostInstanceID).Validate() != nil {
 		return errors.New("market worker assembly is invalid")
+	}
+	if c.LocalAcceptance != "" && !marketbroker.ValidLocalAcceptance(c.LocalAcceptance, c.LibraryHome) {
+		return errors.New("market acceptance requires isolated storage")
 	}
 	return nil
 }
@@ -70,7 +73,13 @@ func (m *Manager) StartMarketProvider(ctx context.Context) error {
 	if m.config.ChatModelsEnabled {
 		kimiKey = m.config.KimiAPIKey
 	}
-	owner, err := marketbroker.NewOwnerWithModelCredential(m.config.Market.Manifest, m.config.Market.LibraryHome, kimiKey)
+	var owner *marketbroker.Owner
+	var err error
+	if m.config.Market.LocalAcceptance != "" {
+		owner, err = marketbroker.NewLocalAcceptanceOwner(m.config.Market.Manifest, m.config.Market.LibraryHome, m.config.Market.LocalAcceptance)
+	} else {
+		owner, err = marketbroker.NewOwnerWithModelCredential(m.config.Market.Manifest, m.config.Market.LibraryHome, kimiKey)
+	}
 	if err != nil {
 		return err
 	}

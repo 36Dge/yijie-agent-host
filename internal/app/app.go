@@ -22,6 +22,7 @@ import (
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	agenthostcontract "github.com/36Dge/yijie-agent-host/internal/contracts"
 	builtinweb "github.com/36Dge/yijie-agent-host/internal/contracts/builtinweb"
+	"github.com/36Dge/yijie-agent-host/internal/marketbroker"
 	"github.com/36Dge/yijie-agent-host/internal/security"
 	"github.com/36Dge/yijie-agent-host/internal/session"
 	"github.com/google/uuid"
@@ -437,7 +438,7 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 	if err := loadMarketProfile(&config); err != nil {
 		return Config{}, err
 	}
-	config.Runtime.BuiltinWebEnabled = os.Getenv("YIJIE_BUILTIN_WEB_ENABLED") != "false" && config.Runtime.NativeToolsEnabled && config.Runtime.ToolSearchEnabled && config.Runtime.InteractionToolsEnabled && config.Runtime.Market.Manifest != "" && !config.MarketProviderOnly
+	config.Runtime.BuiltinWebEnabled = config.Runtime.Market.LocalAcceptance == "" && os.Getenv("YIJIE_BUILTIN_WEB_ENABLED") != "false" && config.Runtime.NativeToolsEnabled && config.Runtime.ToolSearchEnabled && config.Runtime.InteractionToolsEnabled && config.Runtime.Market.Manifest != "" && !config.MarketProviderOnly
 	if err := loadExpertProfile(&config); err != nil {
 		return Config{}, err
 	}
@@ -1793,7 +1794,15 @@ func (h *sessionHandler) streamEvents(w http.ResponseWriter, r *http.Request, su
 		writeSessionError(w, err)
 		return
 	}
-	defer cancel()
+	streamKind := "legacy_sse"
+	if strings.HasPrefix(r.URL.Path, "/v13/") {
+		streamKind = "native_sse"
+	}
+	marketbroker.RecordLocalAcceptanceRead(streamKind + "_open")
+	defer func() {
+		cancel()
+		marketbroker.RecordLocalAcceptanceRead(streamKind + "_close")
+	}()
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeAPIError(w, http.StatusInternalServerError, agenthostcontract.ErrorResponseErrorCodeStreamingUnsupported, "streaming is unavailable")
