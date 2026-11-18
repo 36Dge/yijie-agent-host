@@ -51,8 +51,27 @@ func arkCredential(home string, allowInteraction bool) func(context.Context) (st
 			return "", &ProviderError{Code: ErrorRequestCanceled}
 		}
 		if status != C.errSecSuccess {
-			return "", &ProviderError{Code: ErrorAuthentication}
+			return "", keychainReadError(int(status))
 		}
 		return string(buffer[:int(size)]), nil
 	}
+}
+
+// Keep the local read stage distinct from an HTTP authentication rejection.
+// Only fixed reason codes and OSStatus are retained; never Keychain data.
+func keychainReadError(status int) *ProviderError {
+	reason := "read_failed"
+	switch C.OSStatus(status) {
+	case C.errSecInteractionNotAllowed, C.errSecInteractionRequired:
+		reason = "authorization_required"
+	case C.errSecAuthFailed:
+		reason = "access_denied"
+	case C.errSecItemNotFound:
+		reason = "not_found"
+	case C.errSecUserCanceled:
+		reason = "authorization_cancelled"
+	case C.errSecNotAvailable:
+		reason = "keychain_unavailable"
+	}
+	return &ProviderError{Code: ErrorAuthentication, CredentialReason: reason, KeychainStatus: status}
 }

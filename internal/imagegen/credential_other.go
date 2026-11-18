@@ -5,7 +5,9 @@ package imagegen
 import "context"
 
 func ArkCredential(string) func(context.Context) (string, error) {
-	return func(context.Context) (string, error) { return "", &ProviderError{Code: ErrorAuthentication} }
+	return func(context.Context) (string, error) {
+		return "", &ProviderError{Code: ErrorAuthentication, CredentialReason: "unsupported_platform"}
+	}
 }
 
 // Operator authorization uses the same unsupported-platform result.

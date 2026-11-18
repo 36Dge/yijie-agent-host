@@ -87,7 +87,7 @@ func (c *SeedreamClient) Generate(ctx context.Context, input Request) (Result, e
 		return Result{}, err
 	}
 	if key == "" || strings.TrimSpace(key) != key || strings.ContainsAny(key, "\x00\r\n") {
-		return Result{}, &ProviderError{Code: ErrorAuthentication}
+		return Result{}, &ProviderError{Code: ErrorAuthentication, CredentialReason: "invalid_value"}
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)

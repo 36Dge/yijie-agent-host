@@ -7,8 +7,35 @@ import (
 	"encoding/json"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 )
+
+func TestSeedreamCredentialFailureDoesNotSubmit(t *testing.T) {
+	localFailure := &ProviderError{Code: ErrorAuthentication, CredentialReason: "authorization_required", KeychainStatus: -25308}
+	client := NewSeedreamClient(func(context.Context) (string, error) { return "", localFailure })
+	client.httpClient.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("unavailable local credential reached the image provider")
+		return nil, nil
+	})
+	_, err := client.Generate(context.Background(), Request{Prompt: "A studio lamp", Mode: ModeTextToImage})
+	if err != localFailure || !strings.Contains(Diagnostic(err), "provider request not sent") {
+		t.Fatal("local credential evidence was lost", err)
+	}
+}
+
+func TestSeedreamProviderAuthenticationKeepsHTTPDiagnostic(t *testing.T) {
+	client := NewSeedreamClient(func(context.Context) (string, error) { return "local-test-key", nil })
+	calls := 0
+	client.httpClient.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return providerHTTPResponse(http.StatusUnauthorized, []byte(`{"error":{"code":"AuthenticationError"}}`)), nil
+	})
+	_, err := client.Generate(context.Background(), Request{Prompt: "A studio lamp", Mode: ModeTextToImage})
+	if calls != 1 || Diagnostic(err) != "Image generation: authentication_failed HTTP 401 AuthenticationError." {
+		t.Fatalf("provider authentication diagnosis changed: calls=%d error=%s", calls, Diagnostic(err))
+	}
+}
 
 func TestSeedreamSingleImage(t *testing.T) {
 	raw := testPNG(t)

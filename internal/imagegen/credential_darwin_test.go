@@ -6,9 +6,36 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestKeychainReadDiagnostics(t *testing.T) {
+	for _, test := range []struct {
+		status int
+		reason string
+	}{
+		{-25308, "authorization_required"},
+		{-25315, "authorization_required"},
+		{-25293, "access_denied"},
+		{-25300, "not_found"},
+		{-128, "authorization_cancelled"},
+		{-25291, "keychain_unavailable"},
+		{-26275, "read_failed"},
+	} {
+		t.Run(test.reason, func(t *testing.T) {
+			err := keychainReadError(test.status)
+			if err.CredentialReason != test.reason || err.KeychainStatus != test.status || ErrorCode(err) != ErrorAuthentication || Retryable(err) {
+				t.Fatalf("unexpected local credential classification: %+v", err)
+			}
+			diagnostic := Diagnostic(err)
+			if !strings.Contains(diagnostic, test.reason) || !strings.Contains(diagnostic, "provider request not sent") || strings.Contains(diagnostic, "HTTP") {
+				t.Fatal(diagnostic)
+			}
+		})
+	}
+}
 
 // With no opt-in this reads a nonexistent temporary scope. The optional local
 // probe reads the operator's existing scope without displaying or changing a

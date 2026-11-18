@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	document "github.com/36Dge/yijie-agent-host/internal/contracts/documentruntime"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,28 @@ import (
 	"github.com/36Dge/yijie-agent-host/internal/imagegen"
 	bolt "go.etcd.io/bbolt"
 )
+
+func TestMediaGenerationCredentialFailureKeepsPublicOutcomeAndDoesNotRepeat(t *testing.T) {
+	calls := 0
+	service, _ := newProviderImageService(t, imageGeneratorFunc(func(context.Context, imagegen.Request) (imagegen.Result, error) {
+		calls++
+		return imagegen.Result{}, &imagegen.ProviderError{Code: imagegen.ErrorAuthentication, CredentialReason: "authorization_required", KeychainStatus: -25308}
+	}), nil)
+	request := providerMediaCall(map[string]any{"prompt": "A studio lamp"})
+	first := service.GenerateImage(context.Background(), request)
+	second := service.GenerateImage(context.Background(), request)
+	if first.Code != media.GenerateCodeServiceUnavailable || first.Status != media.GenerateStatusBlocked || first != second || calls != 1 {
+		t.Fatalf("credential failure changed the public receipt or repeated generation: %+v %+v calls=%d", first, second, calls)
+	}
+	_, replay, _, cancel, err := service.SubscribeEventsV3(testSessionID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if len(replay) != 2 || replay[1].EventType != EventItemArtifactFailed || replay[1].Payload.ErrorCode != "unsupported_provider" || replay[1].Payload.Message == nil || !strings.Contains(*replay[1].Payload.Message, "authorization_required") {
+		t.Fatal("credential failure lost the existing Artifact lifecycle or local diagnosis")
+	}
+}
 
 func mediaFixture(t *testing.T, expert bool) (*Service, *int) {
 	t.Helper()

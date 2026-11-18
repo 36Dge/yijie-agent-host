@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,7 +39,19 @@ func checkMediaCredential(authorize bool) int {
 	if ready {
 		code = "ready"
 	}
-	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"ready": ready, "code": code, "provider_requests": 0})
+	result := map[string]any{"ready": ready, "code": code, "provider_requests": 0}
+	if !ready {
+		var failure *imagegen.ProviderError
+		if errors.As(err, &failure) && failure.CredentialReason != "" {
+			result["reason"] = failure.CredentialReason
+			if failure.KeychainStatus != 0 {
+				result["keychain_status"] = failure.KeychainStatus
+			}
+		} else if err == nil {
+			result["reason"] = "invalid_value"
+		}
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(result)
 	if !ready {
 		return 1
 	}

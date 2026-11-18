@@ -59,9 +59,11 @@ type Generator interface {
 }
 
 type ProviderError struct {
-	Code       string
-	HTTPStatus int
-	VendorCode string
+	Code             string
+	HTTPStatus       int
+	VendorCode       string
+	CredentialReason string
+	KeychainStatus   int
 }
 
 func (e *ProviderError) Error() string {
@@ -81,6 +83,13 @@ func Diagnostic(err error) string {
 	var p *ProviderError
 	if !errors.As(err, &p) {
 		return "Image generation failed."
+	}
+	if p.CredentialReason != "" {
+		value := "Image generation: local credential unavailable (" + p.CredentialReason
+		if p.KeychainStatus != 0 {
+			value += "; OSStatus " + strconv.Itoa(p.KeychainStatus)
+		}
+		return value + "); provider request not sent."
 	}
 	value := p.Code
 	if p.HTTPStatus > 0 {
