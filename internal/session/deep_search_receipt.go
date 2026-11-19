@@ -82,7 +82,7 @@ func stripSearchFact(item *native.NativeItem) {
 		item.Mcp = &m
 	}
 }
-func StripSearchReceipt(event Event) Event {
+func stripNativeEvent(event Event, strip func(*native.NativeItem)) Event {
 	n := event.Payload.Native
 	if n == nil {
 		return event
@@ -90,24 +90,38 @@ func StripSearchReceipt(event Event) Event {
 	cp := *n
 	if cp.Item != nil {
 		it := *cp.Item
-		stripSearchFact(&it)
+		strip(&it)
 		cp.Item = &it
 	}
 	if cp.Turn != nil {
 		t := *cp.Turn
-		t.Items = append([]native.NativeItem(nil), t.Items...)
+		t.Items = append([]native.NativeItem{}, t.Items...)
 		for i := range t.Items {
-			stripSearchFact(&t.Items[i])
+			strip(&t.Items[i])
 		}
 		cp.Turn = &t
 	}
 	event.Payload.Native = &cp
 	return event
 }
-func StripSearchSnapshot(v *native.NativeThreadSnapshot) {
+func stripNativeSnapshot(v *native.NativeThreadSnapshot, strip func(*native.NativeItem)) {
 	for i := range v.Turns {
 		for j := range v.Turns[i].Items {
-			stripSearchFact(&v.Turns[i].Items[j])
+			strip(&v.Turns[i].Items[j])
 		}
 	}
+}
+
+func StripSearchReceipt(e Event) Event                   { return stripNativeEvent(e, stripSearchFact) }
+func StripSearchSnapshot(v *native.NativeThreadSnapshot) { stripNativeSnapshot(v, stripSearchFact) }
+
+func stripPublication(item *native.NativeItem) {
+	item.Publication = nil
+	if item.Type == native.NativeItemTypeUnpublishedText {
+		*item = native.NativeItem{Id: item.Id, Type: native.NativeItemTypeUnknown, Availability: native.NativeItemAvailabilityUnavailable}
+	}
+}
+func StripNativePublication(e Event) Event { return stripNativeEvent(e, stripPublication) }
+func StripNativePublicationSnapshot(v *native.NativeThreadSnapshot) {
+	stripNativeSnapshot(v, stripPublication)
 }

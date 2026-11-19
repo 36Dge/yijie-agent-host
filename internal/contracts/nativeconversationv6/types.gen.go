@@ -379,6 +379,7 @@ const (
 	NativeItemTypeReasoning        NativeItemType = "reasoning"
 	NativeItemTypeSubAgentActivity NativeItemType = "subAgentActivity"
 	NativeItemTypeUnknown          NativeItemType = "unknown"
+	NativeItemTypeUnpublishedText  NativeItemType = "unpublishedText"
 	NativeItemTypeUserMessage      NativeItemType = "userMessage"
 	NativeItemTypeWebSearch        NativeItemType = "webSearch"
 )
@@ -401,6 +402,8 @@ func (e NativeItemType) Valid() bool {
 	case NativeItemTypeSubAgentActivity:
 		return true
 	case NativeItemTypeUnknown:
+		return true
+	case NativeItemTypeUnpublishedText:
 		return true
 	case NativeItemTypeUserMessage:
 		return true
@@ -471,6 +474,48 @@ func (e NativeMcpDisplayResultKind) Valid() bool {
 	case Text:
 		return true
 	case Unsupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NativeMessagePublicationSource.
+const (
+	NativeMessagePublicationSourceDeclaration    NativeMessagePublicationSource = "declaration"
+	NativeMessagePublicationSourceDisplayLimit   NativeMessagePublicationSource = "display_limit"
+	NativeMessagePublicationSourceFailed         NativeMessagePublicationSource = "failed"
+	NativeMessagePublicationSourceFinalStep      NativeMessagePublicationSource = "final_step"
+	NativeMessagePublicationSourceInterrupted    NativeMessagePublicationSource = "interrupted"
+	NativeMessagePublicationSourceProgressStep   NativeMessagePublicationSource = "progress_step"
+	NativeMessagePublicationSourceProvider       NativeMessagePublicationSource = "provider"
+	NativeMessagePublicationSourceSubsequentWork NativeMessagePublicationSource = "subsequent_work"
+	NativeMessagePublicationSourceSuperseded     NativeMessagePublicationSource = "superseded"
+	NativeMessagePublicationSourceTurnCommit     NativeMessagePublicationSource = "turn_commit"
+)
+
+// Valid indicates whether the value is a known member of the NativeMessagePublicationSource enum.
+func (e NativeMessagePublicationSource) Valid() bool {
+	switch e {
+	case NativeMessagePublicationSourceDeclaration:
+		return true
+	case NativeMessagePublicationSourceDisplayLimit:
+		return true
+	case NativeMessagePublicationSourceFailed:
+		return true
+	case NativeMessagePublicationSourceFinalStep:
+		return true
+	case NativeMessagePublicationSourceInterrupted:
+		return true
+	case NativeMessagePublicationSourceProgressStep:
+		return true
+	case NativeMessagePublicationSourceProvider:
+		return true
+	case NativeMessagePublicationSourceSubsequentWork:
+		return true
+	case NativeMessagePublicationSourceSuperseded:
+		return true
+	case NativeMessagePublicationSourceTurnCommit:
 		return true
 	default:
 		return false
@@ -665,22 +710,22 @@ func (e NativeToolDisplayProvenance) Valid() bool {
 
 // Defines values for NativeTurnStatus.
 const (
-	Completed   NativeTurnStatus = "completed"
-	Failed      NativeTurnStatus = "failed"
-	InProgress  NativeTurnStatus = "inProgress"
-	Interrupted NativeTurnStatus = "interrupted"
+	NativeTurnStatusCompleted   NativeTurnStatus = "completed"
+	NativeTurnStatusFailed      NativeTurnStatus = "failed"
+	NativeTurnStatusInProgress  NativeTurnStatus = "inProgress"
+	NativeTurnStatusInterrupted NativeTurnStatus = "interrupted"
 )
 
 // Valid indicates whether the value is a known member of the NativeTurnStatus enum.
 func (e NativeTurnStatus) Valid() bool {
 	switch e {
-	case Completed:
+	case NativeTurnStatusCompleted:
 		return true
-	case Failed:
+	case NativeTurnStatusFailed:
 		return true
-	case InProgress:
+	case NativeTurnStatusInProgress:
 		return true
-	case Interrupted:
+	case NativeTurnStatusInterrupted:
 		return true
 	default:
 		return false
@@ -726,6 +771,21 @@ func (e StreamNativeConversationProcessParamsXYijieSearchReceipt) Valid() bool {
 	}
 }
 
+// Defines values for StreamNativeConversationProcessParamsXYijiePublication.
+const (
+	StreamNativeConversationProcessParamsXYijiePublicationN2 StreamNativeConversationProcessParamsXYijiePublication = "2"
+)
+
+// Valid indicates whether the value is a known member of the StreamNativeConversationProcessParamsXYijiePublication enum.
+func (e StreamNativeConversationProcessParamsXYijiePublication) Valid() bool {
+	switch e {
+	case StreamNativeConversationProcessParamsXYijiePublicationN2:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReadNativeThreadProcessParamsXYijieSearchReceipt.
 const (
 	ReadNativeThreadProcessParamsXYijieSearchReceiptN2 ReadNativeThreadProcessParamsXYijieSearchReceipt = "2"
@@ -735,6 +795,21 @@ const (
 func (e ReadNativeThreadProcessParamsXYijieSearchReceipt) Valid() bool {
 	switch e {
 	case ReadNativeThreadProcessParamsXYijieSearchReceiptN2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReadNativeThreadProcessParamsXYijiePublication.
+const (
+	ReadNativeThreadProcessParamsXYijiePublicationN2 ReadNativeThreadProcessParamsXYijiePublication = "2"
+)
+
+// Valid indicates whether the value is a known member of the ReadNativeThreadProcessParamsXYijiePublication enum.
+func (e ReadNativeThreadProcessParamsXYijiePublication) Valid() bool {
+	switch e {
+	case ReadNativeThreadProcessParamsXYijiePublicationN2:
 		return true
 	default:
 		return false
@@ -847,6 +922,9 @@ type NativeItem struct {
 	OutputText *string          `json:"outputText,omitempty"`
 	Phase      *NativeItemPhase `json:"phase,omitempty"`
 
+	// Publication Published by the negotiated Runtime. order is the original turn observation order. afterItemId anchors a delayed message. Undelivered text is never an agentMessage or an execution terminal.
+	Publication *NativeMessagePublication `json:"publication,omitempty"`
+
 	// ResultSummary Metadata display only, omitted when native result is absent or null.
 	ResultSummary *string           `json:"resultSummary,omitempty"`
 	Status        *NativeItemStatus `json:"status,omitempty"`
@@ -900,6 +978,18 @@ type NativeMcpText struct {
 	// Text Plain text after confidentiality projection and UTF-8 truncation. At index 0, built-in deep search may project SearchSuccess (title, url and snippet) or a validated public retrieval error. For newly observed results, url preserves the public HTTP(S) article address permitted by the native source URL policy, falling back to its displayable origin when necessary. Existing site-only receipts retain their origin. Desktop may open an exact result URL after user activation and independent native history authorization.
 	Text string `json:"text"`
 }
+
+// NativeMessagePublication Published by the negotiated Runtime. order is the original turn observation order. afterItemId anchors a delayed message. Undelivered text is never an agentMessage or an execution terminal.
+type NativeMessagePublication struct {
+	AfterItemId *string                        `json:"afterItemId,omitempty"`
+	ItemId      string                         `json:"itemId"`
+	Order       int                            `json:"order"`
+	Source      NativeMessagePublicationSource `json:"source"`
+	Truncated   bool                           `json:"truncated"`
+}
+
+// NativeMessagePublicationSource defines model for NativeMessagePublication.Source.
+type NativeMessagePublicationSource string
 
 // NativeNotification defines model for NativeNotification.
 type NativeNotification struct {
@@ -1026,20 +1116,32 @@ type StreamNativeConversationProcessParams struct {
 
 	// XYijieSearchReceipt Opt in to typed receipt projection for the builtin deep-search tool.
 	XYijieSearchReceipt *StreamNativeConversationProcessParamsXYijieSearchReceipt `json:"X-Yijie-Search-Receipt,omitempty"`
-	LastEventID         *string                                                   `json:"Last-Event-ID,omitempty"`
+
+	// XYijiePublication Opt in to stable message identities, publication provenance and bounded undelivered text.
+	XYijiePublication *StreamNativeConversationProcessParamsXYijiePublication `json:"X-Yijie-Publication,omitempty"`
+	LastEventID       *string                                                 `json:"Last-Event-ID,omitempty"`
 }
 
 // StreamNativeConversationProcessParamsXYijieSearchReceipt defines parameters for StreamNativeConversationProcess.
 type StreamNativeConversationProcessParamsXYijieSearchReceipt string
 
+// StreamNativeConversationProcessParamsXYijiePublication defines parameters for StreamNativeConversationProcess.
+type StreamNativeConversationProcessParamsXYijiePublication string
+
 // ReadNativeThreadProcessParams defines parameters for ReadNativeThreadProcess.
 type ReadNativeThreadProcessParams struct {
 	// XYijieSearchReceipt Opt in to typed receipt projection for the builtin deep-search tool.
 	XYijieSearchReceipt *ReadNativeThreadProcessParamsXYijieSearchReceipt `json:"X-Yijie-Search-Receipt,omitempty"`
+
+	// XYijiePublication Opt in to stable message identities, publication provenance and bounded undelivered text.
+	XYijiePublication *ReadNativeThreadProcessParamsXYijiePublication `json:"X-Yijie-Publication,omitempty"`
 }
 
 // ReadNativeThreadProcessParamsXYijieSearchReceipt defines parameters for ReadNativeThreadProcess.
 type ReadNativeThreadProcessParamsXYijieSearchReceipt string
+
+// ReadNativeThreadProcessParamsXYijiePublication defines parameters for ReadNativeThreadProcess.
+type ReadNativeThreadProcessParamsXYijiePublication string
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -1228,15 +1330,26 @@ func NewStreamNativeConversationProcessRequest(server string, agentSessionId ope
 			req.Header.Set("X-Yijie-Search-Receipt", headerParam0)
 		}
 
-		if params.LastEventID != nil {
+		if params.XYijiePublication != nil {
 			var headerParam1 string
 
-			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-Yijie-Publication", *params.XYijiePublication, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Last-Event-ID", headerParam1)
+			req.Header.Set("X-Yijie-Publication", headerParam1)
+		}
+
+		if params.LastEventID != nil {
+			var headerParam2 string
+
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Last-Event-ID", headerParam2)
 		}
 
 	}
@@ -1286,6 +1399,17 @@ func NewReadNativeThreadProcessRequest(server string, agentSessionId openapi_typ
 			}
 
 			req.Header.Set("X-Yijie-Search-Receipt", headerParam0)
+		}
+
+		if params.XYijiePublication != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "X-Yijie-Publication", *params.XYijiePublication, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Yijie-Publication", headerParam1)
 		}
 
 	}

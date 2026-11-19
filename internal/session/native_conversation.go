@@ -15,30 +15,31 @@ const nativeTextLimit = 256 << 10
 // These are transient decoders for the pinned native protocol, not a second
 // conversation model. Public values below use generated contract types.
 type nativeWireItem struct {
-	ID               string                 `json:"id"`
-	Type             string                 `json:"type"`
-	ClientID         *string                `json:"clientId"`
-	Text             *string                `json:"text"`
-	Phase            *string                `json:"phase"`
-	Summary          []string               `json:"summary"`
-	Content          json.RawMessage        `json:"content"`
-	Status           *string                `json:"status"`
-	Command          string                 `json:"command"`
-	Cwd              string                 `json:"cwd"`
-	AggregatedOutput *string                `json:"aggregatedOutput"`
-	ExitCode         *int32                 `json:"exitCode"`
-	DurationMS       *int64                 `json:"durationMs"`
-	Server           string                 `json:"server"`
-	Tool             string                 `json:"tool"`
-	Arguments        json.RawMessage        `json:"arguments"`
-	Result           json.RawMessage        `json:"result"`
-	Query            string                 `json:"query"`
-	Action           json.RawMessage        `json:"action"`
-	CommandActions   []nativeWireAction     `json:"commandActions"`
-	AppContext       *nativeWireAppContext  `json:"appContext"`
-	Changes          []nativeWireFileChange `json:"changes"`
-	AgentPath        string                 `json:"agentPath"`
-	Kind             string                 `json:"kind"`
+	Publication      *native.NativeMessagePublication `json:"publication"`
+	ID               string                           `json:"id"`
+	Type             string                           `json:"type"`
+	ClientID         *string                          `json:"clientId"`
+	Text             *string                          `json:"text"`
+	Phase            *string                          `json:"phase"`
+	Summary          []string                         `json:"summary"`
+	Content          json.RawMessage                  `json:"content"`
+	Status           *string                          `json:"status"`
+	Command          string                           `json:"command"`
+	Cwd              string                           `json:"cwd"`
+	AggregatedOutput *string                          `json:"aggregatedOutput"`
+	ExitCode         *int32                           `json:"exitCode"`
+	DurationMS       *int64                           `json:"durationMs"`
+	Server           string                           `json:"server"`
+	Tool             string                           `json:"tool"`
+	Arguments        json.RawMessage                  `json:"arguments"`
+	Result           json.RawMessage                  `json:"result"`
+	Query            string                           `json:"query"`
+	Action           json.RawMessage                  `json:"action"`
+	CommandActions   []nativeWireAction               `json:"commandActions"`
+	AppContext       *nativeWireAppContext            `json:"appContext"`
+	Changes          []nativeWireFileChange           `json:"changes"`
+	AgentPath        string                           `json:"agentPath"`
+	Kind             string                           `json:"kind"`
 }
 
 type nativeWireTurn struct {
@@ -104,6 +105,11 @@ func projectNativeItemWithSearchDetails(raw json.RawMessage, cwd string, allowRa
 			} else {
 				out.Availability = native.NativeItemAvailabilityPartial
 			}
+		}
+	case native.NativeItemTypeUnpublishedText:
+		out.Availability = native.NativeItemAvailabilityPartial
+		if wire.Text != nil {
+			out.Text = text(*wire.Text, nativeTextLimit)
 		}
 	case native.NativeItemTypeUserMessage:
 		if wire.ClientID != nil && len(*wire.ClientID) <= 512 {
@@ -196,7 +202,33 @@ func projectNativeItemWithSearchDetails(raw json.RawMessage, cwd string, allowRa
 		// lifecycle inference. item/started and item/completed remain authority.
 		nativeOperationDisplay(&out, "查看图片", "原生工具")
 	}
+	if wire.Publication != nil {
+		if validPublication(out, wire.Publication) {
+			out.Publication = wire.Publication
+		} else {
+			return native.NativeItem{}, errors.New("invalid runtime publication")
+		}
+	} else if out.Type == native.NativeItemTypeUnpublishedText {
+		return native.NativeItem{}, errors.New("missing undelivered text provenance")
+	}
 	return out, nil
+}
+
+func validPublication(item native.NativeItem, p *native.NativeMessagePublication) bool {
+	if p.ItemId != item.Id || p.Order < 0 || uint64(p.Order) > 1<<32-1 || !p.Source.Valid() ||
+		(p.AfterItemId != nil && (*p.AfterItemId == "" || *p.AfterItemId == item.Id || len(*p.AfterItemId) > 512)) {
+		return false
+	}
+	switch p.Source {
+	case native.NativeMessagePublicationSourceFailed, native.NativeMessagePublicationSourceInterrupted, native.NativeMessagePublicationSourceSuperseded, native.NativeMessagePublicationSourceDisplayLimit:
+		return item.Type == native.NativeItemTypeUnpublishedText && item.Phase == nil
+	case native.NativeMessagePublicationSourceSubsequentWork, native.NativeMessagePublicationSourceProgressStep:
+		return item.Type == native.NativeItemTypeAgentMessage && item.Phase != nil && *item.Phase == native.Commentary
+	case native.NativeMessagePublicationSourceFinalStep, native.NativeMessagePublicationSourceTurnCommit:
+		return item.Type == native.NativeItemTypeAgentMessage && item.Phase != nil && *item.Phase == native.FinalAnswer
+	default:
+		return item.Type == native.NativeItemTypeAgentMessage && item.Phase != nil
+	}
 }
 
 func projectNativeError(raw json.RawMessage) *native.NativeError {
@@ -260,6 +292,11 @@ func (s *Service) projectNativeTurn(wire nativeWireTurn, cwd string, allowRawRea
 		}
 	}
 	return out
+}
+
+func (s *Service) SupportsPublicMessagePublication() bool {
+	runtime, ok := s.runtime.(interface{ SupportsPublicMessagePublication() bool })
+	return ok && runtime.SupportsPublicMessagePublication()
 }
 
 func (s *Service) ReadNativeThreadV6(ctx context.Context, sessionID string) (native.NativeThreadSnapshot, error) {

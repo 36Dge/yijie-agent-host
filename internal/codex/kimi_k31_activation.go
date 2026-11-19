@@ -61,11 +61,16 @@ func (m *Manager) bindKimiK31Thread(ctx context.Context, info ThreadInfo) {
 		m.kimiK31ThreadProfiles = make(map[string]string)
 	}
 	m.kimiK31ThreadProfiles[info.ID] = ModelProfileID(ctx)
+	if m.publicationThreads == nil {
+		m.publicationThreads = make(map[string]bool)
+	}
+	m.publicationThreads[info.ID] = ctx.Value(publicationContextKey{}) == true
 }
 
 func (m *Manager) forgetKimiK31Thread(thread string) {
 	if m.config.KimiK31Candidate {
 		delete(m.kimiK31ThreadProfiles, thread)
+		delete(m.publicationThreads, thread)
 	}
 }
 

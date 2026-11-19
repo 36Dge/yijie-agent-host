@@ -253,6 +253,36 @@ func (m *Manager) sessionApprovalPolicy() string {
 	return SessionApprovalPolicy
 }
 
+type publicationContextKey struct{}
+
+func WithPublicMessagePublication(ctx context.Context) context.Context {
+	return context.WithValue(ctx, publicationContextKey{}, true)
+}
+
+func (m *Manager) SupportsPublicMessagePublication() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.config.RuntimePermissionsEnabled && m.config.ChatModelsEnabled && m.config.KimiK31Candidate && m.artifact.supportsNativeSkillMarketplace()
+}
+
+func (m *Manager) publicationInstructions(ctx context.Context) string {
+	instructions := m.sessionDeveloperInstructions()
+	if ctx.Value(publicationContextKey{}) == true && m.SupportsPublicMessagePublication() && !isScheduledDraft(ctx) {
+		return instructions + "\n[yijie-publication-v2]\n"
+	}
+	return instructions
+}
+
+// Called under threadOperation. A newly paired client can take over a loaded
+// legacy thread at the next turn boundary without modifying previous turns.
+func (m *Manager) pairPublicationTurn(ctx context.Context, threadID string) error {
+	if previous, ok := m.publicationThreads[threadID]; ok && previous != (ctx.Value(publicationContextKey{}) == true) && m.SupportsPublicMessagePublication() && !isScheduledDraft(ctx) {
+		_, err := m.resumeThread(ctx, threadID)
+		return err
+	}
+	return nil
+}
+
 func (m *Manager) sessionDeveloperInstructions() string {
 	if m.config.RuntimePermissionsEnabled {
 		// KimiK31Candidate is validated against the immutable Runtime projection
@@ -563,7 +593,7 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		Cwd:                   cwd,
 		ApprovalPolicy:        m.sessionApprovalPolicy(),
 		Sandbox:               SessionSandbox,
-		DeveloperInstructions: m.sessionDeveloperInstructions() + m.imageToolInstructions(ctx) + m.documentInstructions(),
+		DeveloperInstructions: m.publicationInstructions(ctx) + m.imageToolInstructions(ctx) + m.documentInstructions(),
 		Ephemeral:             false,
 	}
 	if m.config.RuntimePermissionsEnabled {
@@ -668,7 +698,7 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 	if m.config.CommandApprovalEnabled || m.config.RuntimePermissionsEnabled {
 		approvalPolicy := m.sessionApprovalPolicy()
 		sandbox := SessionSandbox
-		developerInstructions := m.sessionDeveloperInstructions() + m.imageToolInstructions(ctx) + m.documentInstructions()
+		developerInstructions := m.publicationInstructions(ctx) + m.imageToolInstructions(ctx) + m.documentInstructions()
 		params.ApprovalPolicy = &approvalPolicy
 		params.Sandbox = &sandbox
 		params.DeveloperInstructions = &developerInstructions
@@ -784,6 +814,9 @@ func (m *Manager) StartTurn(
 	if err := m.admitKimiK31Turn(ctx, threadID, reasoningEffort); err != nil {
 		return TurnInfo{}, err
 	}
+	if err := m.pairPublicationTurn(ctx, threadID); err != nil {
+		return TurnInfo{}, err
+	}
 
 	if threadID == "" {
 		return TurnInfo{}, errors.New("Codex thread id is required")
@@ -839,6 +872,9 @@ func (m *Manager) StartTurnV2(
 	m.threadOperation.Lock()
 	defer m.threadOperation.Unlock()
 	if err := m.admitKimiK31Turn(ctx, threadID, reasoningEffort); err != nil {
+		return TurnInfo{}, err
+	}
+	if err := m.pairPublicationTurn(ctx, threadID); err != nil {
 		return TurnInfo{}, err
 	}
 

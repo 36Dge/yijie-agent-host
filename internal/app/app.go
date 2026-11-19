@@ -1025,6 +1025,11 @@ func (h *sessionHandler) authorize(next http.Handler) http.Handler {
 			writeAPIError(w, http.StatusUnauthorized, agenthostcontract.ErrorResponseErrorCodeUnauthorized, "valid Agent Host bearer token required")
 			return
 		}
+		if capability, ok := h.service.(interface{ SupportsPublicMessagePublication() bool }); ok &&
+			len(r.Header.Values("X-Yijie-Publication")) == 1 && r.Header.Get("X-Yijie-Publication") == "2" && capability.SupportsPublicMessagePublication() {
+			r = r.WithContext(codex.WithPublicMessagePublication(r.Context()))
+			w.Header().Set("X-Yijie-Publication", "2")
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -1782,6 +1787,9 @@ func (h *sessionHandler) streamEvents(w http.ResponseWriter, r *http.Request, su
 	writeEvent := func(event session.Event) error {
 		if r.Header.Get("X-Yijie-Search-Receipt") != "2" {
 			event = session.StripSearchReceipt(event)
+		}
+		if w.Header().Get("X-Yijie-Publication") != "2" {
+			event = session.StripNativePublication(event)
 		}
 		return writeSSEEvent(w, event)
 	}

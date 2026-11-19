@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Yijie Native Conversation Trace v6",
-    "version": "0.8.0",
-    "description": "Canonical provider search sources, distinct from assistant citations. Native lifecycle and permissions unchanged. Legacy history v1/v2/v3 and SSE v7/v8/v10 retain their projections. FEAT-169 adds native fileChange and subAgentActivity display facts; requires paired local consumers, without rewriting existing records."
+    "version": "0.9.0",
+    "description": "Canonical provider search sources, distinct from assistant citations. Native lifecycle and permissions unchanged. Legacy history v1/v2/v3 and SSE v7/v8/v10 retain their projections. FEAT-169 adds native fileChange and subAgentActivity display facts; requires paired local consumers, without rewriting existing records. Public message publication v2 is negotiated with X-Yijie-Publication. Unnegotiated readers receive the original shape."
   },
   "servers": [
     {
@@ -91,6 +91,18 @@
               ]
             },
             "description": "Opt in to typed receipt projection for the builtin deep-search tool."
+          },
+          {
+            "name": "X-Yijie-Publication",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "2"
+              ]
+            },
+            "description": "Opt in to stable message identities, publication provenance and bounded undelivered text."
           }
         ]
       }
@@ -196,6 +208,18 @@
               ]
             },
             "description": "Opt in to typed receipt projection for the builtin deep-search tool."
+          },
+          {
+            "name": "X-Yijie-Publication",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "2"
+              ]
+            },
+            "description": "Opt in to stable message identities, publication provenance and bounded undelivered text."
           }
         ]
       }
@@ -234,7 +258,8 @@
               "fileChange",
               "subAgentActivity",
               "imageView",
-              "unknown"
+              "unknown",
+              "unpublishedText"
             ]
           },
           "clientId": {
@@ -345,6 +370,9 @@
           },
           "toolDisplay": {
             "$ref": "#/components/schemas/NativeToolDisplay"
+          },
+          "publication": {
+            "$ref": "#/components/schemas/NativeMessagePublication"
           }
         }
       },
@@ -1035,6 +1063,51 @@
           "outcome",
           "availability"
         ]
+      },
+      "NativeMessagePublication": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "itemId",
+          "order",
+          "source",
+          "truncated"
+        ],
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295
+          },
+          "afterItemId": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "provider",
+              "declaration",
+              "subsequent_work",
+              "turn_commit",
+              "progress_step",
+              "final_step",
+              "interrupted",
+              "failed",
+              "superseded",
+              "display_limit"
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "description": "Published by the negotiated Runtime. order is the original turn observation order. afterItemId anchors a delayed message. Undelivered text is never an agentMessage or an execution terminal."
       }
     }
   }
