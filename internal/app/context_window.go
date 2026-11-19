@@ -11,7 +11,7 @@ import (
 )
 
 type contextWindowService interface {
-	ReadContextWindow(context.Context, string, bool) (wire.ContextWindowSnapshot, error)
+	ReadContextWindow(context.Context, string, bool, bool) (wire.ContextWindowSnapshot, error)
 }
 
 func registerContextWindow(mux *http.ServeMux, h *sessionHandler) {
@@ -21,14 +21,15 @@ func registerContextWindow(mux *http.ServeMux, h *sessionHandler) {
 	}
 	mux.Handle("GET /v1/agent-sessions/{agent_session_id}/context-window", h.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
-		history := r.URL.Query().Get("include_history")
-		if history != "" && history != "true" && history != "false" {
+		query := r.URL.Query()
+		history, last := query.Get("include_history"), query.Get("include_last_observation")
+		if (history != "" && history != "true" && history != "false") || (last != "" && last != "true" && last != "false") {
 			writeNestedError(w, http.StatusBadRequest, "invalid_request", "Context window unavailable")
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
-		result, err := s.ReadContextWindow(ctx, r.PathValue("agent_session_id"), history == "true")
+		result, err := s.ReadContextWindow(ctx, r.PathValue("agent_session_id"), history == "true", last == "true")
 		if err == nil {
 			err = wire.Validate(result)
 		}

@@ -30,7 +30,12 @@ func contextUsageJSON(t *testing.T, turn string, used, cumulative int64, capacit
 
 func readContextTest(t *testing.T, s *Service) wire.ContextWindowSnapshot {
 	t.Helper()
-	value, err := s.ReadContextWindow(context.Background(), testSessionID, false)
+	return readContextProjection(t, s, false)
+}
+
+func readContextProjection(t *testing.T, s *Service, last bool) wire.ContextWindowSnapshot {
+	t.Helper()
+	value, err := s.ReadContextWindow(context.Background(), testSessionID, false, last)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,12 +83,17 @@ func TestContextWindowModelRevisionAndLateReplay(t *testing.T) {
 	s := contextWindowTestService(t)
 	old := contextUsageJSON(t, testTurnID, 143000, 143000, 730000)
 	s.HandleNotification(tokenUsageNotification, old)
+	measured := readContextTest(t, s).Sample
 	_, err := s.store.update(testSessionID, func(r *Record) error { r.ModelRevision = 2; r.ModelProfile = "kimi-k3-1-pro-max-v1"; return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
 	if readContextTest(t, s).Sample != nil {
 		t.Fatal("old model sample survived")
+	}
+	last := readContextProjection(t, s, true).LastObservation
+	if last == nil || measured == nil || last.Model != "MiniMax-M3" || last.Sample != *measured {
+		t.Fatal("model switch lost the original measurement", last)
 	}
 	s.HandleNotification(tokenUsageNotification, old)
 	if readContextTest(t, s).Sample != nil {
@@ -95,9 +105,12 @@ func TestContextWindowModelRevisionAndLateReplay(t *testing.T) {
 	if readContextTest(t, s).Sample != nil {
 		t.Fatal("rate-limit replay repopulated old sample")
 	}
+	if readContextProjection(t, s, true).LastObservation != last {
+		t.Fatal("a replay replaced the measured source")
+	}
 	s.HandleNotification(tokenUsageNotification, contextUsageJSON(t, newTurn, 8000, 151000, 996147))
-	value := readContextTest(t, s)
-	if value.Sample == nil || value.Sample.UsedTokens != 8000 || *value.Sample.CapacityTokens != 996147 {
+	value := readContextProjection(t, s, true)
+	if value.LastObservation != nil || value.Sample == nil || value.Sample.UsedTokens != 8000 || *value.Sample.CapacityTokens != 996147 {
 		t.Fatal("fresh new model sample lost")
 	}
 }
@@ -161,7 +174,7 @@ func TestContextWindowUnavailableRuntimeDoesNotServeCachedUsage(t *testing.T) {
 	s := contextWindowTestService(t)
 	s.HandleNotification(tokenUsageNotification, contextUsageJSON(t, testTurnID, 143000, 143000, 730000))
 	s.runtime = &contextWindowRuntime{ready: false}
-	if _, err := s.ReadContextWindow(context.Background(), testSessionID, false); err != ErrRuntimeRequest {
+	if _, err := s.ReadContextWindow(context.Background(), testSessionID, false, true); err != ErrRuntimeRequest {
 		t.Fatal("served cache without native readiness", err)
 	}
 }

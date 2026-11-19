@@ -28,6 +28,7 @@ func TestFEAT164V2NativeOperationLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	var requests atomic.Int64
+	var allowKimiTurn atomic.Bool
 	server := &http.Server{ReadHeaderTimeout: 5 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		if r.Method != "POST" || r.URL.Path != "/v1/responses" || json.NewDecoder(r.Body).Decode(&body) != nil {
@@ -35,14 +36,18 @@ func TestFEAT164V2NativeOperationLifecycle(t *testing.T) {
 			w.WriteHeader(400)
 			return
 		}
-		if requests.Add(1) != 1 || body["model"] != "MiniMax-M3" {
+		n := requests.Add(1)
+		inputTokens := 1
+		if n == 2 && allowKimiTurn.Load() && body["model"] == "kimi-k3.1-pro" {
+			inputTokens = 20000
+		} else if n != 1 || body["model"] != "MiniMax-M3" {
 			t.Error("configuration recovery sent model HTTP")
 			w.WriteHeader(429)
 			return
 		}
 		item := map[string]any{"id": "ordinary_message", "type": "message", "role": "assistant", "phase": "final_answer", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "Ordinary local fixture.", "annotations": []any{}}}}
 		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range []any{map[string]any{"type": "response.created", "response": map[string]any{"id": "ordinary_response", "status": "in_progress", "output": []any{}}}, map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item}, map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item}, map[string]any{"type": "response.completed", "response": map[string]any{"id": "ordinary_response", "status": "completed", "output": []any{item}, "usage": map[string]any{"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}}}} {
+		for _, event := range []any{map[string]any{"type": "response.created", "response": map[string]any{"id": "ordinary_response", "status": "in_progress", "output": []any{}}}, map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item}, map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item}, map[string]any{"type": "response.completed", "response": map[string]any{"id": "ordinary_response", "status": "completed", "output": []any{item}, "usage": map[string]any{"input_tokens": inputTokens, "output_tokens": 1, "total_tokens": inputTokens + 1}}}} {
 			raw, _ := json.Marshal(event)
 			fmt.Fprintf(w, "data: %s\n\n", raw)
 			w.(http.Flusher).Flush()
@@ -115,25 +120,43 @@ func TestFEAT164V2NativeOperationLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		record, err = s.store.Get(record.AgentSessionID)
-		if err != nil {
-			t.Fatal(err)
+	waitForIdle := func() {
+		t.Helper()
+		deadline := time.Now().Add(30 * time.Second)
+		for {
+			record, err = s.store.Get(record.AgentSessionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if record.State == StateIdle && record.ActiveTurnID == "" {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("ordinary turn did not settle")
+			}
+			time.Sleep(20 * time.Millisecond)
 		}
-		if record.State == StateIdle && record.ActiveTurnID == "" {
-			break
+	}
+	waitForIdle()
+	measured, err := s.ReadContextWindow(ctx, record.AgentSessionID, false, true)
+	if err != nil || measured.Sample == nil || measured.Sample.UsedTokens != 2 || measured.Sample.CapacityTokens == nil {
+		t.Fatal("local turn has no measured context", measured, err)
+	}
+	checkLastMeasurement := func() {
+		t.Helper()
+		got, err := s.ReadContextWindow(ctx, record.AgentSessionID, false, true)
+		last := got.LastObservation
+		if err != nil || got.Sample != nil || last == nil || last.Model != "MiniMax-M3" || last.Sample.TurnId != measured.Sample.TurnId ||
+			last.Sample.UsedTokens != measured.Sample.UsedTokens || last.Sample.CapacityTokens == nil || *last.Sample.CapacityTokens != *measured.Sample.CapacityTokens {
+			t.Fatal("lost measured turn across model selection", got, err)
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("ordinary turn did not settle")
-		}
-		time.Sleep(20 * time.Millisecond)
 	}
 	request := wire.SelectRequest{SchemaVersion: 2, OperationId: "00000000-0000-4000-8000-000000000168", ExpectedRevision: record.ModelRevision, ProfileId: wire.ActiveProfileIdKimiK31ProMaxV1}
 	selected, err := s.SelectChatModelV2(ctx, record.AgentSessionID, request)
 	if err != nil || selected.State != wire.SelectionStateReady {
 		t.Fatal(selected, err)
 	}
+	checkLastMeasurement()
 	// Normal Runtime stop plus private Store reopen. Replaying the committed
 	// operation returns its original result without applying Runtime configuration.
 	stopCtx, stopCancel := context.WithTimeout(context.Background(), 25*time.Second)
@@ -161,6 +184,7 @@ func TestFEAT164V2NativeOperationLifecycle(t *testing.T) {
 	if err != nil || replayed.Result == nil || replayed.Result.Revision != selected.Revision {
 		t.Fatal(replayed, err)
 	}
+	checkLastMeasurement()
 	// A new explicit operation switches back, retaining the same native thread.
 	request.OperationId = "00000000-0000-4000-8000-000000000169"
 	request.ExpectedRevision = selected.Revision
@@ -168,9 +192,29 @@ func TestFEAT164V2NativeOperationLifecycle(t *testing.T) {
 	if _, err = s.SelectChatModelV2(ctx, record.AgentSessionID, request); err != nil {
 		t.Fatal(err)
 	}
+	checkLastMeasurement()
 	current, err := s.store.Get(record.AgentSessionID)
 	if err != nil || current.CodexThreadID != record.CodexThreadID || current.ModelRevision != record.ModelRevision+2 || requests.Load() != 1 {
 		t.Fatal("identity or request count changed", err, requests.Load())
 	}
-	t.Log("actual Runtime + Store11: MiniMax local turn, Kimi selection, terminal replay after Store reopen, MiniMax selection; 1 ordinary loopback HTTP, 0 external")
+	request.OperationId = "00000000-0000-4000-8000-000000000170"
+	request.ExpectedRevision = current.ModelRevision
+	request.ProfileId = wire.ActiveProfileIdKimiK31ProMaxV1
+	if _, err = s.SelectChatModelV2(ctx, record.AgentSessionID, request); err != nil {
+		t.Fatal(err)
+	}
+	checkLastMeasurement()
+	allowKimiTurn.Store(true)
+	kimi := codex.WithModelProfile(ctx, codex.KimiK31ProfileID)
+	_, err = s.StartTurnV2(kimi, StartTurnV2Input{AgentSessionID: record.AgentSessionID, OperationID: "00000000-0000-4000-8000-000000000171", ContentBlocks: []TurnContentBlock{{Type: ContentBlockText, Text: "Return the second ordinary local reply."}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForIdle()
+	fresh, err := s.ReadContextWindow(kimi, record.AgentSessionID, false, true)
+	if err != nil || requests.Load() != 2 || fresh.LastObservation != nil || fresh.Sample == nil || fresh.Sample.TurnId == measured.Sample.TurnId ||
+		fresh.Sample.UsedTokens != 20001 || fresh.Sample.CapacityTokens == nil || *fresh.Sample.CapacityTokens == *measured.Sample.CapacityTokens {
+		t.Fatal("first Kimi measurement did not replace the last MiniMax observation", fresh, err)
+	}
+	t.Log("native model switches and cold reopen reused the measured MiniMax turn; first Kimi sample replaced it. Two explicit loopback turns, zero switch requests.")
 }

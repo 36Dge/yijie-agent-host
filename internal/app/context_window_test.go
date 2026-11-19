@@ -13,11 +13,12 @@ type contextWindowRouteService struct {
 	SessionService
 	session string
 	history bool
+	last    bool
 	calls   int
 }
 
-func (s *contextWindowRouteService) ReadContextWindow(_ context.Context, id string, history bool) (wire.ContextWindowSnapshot, error) {
-	s.session, s.history = id, history
+func (s *contextWindowRouteService) ReadContextWindow(_ context.Context, id string, history, last bool) (wire.ContextWindowSnapshot, error) {
+	s.session, s.history, s.last = id, history, last
 	s.calls++
 	return wire.ContextWindowSnapshot{SchemaVersion: 1, Compactions: []wire.ContextCompaction{}}, nil
 }
@@ -39,8 +40,15 @@ func TestContextWindowReadRouteUsesExistingAuthorization(t *testing.T) {
 			continue
 		}
 		var value wire.ContextWindowSnapshot
-		if w.Code != 200 || wire.Decode("ContextWindowSnapshot", w.Body.Bytes(), &value) != nil || !s.history || s.calls != 1 || w.Header().Get("Cache-Control") != "no-store" {
+		if w.Code != 200 || wire.Decode("ContextWindowSnapshot", w.Body.Bytes(), &value) != nil || !s.history || s.last || s.calls != 1 || w.Header().Get("Cache-Control") != "no-store" {
 			t.Fatal("read route failed", w.Code)
 		}
+	}
+	r := httptest.NewRequest("GET", "/v1/agent-sessions/10000000-0000-4000-8000-000000000001/context-window?include_last_observation=true", nil)
+	r.Header.Set("Authorization", "Bearer ordinary-owner-token")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != 200 || !s.last || s.history {
+		t.Fatal("last measurement and compaction history must be independently requested")
 	}
 }

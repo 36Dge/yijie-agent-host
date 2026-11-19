@@ -41,6 +41,21 @@ func registerBuiltinWeb(mux *http.ServeMux, service interface {
 		}
 		var q wire.WebAdmissionRequest
 		_ = json.Unmarshal(raw, &q)
+		if r.Header.Get("Accept") == "application/vnd.yijie.web-admission.v2+json" {
+			if scoped, ok := service.(interface {
+				AdmitBuiltinWebV2(context.Context, wire.WebAdmissionRequest) (wire.WebAdmissionReceiptV2, error)
+			}); ok {
+				result, e := scoped.AdmitBuiltinWebV2(r.Context(), q)
+				if e != nil {
+					w.WriteHeader(403)
+					return
+				}
+				w.Header().Set("Content-Type", "application/vnd.yijie.web-admission.v2+json")
+				w.Header().Set("Cache-Control", "no-store")
+				_ = json.NewEncoder(w).Encode(result)
+				return
+			}
+		}
 		receipt, err := service.AdmitBuiltinWeb(r.Context(), q)
 		if err != nil {
 			w.WriteHeader(403)

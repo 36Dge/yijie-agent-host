@@ -52,6 +52,21 @@ func TestContextUsageRepeatedCountsKeepOriginalTurnAndModel(t *testing.T) {
 		t.Fatal("fresh model measurement lost", v, err)
 	}
 }
+
+func TestContextUsageNewTurnWaitsForItsOwnModelIdentity(t *testing.T) {
+	const next = "10000000-0000-4000-8000-000000000003"
+	base := contextNativeMeta() + contextNativeStart("MiniMax-M3", contextReadTurn) + contextNativeUsage(100, 100, 950000)
+	base += contextNativeLine("event_msg", map[string]any{"type": "task_started", "turn_id": next}) + contextNativeUsage(21, 121, 996147)
+	value, err := parseNativeContextUsage(context.Background(), strings.NewReader(base), contextReadThread)
+	if err != nil || value != nil {
+		t.Fatal("unidentified measurement was assigned to the previous model", value, err)
+	}
+	base += contextNativeStart("kimi-k3.1-pro", next) + contextNativeUsage(35, 156, 996147)
+	value, err = parseNativeContextUsage(context.Background(), strings.NewReader(base), contextReadThread)
+	if err != nil || value == nil || value.Model != "kimi-k3.1-pro" || value.TurnID != next || value.Usage.Last.TotalTokens != 35 {
+		t.Fatal("later attributable measurement was lost", value, err)
+	}
+}
 func TestContextUsageCompactionInvalidatesUntilNativeRecount(t *testing.T) {
 	base := contextNativeMeta() + contextNativeStart("kimi-k3.1-pro", contextReadTurn) + contextNativeUsage(100, 100, 996147)
 	base += contextNativeLine("compacted", map[string]any{"message": "ordinary summary", "window_id": "10000000-0000-4000-8000-000000000004"})

@@ -217,6 +217,9 @@ func parseNativeContextUsage(ctx context.Context, input io.Reader, threadID stri
 				}
 				switch event.Type {
 				case "task_started":
+					if turn != event.TurnID {
+						model = ""
+					}
 					turn = event.TurnID
 				case "item_started":
 					if event.Item.Type == "contextCompaction" {
@@ -247,8 +250,12 @@ func parseNativeContextUsage(ctx context.Context, input io.Reader, threadID stri
 						break
 					}
 					at, err := time.Parse(time.RFC3339Nano, row.Timestamp)
-					if err != nil || model == "" || turn == "" || !matchedThread {
+					if err != nil || !matchedThread {
 						return nil, errContextUsageUnavailable
+					}
+					if model == "" || turn == "" {
+						candidate = nil
+						break
 					}
 					if usage.Last.TotalTokens < 0 || usage.Last.TotalTokens > 9007199254740991 {
 						return nil, errContextUsageUnavailable

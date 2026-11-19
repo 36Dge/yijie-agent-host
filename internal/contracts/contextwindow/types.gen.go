@@ -62,10 +62,17 @@ type ContextCompaction struct {
 // ContextCompactionState defines model for ContextCompaction.State.
 type ContextCompactionState string
 
+// ContextWindowObservation Last measured native model and its complete sample in the same thread and context. Its capacity belongs to the measured model.
+type ContextWindowObservation struct {
+	Model  string              `json:"model"`
+	Sample ContextWindowSample `json:"sample"`
+}
+
 // ContextWindowQuery Private Desktop IPC payload inside the existing contextId/requestId envelope. sessionId is the local authorized session, never an arbitrary Runtime thread.
 type ContextWindowQuery struct {
-	IncludeHistory bool               `json:"includeHistory"`
-	SessionId      openapi_types.UUID `json:"sessionId"`
+	IncludeHistory         bool               `json:"includeHistory"`
+	IncludeLastObservation *bool              `json:"includeLastObservation,omitempty"`
+	SessionId              openapi_types.UUID `json:"sessionId"`
 }
 
 // ContextWindowSample defines model for ContextWindowSample.
@@ -86,12 +93,15 @@ type ContextWindowSample struct {
 
 // ContextWindowSnapshot defines model for ContextWindowSnapshot.
 type ContextWindowSnapshot struct {
-	Compactions   []ContextCompaction                `json:"compactions"`
-	ModelProfile  *string                            `json:"model_profile"`
-	ModelRevision int64                              `json:"model_revision"`
-	Sample        *ContextWindowSample               `json:"sample"`
-	SchemaVersion ContextWindowSnapshotSchemaVersion `json:"schema_version"`
-	ThreadId      *string                            `json:"thread_id"`
+	Compactions []ContextCompaction `json:"compactions"`
+
+	// LastObservation Last measured native model and its complete sample in the same thread and context. Its capacity belongs to the measured model.
+	LastObservation *ContextWindowObservation          `json:"last_observation,omitempty"`
+	ModelProfile    *string                            `json:"model_profile"`
+	ModelRevision   int64                              `json:"model_revision"`
+	Sample          *ContextWindowSample               `json:"sample"`
+	SchemaVersion   ContextWindowSnapshotSchemaVersion `json:"schema_version"`
+	ThreadId        *string                            `json:"thread_id"`
 }
 
 // ContextWindowSnapshotSchemaVersion defines model for ContextWindowSnapshot.SchemaVersion.
@@ -103,4 +113,7 @@ type hostBearerContextKey string
 // ReadContextWindowParams defines parameters for ReadContextWindow.
 type ReadContextWindowParams struct {
 	IncludeHistory *bool `form:"include_history,omitempty" json:"include_history,omitempty"`
+
+	// IncludeLastObservation Opt in to the last verified measurement for this conversation when the current model binding has no sample. Omitted or false keeps the original closed response.
+	IncludeLastObservation *bool `form:"include_last_observation,omitempty" json:"include_last_observation,omitempty"`
 }

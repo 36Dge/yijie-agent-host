@@ -21,6 +21,159 @@ const (
 	LocalBearerScopes localBearerContextKey = "LocalBearer.Scopes"
 )
 
+// Defines values for DeepSearchReceiptAvailability.
+const (
+	SearchAvailabilityAvailable   DeepSearchReceiptAvailability = "available"
+	SearchAvailabilityPending     DeepSearchReceiptAvailability = "pending"
+	SearchAvailabilityUnavailable DeepSearchReceiptAvailability = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the DeepSearchReceiptAvailability enum.
+func (e DeepSearchReceiptAvailability) Valid() bool {
+	switch e {
+	case SearchAvailabilityAvailable:
+		return true
+	case SearchAvailabilityPending:
+		return true
+	case SearchAvailabilityUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeepSearchReceiptDispatch.
+const (
+	SearchDispatchAttempted     DeepSearchReceiptDispatch = "attempted"
+	SearchDispatchNotDispatched DeepSearchReceiptDispatch = "not_dispatched"
+	SearchDispatchResponded     DeepSearchReceiptDispatch = "responded"
+	SearchDispatchUncertain     DeepSearchReceiptDispatch = "uncertain"
+)
+
+// Valid indicates whether the value is a known member of the DeepSearchReceiptDispatch enum.
+func (e DeepSearchReceiptDispatch) Valid() bool {
+	switch e {
+	case SearchDispatchAttempted:
+		return true
+	case SearchDispatchNotDispatched:
+		return true
+	case SearchDispatchResponded:
+		return true
+	case SearchDispatchUncertain:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeepSearchReceiptErrorCode.
+const (
+	SearchErrorCodeBusy                DeepSearchReceiptErrorCode = "busy"
+	SearchErrorCodeCancelled           DeepSearchReceiptErrorCode = "cancelled"
+	SearchErrorCodeInvalidArguments    DeepSearchReceiptErrorCode = "invalid_arguments"
+	SearchErrorCodeInvalidResponse     DeepSearchReceiptErrorCode = "invalid_response"
+	SearchErrorCodeNoContent           DeepSearchReceiptErrorCode = "no_content"
+	SearchErrorCodeNotEntitled         DeepSearchReceiptErrorCode = "not_entitled"
+	SearchErrorCodeOperationConflict   DeepSearchReceiptErrorCode = "operation_conflict"
+	SearchErrorCodeOperationExpired    DeepSearchReceiptErrorCode = "operation_expired"
+	SearchErrorCodeOutcomeUnknown      DeepSearchReceiptErrorCode = "outcome_unknown"
+	SearchErrorCodeQuotaExceeded       DeepSearchReceiptErrorCode = "quota_exceeded"
+	SearchErrorCodeResponseTooLarge    DeepSearchReceiptErrorCode = "response_too_large"
+	SearchErrorCodeResultUnavailable   DeepSearchReceiptErrorCode = "result_unavailable"
+	SearchErrorCodeSessionExpired      DeepSearchReceiptErrorCode = "session_expired"
+	SearchErrorCodeTimeout             DeepSearchReceiptErrorCode = "timeout"
+	SearchErrorCodeUpstreamUnavailable DeepSearchReceiptErrorCode = "upstream_unavailable"
+)
+
+// Valid indicates whether the value is a known member of the DeepSearchReceiptErrorCode enum.
+func (e DeepSearchReceiptErrorCode) Valid() bool {
+	switch e {
+	case SearchErrorCodeBusy:
+		return true
+	case SearchErrorCodeCancelled:
+		return true
+	case SearchErrorCodeInvalidArguments:
+		return true
+	case SearchErrorCodeInvalidResponse:
+		return true
+	case SearchErrorCodeNoContent:
+		return true
+	case SearchErrorCodeNotEntitled:
+		return true
+	case SearchErrorCodeOperationConflict:
+		return true
+	case SearchErrorCodeOperationExpired:
+		return true
+	case SearchErrorCodeOutcomeUnknown:
+		return true
+	case SearchErrorCodeQuotaExceeded:
+		return true
+	case SearchErrorCodeResponseTooLarge:
+		return true
+	case SearchErrorCodeResultUnavailable:
+		return true
+	case SearchErrorCodeSessionExpired:
+		return true
+	case SearchErrorCodeTimeout:
+		return true
+	case SearchErrorCodeUpstreamUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeepSearchReceiptOutcome.
+const (
+	SearchOutcomeEmpty   DeepSearchReceiptOutcome = "empty"
+	SearchOutcomeFailed  DeepSearchReceiptOutcome = "failed"
+	SearchOutcomePartial DeepSearchReceiptOutcome = "partial"
+	SearchOutcomePending DeepSearchReceiptOutcome = "pending"
+	SearchOutcomeResults DeepSearchReceiptOutcome = "results"
+	SearchOutcomeUnknown DeepSearchReceiptOutcome = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the DeepSearchReceiptOutcome enum.
+func (e DeepSearchReceiptOutcome) Valid() bool {
+	switch e {
+	case SearchOutcomeEmpty:
+		return true
+	case SearchOutcomeFailed:
+		return true
+	case SearchOutcomePartial:
+		return true
+	case SearchOutcomePending:
+		return true
+	case SearchOutcomeResults:
+		return true
+	case SearchOutcomeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeepSearchReceiptRelation.
+const (
+	SearchRelationFirst  DeepSearchReceiptRelation = "first"
+	SearchRelationJoined DeepSearchReceiptRelation = "joined"
+	SearchRelationReused DeepSearchReceiptRelation = "reused"
+)
+
+// Valid indicates whether the value is a known member of the DeepSearchReceiptRelation enum.
+func (e DeepSearchReceiptRelation) Valid() bool {
+	switch e {
+	case SearchRelationFirst:
+		return true
+	case SearchRelationJoined:
+		return true
+	case SearchRelationReused:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for NativeCommandActionDisplayKind.
 const (
 	NativeCommandActionDisplayKindListFiles NativeCommandActionDisplayKind = "listFiles"
@@ -558,6 +711,62 @@ func (e NativeWebSearchDisplayAction) Valid() bool {
 	}
 }
 
+// Defines values for StreamNativeConversationProcessParamsXYijieSearchReceipt.
+const (
+	StreamNativeConversationProcessParamsXYijieSearchReceiptN2 StreamNativeConversationProcessParamsXYijieSearchReceipt = "2"
+)
+
+// Valid indicates whether the value is a known member of the StreamNativeConversationProcessParamsXYijieSearchReceipt enum.
+func (e StreamNativeConversationProcessParamsXYijieSearchReceipt) Valid() bool {
+	switch e {
+	case StreamNativeConversationProcessParamsXYijieSearchReceiptN2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ReadNativeThreadProcessParamsXYijieSearchReceipt.
+const (
+	ReadNativeThreadProcessParamsXYijieSearchReceiptN2 ReadNativeThreadProcessParamsXYijieSearchReceipt = "2"
+)
+
+// Valid indicates whether the value is a known member of the ReadNativeThreadProcessParamsXYijieSearchReceipt enum.
+func (e ReadNativeThreadProcessParamsXYijieSearchReceipt) Valid() bool {
+	switch e {
+	case ReadNativeThreadProcessParamsXYijieSearchReceiptN2:
+		return true
+	default:
+		return false
+	}
+}
+
+// DeepSearchReceipt defines model for DeepSearchReceipt.
+type DeepSearchReceipt struct {
+	Availability DeepSearchReceiptAvailability `json:"availability"`
+	Dispatch     DeepSearchReceiptDispatch     `json:"dispatch"`
+	ErrorCode    *DeepSearchReceiptErrorCode   `json:"error_code,omitempty"`
+	OperationId  *openapi_types.UUID           `json:"operation_id,omitempty"`
+	Outcome      DeepSearchReceiptOutcome      `json:"outcome"`
+	Relation     DeepSearchReceiptRelation     `json:"relation"`
+	Version      int                           `json:"version"`
+}
+
+// DeepSearchReceiptAvailability defines model for DeepSearchReceipt.Availability.
+type DeepSearchReceiptAvailability string
+
+// DeepSearchReceiptDispatch defines model for DeepSearchReceipt.Dispatch.
+type DeepSearchReceiptDispatch string
+
+// DeepSearchReceiptErrorCode defines model for DeepSearchReceipt.ErrorCode.
+type DeepSearchReceiptErrorCode string
+
+// DeepSearchReceiptOutcome defines model for DeepSearchReceipt.Outcome.
+type DeepSearchReceiptOutcome string
+
+// DeepSearchReceiptRelation defines model for DeepSearchReceipt.Relation.
+type DeepSearchReceiptRelation string
+
 // NativeCommandActionDisplay Safe projection of the original native command action. Index identifies a display action under its parent Item, not an independent execution.
 type NativeCommandActionDisplay struct {
 	Index int                            `json:"index"`
@@ -613,7 +822,7 @@ type NativeEventSchemaVersion int
 
 // NativeItem defines model for NativeItem.
 type NativeItem struct {
-	// ArgumentsSummary Metadata display only; raw native arguments never leave Host.
+	// ArgumentsSummary Metadata display only; raw native arguments never leave Host. For yijie_web/kimi_web_search_pro this may contain the validated, displayable query alone.
 	ArgumentsSummary *string `json:"argumentsSummary,omitempty"`
 
 	// Availability Completeness of this safe display projection, independent of the native execution status.
@@ -631,7 +840,7 @@ type NativeItem struct {
 	ExitCode   *int32  `json:"exitCode,omitempty"`
 	Id         string  `json:"id"`
 
-	// Mcp Display-only native MCP facts. No raw arguments/error/meta/resources/structuredContent and no business field parsing. Native list_mcp_resources/list_mcp_resource_templates may expose a validated resource count and redacted resource names/titles, never resource URIs, cursors or metadata. Empty resource lists are successful real results, not omitted content. Other tools retain their existing display policies. Limits do not change execution status; partial content availability must not suppress a known execution outcome. Host bounds total UTF-8 text at 256KiB and first 32 original content entries. Confidentiality may replace entire lines.
+	// Mcp Display-only native MCP facts. No raw arguments/error/meta/resources/structuredContent and no business field parsing. Native list_mcp_resources/list_mcp_resource_templates may expose a validated resource count and redacted resource names/titles, never resource URIs, cursors or metadata. Empty resource lists are successful real results, not omitted content. For yijie_web/kimi_web_search_pro only, Host validates the closed built-in web result and projects the ordered source summaries from its native text block. Raw page content and chunks are excluded. Other tools retain their existing display policies. Limits do not change execution status; partial content availability must not suppress a known execution outcome. Host bounds total UTF-8 text at 256KiB and first 32 original content entries. Confidentiality may replace entire lines.
 	Mcp *NativeMcpDisplay `json:"mcp,omitempty"`
 
 	// OutputText Bounded, redacted projection of native aggregatedOutput. Omitted when native output is null or unavailable.
@@ -667,13 +876,14 @@ type NativeItemStatus string
 // NativeItemType defines model for NativeItem.Type.
 type NativeItemType string
 
-// NativeMcpDisplay Display-only native MCP facts. No raw arguments/error/meta/resources/structuredContent and no business field parsing. Native list_mcp_resources/list_mcp_resource_templates may expose a validated resource count and redacted resource names/titles, never resource URIs, cursors or metadata. Empty resource lists are successful real results, not omitted content. Other tools retain their existing display policies. Limits do not change execution status; partial content availability must not suppress a known execution outcome. Host bounds total UTF-8 text at 256KiB and first 32 original content entries. Confidentiality may replace entire lines.
+// NativeMcpDisplay Display-only native MCP facts. No raw arguments/error/meta/resources/structuredContent and no business field parsing. Native list_mcp_resources/list_mcp_resource_templates may expose a validated resource count and redacted resource names/titles, never resource URIs, cursors or metadata. Empty resource lists are successful real results, not omitted content. For yijie_web/kimi_web_search_pro only, Host validates the closed built-in web result and projects the ordered source summaries from its native text block. Raw page content and chunks are excluded. Other tools retain their existing display policies. Limits do not change execution status; partial content availability must not suppress a known execution outcome. Host bounds total UTF-8 text at 256KiB and first 32 original content entries. Confidentiality may replace entire lines.
 type NativeMcpDisplay struct {
-	Diagnostics []NativeMcpDisplayDiagnostics `json:"diagnostics"`
-	ResultKind  NativeMcpDisplayResultKind    `json:"resultKind"`
-	Server      *string                       `json:"server,omitempty"`
-	Texts       []NativeMcpText               `json:"texts"`
-	Tool        *string                       `json:"tool,omitempty"`
+	Diagnostics   []NativeMcpDisplayDiagnostics `json:"diagnostics"`
+	ResultKind    NativeMcpDisplayResultKind    `json:"resultKind"`
+	SearchReceipt *DeepSearchReceipt            `json:"searchReceipt,omitempty"`
+	Server        *string                       `json:"server,omitempty"`
+	Texts         []NativeMcpText               `json:"texts"`
+	Tool          *string                       `json:"tool,omitempty"`
 }
 
 // NativeMcpDisplayDiagnostics defines model for NativeMcpDisplay.Diagnostics.
@@ -687,7 +897,7 @@ type NativeMcpText struct {
 	// Index Original native content array index; never renumber after filtering.
 	Index int `json:"index"`
 
-	// Text Complete native text block after existing whole-line confidentiality projection, then UTF-8 truncation. Plain text only; links remain inert.
+	// Text Plain text after confidentiality projection and UTF-8 truncation. At index 0, built-in deep search may project SearchSuccess (title, url and snippet) or a validated public retrieval error. For newly observed results, url preserves the public HTTP(S) article address permitted by the native source URL policy, falling back to its displayable origin when necessary. Existing site-only receipts retain their origin. Desktop may open an exact result URL after user activation and independent native history authorization.
 	Text string `json:"text"`
 }
 
@@ -811,10 +1021,25 @@ type localBearerContextKey string
 
 // StreamNativeConversationProcessParams defines parameters for StreamNativeConversationProcess.
 type StreamNativeConversationProcessParams struct {
-	StreamId    *openapi_types.UUID `form:"stream_id,omitempty" json:"stream_id,omitempty"`
-	After       *int64              `form:"after,omitempty" json:"after,omitempty"`
-	LastEventID *string             `json:"Last-Event-ID,omitempty"`
+	StreamId *openapi_types.UUID `form:"stream_id,omitempty" json:"stream_id,omitempty"`
+	After    *int64              `form:"after,omitempty" json:"after,omitempty"`
+
+	// XYijieSearchReceipt Opt in to typed receipt projection for the builtin deep-search tool.
+	XYijieSearchReceipt *StreamNativeConversationProcessParamsXYijieSearchReceipt `json:"X-Yijie-Search-Receipt,omitempty"`
+	LastEventID         *string                                                   `json:"Last-Event-ID,omitempty"`
 }
+
+// StreamNativeConversationProcessParamsXYijieSearchReceipt defines parameters for StreamNativeConversationProcess.
+type StreamNativeConversationProcessParamsXYijieSearchReceipt string
+
+// ReadNativeThreadProcessParams defines parameters for ReadNativeThreadProcess.
+type ReadNativeThreadProcessParams struct {
+	// XYijieSearchReceipt Opt in to typed receipt projection for the builtin deep-search tool.
+	XYijieSearchReceipt *ReadNativeThreadProcessParamsXYijieSearchReceipt `json:"X-Yijie-Search-Receipt,omitempty"`
+}
+
+// ReadNativeThreadProcessParamsXYijieSearchReceipt defines parameters for ReadNativeThreadProcess.
+type ReadNativeThreadProcessParamsXYijieSearchReceipt string
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -893,7 +1118,7 @@ type ClientInterface interface {
 	StreamNativeConversationProcess(ctx context.Context, agentSessionId openapi_types.UUID, params *StreamNativeConversationProcessParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ReadNativeThreadProcess request
-	ReadNativeThreadProcess(ctx context.Context, agentSessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ReadNativeThreadProcess(ctx context.Context, agentSessionId openapi_types.UUID, params *ReadNativeThreadProcessParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) StreamNativeConversationProcess(ctx context.Context, agentSessionId openapi_types.UUID, params *StreamNativeConversationProcessParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -908,8 +1133,8 @@ func (c *Client) StreamNativeConversationProcess(ctx context.Context, agentSessi
 	return c.Client.Do(req)
 }
 
-func (c *Client) ReadNativeThreadProcess(ctx context.Context, agentSessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewReadNativeThreadProcessRequest(c.Server, agentSessionId)
+func (c *Client) ReadNativeThreadProcess(ctx context.Context, agentSessionId openapi_types.UUID, params *ReadNativeThreadProcessParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReadNativeThreadProcessRequest(c.Server, agentSessionId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -992,15 +1217,26 @@ func NewStreamNativeConversationProcessRequest(server string, agentSessionId ope
 
 	if params != nil {
 
-		if params.LastEventID != nil {
+		if params.XYijieSearchReceipt != nil {
 			var headerParam0 string
 
-			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Yijie-Search-Receipt", *params.XYijieSearchReceipt, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Last-Event-ID", headerParam0)
+			req.Header.Set("X-Yijie-Search-Receipt", headerParam0)
+		}
+
+		if params.LastEventID != nil {
+			var headerParam1 string
+
+			headerParam1, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Last-Event-ID", headerParam1)
 		}
 
 	}
@@ -1009,7 +1245,7 @@ func NewStreamNativeConversationProcessRequest(server string, agentSessionId ope
 }
 
 // NewReadNativeThreadProcessRequest generates requests for ReadNativeThreadProcess
-func NewReadNativeThreadProcessRequest(server string, agentSessionId openapi_types.UUID) (*http.Request, error) {
+func NewReadNativeThreadProcessRequest(server string, agentSessionId openapi_types.UUID, params *ReadNativeThreadProcessParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1037,6 +1273,21 @@ func NewReadNativeThreadProcessRequest(server string, agentSessionId openapi_typ
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.XYijieSearchReceipt != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "X-Yijie-Search-Receipt", *params.XYijieSearchReceipt, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("X-Yijie-Search-Receipt", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -1089,7 +1340,7 @@ type ClientWithResponsesInterface interface {
 	StreamNativeConversationProcessWithResponse(ctx context.Context, agentSessionId openapi_types.UUID, params *StreamNativeConversationProcessParams, reqEditors ...RequestEditorFn) (*StreamNativeConversationProcessResponse, error)
 
 	// ReadNativeThreadProcessWithResponse request
-	ReadNativeThreadProcessWithResponse(ctx context.Context, agentSessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ReadNativeThreadProcessResponse, error)
+	ReadNativeThreadProcessWithResponse(ctx context.Context, agentSessionId openapi_types.UUID, params *ReadNativeThreadProcessParams, reqEditors ...RequestEditorFn) (*ReadNativeThreadProcessResponse, error)
 }
 
 type StreamNativeConversationProcessResponse struct {
@@ -1161,8 +1412,8 @@ func (c *ClientWithResponses) StreamNativeConversationProcessWithResponse(ctx co
 }
 
 // ReadNativeThreadProcessWithResponse request returning *ReadNativeThreadProcessResponse
-func (c *ClientWithResponses) ReadNativeThreadProcessWithResponse(ctx context.Context, agentSessionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ReadNativeThreadProcessResponse, error) {
-	rsp, err := c.ReadNativeThreadProcess(ctx, agentSessionId, reqEditors...)
+func (c *ClientWithResponses) ReadNativeThreadProcessWithResponse(ctx context.Context, agentSessionId openapi_types.UUID, params *ReadNativeThreadProcessParams, reqEditors ...RequestEditorFn) (*ReadNativeThreadProcessResponse, error) {
+	rsp, err := c.ReadNativeThreadProcess(ctx, agentSessionId, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}

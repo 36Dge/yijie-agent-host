@@ -16,6 +16,9 @@
         },
         "includeHistory": {
           "type": "boolean"
+        },
+        "includeLastObservation": {
+          "type": "boolean"
         }
       }
     },
@@ -68,6 +71,25 @@
         }
       }
     },
+    "ContextWindowObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "sample"
+      ],
+      "description": "Last measured native model and its complete sample in the same thread and context. Its capacity belongs to the measured model.",
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "sample": {
+          "$ref": "#/definitions/ContextWindowSample"
+        }
+      }
+    },
     "ContextCompaction": {
       "type": "object",
       "additionalProperties": false,
@@ -110,6 +132,35 @@
         "sample",
         "compactions"
       ],
+      "not": {
+        "required": [
+          "last_observation"
+        ],
+        "properties": {
+          "last_observation": {
+            "type": "object"
+          }
+        },
+        "anyOf": [
+          {
+            "properties": {
+              "sample": {
+                "type": "object"
+              }
+            }
+          },
+          {
+            "properties": {
+              "thread_id": {
+                "not": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        ]
+      },
       "properties": {
         "schema_version": {
           "type": "integer",
@@ -166,6 +217,9 @@
           "items": {
             "$ref": "#/definitions/ContextCompaction"
           }
+        },
+        "last_observation": {
+          "$ref": "#/definitions/ContextWindowObservation"
         }
       }
     }

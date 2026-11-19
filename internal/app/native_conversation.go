@@ -27,6 +27,9 @@ func registerNativeConversation(mux *http.ServeMux, h *sessionHandler) {
 			writeSessionError(w, err)
 			return
 		}
+		if r.Header.Get("X-Yijie-Search-Receipt") != "2" {
+			session.StripSearchSnapshot(&value)
+		}
 		writeJSON(w, http.StatusOK, value)
 	})))
 	mux.Handle("GET /v13/agent-sessions/{agent_session_id}/events", h.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

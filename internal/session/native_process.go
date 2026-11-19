@@ -21,6 +21,11 @@ var nativePageHost = regexp.MustCompile(`^[A-Za-z0-9.-]{1,253}$`)
 // detectors, not the command-output rule that intentionally hides every URL.
 // Reject an unsafe source entirely; never rewrite its address into another URL.
 func safeNativeSourceURL(value string) bool {
+	page, err := url.Parse(value)
+	if err != nil || (page.Scheme != "https" && page.Scheme != "http") || page.User != nil ||
+		!nativePageHost.MatchString(page.Hostname()) || len(value) > 2048 || strings.IndexFunc(value, unicode.IsControl) >= 0 {
+		return false
+	}
 	decoded, err := url.PathUnescape(value)
 	if err != nil || bearerPattern.MatchString(decoded) ||
 		v5SensitiveNamePattern.MatchString(decoded) || v5JWTLikePattern.MatchString(decoded) ||
@@ -28,8 +33,7 @@ func safeNativeSourceURL(value string) bool {
 		strings.IndexFunc(decoded, unicode.IsControl) >= 0 {
 		return false
 	}
-	page, err := url.Parse(value)
-	if err != nil || v5OpaqueTokenPattern.MatchString(page.Hostname()) || v5OpaqueTokenPattern.MatchString(page.Fragment) {
+	if v5OpaqueTokenPattern.MatchString(page.Hostname()) || v5OpaqueTokenPattern.MatchString(page.Fragment) {
 		return false
 	}
 	// Literal URL separators delimit components, not opaque identifiers. Split
@@ -124,10 +128,7 @@ func projectNativeWebSearch(wire nativeWireItem, out *native.NativeItem) {
 				out.Availability = native.NativeItemAvailabilityPartial
 				break
 			}
-			page, err := url.Parse(source.URL)
-			if source.Type != "url" || err != nil || (page.Scheme != "https" && page.Scheme != "http") || page.User != nil ||
-				!nativePageHost.MatchString(page.Hostname()) || len(source.URL) > 2048 ||
-				strings.IndexFunc(source.URL, unicode.IsControl) >= 0 || !safeNativeSourceURL(source.URL) {
+			if source.Type != "url" || !safeNativeSourceURL(source.URL) {
 				out.Availability = native.NativeItemAvailabilityPartial
 				continue
 			}
@@ -160,6 +161,7 @@ func NativeEventV10(event Event) Event {
 	var copy native.NativeNotification
 	_ = json.Unmarshal(encoded, &copy)
 	strip := func(item *native.NativeItem) {
+		omitLegacyDeepWebSearch(item)
 		if item.WebSearch != nil {
 			item.WebSearch.Sources = nil
 		}
@@ -204,6 +206,7 @@ func NativeEventV8(event Event) Event {
 	var copy native.NativeNotification
 	_ = json.Unmarshal(encoded, &copy)
 	strip := func(item *native.NativeItem) {
+		omitLegacyDeepWebSearch(item)
 		if item.Type == native.NativeItemTypeWebSearch {
 			*item = native.NativeItem{Id: item.Id, Type: native.NativeItemTypeUnknown, Availability: native.NativeItemAvailabilityUnavailable}
 		}

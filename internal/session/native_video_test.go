@@ -26,7 +26,7 @@ func TestNativeVideoProjectionDistinguishesWaitingStopAndHandoff(t *testing.T) {
 		}
 		raw, _ := json.Marshal(map[string]any{"structuredContent": receipt})
 		out := &native.NativeItem{}
-		projectNativeMcp(nativeWireItem{Server: "yijie_media", Tool: video.GetToolName, Result: raw}, out)
+		projectNativeMcp(nativeWireItem{Server: "yijie_media", Tool: video.GetToolName, Result: raw}, out, false)
 		if out.ResultSummary == nil || !strings.Contains(*out.ResultSummary, tc.want) || out.Mcp.ResultKind != native.Text {
 			t.Fatalf("projection %s: %+v", tc.code, out)
 		}
@@ -40,7 +40,7 @@ func TestNativeVideoProjectionDoesNotCallDeliveryWaitGeneration(t *testing.T) {
 		receipt := video.VideoResult{Source: "builtin", Status: video.VideoStatusPending, Code: video.VideoCodeProviderPending, NextAction: video.NextActionGetVideoResult, VideoOperationId: &op, ProviderStatus: &status, ProviderObservedAt: &observed}
 		raw, _ := json.Marshal(map[string]any{"structuredContent": receipt})
 		out := &native.NativeItem{}
-		projectNativeMcp(nativeWireItem{Server: "yijie_media", Tool: video.GetToolName, Result: raw}, out)
+		projectNativeMcp(nativeWireItem{Server: "yijie_media", Tool: video.GetToolName, Result: raw}, out, false)
 		if out.ResultSummary == nil {
 			t.Fatal("missing video summary")
 		}

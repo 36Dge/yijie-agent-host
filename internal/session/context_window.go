@@ -20,6 +20,8 @@ type contextObservation struct {
 	revision                        int64
 	epoch                           uuid.UUID
 	sample                          *wire.ContextWindowSample
+	lastObservation                 *wire.ContextWindowObservation
+	selectionPending                bool
 	compactions                     []wire.ContextCompaction
 	compacting                      string
 	modelItemCompleted              bool
@@ -48,12 +50,19 @@ func (s *Service) contextObservation(record Record) *contextObservation {
 		entry = &contextObservation{epoch: uuid.New(), compactions: []wire.ContextCompaction{}, profile: recordProfile(record), revision: record.ModelRevision, runtimeSession: record.RuntimeSessionID}
 		s.contextWindows[record.CodexThreadID] = entry
 	}
-	if entry.profile != recordProfile(record) || entry.revision != record.ModelRevision || entry.runtimeSession != record.RuntimeSessionID || (record.ModelSelectionState != "" && record.ModelSelectionState != "ready") {
+	pending := record.ModelSelectionState != "" && record.ModelSelectionState != "ready"
+	if entry.runtimeSession != record.RuntimeSessionID || entry.profile != recordProfile(record) || entry.revision != record.ModelRevision || (pending && !entry.selectionPending) {
+		if entry.runtimeSession != record.RuntimeSessionID {
+			entry.lastObservation, entry.lastUsage = nil, nil
+		} else if measured, ok := codex.ModelProfile(entry.profile); ok && entry.sample != nil {
+			entry.lastObservation = &wire.ContextWindowObservation{Model: measured.Model, Sample: *entry.sample}
+		}
 		entry.sample, entry.turn, entry.compacting, entry.modelItemCompleted = nil, "", "", false
 		entry.epoch = uuid.New()
-		entry.restoreBlocked = true
+		entry.restoreAfter = time.Time{}
 		entry.profile, entry.revision, entry.runtimeSession = recordProfile(record), record.ModelRevision, record.RuntimeSessionID
 	}
+	entry.selectionPending = pending
 	entry.touched = time.Now()
 	return entry
 }
@@ -79,15 +88,15 @@ func (s *Service) observeContextNotification(method string, raw json.RawMessage)
 	if json.Unmarshal(raw, &ids) != nil {
 		return
 	}
+	s.contextWindowMu.Lock()
+	defer s.contextWindowMu.Unlock()
 	record, err := s.store.GetByThread(ids.ThreadID)
 	if err != nil {
 		return
 	}
-	s.contextWindowMu.Lock()
-	defer s.contextWindowMu.Unlock()
 	entry := s.contextObservation(record)
 	entry.observationRevision++
-	if record.ModelSelectionState != "" && record.ModelSelectionState != "ready" {
+	if entry.selectionPending && ids.Item.Type != "contextCompaction" {
 		return
 	}
 	if method == RuntimeNotificationTurnStarted {
@@ -104,7 +113,7 @@ func (s *Service) observeContextNotification(method string, raw json.RawMessage)
 				if ids.Turn.Status == "failed" || ids.Turn.Status == "interrupted" {
 					entry.compactions[i].State = wire.Interrupted
 				}
-				entry.sample = nil
+				entry.sample, entry.lastObservation = nil, nil
 			}
 		}
 		entry.compacting, entry.modelItemCompleted = "", false
@@ -125,7 +134,7 @@ func (s *Service) observeContextNotification(method string, raw json.RawMessage)
 			if index < 0 {
 				entry.compactions = append(entry.compactions, wire.ContextCompaction{ItemId: ids.Item.ID, TurnId: ids.TurnID, State: wire.Unknown})
 				index = len(entry.compactions) - 1
-				entry.sample, entry.epoch, entry.modelItemCompleted = nil, uuid.New(), false
+				entry.sample, entry.lastObservation, entry.epoch, entry.modelItemCompleted = nil, nil, uuid.New(), false
 				entry.restoreBlocked = true
 			}
 			if method == RuntimeNotificationItemStarted && entry.compactions[index].State == wire.Unknown {
@@ -144,17 +153,17 @@ func (s *Service) observeContextNotification(method string, raw json.RawMessage)
 	}
 	var notification wire.ThreadTokenUsageUpdatedNotification
 	if wire.Decode("NativeUsage", raw, &notification) != nil {
-		entry.sample = nil
+		entry.sample, entry.lastObservation = nil, nil
 		return
 	}
 	usage := notification.TokenUsage
-	previous := entry.lastUsage
-	entry.lastUsage = &usage
 	// Resume/fork and rate-limit updates can replay the last request's sample.
 	// Only a newly observed model result or native window recomputation admits it.
 	if notification.TurnId != entry.turn {
 		return
 	}
+	previous := entry.lastUsage
+	entry.lastUsage = &usage
 	recomputed := entry.compacting != "" && !sameContextUsage(previous, &usage) && usage.Last.InputTokens == 0 && usage.Last.OutputTokens == 0 && usage.Last.CachedInputTokens == 0 && usage.Last.ReasoningOutputTokens == 0
 	newRequestUsage := previous != nil && usage.Total != previous.Total
 	firstRequest := previous == nil && record.LastTurnID == "" && record.ModelRevision <= 1
@@ -162,7 +171,7 @@ func (s *Service) observeContextNotification(method string, raw json.RawMessage)
 		return
 	}
 	if usage.Last.TotalTokens < 0 || usage.Last.TotalTokens > 9007199254740991 {
-		entry.sample = nil
+		entry.sample, entry.lastObservation = nil, nil
 		return
 	}
 	capacity := usage.ModelContextWindow
@@ -170,6 +179,8 @@ func (s *Service) observeContextNotification(method string, raw json.RawMessage)
 		capacity = nil
 	}
 	entry.sample = &wire.ContextWindowSample{UsedTokens: usage.Last.TotalTokens, CapacityTokens: capacity, TurnId: notification.TurnId, WindowId: entry.epoch, ObservedAt: time.Now().UTC()}
+	entry.lastObservation = nil
+	entry.restoreBlocked = false
 	entry.modelItemCompleted = false
 }
 
@@ -177,18 +188,14 @@ func sameContextUsage(a, b *wire.ThreadTokenUsage) bool {
 	return a != nil && a.Last == b.Last && a.Total == b.Total && ((a.ModelContextWindow == nil && b.ModelContextWindow == nil) || (a.ModelContextWindow != nil && b.ModelContextWindow != nil && *a.ModelContextWindow == *b.ModelContextWindow))
 }
 
-func (s *Service) ReadContextWindow(ctx context.Context, sessionID string, includeHistory bool) (wire.ContextWindowSnapshot, error) {
+func (s *Service) ReadContextWindow(ctx context.Context, sessionID string, includeHistory, includeLastObservation bool) (wire.ContextWindowSnapshot, error) {
 	if err := requireUUID("agent_session_id", sessionID); err != nil {
 		return wire.ContextWindowSnapshot{}, err
 	}
-	record, err := s.store.Get(sessionID)
+	record, err := s.readContextWindowRecord(ctx, sessionID)
 	if err != nil {
 		return wire.ContextWindowSnapshot{}, err
 	}
-	if status, ok := s.runtime.(interface{ Snapshot() codex.Status }); ok && !status.Snapshot().Ready {
-		return wire.ContextWindowSnapshot{}, ErrRuntimeRequest
-	}
-	s.restoreContextWindow(ctx, record)
 	if includeHistory {
 		if runtime, ok := s.runtime.(interface {
 			ReadThread(context.Context, string) (json.RawMessage, error)
@@ -200,15 +207,18 @@ func (s *Service) ReadContextWindow(ctx context.Context, sessionID string, inclu
 		}
 	}
 	// Re-read after the asynchronous history query: model selection may change.
+	s.contextWindowMu.Lock()
+	defer s.contextWindowMu.Unlock()
 	record, err = s.store.Get(sessionID)
 	if err != nil {
 		return wire.ContextWindowSnapshot{}, err
 	}
-	s.contextWindowMu.Lock()
-	defer s.contextWindowMu.Unlock()
 	entry := s.contextObservation(record)
 	profile := entry.profile
 	result := wire.ContextWindowSnapshot{SchemaVersion: 1, ThreadId: &record.CodexThreadID, ModelProfile: &profile, ModelRevision: record.ModelRevision, Sample: entry.sample, Compactions: append([]wire.ContextCompaction{}, entry.compactions...)}
+	if includeLastObservation && entry.sample == nil {
+		result.LastObservation = entry.lastObservation
+	}
 	if profile == "" {
 		result.ModelProfile = nil
 	}
@@ -232,7 +242,11 @@ func (s *Service) observeContextHistory(record Record, raw json.RawMessage) {
 	// historical identities, but must not rebind or erase a newer usage sample.
 	entry := s.contextWindows[record.CodexThreadID]
 	if entry == nil {
-		entry = s.contextObservation(record)
+		current, err := s.store.Get(record.AgentSessionID)
+		if err != nil || current.CodexThreadID != thread.ID {
+			return
+		}
+		entry = s.contextObservation(current)
 	}
 	for _, turn := range thread.Turns {
 		for _, itemRaw := range turn.Items {

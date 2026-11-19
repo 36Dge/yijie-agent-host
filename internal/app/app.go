@@ -1780,6 +1780,9 @@ type eventSubscriber func(string, string, uint64) (string, []session.Event, <-ch
 
 func (h *sessionHandler) streamEvents(w http.ResponseWriter, r *http.Request, subscribe eventSubscriber) {
 	writeEvent := func(event session.Event) error {
+		if r.Header.Get("X-Yijie-Search-Receipt") != "2" {
+			event = session.StripSearchReceipt(event)
+		}
 		return writeSSEEvent(w, event)
 	}
 	streamID, after, err := eventCursor(r)

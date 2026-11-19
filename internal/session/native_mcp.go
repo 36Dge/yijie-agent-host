@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	web "github.com/36Dge/yijie-agent-host/internal/contracts/builtinweb"
 	media "github.com/36Dge/yijie-agent-host/internal/contracts/mediageneration"
 	legacy "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversation"
 	native "github.com/36Dge/yijie-agent-host/internal/contracts/nativeconversationv6"
@@ -16,7 +17,7 @@ import (
 var nativeMcpIdentifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 var nativeMcpASIN = regexp.MustCompile(`^[A-Z0-9]{10}$`)
 
-func projectNativeMcp(wire nativeWireItem, out *native.NativeItem) {
+func projectNativeMcp(wire nativeWireItem, out *native.NativeItem, searchDetails bool) {
 	display := &native.NativeMcpDisplay{ResultKind: native.Absent, Texts: []native.NativeMcpText{}, Diagnostics: []native.NativeMcpDisplayDiagnostics{}}
 	out.Mcp = display
 	diagnostic := func(code native.NativeMcpDisplayDiagnostics) {
@@ -177,6 +178,13 @@ func projectNativeMcp(wire nativeWireItem, out *native.NativeItem) {
 	}
 	if wire.DurationMS != nil && *wire.DurationMS >= 0 {
 		out.DurationMs = wire.DurationMS
+	}
+	if wire.Server == web.ServerName && wire.Tool == string(web.KimiWebSearchPro) {
+		display.SearchReceipt = deepSearchFact(wire.Result)
+	}
+	if (searchDetails || display.SearchReceipt != nil) && wire.Server == web.ServerName && wire.Tool == string(web.KimiWebSearchPro) {
+		projectDeepWebSearch(wire, out, diagnostic)
+		return
 	}
 	if projectNativeResourceDiscovery(wire, out, diagnostic) {
 		return

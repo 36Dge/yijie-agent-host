@@ -1,26 +1,26 @@
 {
   "schema_version": 1,
-  "contract_version": "0.2.0",
+  "contract_version": "0.3.0",
   "mode": "local_worktree_candidate",
   "release": false,
   "base_commit": "d348fc565af341ebd8a2088efea2aa6ff7460709",
   "sources": {
-    "openapi/context-window/context-window.yaml": "bec4f865330aa187e9902c459ef19e6d570298c933bdac36b07ed5dc86e97850",
-    "scripts/generate-context-window.mjs": "915f29e650544be3fa59c858ef1716fadbdafa6c28757889dd0666ed1bf23356",
-    "compatibility/runtime-interaction-tools/source.lock.json": "7ae18ff3c8b1e0389b83bdf162d580b714d307afaabc9bf2fbf3d3de81398735",
+    "openapi/context-window/context-window.yaml": "a95d34e2728a2729c11ef6b1890c9f7eac1d9d7bd702fa5fdafed3f6a0f13c66",
+    "scripts/generate-context-window.mjs": "bae2aaa66ba42152d5717cf66ff610d82916b5c309677fcaf792ad7cd38415fc",
+    "compatibility/runtime-interaction-tools/source.lock.json": "82dbfec24dfc7c84d6eb8010193c5f161a710cadeb434458ba0d4f05759458be",
     "../yijie-codex/.yijie/build/interaction-tools-v1/038d498bda0d4cb8899e15ea81dfa777b6928adc0e389aebf5e20b3038332086/aarch64-apple-darwin/generated-json-schema/v2/ThreadTokenUsageUpdatedNotification.json": "0ab6f22fa3f6e8227a6d2f9d6241ed7cb45beb8bacc8a18a307aa7526d4f8bd1",
     "../yijie-codex/codex-rs/protocol/src/protocol.rs": "375808be883656cf1d1e2fe591696ac547b20f90362ac8f17ce61eb9031e4bc3",
     "../yijie-codex/codex-rs/core/src/session/mod.rs": "0a1045a7c54655df6743f2bab9275001e772c5b3e695dc8e07d63d1fd9d39a14",
-    "docs/context-window-restore.md": "fbbbec64ebe92824acbdb0211bb933b99af83e7f1a7f966fdbf6233ba223f807"
+    "docs/context-window-restore.md": "ffafb6eaf2ee4148db6a964267314a5cdf827f45177f9682f3408e06b38cfd18"
   },
   "generated": {
-    "sdks/jsonschema/context-window.schema.json": "0cfad69c87c626bc417e1d668b9c2d471b99d98e5fd1d9542132e9876adb24f0",
+    "sdks/jsonschema/context-window.schema.json": "16b1e6bc3c70fa08ecfc36500ba9c198853f1a91d6964e887d0c17f47586e950",
     "sdks/jsonschema/context-window-native.schema.json": "0ab6f22fa3f6e8227a6d2f9d6241ed7cb45beb8bacc8a18a307aa7526d4f8bd1",
-    "sdks/typescript/src/openapi/context-window.gen.ts": "5cbb97ab574a612af2cb52d98a818eed078aa0e3e2baa1c2092b23d00de9637d",
-    "sdks/typescript/src/context-window-validator.gen.js": "d636b0cb000dde060e11784ea86c05bc294e143c011c5587a5f2a1655d99765f",
+    "sdks/typescript/src/openapi/context-window.gen.ts": "b8491a6c9514d329e9223e0656cc1feda0b226ee3ae7df71acf088ba50832417",
+    "sdks/typescript/src/context-window-validator.gen.js": "f7138211f4d4c785b4be611539cd71e0fcd6f0e2c5a3298198e84651c3c4d6e6",
     "sdks/typescript/src/context-window-validator.gen.d.ts": "b3a75479408bd3c31f1a03e9e8d40225ac061b5e9de4c4cfe263a5c19f624718",
-    "sdks/go/openapi/context-window/types.gen.go": "f958357e35e8ec6d250b4717e40793af63a99829c60196bf731d6a1862990dd6",
+    "sdks/go/openapi/context-window/types.gen.go": "b1317f5da70224bf69e6fc6eec5c1330cfb95fa96f33b2f6cbe12355306e70a9",
     "sdks/go/openapi/context-window/runtime.gen.go": "6b558957c8a53fd77bbec4924abe12883a4e9468c4ae6fe9f9d0ce5de3d36ee3",
-    "sdks/rust/context-window/types.gen.rs": "ecb86ff08e2253234adda3eeb33d2da54367f7b2e75f95f436aaeb35214954b7"
+    "sdks/rust/context-window/types.gen.rs": "70d673b807892dfd43bc9cf26c303f37ce00012500af94ce4ef096b96112acc9"
   }
 }

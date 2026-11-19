@@ -79,6 +79,37 @@ func TestContextWindowRestoreCannotReviveOldModelRevision(t *testing.T) {
 		}
 	}
 }
+
+func TestContextWindowColdSwitchedModelRestoresOnlyMeasuredAttribution(t *testing.T) {
+	r := &contextRestoreRuntime{value: restoredUsage()}
+	s := coldContextService(t, r)
+	_, err := s.store.update(testSessionID, func(record *Record) error {
+		record.ModelProfile, record.ModelRevision = codex.KimiK31ProfileID, 2
+		record.ModelSelectionOperation = testTurnOperationID
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened := NewService(r, s.store, NewEventHub(32, 8), nil)
+	value := readContextProjection(t, reopened, true)
+	last := value.LastObservation
+	if value.Sample != nil || last == nil || last.Model != "MiniMax-M3" || last.Sample.TurnId != testTurnID ||
+		last.Sample.UsedTokens != 19638 || *last.Sample.CapacityTokens != 950000 || !last.Sample.ObservedAt.Equal(r.value.ObservedAt) {
+		t.Fatal("cold model switch lost source, time or measured capacity", value)
+	}
+	legacy := readContextTest(t, reopened)
+	if legacy.Sample != nil || legacy.LastObservation != nil || r.reads != 1 {
+		t.Fatal("legacy response or cold read cache changed", legacy, r.reads)
+	}
+	item := rawJSON(t, map[string]any{"threadId": testThreadID, "turnId": testTurnID, "item": map[string]any{"id": "new-window", "type": "contextCompaction"}})
+	reopened.observeContextNotification(RuntimeNotificationItemStarted, item)
+	reopened.observeContextNotification(RuntimeNotificationItemCompleted, item)
+	value = readContextProjection(t, reopened, true)
+	if value.Sample != nil || value.LastObservation != nil || r.reads != 1 {
+		t.Fatal("compaction revived the previous window", value)
+	}
+}
 func TestContextWindowRestoreRejectsLateReadAfterLiveCompaction(t *testing.T) {
 	r := &contextRestoreRuntime{value: restoredUsage()}
 	s := coldContextService(t, r)

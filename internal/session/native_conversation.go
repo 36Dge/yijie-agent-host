@@ -59,6 +59,12 @@ func safeNativeText(value string, limit int) (string, bool) {
 }
 
 func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) (native.NativeItem, error) {
+	return projectNativeItemWithSearchDetails(raw, cwd, allowRawReasoning, false)
+}
+
+// Only observed Item notifications collect new search details. A read-only
+// thread reconstruction retains the metadata-only policy for earlier calls.
+func projectNativeItemWithSearchDetails(raw json.RawMessage, cwd string, allowRawReasoning, searchDetails bool) (native.NativeItem, error) {
 	var wire nativeWireItem
 	if json.Unmarshal(raw, &wire) != nil || wire.ID == "" || len(wire.ID) > 512 {
 		return native.NativeItem{}, errors.New("invalid native item")
@@ -177,7 +183,7 @@ func projectNativeItem(raw json.RawMessage, cwd string, allowRawReasoning bool) 
 			}
 		}
 	case native.NativeItemTypeMcpToolCall:
-		projectNativeMcp(wire, &out)
+		projectNativeMcp(wire, &out, searchDetails)
 		projectNativeToolDisplay(wire, &out)
 	case native.NativeItemTypeWebSearch:
 		projectNativeWebSearch(wire, &out)
@@ -355,7 +361,7 @@ func (s *Service) publishNativeNotification(method string, raw json.RawMessage) 
 		if s.managedImageCompanion(p.Item) {
 			return
 		}
-		item, e := projectNativeItem(p.Item, record.Cwd, s.rawReasoning)
+		item, e := projectNativeItemWithSearchDetails(p.Item, record.Cwd, s.rawReasoning, true)
 		if e != nil {
 			issue()
 		} else {
