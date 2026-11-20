@@ -161,7 +161,7 @@ func NativeEventV10(event Event) Event {
 	var copy native.NativeNotification
 	_ = json.Unmarshal(encoded, &copy)
 	strip := func(item *native.NativeItem) {
-		omitLegacyDeepWebSearch(item)
+		omitLegacyWebDetails(item)
 		if item.WebSearch != nil {
 			item.WebSearch.Sources = nil
 		}
@@ -206,7 +206,7 @@ func NativeEventV8(event Event) Event {
 	var copy native.NativeNotification
 	_ = json.Unmarshal(encoded, &copy)
 	strip := func(item *native.NativeItem) {
-		omitLegacyDeepWebSearch(item)
+		omitLegacyWebDetails(item)
 		if item.Type == native.NativeItemTypeWebSearch {
 			*item = native.NativeItem{Id: item.Id, Type: native.NativeItemTypeUnknown, Availability: native.NativeItemAvailabilityUnavailable}
 		}

@@ -186,6 +186,10 @@ func projectNativeMcp(wire nativeWireItem, out *native.NativeItem, searchDetails
 		projectDeepWebSearch(wire, out, diagnostic)
 		return
 	}
+	if searchDetails && wire.Server == web.ServerName && wire.Tool == string(web.KimiWebFetch) {
+		projectWebFetch(wire, out, diagnostic)
+		return
+	}
 	if projectNativeResourceDiscovery(wire, out, diagnostic) {
 		return
 	}

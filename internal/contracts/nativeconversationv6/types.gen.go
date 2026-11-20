@@ -897,7 +897,7 @@ type NativeEventSchemaVersion int
 
 // NativeItem defines model for NativeItem.
 type NativeItem struct {
-	// ArgumentsSummary Metadata display only; raw native arguments never leave Host. For yijie_web/kimi_web_search_pro this may contain the validated, displayable query alone.
+	// ArgumentsSummary Metadata display only; raw native arguments never leave Host. For yijie_web/kimi_web_search_pro this may contain the validated, displayable query alone. An observed yijie_web/kimi_web_fetch may identify the requested website by hostname only.
 	ArgumentsSummary *string `json:"argumentsSummary,omitempty"`
 
 	// Availability Completeness of this safe display projection, independent of the native execution status.
@@ -915,7 +915,7 @@ type NativeItem struct {
 	ExitCode   *int32  `json:"exitCode,omitempty"`
 	Id         string  `json:"id"`
 
-	// Mcp Display-only native MCP facts. No raw arguments/error/meta/resources/structuredContent and no business field parsing. Native list_mcp_resources/list_mcp_resource_templates may expose a validated resource count and redacted resource names/titles, never resource URIs, cursors or metadata. Empty resource lists are successful real results, not omitted content. For yijie_web/kimi_web_search_pro only, Host validates the closed built-in web result and projects the ordered source summaries from its native text block. Raw page content and chunks are excluded. Other tools retain their existing display policies. Limits do not change execution status; partial content availability must not suppress a known execution outcome. Host bounds total UTF-8 text at 256KiB and first 32 original content entries. Confidentiality may replace entire lines.
+	// Mcp Display-only native MCP facts. No raw arguments/error/meta/resources/structuredContent and no business field parsing. Native list_mcp_resources/list_mcp_resource_templates may expose a validated resource count and redacted resource names/titles, never resource URIs, cursors or metadata. Empty resource lists are successful real results, not omitted content. For yijie_web/kimi_web_search_pro only, Host validates the closed built-in web result and projects the ordered source summaries from its native text block. Raw page content and chunks are excluded. For yijie_web/kimi_web_fetch, observed results may expose only the requested hostname, a safe page title and a short full/partial reading outcome or fixed public error. The full URL and page body remain outside the display. Other tools retain their existing display policies. Limits do not change execution status; partial content availability must not suppress a known execution outcome. Host bounds total UTF-8 text at 256KiB and first 32 original content entries. Confidentiality may replace entire lines.
 	Mcp *NativeMcpDisplay `json:"mcp,omitempty"`
 
 	// OutputText Bounded, redacted projection of native aggregatedOutput. Omitted when native output is null or unavailable.
@@ -925,7 +925,7 @@ type NativeItem struct {
 	// Publication Published by the negotiated Runtime. order is the original turn observation order. afterItemId anchors a delayed message. Undelivered text is never an agentMessage or an execution terminal.
 	Publication *NativeMessagePublication `json:"publication,omitempty"`
 
-	// ResultSummary Metadata display only, omitted when native result is absent or null.
+	// ResultSummary Metadata display only, omitted when native result is absent or null. For an observed successful built-in fetch this may contain the bounded, confidentiality-checked page title.
 	ResultSummary *string           `json:"resultSummary,omitempty"`
 	Status        *NativeItemStatus `json:"status,omitempty"`
 	Summary       *[]string         `json:"summary,omitempty"`
@@ -954,7 +954,7 @@ type NativeItemStatus string
 // NativeItemType defines model for NativeItem.Type.
 type NativeItemType string
 
-// NativeMcpDisplay Display-only native MCP facts. No raw arguments/error/meta/resources/structuredContent and no business field parsing. Native list_mcp_resources/list_mcp_resource_templates may expose a validated resource count and redacted resource names/titles, never resource URIs, cursors or metadata. Empty resource lists are successful real results, not omitted content. For yijie_web/kimi_web_search_pro only, Host validates the closed built-in web result and projects the ordered source summaries from its native text block. Raw page content and chunks are excluded. Other tools retain their existing display policies. Limits do not change execution status; partial content availability must not suppress a known execution outcome. Host bounds total UTF-8 text at 256KiB and first 32 original content entries. Confidentiality may replace entire lines.
+// NativeMcpDisplay Display-only native MCP facts. No raw arguments/error/meta/resources/structuredContent and no business field parsing. Native list_mcp_resources/list_mcp_resource_templates may expose a validated resource count and redacted resource names/titles, never resource URIs, cursors or metadata. Empty resource lists are successful real results, not omitted content. For yijie_web/kimi_web_search_pro only, Host validates the closed built-in web result and projects the ordered source summaries from its native text block. Raw page content and chunks are excluded. For yijie_web/kimi_web_fetch, observed results may expose only the requested hostname, a safe page title and a short full/partial reading outcome or fixed public error. The full URL and page body remain outside the display. Other tools retain their existing display policies. Limits do not change execution status; partial content availability must not suppress a known execution outcome. Host bounds total UTF-8 text at 256KiB and first 32 original content entries. Confidentiality may replace entire lines.
 type NativeMcpDisplay struct {
 	Diagnostics   []NativeMcpDisplayDiagnostics `json:"diagnostics"`
 	ResultKind    NativeMcpDisplayResultKind    `json:"resultKind"`
@@ -975,7 +975,7 @@ type NativeMcpText struct {
 	// Index Original native content array index; never renumber after filtering.
 	Index int `json:"index"`
 
-	// Text Plain text after confidentiality projection and UTF-8 truncation. At index 0, built-in deep search may project SearchSuccess (title, url and snippet) or a validated public retrieval error. For newly observed results, url preserves the public HTTP(S) article address permitted by the native source URL policy, falling back to its displayable origin when necessary. Existing site-only receipts retain their origin. Desktop may open an exact result URL after user activation and independent native history authorization.
+	// Text Plain text after confidentiality projection and UTF-8 truncation. For an observed built-in fetch, index 0 may contain a short reading outcome derived from a validated FetchSuccess, or the fixed message from a validated public fetch error. The fetched body is excluded. At index 0, built-in deep search may project SearchSuccess (title, url and snippet) or a validated public retrieval error. For newly observed results, url preserves the public HTTP(S) article address permitted by the native source URL policy, falling back to its displayable origin when necessary. Existing site-only receipts retain their origin. Desktop may open an exact result URL after user activation and independent native history authorization.
 	Text string `json:"text"`
 }
 
