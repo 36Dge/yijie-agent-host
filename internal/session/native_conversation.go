@@ -299,6 +299,11 @@ func (s *Service) SupportsPublicMessagePublication() bool {
 	return ok && runtime.SupportsPublicMessagePublication()
 }
 
+func (s *Service) SupportsPublicMessagePreview() bool {
+	runtime, ok := s.runtime.(interface{ SupportsPublicMessagePreview() bool })
+	return ok && runtime.SupportsPublicMessagePreview()
+}
+
 func (s *Service) ReadNativeThreadV6(ctx context.Context, sessionID string) (native.NativeThreadSnapshot, error) {
 	if err := requireUUID("agent_session_id", sessionID); err != nil {
 		return native.NativeThreadSnapshot{}, err
@@ -340,30 +345,54 @@ func (s *Service) ReadNativeThreadV6(ctx context.Context, sessionID string) (nat
 }
 
 func (s *Service) SubscribeNativeEvents(sessionID, streamID string, after uint64) (string, []Event, <-chan Event, func(), error) {
+	return s.subscribeDisplayEvents(s.nativeEvents, sessionID, streamID, after)
+}
+
+// Independent sequence spaces keep old readers' replay cursors contiguous.
+func (s *Service) SubscribeNativePreviewEvents(sessionID, streamID string, after uint64) (string, []Event, <-chan Event, func(), error) {
+	id, replay, live, cancel, err := s.subscribeDisplayEvents(s.nativePreviewEvents, sessionID, streamID, after)
+	if errors.Is(err, ErrStreamChanged) && streamID != "" {
+		// A client upgraded while observing a v2 turn keeps its proven cursor.
+		return s.subscribeDisplayEvents(s.nativeEvents, sessionID, streamID, after)
+	}
+	return id, replay, live, cancel, err
+}
+func (s *Service) subscribeDisplayEvents(hub *EventHub, sessionID, streamID string, after uint64) (string, []Event, <-chan Event, func(), error) {
 	if err := requireUUID("agent_session_id", sessionID); err != nil {
 		return "", nil, nil, nil, err
 	}
 	if _, err := s.store.Get(sessionID); err != nil {
 		return "", nil, nil, nil, err
 	}
-	return s.nativeEvents.Subscribe(sessionID, streamID, after)
+	return hub.Subscribe(sessionID, streamID, after)
+}
+
+func (s *Service) publishDisplayEvent(event Event) error {
+	if event.Payload.Native.Method != RuntimeNotificationPublicPreviewDelta {
+		if _, err := s.nativeEvents.Publish(event); err != nil {
+			return err
+		}
+	}
+	_, err := s.nativePreviewEvents.Publish(event)
+	return err
 }
 
 func (s *Service) publishNativeNotification(method string, raw json.RawMessage) {
 	var p struct {
-		ThreadID     string                  `json:"threadId"`
-		TurnID       string                  `json:"turnId"`
-		ItemID       string                  `json:"itemId"`
-		Item         json.RawMessage         `json:"item"`
-		Turn         nativeWireTurn          `json:"turn"`
-		Delta        string                  `json:"delta"`
-		ContentIndex *int                    `json:"contentIndex"`
-		SummaryIndex *int                    `json:"summaryIndex"`
-		Plan         []native.NativePlanStep `json:"plan"`
-		Explanation  *string                 `json:"explanation"`
-		Message      string                  `json:"message"`
-		WillRetry    *bool                   `json:"willRetry"`
-		Error        struct {
+		ThreadID      string                  `json:"threadId"`
+		TurnID        string                  `json:"turnId"`
+		ItemID        string                  `json:"itemId"`
+		Item          json.RawMessage         `json:"item"`
+		Turn          nativeWireTurn          `json:"turn"`
+		Delta         string                  `json:"delta"`
+		PreviewOffset *int                    `json:"offset"`
+		ContentIndex  *int                    `json:"contentIndex"`
+		SummaryIndex  *int                    `json:"summaryIndex"`
+		Plan          []native.NativePlanStep `json:"plan"`
+		Explanation   *string                 `json:"explanation"`
+		Message       string                  `json:"message"`
+		WillRetry     *bool                   `json:"willRetry"`
+		Error         struct {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
@@ -413,6 +442,13 @@ func (s *Service) publishNativeNotification(method string, raw json.RawMessage) 
 			turn := s.projectNativeTurn(p.Turn, record.Cwd, s.rawReasoning)
 			n.Turn = &turn
 		}
+	case RuntimeNotificationPublicPreviewDelta:
+		if p.ItemID == "" || p.TurnID == "" || p.PreviewOffset == nil || *p.PreviewOffset < 0 ||
+			*p.PreviewOffset > nativeTextLimit || p.Delta == "" || len(p.Delta) > nativeTextLimit-*p.PreviewOffset || strings.ContainsRune(p.Delta, 0) {
+			return
+		}
+		n.PreviewOffset = p.PreviewOffset
+		n.Delta = &p.Delta
 	case RuntimeNotificationItemAgentMessageDelta, RuntimeNotificationReasoningTextDelta, "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":
 		index := p.ContentIndex
 		if method == "item/reasoning/summaryTextDelta" || method == "item/reasoning/summaryPartAdded" {
@@ -466,11 +502,14 @@ func (s *Service) publishNativeNotification(method string, raw json.RawMessage) 
 		event.ItemID = *n.ItemId
 	}
 	event.Terminal = n.Source == native.RuntimeNotification && method == RuntimeNotificationTurnCompleted && n.Turn != nil && n.Turn.Status != nil
-	if _, e := s.nativeEvents.Publish(event); e != nil {
+	if e := s.publishDisplayEvent(event); e != nil {
+		if method == RuntimeNotificationPublicPreviewDelta {
+			return
+		}
 		issue()
 		event.Terminal = false
 		event.Payload.Native = &n
-		_, _ = s.nativeEvents.Publish(event)
+		_ = s.publishDisplayEvent(event)
 	}
 }
 
@@ -492,5 +531,5 @@ func (s *Service) publishNativeProjectionNotice(raw json.RawMessage) {
 	if validUUID(ids.Turn.ID) {
 		n.TurnId = &ids.Turn.ID
 	}
-	_, _ = s.nativeEvents.Publish(Event{AgentSessionID: record.AgentSessionID, TaskID: record.TaskID, CodexThreadID: record.CodexThreadID, EventType: "native.notification", Payload: EventPayload{Native: &n}})
+	_ = s.publishDisplayEvent(Event{AgentSessionID: record.AgentSessionID, TaskID: record.TaskID, CodexThreadID: record.CodexThreadID, EventType: "native.notification", Payload: EventPayload{Native: &n}})
 }

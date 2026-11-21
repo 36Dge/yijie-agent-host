@@ -4,7 +4,7 @@
   "mode": "local_worktree_candidate",
   "release": false,
   "runtime_source": {
-    "base_commit": "a7620ce46c125ebd295c770a521103a512730b9c",
+    "base_commit": "1e517e2c7a0c69bfb9fbc27a69b0dbf7e3f06dc9",
     "sources": {
       ".yijie/patches/0001-feat-126-filter-persistent-diagnostics.patch": "6b337a02caf064c6819fab5c7367a485004c85cce0d42acb06fa6d5003e599a0",
       ".yijie/patches/0002-feat-136-unified-exec-pre-emitter-command-lifecycle.patch": "43de168e1443f4b9ca60d7f61e3de2daf20e1cfea14d2e196d28ba417bf3e06d",
@@ -35,9 +35,10 @@
       ".yijie/patches/chat-models/0027-scoped-search-progress.patch": "2ed72e494a30d91fb8ea875c37848183cc5d0b213d597c97cc136d01f37eb1eb",
       ".yijie/patches/chat-models/0028-public-message-publication.patch": "cd1e9f86d860c4652ba1761da75edf535acb30fc4d9cbd205f0c26508febc8f0",
       ".yijie/patches/chat-models/0029-resume-after-terminal-error.patch": "4ffc745dfd8e38c581afca38c108f236cb02c0ea5de5202e4bb6097689c51626",
+      ".yijie/patches/chat-models/0030-declared-public-preview.patch": "fdd18c0adeb9b8cbd84782b6bb0823e4d7ca970e2bd6835bfbc96a1d6c9098d4",
       "scripts/build-native-skill-marketplace.sh": "e88e6775a23e0bdd21166b3795b46eb650aa881f87c57b50c3e2b629f1d68612",
       "scripts/prepare-native-skill-marketplace.py": "ca4f889fc8a0be1e9326543bfb5e581b707827001fe7c875bf675a4526824f9e",
-      "scripts/write-native-skill-marketplace-runtime-manifest.py": "794af9263be6fa22f5cc16d10daf6dc7f5e51d572d2442bb88825603086dc5ae",
+      "scripts/write-native-skill-marketplace-runtime-manifest.py": "cdc6b8b3e7135d936fc5cc3999fdae3bdc6ef5ccfd92b2e75e4fe3ae7c79a0f0",
       "scripts/prepare-answer-completion.py": "06ca45a8f0fcd5f66ea470cf0c813aee75dbf68a002862d650cedf1c8caa3de9"
     }
   },
@@ -49,19 +50,19 @@
   "runtime_artifact": {
     "binary": "codex",
     "reportedVersion": "codex-cli 0.144.6",
-    "sha256": "9f3780821895c96997ea0b21cb85125bed1060c6d53e14715b64c02910c38b19",
-    "sizeBytes": 358654904,
+    "sha256": "d7e70e4f67a6b9747d676f7bccc9cef2e5b54346a4d52242336d2e4406398f2e",
+    "sizeBytes": 358772872,
     "target": "aarch64-apple-darwin",
     "version": "0.144.6"
   },
-  "runtime_manifest_sha256": "021d67fb4cf327a3b3c68d7f45be82063018fd11d42f9701b5a1d143d2ce61c8",
+  "runtime_manifest_sha256": "2d3976deacae0212987e8cc55c8407b9950e5a0c73b86c966f60ee4347cbdcae",
   "runtime_schema": {
     "experimentalApi": false,
-    "schemaFileCount": 275,
-    "schemaTreeSha256": "d0288ebf2366f4bde9d42fa861c60e765d771951c44758ed443a6b316681f694",
+    "schemaFileCount": 276,
+    "schemaTreeSha256": "dc5e68f7af14dfdb17edb4cf38e8e280b8bf053f669182bcf5848b28d7f2bf19",
     "transport": "stdio"
   },
-  "runtime_relative_path": ".yijie/build/native-skill-marketplace-v1/38969919c275e77854e247c49f7cf1f748b47b200deeff41ab9b62d3ccf74d3d/aarch64-apple-darwin",
+  "runtime_relative_path": ".yijie/build/native-skill-marketplace-v1/f62bdbd1b1a636be6d5c140e928691fa72c8fc671bf519f1551c4146d82ad959/aarch64-apple-darwin",
   "patches": [
     {
       "path": ".yijie/patches/0001-feat-126-filter-persistent-diagnostics.patch",
@@ -178,8 +179,12 @@
     {
       "path": ".yijie/patches/chat-models/0029-resume-after-terminal-error.patch",
       "sha256": "4ffc745dfd8e38c581afca38c108f236cb02c0ea5de5202e4bb6097689c51626"
+    },
+    {
+      "path": ".yijie/patches/chat-models/0030-declared-public-preview.patch",
+      "sha256": "fdd18c0adeb9b8cbd84782b6bb0823e4d7ca970e2bd6835bfbc96a1d6c9098d4"
     }
   ],
   "config_schema_sha256": "0e6e4d1882bd59630c27979f01575843a0ae932b7129de8ea4f1ea706b6f442a",
-  "generator_sha256": "3b443407b805a5c5ce41ad7a9bc6ad7405b7726475715614dbd0d5fc5a089d3c"
+  "generator_sha256": "d51ad5e0723e56c6e24c9ecabe723289d5987af11af7c995d96bc4b402397e6f"
 }

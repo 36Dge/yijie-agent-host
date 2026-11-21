@@ -289,8 +289,8 @@ type Manager struct {
 	titleCollectors        map[string]*titleCollector
 	pendingTitleStarts     int
 	draftProofs            map[string]scheduledDraftProof
-	kimiK31ThreadProfiles  map[string]string // guarded by threadOperation
-	publicationThreads     map[string]bool   // guarded by threadOperation
+	kimiK31ThreadProfiles  map[string]string          // guarded by threadOperation
+	publicationThreads     map[string]publicationMode // guarded by threadOperation
 }
 
 func NewManager(config Config, logger *slog.Logger) *Manager {

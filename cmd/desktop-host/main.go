@@ -361,7 +361,8 @@ func run(logger *slog.Logger) error {
 	if config.Runtime.Market.Manifest != "" {
 		controlErrors := make(chan error, 1)
 		marketControlErrors = controlErrors
-		go func() { controlErrors <- app.ServeMarketControl(runtimeCtx, os.Stdin, os.Stdout, sessionService) }()
+		pipeCtx := app.NativeControlPublicationContext(runtimeCtx, config.Environment, os.Getenv("YIJIE_NATIVE_PIPE_PUBLIC_PREVIEW"), sessionService)
+		go func() { controlErrors <- app.ServeMarketControl(pipeCtx, os.Stdin, os.Stdout, sessionService) }()
 	}
 
 	serverErrors := make(chan error, 1)

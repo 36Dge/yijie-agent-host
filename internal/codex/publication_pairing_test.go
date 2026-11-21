@@ -31,3 +31,19 @@ func TestPublicMessagePublicationRequiresPairedArtifactAndStandaloneMarker(t *te
 		}
 	}
 }
+
+func TestPublicPreviewRequiresNegotiationOnThePairedRuntime(t *testing.T) {
+	m := NewManager(Config{RuntimePermissionsEnabled: true, ChatModelsEnabled: true, KimiK31Candidate: true}, nil)
+	ctx := WithPublicMessagePreview(context.Background())
+	const marker = "[yijie-public-preview-v1]"
+	if strings.Contains(m.publicationInstructions(ctx), marker) {
+		t.Fatal("unpaired preview")
+	}
+	m.setArtifact(ArtifactInfo{BinarySHA256: pin.RuntimeBinarySHA256, ManifestSHA256: pin.RuntimeManifestSHA256})
+	if strings.Contains(m.publicationInstructions(WithPublicMessagePublication(context.Background())), marker) {
+		t.Fatal("preview on v2")
+	}
+	if !strings.Contains(m.publicationInstructions(ctx), "\n"+marker+"\n") {
+		t.Fatal("missing negotiated marker")
+	}
+}

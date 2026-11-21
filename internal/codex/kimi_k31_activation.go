@@ -62,9 +62,9 @@ func (m *Manager) bindKimiK31Thread(ctx context.Context, info ThreadInfo) {
 	}
 	m.kimiK31ThreadProfiles[info.ID] = ModelProfileID(ctx)
 	if m.publicationThreads == nil {
-		m.publicationThreads = make(map[string]bool)
+		m.publicationThreads = make(map[string]publicationMode)
 	}
-	m.publicationThreads[info.ID] = ctx.Value(publicationContextKey{}) == true
+	m.publicationThreads[info.ID] = negotiatedPublication(ctx)
 }
 
 func (m *Manager) forgetKimiK31Thread(thread string) {

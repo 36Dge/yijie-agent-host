@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -125,5 +126,42 @@ func TestFEAT164ModelRoutesPreserveAuthAndRetiredRead(t *testing.T) {
 	}
 	if w := do("POST", path+"?unexpected=true", codex.KimiK31ProfileID, true); w.Code != 400 || calls != 1 {
 		t.Fatal("query reached producer")
+	}
+}
+
+type previewModelRoutes struct {
+	modelV2OperationRouteService
+	ctx      context.Context
+	previews bool
+}
+
+func (*previewModelRoutes) SupportsPublicMessagePublication() bool { return true }
+func (s *previewModelRoutes) SupportsPublicMessagePreview() bool   { return s.previews }
+func (s *previewModelRoutes) SelectChatModelV2(ctx context.Context, _ string, _ wire.SelectRequest) (wire.Selection, error) {
+	s.ctx = ctx
+	return wire.Selection{}, session.ErrTurnOperationConflict
+}
+
+func TestModelSwitchCarriesPublicationNegotiation(t *testing.T) {
+	const id = "00000000-0000-4000-8000-000000000164"
+	const body = `{"schema_version":2,"operation_id":"00000000-0000-4000-8000-000000000164","expected_revision":0,"profile_id":"kimi-k3-1-pro-max-v1"}`
+	for _, preview := range []bool{false, true} {
+		svc := &previewModelRoutes{previews: preview}
+		mux := http.NewServeMux()
+		registerChatModelsV2(mux, &sessionHandler{service: svc, apiToken: "local-operation-token"})
+		req := httptest.NewRequest("POST", "/v2/model-chat/agent-sessions/"+id+"/model", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer local-operation-token")
+		req.Header.Set("X-Yijie-Publication", "2")
+		req.Header.Set("X-Yijie-Publication-Preview", "1")
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		want := codex.WithPublicMessagePublication(req.Context())
+		if preview {
+			want = codex.WithPublicMessagePreview(req.Context())
+		}
+		if !reflect.DeepEqual(svc.ctx, want) || w.Header().Get("X-Yijie-Publication") != "2" ||
+			(w.Header().Get("X-Yijie-Publication-Preview") == "1") != preview {
+			t.Fatal("model resume lost negotiated capability")
+		}
 	}
 }

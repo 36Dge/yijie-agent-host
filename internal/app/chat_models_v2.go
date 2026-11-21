@@ -65,7 +65,7 @@ func registerChatModelsV2(mux *http.ServeMux, h *sessionHandler) {
 				writeJSON(w, 401, wire.Error{SchemaVersion: 2, Code: wire.ErrorCodeUnauthorized})
 				return
 			}
-			fn(w, r)
+			fn(w, negotiatePublication(w, r, h.service))
 		})
 	}
 	registerModel("GET /v2/model-chat/catalog", func(w http.ResponseWriter, r *http.Request) {

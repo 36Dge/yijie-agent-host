@@ -311,3 +311,54 @@ func TestFEAT132NativeCrossRepoExport(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPublicPreviewNegotiatedReplayHasIndependentContiguousSequence(t *testing.T) {
+	svc := NewService(&fakeRuntime{}, openBoundFEAT134Store(t), NewEventHub(32, 8), nil)
+	body := "真实可见的文字"
+	for _, part := range []struct {
+		at   int
+		text string
+	}{{0, "真实"}, {6, "可见的文字"}} {
+		svc.HandleNotification(RuntimeNotificationPublicPreviewDelta, rawJSON(t, map[string]any{"threadId": testThreadID, "turnId": testTurnID, "itemId": "answer", "offset": part.at, "delta": part.text}))
+	}
+	for _, method := range []string{RuntimeNotificationItemStarted, RuntimeNotificationItemCompleted} {
+		svc.HandleNotification(method, rawJSON(t, map[string]any{"threadId": testThreadID, "turnId": testTurnID, "item": map[string]any{"id": "answer", "type": "agentMessage", "phase": "final_answer", "text": body}}))
+	}
+	oldID, old, _, stop, err := svc.SubscribeNativeEvents(testSessionID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop()
+	newID, all, _, stop, err := svc.SubscribeNativePreviewEvents(testSessionID, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop()
+	if oldID == newID || len(old) != 2 || len(all) != 4 {
+		t.Fatalf("stream counts %d/%d", len(old), len(all))
+	}
+	for i, e := range old {
+		if e.Sequence != uint64(i+1) || e.Payload.Native.Method == RuntimeNotificationPublicPreviewDelta {
+			t.Fatal("legacy stream changed")
+		}
+	}
+	if all[0].Payload.Native.PreviewOffset == nil || *all[1].Payload.Native.PreviewOffset != 6 || *all[0].Payload.Native.Delta+*all[1].Payload.Native.Delta != body {
+		t.Fatal("preview bytes")
+	}
+	_, tail, _, stop, err := svc.SubscribeNativePreviewEvents(testSessionID, newID, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop()
+	if len(tail) != 2 || tail[0].Sequence != 3 {
+		t.Fatal("preview reconnect")
+	}
+	_, tail, _, stop, err = svc.SubscribeNativePreviewEvents(testSessionID, oldID, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stop()
+	if len(tail) != 1 || tail[0].Sequence != 2 {
+		t.Fatal("negotiation across old cursor")
+	}
+}

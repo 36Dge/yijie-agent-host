@@ -150,6 +150,10 @@ func validateChatModelLayer(a *managedCodexHomeAuthority) error {
 func (m *Manager) SwitchThread(ctx context.Context, threadID string) (ThreadInfo, error) {
 	m.threadOperation.Lock()
 	defer m.threadOperation.Unlock()
+	return m.switchThreadLocked(ctx, threadID)
+}
+
+func (m *Manager) switchThreadLocked(ctx context.Context, threadID string) (ThreadInfo, error) {
 	if !m.ModelAvailable(ModelProfileID(ctx)) {
 		return ThreadInfo{}, errors.New("selected model is unavailable")
 	}

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -276,5 +277,37 @@ func TestFEAT174RejectionReadUsesOwnerHTTPAndCorrelatedGeneratedProof(t *testing
 	}
 	if service.submits != 0 || service.reads != 1 {
 		t.Fatal("read mutated execution")
+	}
+}
+
+type previewExpertSubmitFixture struct {
+	marketAdapterFixture
+	ctx context.Context
+}
+
+func (*previewExpertSubmitFixture) SupportsPublicMessagePublication() bool { return true }
+func (*previewExpertSubmitFixture) SupportsPublicMessagePreview() bool     { return true }
+func (s *previewExpertSubmitFixture) SubmitMarket(ctx context.Context, in wire.SubmitPayload) (wire.SubmissionReceipt, error) {
+	s.ctx = ctx
+	return s.marketAdapterFixture.SubmitMarket(ctx, in)
+}
+
+func TestExpertSubmissionCarriesNegotiatedPublicTextPreview(t *testing.T) {
+	svc := &previewExpertSubmitFixture{marketAdapterFixture: marketAdapterFixture{enabled: true}}
+	mux := http.NewServeMux()
+	registerMarketRoutes(mux, svc, "ordinary-local-preview", string(marketID(1)))
+	body, err := json.Marshal(wire.SubmitRequest{SchemaVersion: 1, RequestId: marketID(10), Payload: wire.SubmitPayload{GrantRef: marketID(13), TurnOperationId: marketID(5)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/market-chat/submissions", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer ordinary-local-preview")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Yijie-Publication", "2")
+	req.Header.Set("X-Yijie-Publication-Preview", "1")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusAccepted || w.Header().Get("X-Yijie-Publication-Preview") != "1" || !reflect.DeepEqual(svc.ctx, codex.WithPublicMessagePreview(req.Context())) {
+		t.Fatal("expert submission did not preserve the negotiated display context")
 	}
 }

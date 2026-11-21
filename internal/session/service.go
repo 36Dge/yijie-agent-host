@@ -46,6 +46,7 @@ const (
 	maxPendingNotificationsThread = 32
 
 	RuntimeNotificationError                 = "error"
+	RuntimeNotificationPublicPreviewDelta    = "item/agentMessage/previewDelta"
 	RuntimeNotificationItemAgentMessageDelta = "item/agentMessage/delta"
 	RuntimeNotificationCommandOutputDelta    = "item/commandExecution/outputDelta"
 	RuntimeNotificationItemCompleted         = "item/completed"
@@ -138,6 +139,7 @@ func (s *Service) CleanupSession(ctx context.Context, sessionID, operationID str
 	}
 	s.clearApprovalSession(sessionID)
 	s.nativeEvents.DeleteSession(sessionID)
+	s.nativePreviewEvents.DeleteSession(sessionID)
 	if s.events != nil {
 		s.events.DeleteSession(sessionID)
 	}
@@ -226,6 +228,7 @@ type Service struct {
 	eventsV5             *EventHub
 	eventsV6             *EventHub
 	nativeEvents         *EventHub
+	nativePreviewEvents  *EventHub
 	artifacts            *artifact.Store
 	syntheticArtifacts   bool
 	rawReasoning         bool
@@ -322,13 +325,14 @@ func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Lo
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	service := &Service{
-		runtime:        runtime,
-		store:          store,
-		events:         events,
-		nativeEvents:   NewEventHubVersion(13, 512, 64),
-		logger:         logger,
-		pending:        make(map[string][]pendingNotification),
-		syntheticTurns: make(map[string]*syntheticTerminalBarrier),
+		runtime:             runtime,
+		store:               store,
+		events:              events,
+		nativeEvents:        NewEventHubVersion(13, 512, 64),
+		nativePreviewEvents: NewEventHubVersion(13, 512, 64),
+		logger:              logger,
+		pending:             make(map[string][]pendingNotification),
+		syntheticTurns:      make(map[string]*syntheticTerminalBarrier),
 
 		v5Items:         make(map[v5ItemKey]*v5ItemState),
 		titleOperations: make(map[titleOperationKey]*titleOperation),
@@ -759,7 +763,7 @@ func (s *Service) processNotification(method string, params json.RawMessage) (re
 		defer s.publishNativeNotification(method, params)
 	}
 	switch method {
-	case "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":
+	case RuntimeNotificationPublicPreviewDelta, "item/reasoning/summaryTextDelta", "item/reasoning/summaryPartAdded":
 		return nil
 	case RuntimeNotificationThreadStarted:
 		var notification struct {
@@ -1493,7 +1497,7 @@ func (s *Service) flushPending(threadID string) {
 }
 
 func supportedNotification(method string) bool {
-	if method == tokenUsageNotification {
+	if method == tokenUsageNotification || method == RuntimeNotificationPublicPreviewDelta {
 		return true
 	}
 	if method == RuntimeNotificationReasoningTextDelta || method == "item/reasoning/summaryTextDelta" || method == "item/reasoning/summaryPartAdded" {

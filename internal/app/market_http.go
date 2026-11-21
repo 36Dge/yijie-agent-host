@@ -93,7 +93,7 @@ func registerMarketRoutes(mux *http.ServeMux, candidate any, apiToken, nonce str
 				writeJSON(w, http.StatusUnauthorized, wire.Error{SchemaVersion: 1, Code: wire.ErrorCodePermissionDenied, Retryable: false})
 				return
 			}
-			next(w, r)
+			next(w, negotiatePublication(w, r, candidate))
 		})
 	}
 	register("POST /v1/market-chat/submissions", func(w http.ResponseWriter, r *http.Request) {

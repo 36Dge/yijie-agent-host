@@ -1019,18 +1019,31 @@ type sessionHandler struct {
 	heartbeatInterval time.Duration
 }
 
+// Both ordinary execution routes and the model-management routes use this after
+// their own authentication. Model switch/resume must receive the same capability.
+func negotiatePublication(w http.ResponseWriter, r *http.Request, service any) *http.Request {
+	if capability, ok := service.(interface{ SupportsPublicMessagePublication() bool }); ok &&
+		len(r.Header.Values("X-Yijie-Publication")) == 1 && r.Header.Get("X-Yijie-Publication") == "2" && capability.SupportsPublicMessagePublication() {
+		ctx := r.Context()
+		if preview, ok := service.(interface{ SupportsPublicMessagePreview() bool }); ok && preview.SupportsPublicMessagePreview() && len(r.Header.Values("X-Yijie-Publication-Preview")) == 1 && r.Header.Get("X-Yijie-Publication-Preview") == "1" {
+			ctx = codex.WithPublicMessagePreview(ctx)
+			w.Header().Set("X-Yijie-Publication-Preview", "1")
+		} else {
+			ctx = codex.WithPublicMessagePublication(ctx)
+		}
+		r = r.WithContext(ctx)
+		w.Header().Set("X-Yijie-Publication", "2")
+	}
+	return r
+}
+
 func (h *sessionHandler) authorize(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !security.TokenMatches(h.apiToken, r.Header.Get("Authorization")) {
 			writeAPIError(w, http.StatusUnauthorized, agenthostcontract.ErrorResponseErrorCodeUnauthorized, "valid Agent Host bearer token required")
 			return
 		}
-		if capability, ok := h.service.(interface{ SupportsPublicMessagePublication() bool }); ok &&
-			len(r.Header.Values("X-Yijie-Publication")) == 1 && r.Header.Get("X-Yijie-Publication") == "2" && capability.SupportsPublicMessagePublication() {
-			r = r.WithContext(codex.WithPublicMessagePublication(r.Context()))
-			w.Header().Set("X-Yijie-Publication", "2")
-		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, negotiatePublication(w, r, h.service))
 	})
 }
 

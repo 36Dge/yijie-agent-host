@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/36Dge/yijie-agent-host/internal/codex"
 	"io"
 	"sync"
 
@@ -134,6 +135,16 @@ func routeMarketControl(ctx context.Context, service MarketControlService, frame
 }
 
 var errMarketControlRequest = errors.New("market control request unavailable")
+
+// NativeControlPublicationContext negotiates display only for the owned pipe.
+// Grant registration, scope, approvals and model admission have independent authorities.
+func NativeControlPublicationContext(ctx context.Context, environment, requested string, service MarketControlService) context.Context {
+	capability, ok := service.(interface{ SupportsPublicMessagePreview() bool })
+	if environment == "local" && requested == "1" && ok && capability.SupportsPublicMessagePreview() {
+		return codex.WithPublicMessagePreview(ctx)
+	}
+	return ctx
+}
 
 // A serial bounded JSONL reader holds exclusive response ownership. EOF retires
 // authority before cmd closes HTTP and normally shuts down worker/Runtime.

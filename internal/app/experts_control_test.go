@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"github.com/36Dge/yijie-agent-host/internal/codex"
+	"reflect"
 	"testing"
 	"time"
 
@@ -111,5 +113,46 @@ func TestFEAT158ExplicitRecoveryRoutesKeepSourcePayloadAndOriginalIdentity(t *te
 	}
 	if svc.recovers != 2 || svc.reads != 0 {
 		t.Fatal("explicit recovery routed through ordinary read", svc.recovers, svc.reads)
+	}
+}
+
+type expertPreviewControl struct {
+	feat158Control
+	received  context.Context
+	supported bool
+}
+
+func (p *expertPreviewControl) SupportsPublicMessagePreview() bool { return p.supported }
+func (p *expertPreviewControl) SubmitExpert(ctx context.Context, _ market.SubmitPayload) (expert.PrivateReceipt, error) {
+	p.received = ctx
+	return expert.PrivateReceipt{}, nil
+}
+
+func TestOwnerNegotiatesPreviewOnPrivateExpertSubmit(t *testing.T) {
+	req := expert.PrivateSubmitRequest{SchemaVersion: 1, RequestId: marketID(10), Method: "expert_submit",
+		Payload: market.SubmitPayload{GrantRef: marketID(13), TurnOperationId: marketID(5)}}
+	frame, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		local, flag  string
+		paired, want bool
+	}{
+		{"local", "1", true, true}, {"local", "", true, false}, {"local", "1", false, false},
+	} {
+		service := &expertPreviewControl{supported: tc.paired}
+		original := context.Background()
+		ctx := NativeControlPublicationContext(original, tc.local, tc.flag, service)
+		if _, _, err := routeMarketControl(ctx, service, frame); err != nil {
+			t.Fatal(err)
+		}
+		var expected context.Context = original
+		if tc.want {
+			expected = codex.WithPublicMessagePreview(original)
+		}
+		if !reflect.DeepEqual(service.received, expected) {
+			t.Fatal("incorrect private expert-submit display negotiation")
+		}
 	}
 }

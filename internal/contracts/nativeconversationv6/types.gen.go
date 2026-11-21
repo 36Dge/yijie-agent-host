@@ -786,6 +786,21 @@ func (e StreamNativeConversationProcessParamsXYijiePublication) Valid() bool {
 	}
 }
 
+// Defines values for StreamNativeConversationProcessParamsXYijiePublicationPreview.
+const (
+	N1 StreamNativeConversationProcessParamsXYijiePublicationPreview = "1"
+)
+
+// Valid indicates whether the value is a known member of the StreamNativeConversationProcessParamsXYijiePublicationPreview enum.
+func (e StreamNativeConversationProcessParamsXYijiePublicationPreview) Valid() bool {
+	switch e {
+	case N1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ReadNativeThreadProcessParamsXYijieSearchReceipt.
 const (
 	ReadNativeThreadProcessParamsXYijieSearchReceiptN2 ReadNativeThreadProcessParamsXYijieSearchReceipt = "2"
@@ -1002,10 +1017,13 @@ type NativeNotification struct {
 	ItemId       *string                        `json:"itemId,omitempty"`
 	Method       string                         `json:"method"`
 	Plan         *[]NativePlanStep              `json:"plan,omitempty"`
-	Source       NativeNotificationSource       `json:"source"`
-	ThreadId     string                         `json:"threadId"`
-	Turn         *NativeTurn                    `json:"turn,omitempty"`
-	TurnId       *string                        `json:"turnId,omitempty"`
+
+	// PreviewOffset Only for item/agentMessage/previewDelta. UTF-8 byte offset in the bounded, cleaned public body. Offset zero starts a preview. The formal item snapshot wins; previews carry no phase or execution authority.
+	PreviewOffset *int                     `json:"previewOffset,omitempty"`
+	Source        NativeNotificationSource `json:"source"`
+	ThreadId      string                   `json:"threadId"`
+	Turn          *NativeTurn              `json:"turn,omitempty"`
+	TurnId        *string                  `json:"turnId,omitempty"`
 
 	// WillRetry Native retry intent only. Omitted/null means unknown, never false; does not drive client execution.
 	WillRetry *bool `json:"willRetry,omitempty"`
@@ -1119,7 +1137,10 @@ type StreamNativeConversationProcessParams struct {
 
 	// XYijiePublication Opt in to stable message identities, publication provenance and bounded undelivered text.
 	XYijiePublication *StreamNativeConversationProcessParamsXYijiePublication `json:"X-Yijie-Publication,omitempty"`
-	LastEventID       *string                                                 `json:"Last-Event-ID,omitempty"`
+
+	// XYijiePublicationPreview Together with publication 2, opt into a dedicated replay cursor including transient public text previews. The Host echoes this header only for a paired Runtime.
+	XYijiePublicationPreview *StreamNativeConversationProcessParamsXYijiePublicationPreview `json:"X-Yijie-Publication-Preview,omitempty"`
+	LastEventID              *string                                                        `json:"Last-Event-ID,omitempty"`
 }
 
 // StreamNativeConversationProcessParamsXYijieSearchReceipt defines parameters for StreamNativeConversationProcess.
@@ -1127,6 +1148,9 @@ type StreamNativeConversationProcessParamsXYijieSearchReceipt string
 
 // StreamNativeConversationProcessParamsXYijiePublication defines parameters for StreamNativeConversationProcess.
 type StreamNativeConversationProcessParamsXYijiePublication string
+
+// StreamNativeConversationProcessParamsXYijiePublicationPreview defines parameters for StreamNativeConversationProcess.
+type StreamNativeConversationProcessParamsXYijiePublicationPreview string
 
 // ReadNativeThreadProcessParams defines parameters for ReadNativeThreadProcess.
 type ReadNativeThreadProcessParams struct {
@@ -1341,15 +1365,26 @@ func NewStreamNativeConversationProcessRequest(server string, agentSessionId ope
 			req.Header.Set("X-Yijie-Publication", headerParam1)
 		}
 
-		if params.LastEventID != nil {
+		if params.XYijiePublicationPreview != nil {
 			var headerParam2 string
 
-			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam2, err = runtime.StyleParamWithOptions("simple", false, "X-Yijie-Publication-Preview", *params.XYijiePublicationPreview, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Last-Event-ID", headerParam2)
+			req.Header.Set("X-Yijie-Publication-Preview", headerParam2)
+		}
+
+		if params.LastEventID != nil {
+			var headerParam3 string
+
+			headerParam3, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Last-Event-ID", headerParam3)
 		}
 
 	}

@@ -3,6 +3,9 @@ package runtimeskillmarket
 
 import _ "embed"
 
+//go:embed AgentMessagePreviewDeltaNotification.json
+var AgentMessagePreviewDeltaNotificationSchema []byte
+
 //go:embed PluginStateReadParams.json
 var PluginStateReadParamsSchema []byte
 

@@ -34,10 +34,23 @@ func TestFEAT164ExpertMediaCanonicalRuntime(t *testing.T) {
 		if media {
 			name = "media"
 		}
-		t.Run(name, func(t *testing.T) { runFEAT164ExpertMedia(t, media) })
+		t.Run(name, func(t *testing.T) { runFEAT164ExpertMedia(t, media, "") })
 	}
 }
-func runFEAT164ExpertMedia(t *testing.T, media bool) {
+func TestExpertDeclaredPreviewCanonicalRuntime(t *testing.T) {
+	for _, profile := range []string{codex.KimiK31ProfileID, "minimax-m3-high-v1"} {
+		t.Run(profile, func(t *testing.T) { runFEAT164ExpertMedia(t, false, profile) })
+	}
+}
+func runFEAT164ExpertMedia(t *testing.T, media bool, previewProfile string) {
+	profile := codex.KimiK31ProfileID
+	if previewProfile != "" {
+		profile = previewProfile
+	}
+	selected, ok := codex.ModelProfile(profile)
+	if !ok {
+		t.Fatal("unknown expert model profile")
+	}
 	expectedRequests := int64(1)
 	if media {
 		expectedRequests = 3
@@ -72,6 +85,7 @@ func runFEAT164ExpertMedia(t *testing.T, media bool) {
 		}
 	}
 	var requests atomic.Int64
+	var expectNativeSearch atomic.Bool
 	providerListener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -85,17 +99,18 @@ func runFEAT164ExpertMedia(t *testing.T, media bool) {
 		}
 		n := requests.Add(1)
 		reasoning, _ := body["reasoning"].(map[string]any)
-		if n > expectedRequests || body["model"] != "kimi-k3.1-pro" || reasoning["effort"] != "max" {
+		if n > expectedRequests || body["model"] != selected.Model || reasoning["effort"] != selected.Effort {
 			t.Error("unexpected model/count")
 			w.WriteHeader(400)
 			return
 		}
 		tools, _ := body["tools"].([]any)
+		foundNativeSearch := false
 		toolName, toolNamespace := "", ""
 		for _, raw := range tools {
 			v, _ := raw.(map[string]any)
 			if strings.Contains(fmt.Sprint(v["type"]), "web_search") {
-				t.Error("expert search unexpectedly enabled")
+				foundNativeSearch = true
 			}
 			name, _ := v["name"].(string)
 			if strings.Contains(name, "publish_artifact") {
@@ -110,6 +125,9 @@ func runFEAT164ExpertMedia(t *testing.T, media bool) {
 					}
 				}
 			}
+		}
+		if foundNativeSearch != expectNativeSearch.Load() {
+			t.Error("native search differs from the resolved expert policy")
 		}
 		if (toolName != "") != media {
 			t.Error("media tool/profile mismatch")
@@ -134,6 +152,25 @@ func runFEAT164ExpertMedia(t *testing.T, media bool) {
 		}
 		id := fmt.Sprintf("response_%d", n)
 		w.Header().Set("Content-Type", "text/event-stream")
+		if previewProfile != "" {
+			const header = "[[yijie-public-message-v1:final_answer]]\n"
+			const body = "专家开始输出。后续正文。"
+			seed := map[string]any{"id": item["id"], "role": "assistant", "type": "message", "content": []any{}}
+			full := map[string]any{"id": item["id"], "role": "assistant", "type": "message", "content": []any{map[string]any{"type": "output_text", "text": header + body}}}
+			emit := func(value any) {
+				b, _ := json.Marshal(value)
+				fmt.Fprintf(w, "data: %s\n\n", b)
+				w.(http.Flusher).Flush()
+			}
+			emit(map[string]any{"type": "response.created", "response": map[string]any{"id": id, "status": "in_progress", "output": []any{}}})
+			emit(map[string]any{"type": "response.output_item.added", "output_index": 0, "item": seed})
+			for _, part := range []string{header[:9], header[9:], "专家开始输出。", "后续正文。"} {
+				emit(map[string]any{"type": "response.output_text.delta", "output_index": 0, "item_id": item["id"], "content_index": 0, "delta": part})
+			}
+			emit(map[string]any{"type": "response.output_item.done", "output_index": 0, "item": full})
+			emit(map[string]any{"type": "response.completed", "response": map[string]any{"id": id, "status": "completed", "output": []any{full}, "usage": map[string]any{"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}}})
+			return
+		}
 		for _, event := range []any{map[string]any{"type": "response.created", "response": map[string]any{"id": id, "status": "in_progress", "output": []any{}}}, map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item}, map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item}, map[string]any{"type": "response.completed", "response": map[string]any{"id": id, "status": "completed", "output": []any{item}, "usage": map[string]any{"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}}}} {
 			b, _ := json.Marshal(event)
 			fmt.Fprintf(w, "data: %s\n\n", b)
@@ -149,6 +186,9 @@ func runFEAT164ExpertMedia(t *testing.T, media bool) {
 	config.RequestTimeout = 30 * time.Second
 	config.ShutdownTimeout = 25 * time.Second
 	config.ChatModelsEnabled, config.KimiK31Candidate, config.RuntimePermissionsEnabled = true, true, true
+	if previewProfile != "" {
+		config.NativeToolsEnabled, config.InteractionToolsEnabled, config.ToolSearchEnabled = true, true, true
+	}
 	config.MiniMax = codex.MiniMaxConfig{Enabled: true, APIKey: "ordinary-loopback-minimax"}
 	config.KimiAPIKey = "ordinary-loopback-kimi"
 	config.PermissionVerificationBaseURL = "http://" + providerListener.Addr().String() + "/v1"
@@ -285,6 +325,21 @@ func runFEAT164ExpertMedia(t *testing.T, media bool) {
 	if ref == nil {
 		t.Fatal("reviewed expert missing")
 	}
+	if previewProfile != "" {
+		resolved, err := resources.ResolveExpert(*ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, err := codex.WithExpertWebPolicy(context.Background(), string(ref.ExpertId), string(ref.Version), string(ref.RoleSha256))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, err = codex.WithExpertInstructions(ctx, resolved.Role, resolved.Index)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectNativeSearch.Store(codex.ExpertWebAllowed(ctx))
+	}
 	id := func() market.CanonicalId { return market.CanonicalId(uuid.NewString()) }
 	scope := market.ScopeBinding{OwnerUserId: id(), TenantId: id(), NativeProcessEpoch: id(), AuthorizationRevision: 1, AuthorizationExpiresAtUnixMs: broker.UnixMilliseconds(time.Now().Add(2 * time.Minute).UnixMilli())}
 	if _, err = service.MarketHello(market.HelloPayload{HostInstanceId: market.CanonicalId(instance), OwnerUserId: scope.OwnerUserId, TenantId: scope.TenantId, NativeProcessEpoch: scope.NativeProcessEpoch}); err != nil {
@@ -305,7 +360,7 @@ func runFEAT164ExpertMedia(t *testing.T, media bool) {
 		if e = json.Unmarshal([]byte(`{"type":"text","text":"仅整理本机参考；需要时登记当前目录中已存在的普通报告。"}`), &block); e != nil {
 			t.Fatal(e)
 		}
-		submission := market.Submission{TaskId: id(), LocalSessionId: id(), SubmissionOperationId: id(), Cwd: cwd, ContentBlocks: []market.ContentBlock{block}, Intent: market.ModelIntent{ProfileId: codex.KimiK31ProfileID}, PermissionMode: market.PermissionModeAsk, Snapshot: selection.SelectionSnapshot{SchemaVersion: 1, TurnOperationId: op, Selection: refs, SelectionDigest: selection.SelectionDigestValue(digest)}, Services: []market.ServiceBinding{}}
+		submission := market.Submission{TaskId: id(), LocalSessionId: id(), SubmissionOperationId: id(), Cwd: cwd, ContentBlocks: []market.ContentBlock{block}, Intent: market.ModelIntent{ProfileId: market.ProfileId(profile)}, PermissionMode: market.PermissionModeAsk, Snapshot: selection.SelectionSnapshot{SchemaVersion: 1, TurnOperationId: op, Selection: refs, SelectionDigest: selection.SelectionDigestValue(digest)}, Services: []market.ServiceBinding{}}
 		snapshot, e := expert.FreezeSnapshot(op, 1, ref)
 		if e != nil {
 			t.Fatal(e)
@@ -315,11 +370,26 @@ func runFEAT164ExpertMedia(t *testing.T, media bool) {
 			t.Fatal(e)
 		}
 		trigger := market.SubmitPayload{GrantRef: grant.Grant.GrantRef, TurnOperationId: op}
-		receipt, e := service.SubmitExpert(context.Background(), trigger)
+		var receipt expert.PrivateReceipt
+		if previewProfile != "" {
+			// Use the same negotiated context and private dispatcher as the owned Native pipe.
+			ctx := NativeControlPublicationContext(context.Background(), "local", "1", service)
+			frame, err := json.Marshal(expert.PrivateSubmitRequest{SchemaVersion: 1, Method: "expert_submit", RequestId: id(), Payload: trigger})
+			if err != nil {
+				t.Fatal(err)
+			}
+			value, _, err := routeMarketControl(ctx, service, frame)
+			if err != nil {
+				t.Fatal(err)
+			}
+			receipt = value.(expert.PrivateSubmitResponse).Data
+		} else {
+			receipt, e = service.SubmitExpert(context.Background(), trigger)
+		}
 		if e != nil {
 			t.Fatal(name, e)
 		}
-		if receipt.Receipt.ProfileId != codex.KimiK31ProfileID || receipt.Receipt.NativeTurnId == nil {
+		if receipt.Receipt.ProfileId != market.ProfileId(profile) || receipt.Receipt.NativeTurnId == nil {
 			t.Fatal("identity/turn missing")
 		}
 		select {
@@ -329,6 +399,36 @@ func runFEAT164ExpertMedia(t *testing.T, media bool) {
 			}
 		case <-time.After(35 * time.Second):
 			t.Fatal(name, "normal turn timeout")
+		}
+		if previewProfile != "" {
+			_, events, _, cancel, err := service.SubscribeNativePreviewEvents(string(*receipt.Receipt.AgentSessionId), "", 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cancel()
+			var preview strings.Builder
+			confirmed := false
+			packets := 0
+			for _, event := range events {
+				notice := event.Payload.Native
+				if notice == nil {
+					continue
+				}
+				if notice.Method == session.RuntimeNotificationPublicPreviewDelta {
+					if confirmed || notice.PreviewOffset == nil || *notice.PreviewOffset != preview.Len() || notice.Delta == nil {
+						t.Fatal("invalid expert preview order")
+					}
+					preview.WriteString(*notice.Delta)
+					packets++
+				}
+				if notice.Method == "item/started" && notice.Item != nil && notice.Item.Type == "agentMessage" {
+					confirmed = notice.Item.Publication != nil && notice.Item.Phase != nil && *notice.Item.Phase == "final_answer"
+				}
+			}
+			if packets < 2 || !confirmed || preview.String() != "专家开始输出。后续正文。" {
+				t.Fatalf("expert preview packets=%d confirmed=%v", packets, confirmed)
+			}
+			t.Logf("paired %s expert preview: %d ordered real chunks and one declared final", profile, packets)
 		}
 		again, e := service.SubmitExpert(context.Background(), trigger)
 		if e != nil || again.Receipt != receipt.Receipt {

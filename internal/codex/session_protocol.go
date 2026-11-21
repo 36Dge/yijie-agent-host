@@ -255,8 +255,25 @@ func (m *Manager) sessionApprovalPolicy() string {
 
 type publicationContextKey struct{}
 
+type publicationMode uint8
+
+const (
+	publicationLegacy publicationMode = iota
+	publicationStable
+	publicationPreview
+)
+
+func negotiatedPublication(ctx context.Context) publicationMode {
+	mode, _ := ctx.Value(publicationContextKey{}).(publicationMode)
+	return mode
+}
+
+func WithPublicMessagePreview(ctx context.Context) context.Context {
+	return context.WithValue(ctx, publicationContextKey{}, publicationPreview)
+}
+
 func WithPublicMessagePublication(ctx context.Context) context.Context {
-	return context.WithValue(ctx, publicationContextKey{}, true)
+	return context.WithValue(ctx, publicationContextKey{}, publicationStable)
 }
 
 func (m *Manager) SupportsPublicMessagePublication() bool {
@@ -265,10 +282,19 @@ func (m *Manager) SupportsPublicMessagePublication() bool {
 	return m.config.RuntimePermissionsEnabled && m.config.ChatModelsEnabled && m.config.KimiK31Candidate && m.artifact.supportsNativeSkillMarketplace()
 }
 
+// Both capabilities currently require the exact canonical artifact containing 0030.
+func (m *Manager) SupportsPublicMessagePreview() bool {
+	return m.SupportsPublicMessagePublication()
+}
+
 func (m *Manager) publicationInstructions(ctx context.Context) string {
 	instructions := m.sessionDeveloperInstructions()
-	if ctx.Value(publicationContextKey{}) == true && m.SupportsPublicMessagePublication() && !isScheduledDraft(ctx) {
-		return instructions + "\n[yijie-publication-v2]\n"
+	if mode := negotiatedPublication(ctx); mode != publicationLegacy && m.SupportsPublicMessagePublication() && !isScheduledDraft(ctx) {
+		instructions += "\n[yijie-publication-v2]\n"
+		if mode == publicationPreview {
+			instructions += "[yijie-public-preview-v1]\n"
+		}
+		return instructions
 	}
 	return instructions
 }
@@ -276,8 +302,10 @@ func (m *Manager) publicationInstructions(ctx context.Context) string {
 // Called under threadOperation. A newly paired client can take over a loaded
 // legacy thread at the next turn boundary without modifying previous turns.
 func (m *Manager) pairPublicationTurn(ctx context.Context, threadID string) error {
-	if previous, ok := m.publicationThreads[threadID]; ok && previous != (ctx.Value(publicationContextKey{}) == true) && m.SupportsPublicMessagePublication() && !isScheduledDraft(ctx) {
-		_, err := m.resumeThread(ctx, threadID)
+	if previous, ok := m.publicationThreads[threadID]; ok && previous != negotiatedPublication(ctx) && m.SupportsPublicMessagePublication() && !isScheduledDraft(ctx) {
+		// A resume of an already loaded native thread may ignore developer
+		// instruction overrides. Reuse the checked idle unsubscribe/resume path.
+		_, err := m.switchThreadLocked(ctx, threadID)
 		return err
 	}
 	return nil

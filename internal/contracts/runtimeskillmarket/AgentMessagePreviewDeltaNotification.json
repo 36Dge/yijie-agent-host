@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Transient, consecutive UTF-8 body bytes for a declared public message. The formal item lifecycle and history are authoritative.",
+  "properties": {
+    "delta": {
+      "type": "string"
+    },
+    "itemId": {
+      "type": "string"
+    },
+    "offset": {
+      "format": "uint32",
+      "minimum": 0.0,
+      "type": "integer"
+    },
+    "threadId": {
+      "type": "string"
+    },
+    "turnId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "delta",
+    "itemId",
+    "offset",
+    "threadId",
+    "turnId"
+  ],
+  "title": "AgentMessagePreviewDeltaNotification",
+  "type": "object"
+}

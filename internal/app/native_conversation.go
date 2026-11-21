@@ -12,6 +12,10 @@ type nativeConversationService interface {
 	SubscribeNativeEvents(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)
 }
 
+type nativePreviewService interface {
+	SubscribeNativePreviewEvents(string, string, uint64) (string, []session.Event, <-chan session.Event, func(), error)
+}
+
 // FEAT-167: the owner retired old native display endpoints. Runtime execution
 // and artifact/control-plane endpoints are independent and remain unchanged.
 func registerNativeConversation(mux *http.ServeMux, h *sessionHandler) {
@@ -38,6 +42,10 @@ func registerNativeConversation(mux *http.ServeMux, h *sessionHandler) {
 	mux.Handle("GET /v13/agent-sessions/{agent_session_id}/events", h.authorize(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Yijie-Event-Schema-Version", "13")
+		if preview, ok := h.service.(nativePreviewService); ok && w.Header().Get("X-Yijie-Publication-Preview") == "1" {
+			h.streamEvents(w, r, preview.SubscribeNativePreviewEvents)
+			return
+		}
 		h.streamEvents(w, r, service.SubscribeNativeEvents)
 	})))
 }

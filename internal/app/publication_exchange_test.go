@@ -25,6 +25,7 @@ type publicationHistory struct {
 }
 
 func (publicationHistory) SupportsPublicMessagePublication() bool { return true }
+func (publicationHistory) SupportsPublicMessagePreview() bool     { return true }
 
 func (r publicationHistory) ReadThread(context.Context, string) (json.RawMessage, error) {
 	return r.thread, nil
@@ -66,7 +67,9 @@ func TestPublicMessagePublicationExchange(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := session.NewService(publicationHistory{thread: raw}, store, session.NewEventHub(512, 64), nil)
+	previews := false
 	for _, e := range input {
+		previews = previews || e.Method == session.RuntimeNotificationPublicPreviewDelta
 		svc.HandleNotification(e.Method, e.Params)
 	}
 	mux := http.NewServeMux()
@@ -83,6 +86,9 @@ func TestPublicMessagePublicationExchange(t *testing.T) {
 		r.Header.Set("Authorization", "Bearer "+token)
 		if extended {
 			r.Header.Set("X-Yijie-Publication", "2")
+			if previews {
+				r.Header.Set("X-Yijie-Publication-Preview", "1")
+			}
 		}
 		resp, err := client.Do(r)
 		if err != nil {
