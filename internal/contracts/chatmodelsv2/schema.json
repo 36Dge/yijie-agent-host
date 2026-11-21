@@ -4,11 +4,11 @@
   "title": "FEAT-164 versioned model selection",
   "x-model-profiles": [
     {
-      "profile_id": "kimi-k3-1-pro-max-v1",
+      "profile_id": "kimi-k3-1-pro-high-v1",
       "label": "Kimi K3.1 Pro",
       "provider": "kimi",
       "model": "kimi-k3.1-pro",
-      "effort": "max",
+      "effort": "high",
       "context_window": 1048576
     },
     {
@@ -18,6 +18,14 @@
       "model": "MiniMax-M3",
       "effort": "high",
       "context_window": 1000000
+    },
+    {
+      "profile_id": "kimi-k3-1-pro-max-v1",
+      "label": "Kimi K3.1 Pro",
+      "provider": "kimi",
+      "model": "kimi-k3.1-pro",
+      "effort": "max",
+      "context_window": 1048576
     }
   ],
   "$defs": {
@@ -25,6 +33,7 @@
       "type": "string",
       "enum": [
         "kimi-k3-max-v1",
+        "kimi-k3-1-pro-high-v1",
         "kimi-k3-1-pro-max-v1",
         "minimax-m3-high-v1"
       ],
@@ -84,7 +93,7 @@
         {
           "properties": {
             "profile_id": {
-              "const": "kimi-k3-1-pro-max-v1"
+              "const": "kimi-k3-1-pro-high-v1"
             },
             "label": {
               "const": "Kimi K3.1 Pro"
@@ -96,7 +105,7 @@
               "const": "kimi-k3.1-pro"
             },
             "effort": {
-              "const": "max"
+              "const": "high"
             },
             "context_window": {
               "const": 1048576
@@ -130,6 +139,36 @@
             },
             "context_window": {
               "const": 1000000
+            }
+          },
+          "required": [
+            "profile_id",
+            "label",
+            "provider",
+            "model",
+            "effort",
+            "context_window"
+          ]
+        },
+        {
+          "properties": {
+            "profile_id": {
+              "const": "kimi-k3-1-pro-max-v1"
+            },
+            "label": {
+              "const": "Kimi K3.1 Pro"
+            },
+            "provider": {
+              "const": "kimi"
+            },
+            "model": {
+              "const": "kimi-k3.1-pro"
+            },
+            "effort": {
+              "const": "max"
+            },
+            "context_window": {
+              "const": 1048576
             }
           },
           "required": [
@@ -211,16 +250,39 @@
         },
         "default_profile": {
           "$ref": "#/$defs/ActiveProfileId",
-          "const": "kimi-k3-1-pro-max-v1"
+          "const": "kimi-k3-1-pro-high-v1"
         },
         "models": {
           "type": "array",
-          "minItems": 2,
-          "maxItems": 2,
+          "minItems": 3,
+          "maxItems": 3,
           "items": {
             "$ref": "#/$defs/ModelAvailability"
           },
           "allOf": [
+            {
+              "contains": {
+                "properties": {
+                  "profile": {
+                    "properties": {
+                      "profile_id": {
+                        "const": "kimi-k3-1-pro-high-v1"
+                      }
+                    },
+                    "required": [
+                      "profile_id"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "profile"
+                ],
+                "type": "object"
+              },
+              "minContains": 1,
+              "maxContains": 1
+            },
             {
               "contains": {
                 "properties": {
@@ -429,8 +491,9 @@
     "ActiveProfileId": {
       "type": "string",
       "enum": [
-        "kimi-k3-1-pro-max-v1",
-        "minimax-m3-high-v1"
+        "kimi-k3-1-pro-high-v1",
+        "minimax-m3-high-v1",
+        "kimi-k3-1-pro-max-v1"
       ],
       "description": "Only these identities may be used for a new execution or selection target."
     },
@@ -692,5 +755,5 @@
       "description": "Original committed result, preserving its schema version and fields. A legacy result is not upgraded or decorated with current availability. Read current Selection separately."
     }
   },
-  "x-family-version": "0.2.0"
+  "x-family-version": "0.3.0"
 }

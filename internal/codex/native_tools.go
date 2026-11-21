@@ -62,11 +62,15 @@ func nativeToolsIntegerValues(value any) (any, error) {
 }
 
 func nativeToolsCatalog() ([]byte, error) {
+	return nativeToolsCatalogVersion(true)
+}
+
+func nativeToolsCatalogVersion(highDefault bool) ([]byte, error) {
 	_, metadata, err := nativeToolsConfiguration()
 	if err != nil {
 		return nil, err
 	}
-	current, err := kimiK31Catalog()
+	current, err := kimiK31CatalogVersion(highDefault)
 	if err != nil {
 		return nil, err
 	}
@@ -85,11 +89,7 @@ func nativeToolsCatalog() ([]byte, error) {
 }
 
 func prepareNativeToolsLayer(a *managedCodexHomeAuthority) ([]string, error) {
-	catalog, err := nativeToolsCatalog()
-	if err != nil {
-		return nil, err
-	}
-	plan, err := a.preflightManagedFile(nativeToolsCatalogName, catalog, catalog)
+	plan, err := preflightKimiCatalog(a, nativeToolsCatalogName, nativeToolsCatalogVersion)
 	if err != nil {
 		return nil, err
 	}

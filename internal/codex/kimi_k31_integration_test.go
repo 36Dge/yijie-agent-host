@@ -25,7 +25,7 @@ func TestFEAT164NativePredecessorAndPausedKimi(t *testing.T) {
 
 func runFEAT164NativeLifecycle(t *testing.T, paused bool) {
 	t.Helper()
-	profiles := []string{KimiK31ProfileID, "minimax-m3-high-v1", KimiK31ProfileID}
+	profiles := []string{DefaultKimiK31ProfileID, "minimax-m3-high-v1", KimiK31ProfileID, DefaultKimiK31ProfileID}
 	if paused {
 		profiles = []string{"minimax-m3-high-v1"}
 	}
@@ -49,9 +49,11 @@ func runFEAT164NativeLifecycle(t *testing.T, paused bool) {
 			w.WriteHeader(429)
 			return
 		}
-		model, effort := "kimi-k3.1-pro", "max"
+		model, effort := "kimi-k3.1-pro", "high"
 		if paused || n == 2 {
 			model, effort = "MiniMax-M3", "high"
+		} else if n == 3 {
+			effort = "max"
 		}
 		reasoning, _ := body["reasoning"].(map[string]any)
 		if body["model"] != model || reasoning["effort"] != effort || body["tool_choice"] != "auto" {
@@ -175,7 +177,7 @@ func runFEAT164NativeLifecycle(t *testing.T, paused bool) {
 		}
 	}
 	if paused {
-		ctx := WithModelProfile(context.Background(), KimiK31ProfileID)
+		ctx := WithModelProfile(context.Background(), DefaultKimiK31ProfileID)
 		if _, err := manager.StartThread(ctx, cwd); err == nil {
 			t.Fatal("paused Kimi start admitted")
 		}

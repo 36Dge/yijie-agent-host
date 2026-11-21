@@ -12,7 +12,11 @@ const toolSearchCatalogName = "yijie-tool-search-models-v1.json"
 
 // The catalogue selects native behavior; Host never indexes or searches tools.
 func toolSearchCatalog() ([]byte, error) {
-	raw, err := nativeToolsCatalog()
+	return toolSearchCatalogVersion(true)
+}
+
+func toolSearchCatalogVersion(highDefault bool) ([]byte, error) {
+	raw, err := nativeToolsCatalogVersion(highDefault)
 	if err != nil {
 		return nil, err
 	}
@@ -45,11 +49,7 @@ func toolSearchCatalog() ([]byte, error) {
 }
 
 func prepareToolSearchLayer(a *managedCodexHomeAuthority) error {
-	catalog, err := toolSearchCatalog()
-	if err != nil {
-		return err
-	}
-	plan, err := a.preflightManagedFile(toolSearchCatalogName, catalog, catalog)
+	plan, err := preflightKimiCatalog(a, toolSearchCatalogName, toolSearchCatalogVersion)
 	if err != nil {
 		return err
 	}

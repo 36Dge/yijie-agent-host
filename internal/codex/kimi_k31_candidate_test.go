@@ -15,12 +15,16 @@ func TestNativeSkillGuidanceCatalogUpgradePreservesExistingSettings(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	previous, err := kimiK31CatalogVersion(false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	current, err := kimiK31Catalog()
 	if err != nil {
 		t.Fatal(err)
 	}
 	var oldValue, newValue map[string]any
-	if json.Unmarshal(prior, &oldValue) != nil || json.Unmarshal(current, &newValue) != nil {
+	if json.Unmarshal(prior, &oldValue) != nil || json.Unmarshal(previous, &newValue) != nil {
 		t.Fatal("catalogue JSON")
 	}
 	for _, raw := range newValue["models"].([]any) {
@@ -37,7 +41,7 @@ func TestNativeSkillGuidanceCatalogUpgradePreservesExistingSettings(t *testing.T
 	}
 	writeS1File(t, home, kimiK31CatalogName, prior)
 	config := kimiK31Config(home)
-	writeS1File(t, home, kimiK31ConfigName, config)
+	writeS1File(t, home, kimiK31ConfigName, kimiK31MaxConfig(home))
 	trust := []byte("# ordinary existing user configuration\n")
 	writeS1File(t, home, "config.toml", trust)
 	for i := 0; i < 2; i++ {
@@ -62,12 +66,12 @@ func TestFEAT164CandidateAdmissionAndFreshConfiguration(t *testing.T) {
 	c.KimiAPIKey = "ordinary-local-fixture"
 	c.MiniMax.Enabled = true
 	old := NewManager(c, nil)
-	if old.ModelAvailable(KimiK31ProfileID) || !old.ModelAvailable("kimi-k3-max-v1") {
+	if old.ModelAvailable(DefaultKimiK31ProfileID) || old.ModelAvailable(KimiK31ProfileID) || !old.ModelAvailable("kimi-k3-max-v1") {
 		t.Fatal("default model admission changed")
 	}
 	c.KimiK31Candidate = true
 	current := NewManager(c, nil)
-	if !current.ModelAvailable(KimiK31ProfileID) || current.ModelAvailable("kimi-k3-max-v1") || !current.ModelAvailable("minimax-m3-high-v1") {
+	if !current.ModelAvailable(DefaultKimiK31ProfileID) || !current.ModelAvailable(KimiK31ProfileID) || current.ModelAvailable("kimi-k3-max-v1") || !current.ModelAvailable("minimax-m3-high-v1") {
 		t.Fatal("candidate admission mismatch")
 	}
 	home := canonicalOwnedTempDir(t)
@@ -114,5 +118,63 @@ func TestFEAT164ExistingOwnedHomeIsNotImplicitlyMigrated(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, kimiK31ConfigName)); !os.IsNotExist(err) {
 		t.Fatal("candidate config written")
+	}
+}
+
+func TestKimiHighDefaultUpgradesManagedCatalogs(t *testing.T) {
+	home := canonicalOwnedTempDir(t)
+	authority := acquireTestCodexHomeAuthority(t, home)
+	for _, layer := range []struct {
+		name   string
+		render func(bool) ([]byte, error)
+	}{
+		{kimiK31CatalogName, kimiK31CatalogVersion},
+		{nativeToolsCatalogName, nativeToolsCatalogVersion},
+		{toolSearchCatalogName, toolSearchCatalogVersion},
+	} {
+		previous, err := layer.render(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeS1File(t, home, layer.name, previous)
+	}
+	writeS1File(t, home, kimiK31ConfigName, kimiK31MaxConfig(home))
+	for i := 0; i < 2; i++ {
+		if _, err := prepareKimiK31Layer(authority); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := prepareNativeToolsLayer(authority); err != nil {
+			t.Fatal(err)
+		}
+		if err := prepareToolSearchLayer(authority); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{kimiK31CatalogName, nativeToolsCatalogName, toolSearchCatalogName} {
+		data, err := os.ReadFile(filepath.Join(home, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var catalog struct {
+			Models []struct {
+				Slug    string
+				Default string                    `json:"default_reasoning_level"`
+				Levels  []struct{ Effort string } `json:"supported_reasoning_levels"`
+			}
+		}
+		if err := json.Unmarshal(data, &catalog); err != nil {
+			t.Fatal(err)
+		}
+		if len(catalog.Models) != 2 {
+			t.Fatal("expected one entry per upstream model", name)
+		}
+		kimi := catalog.Models[0]
+		if kimi.Slug != "kimi-k3.1-pro" || kimi.Default != "high" || len(kimi.Levels) != 2 || kimi.Levels[0].Effort != "high" || kimi.Levels[1].Effort != "max" {
+			t.Fatal("Kimi catalogue effort mismatch", name, kimi)
+		}
+	}
+	config, err := os.ReadFile(filepath.Join(home, kimiK31ConfigName))
+	if err != nil || !bytes.Contains(config, []byte(`model_reasoning_effort = "high"`)) {
+		t.Fatal("managed TOML default mismatch", err)
 	}
 }

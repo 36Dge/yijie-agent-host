@@ -47,7 +47,7 @@ func validateKimiK31Predecessor(a *managedCodexHomeAuthority, allow bool) error 
 }
 
 func (m *Manager) ChatModelActivationRequired(id string) bool {
-	return m.ChatModelsV2Enabled() && id == KimiK31ProfileID && m.config.KimiK31ExecutionPaused
+	return m.ChatModelsV2Enabled() && isKimiK31Profile(id) && m.config.KimiK31ExecutionPaused
 }
 
 // Only complete model receipts from this Manager generation admit a turn.

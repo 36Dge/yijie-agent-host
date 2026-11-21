@@ -3,9 +3,9 @@
   "feature": "FEAT-164",
   "release": false,
   "mode": "immutable_local_candidate",
-  "source_commit": "62070251d0da84ce4c5eba0c7b25d9a48e5d5929",
+  "source_commit": "05bbf1b59826ae67c33d4757ed6a34c6492478a7",
   "source_lock_path": "compatibility/runtime-kimi-k31-pro/source.lock.json",
-  "source_lock_sha256": "ea6a52771d8ab0735084329c199d29024d37dfe4a008a10a8d5c5814f961612a",
+  "source_lock_sha256": "4e92614a25415fed5c4d03b99c758929b0b17049c7c1b319b5712dfe33faf59e",
   "authority": {
     "schema_version": 1,
     "feature": "FEAT-164",
@@ -14,7 +14,7 @@
     "authority": "yijie-codex canonical native-public-messages-r3 candidate retaining the complete prior patch chain; one valid model-authored declaration in either exact v1 dot or hyphen namespace supplies effective public AgentMessage phase and same-turn continuation through the existing Runtime loop; no fuzzy phase inference or unknown-version acceptance; multiple unquoted standalone declarations across either spelling invalidate the declared phase and cannot request continuation, without splitting the real Item or dropping readable text; control lines are consumed in streaming and complete public projections, quoted/code examples stay literal; original provider phase/text/declarations remain in raw model history; native phase and end_turn retain precedence, while unknown messages remain unknown; no Host execution loop, hooks activation, permission change, migration or history rewriting; existing budgets, cancellation and two-attempt answer-only finalization remain authoritative",
     "runtime_source": {
       "repository": "https://github.com/36Dge/yijie-codex.git",
-      "base_commit": "2b79447c363165ecd3b9d12dffe300c1adddbbb0"
+      "base_commit": "a7620ce46c125ebd295c770a521103a512730b9c"
     },
     "upstream": {
       "commit": "5d1fbf26c43abc65a203928b2e31561cb039e06d",
@@ -330,7 +330,7 @@
     "generators": [
       {
         "path": "scripts/generate-runtime-kimi-k31-pro.mjs",
-        "sha256": "57f9efbf79d2c225af663bf757b0a76cbcf3f6a57bbcf9a26fa353b15fe4a05d"
+        "sha256": "fd1ee0a94e6460ffc3916b6da5bfd958553ff95ec0a7d8b09abaaa49665d760f"
       }
     ],
     "generated": [

@@ -20,7 +20,7 @@ func (*modelV2RouteService) ChatModelCatalogV2() wire.Catalog {
 	for _, p := range wire.Definitions() {
 		rows = append(rows, wire.ModelAvailability{Profile: p, Available: true, Reason: wire.ModelAvailabilityReasonReady})
 	}
-	return wire.Catalog{SchemaVersion: 2, DefaultProfile: wire.ActiveProfileIdKimiK31ProMaxV1, Models: rows}
+	return wire.Catalog{SchemaVersion: 2, DefaultProfile: wire.ActiveProfileIdKimiK31ProHighV1, Models: rows}
 }
 
 type modelV2OperationRouteService struct {

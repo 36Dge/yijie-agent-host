@@ -37,7 +37,7 @@ func ModelProfile(id string) (models.ModelDefinition, bool) {
 func (m *Manager) ChatModelsEnabled() bool { return m.config.ChatModelsEnabled }
 func (m *Manager) ModelAvailable(id string) bool {
 	p, ok := ModelProfile(id)
-	if !ok || !m.config.ChatModelsEnabled || m.ChatModelActivationRequired(id) || (id == KimiK31ProfileID && !m.config.KimiK31Candidate) || (id == "kimi-k3-max-v1" && m.config.KimiK31Candidate) {
+	if !ok || !m.config.ChatModelsEnabled || m.ChatModelActivationRequired(id) || (isKimiK31Profile(id) && !m.config.KimiK31Candidate) || (id == "kimi-k3-max-v1" && m.config.KimiK31Candidate) {
 		return false
 	}
 	if p.Provider == "kimi" {

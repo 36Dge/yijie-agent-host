@@ -39,6 +39,10 @@ func TestFEAT164V2NativeOperationLifecycle(t *testing.T) {
 		n := requests.Add(1)
 		inputTokens := 1
 		if n == 2 && allowKimiTurn.Load() && body["model"] == "kimi-k3.1-pro" {
+			reasoning, _ := body["reasoning"].(map[string]any)
+			if reasoning["effort"] != "high" {
+				t.Error("Kimi high effort missing on wire")
+			}
 			inputTokens = 20000
 		} else if n != 1 || body["model"] != "MiniMax-M3" {
 			t.Error("configuration recovery sent model HTTP")
@@ -199,13 +203,13 @@ func TestFEAT164V2NativeOperationLifecycle(t *testing.T) {
 	}
 	request.OperationId = "00000000-0000-4000-8000-000000000170"
 	request.ExpectedRevision = current.ModelRevision
-	request.ProfileId = wire.ActiveProfileIdKimiK31ProMaxV1
+	request.ProfileId = wire.ActiveProfileIdKimiK31ProHighV1
 	if _, err = s.SelectChatModelV2(ctx, record.AgentSessionID, request); err != nil {
 		t.Fatal(err)
 	}
 	checkLastMeasurement()
 	allowKimiTurn.Store(true)
-	kimi := codex.WithModelProfile(ctx, codex.KimiK31ProfileID)
+	kimi := codex.WithModelProfile(ctx, codex.DefaultKimiK31ProfileID)
 	_, err = s.StartTurnV2(kimi, StartTurnV2Input{AgentSessionID: record.AgentSessionID, OperationID: "00000000-0000-4000-8000-000000000171", ContentBlocks: []TurnContentBlock{{Type: ContentBlockText, Text: "Return the second ordinary local reply."}}})
 	if err != nil {
 		t.Fatal(err)

@@ -14,7 +14,7 @@ func TestFEAT164TitleRequiresConfirmedActiveSelection(t *testing.T) {
 	s.runtime = rt
 	g := &fakeTitleGenerator{title: "普通本机标题"}
 	s.titleGenerator = g
-	for _, profile := range []string{"", "kimi-k3-max-v1", codex.KimiK31ProfileID} {
+	for _, profile := range []string{"", "kimi-k3-max-v1", codex.KimiK31ProfileID, codex.DefaultKimiK31ProfileID} {
 		_, err := s.store.update(testSessionID, func(r *Record) error { r.ModelProfile = profile; r.ModelSelectionState = "ready"; return nil })
 		if err != nil {
 			t.Fatal(err)
@@ -30,7 +30,7 @@ func TestFEAT164TitleRequiresConfirmedActiveSelection(t *testing.T) {
 			t.Fatal("blocked title changed model history")
 		}
 	}
-	for _, profile := range []string{"minimax-m3-high-v1", codex.KimiK31ProfileID} {
+	for _, profile := range []string{"minimax-m3-high-v1", codex.KimiK31ProfileID, codex.DefaultKimiK31ProfileID} {
 		rt.paused = profile == "minimax-m3-high-v1"
 		_, err := s.store.update(testSessionID, func(r *Record) error { r.ModelProfile = profile; r.ModelSelectionState = "ready"; return nil })
 		if err != nil {

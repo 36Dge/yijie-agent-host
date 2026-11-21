@@ -39,7 +39,11 @@ func TestFEAT174DailyMarketNewResumeAndColdChat(t *testing.T) {
 	if manifest == "" {
 		t.Skip("requires the canonical product worker")
 	}
-	h := newNativeToolsHarness(t, func(_ *nativeToolsHarness, _ map[string]any, _ int64) map[string]any {
+	h := newNativeToolsHarness(t, func(_ *nativeToolsHarness, body map[string]any, _ int64) map[string]any {
+		reasoning, _ := body["reasoning"].(map[string]any)
+		if body["model"] != "kimi-k3.1-pro" || reasoning["effort"] != "high" {
+			t.Error("daily chat did not send Kimi high")
+		}
 		return feat164AuxText("Ordinary local Skill marketplace response.")
 	}, toolSearchConfig, dailySkillMarkets(t), func(c *Config) {
 		c.Market = MarketConfig{Manifest: manifest, LibraryHome: filepath.Join(c.CodexHome, "market-worker/library-home"), HostInstanceID: uuid.NewString()}
@@ -101,7 +105,7 @@ func TestFEAT174DailyMarketNewResumeAndColdChat(t *testing.T) {
 		if err = json.Unmarshal([]byte(`{"type":"text","text":"FEAT174 ordinary daily chat"}`), &block); err != nil {
 			t.Fatal(err)
 		}
-		submitted := host.Submission{TaskId: id(), LocalSessionId: id(), SubmissionOperationId: id(), Cwd: h.cwd, ContentBlocks: []host.ContentBlock{block}, Intent: host.ModelIntent{ProfileId: host.ProfileId(KimiK31ProfileID)}, PermissionMode: host.PermissionModeAsk, Snapshot: selection.SelectionSnapshot{SchemaVersion: 1, TurnOperationId: op, Selection: refs, SelectionDigest: selection.SelectionDigestValue(sum)}, Services: services}
+		submitted := host.Submission{TaskId: id(), LocalSessionId: id(), SubmissionOperationId: id(), Cwd: h.cwd, ContentBlocks: []host.ContentBlock{block}, Intent: host.ModelIntent{ProfileId: host.ProfileId(DefaultKimiK31ProfileID)}, PermissionMode: host.PermissionModeAsk, Snapshot: selection.SelectionSnapshot{SchemaVersion: 1, TurnOperationId: op, Selection: refs, SelectionDigest: selection.SelectionDigestValue(sum)}, Services: services}
 		var previous *string
 		if threadID != "" {
 			previous = &threadID
@@ -110,7 +114,7 @@ func TestFEAT174DailyMarketNewResumeAndColdChat(t *testing.T) {
 		if err != nil {
 			t.Fatal("daily prepare", index, err)
 		}
-		selectedCtx := WithMarketPrepared(WithPermissionMode(WithModelProfile(ctx, KimiK31ProfileID), PermissionAsk), prepared)
+		selectedCtx := WithMarketPrepared(WithPermissionMode(WithModelProfile(ctx, DefaultKimiK31ProfileID), PermissionAsk), prepared)
 		var thread ThreadInfo
 		if previous == nil {
 			thread, err = h.manager.StartThread(selectedCtx, h.cwd)
@@ -122,7 +126,7 @@ func TestFEAT174DailyMarketNewResumeAndColdChat(t *testing.T) {
 		}
 		threadID = thread.ID
 		input, _ := TextUserInput("FEAT174 ordinary daily chat")
-		turn, err := h.manager.StartTurnV2(selectedCtx, threadID, []UserInput{input}, "max")
+		turn, err := h.manager.StartTurnV2(selectedCtx, threadID, []UserInput{input}, "high")
 		if err != nil {
 			t.Fatal(err)
 		}

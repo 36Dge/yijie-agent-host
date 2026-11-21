@@ -63,7 +63,7 @@ func TestFEAT164CallSurfacesRuntime(t *testing.T) {
 			return
 		}
 		reasoning, _ := body["reasoning"].(map[string]any)
-		if body["model"] != "kimi-k3.1-pro" || reasoning["effort"] != "max" {
+		if body["model"] != "kimi-k3.1-pro" || reasoning["effort"] != "high" {
 			t.Error("model/effort drift")
 		}
 		if _, ok := body["max_output_tokens"]; ok {
@@ -86,9 +86,9 @@ func TestFEAT164CallSurfacesRuntime(t *testing.T) {
 				t.Error("ordinary base did not retain the short native projection")
 			}
 			for _, required := range []string{
-				"Respect the user's active connector selection.",
-				"use that connector's tools and follow their tool descriptions",
-				"When no selected retrieval connector applies, use native web search",
+				"Use an applicable selected retrieval connector for the information it serves.",
+				"Otherwise choose exposed retrieval according to current tool descriptions",
+				"built-in web tools do not require connector selection.",
 				webRetrievalInstructions,
 			} {
 				if strings.Contains(instructions, required) || strings.Count(string(encoded), required) != 1 {
@@ -217,7 +217,7 @@ func TestFEAT164CallSurfacesRuntime(t *testing.T) {
 			t.Fatal("unexpected auxiliary model override")
 		}
 	}
-	ctx := WithPermissionMode(WithModelProfile(context.Background(), KimiK31ProfileID), PermissionAsk)
+	ctx := WithPermissionMode(WithModelProfile(context.Background(), DefaultKimiK31ProfileID), PermissionAsk)
 	for _, name := range []string{"ordinary", "title", "draft", "expert", "continuation"} {
 		surface.Store(name)
 		if name == "title" {
@@ -246,7 +246,7 @@ func TestFEAT164CallSurfacesRuntime(t *testing.T) {
 		if e != nil {
 			t.Fatal(name, e)
 		}
-		if thread.Model != "kimi-k3.1-pro" || thread.ModelProvider != "kimi" || thread.ReasoningEffort != "max" {
+		if thread.Model != "kimi-k3.1-pro" || thread.ModelProvider != "kimi" || thread.ReasoningEffort != "high" {
 			t.Fatal("effective identity", name)
 		}
 		text, _ := TextUserInput("Read the normal note if requested. ordinary attachment text")
@@ -262,7 +262,7 @@ func TestFEAT164CallSurfacesRuntime(t *testing.T) {
 			}
 			input = append(input, pic)
 		}
-		turn, e := manager.StartTurnV2(selected, thread.ID, input, "max")
+		turn, e := manager.StartTurnV2(selected, thread.ID, input, "high")
 		if e != nil {
 			t.Fatal(name, e)
 		}

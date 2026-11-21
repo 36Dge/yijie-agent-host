@@ -16,7 +16,10 @@ parser.add_argument("--port", type=int, default=18083)
 args = parser.parse_args()
 lock = threading.Lock()
 ledger = {"scope": "ordinary_loopback_fixture_not_g2v", "external_requests": 0, "requests": [], "state": "starting"}
-profiles = {"kimi-k3.1-pro": ("feat164-local-kimi", "max"), "MiniMax-M3": ("feat164-local-minimax", "high")}
+profiles = {
+    "kimi-k3.1-pro": ("feat164-local-kimi", ("high", "max")),
+    "MiniMax-M3": ("feat164-local-minimax", ("high",)),
+}
 
 
 def save():
@@ -54,7 +57,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 raise ValueError()
             body = json.loads(self.rfile.read(length))
             profile = profiles.get(body.get("model"))
-            if profile is None or self.headers.get("Authorization") != "Bearer " + profile[0] or (body.get("reasoning") or {}).get("effort") != profile[1]:
+            if profile is None:
+                raise ValueError()
+            token, allowed_efforts = profile
+            effort = (body.get("reasoning") or {}).get("effort")
+            if self.headers.get("Authorization") != "Bearer " + token or effort not in allowed_efforts:
                 raise ValueError()
         except (ValueError, AttributeError, TypeError):
             self.send_error(400, "Ordinary local fixture profile mismatch")
@@ -64,7 +71,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_error(429, "Local fixture limit reached")
                 return
             number = len(ledger["requests"]) + 1
-            ledger["requests"].append({"ordinal": number, "model": body["model"], "effort": profile[1], "tool_choice": body.get("tool_choice"), "builtin_search_offered": any(t.get("type") == "web_search" for t in body.get("tools", []) if isinstance(t, dict))})
+            ledger["requests"].append({"ordinal": number, "model": body["model"], "effort": effort, "tool_choice": body.get("tool_choice"), "builtin_search_offered": any(t.get("type") == "web_search" for t in body.get("tools", []) if isinstance(t, dict))})
             save()
         identity = f"feat164_local_{number}"
         item = {"id": "message_" + identity, "type": "message", "role": "assistant", "phase": "final_answer", "status": "completed", "content": [{"type": "output_text", "text": "FEAT164 本地联调完成。这是合成响应，未访问真实模型。", "annotations": []}]}

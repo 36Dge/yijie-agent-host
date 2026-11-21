@@ -1,7 +1,6 @@
 package session
 
 import (
-	"github.com/36Dge/yijie-agent-host/internal/codex"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/chatmodelsv2"
 )
 
@@ -18,9 +17,10 @@ func (s *Service) modelActivationRequired(id string) bool {
 	return ok && r.ChatModelActivationRequired(id)
 }
 func (s *Service) ChatModelCatalogV2() wire.Catalog {
-	entries := make([]wire.ModelAvailability, 0, 2)
+	profiles := wire.Definitions()
+	entries := make([]wire.ModelAvailability, 0, len(profiles))
 	rt, ok := s.runtime.(modelRuntime)
-	for _, p := range wire.Definitions() {
+	for _, p := range profiles {
 		configured := ok && s.ChatModelsV2Enabled() && rt.ModelAvailable(string(p.ProfileId))
 		available := configured && s.chatModelsV2Ready()
 		reason := wire.ModelAvailabilityReasonNotConfigured
@@ -33,7 +33,7 @@ func (s *Service) ChatModelCatalogV2() wire.Catalog {
 		}
 		entries = append(entries, wire.ModelAvailability{Profile: p, Available: available, Reason: reason})
 	}
-	return wire.Catalog{SchemaVersion: 2, DefaultProfile: codex.KimiK31ProfileID, Models: entries}
+	return wire.Catalog{SchemaVersion: 2, DefaultProfile: wire.ActiveProfileIdKimiK31ProHighV1, Models: entries}
 }
 func (s *Service) ReadChatModelV2(id string) (wire.Selection, error) {
 	if !s.ChatModelsV2Enabled() {

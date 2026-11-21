@@ -18,7 +18,7 @@ type modelV2TestRuntime struct {
 func (*modelV2TestRuntime) ChatModelsV2Enabled() bool { return true }
 func (r *modelV2TestRuntime) ChatModelsV2Ready() bool { return r.ready }
 func (r *modelV2TestRuntime) ModelAvailable(id string) bool {
-	return (id == codex.KimiK31ProfileID && !r.paused) || id == "minimax-m3-high-v1"
+	return ((id == codex.KimiK31ProfileID || id == codex.DefaultKimiK31ProfileID) && !r.paused) || id == "minimax-m3-high-v1"
 }
 func TestFEAT164RetiredReadPreservesApplicationFacts(t *testing.T) {
 	s, _ := modelService(t)
@@ -55,6 +55,9 @@ func TestFEAT164ModelCatalogDoesNotMistakeConfiguredForRuntimeReady(t *testing.T
 	s, _ := modelService(t)
 	rt := &modelV2TestRuntime{}
 	s.runtime = rt
+	if got := s.ChatModelCatalogV2().DefaultProfile; got != wire.ActiveProfileIdKimiK31ProHighV1 {
+		t.Fatal("Kimi default profile", got)
+	}
 	for _, entry := range s.ChatModelCatalogV2().Models {
 		if entry.Available || entry.Reason != wire.ModelAvailabilityReasonRuntimeUnavailable {
 			t.Fatal("unready Runtime advertised as ready")
@@ -69,13 +72,13 @@ func TestFEAT164ModelCatalogDoesNotMistakeConfiguredForRuntimeReady(t *testing.T
 }
 
 func (r *modelV2TestRuntime) ChatModelActivationRequired(id string) bool {
-	return r.paused && id == codex.KimiK31ProfileID
+	return r.paused && (id == codex.KimiK31ProfileID || id == codex.DefaultKimiK31ProfileID)
 }
 func TestFEAT164PausedKimiPreservesHistoryAndMiniMax(t *testing.T) {
 	s, _ := modelService(t)
 	s.runtime = &modelV2TestRuntime{ready: true, paused: true}
 	for _, entry := range s.ChatModelCatalogV2().Models {
-		if string(entry.Profile.ProfileId) == codex.KimiK31ProfileID {
+		if entry.Profile.Provider == "kimi" {
 			if entry.Available || entry.Reason != wire.ModelAvailabilityReasonActivationRequired {
 				t.Fatal(entry)
 			}
@@ -83,7 +86,7 @@ func TestFEAT164PausedKimiPreservesHistoryAndMiniMax(t *testing.T) {
 			t.Fatal(entry)
 		}
 	}
-	for _, id := range []string{codex.KimiK31ProfileID, "kimi-k3-max-v1", "minimax-m3-high-v1"} {
+	for _, id := range []string{codex.DefaultKimiK31ProfileID, codex.KimiK31ProfileID, "kimi-k3-max-v1", "minimax-m3-high-v1"} {
 		_, err := s.store.update(testSessionID, func(r *Record) error {
 			r.ModelProfile = id
 			r.ModelSelectionState = "ready"
@@ -99,7 +102,7 @@ func TestFEAT164PausedKimiPreservesHistoryAndMiniMax(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := wire.SelectionAvailabilityReady
-		if id == codex.KimiK31ProfileID {
+		if id == codex.KimiK31ProfileID || id == codex.DefaultKimiK31ProfileID {
 			want = wire.SelectionAvailabilityActivationRequired
 		}
 		if id == "kimi-k3-max-v1" {

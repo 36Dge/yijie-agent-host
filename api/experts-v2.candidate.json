@@ -48,7 +48,7 @@
     },
     {
       "path": "jsonschema/chat/model-selection-v2.schema.json",
-      "sha256": "fa0ae10205dd9d0d2fead4366b67a03d21beda874f1fdb401e871390f72813af"
+      "sha256": "2f37739c99dea8d6194369c154d96f7ebb9604d68e12d7a62bb74bf8dfaed114"
     },
     {
       "path": "openapi/agent-host/agent-host.yaml",
@@ -90,7 +90,7 @@
     },
     {
       "path": "sdks/jsonschema/experts-v2.schema.json",
-      "sha256": "b13872f6659948c5b8065c1a44c7c18386825860bb779c66793c3ce66acc1c31"
+      "sha256": "51da7994beef1c2896f52182f2d1b271cb0c7f44c7dc417d73000a7a78841866"
     },
     {
       "path": "sdks/go/experts-v2/bundle_schemas.gen.go",
@@ -98,11 +98,11 @@
     },
     {
       "path": "sdks/typescript/src/domain/experts-v2.generated.ts",
-      "sha256": "e718089a69703d0294ec6ebb856ffe594e4aacb57b6f11186b3b0414124e0525"
+      "sha256": "aa60dfb60f6c890509c5596665f1381a048a642ae69559da5b3fbda81da84fb5"
     },
     {
       "path": "sdks/typescript/src/api/generated/experts-v2-validator.gen.js",
-      "sha256": "5c42be629908a3d4caa7936fc6eece72dff264a6e81568ab79822f612e1bdc6e"
+      "sha256": "2a96acb7b4faf59f397c82b896d58342189f4855ed722d907e3c2928e6e8214e"
     },
     {
       "path": "sdks/typescript/src/api/generated/experts-v2-validator.gen.d.ts",
@@ -110,7 +110,7 @@
     },
     {
       "path": "sdks/jsonschema/experts-v2-native.schema.json",
-      "sha256": "05b819f0e2f3f23a0c9a5868b5b10f863a3d572c4a869ac6be9c4ceb92532555"
+      "sha256": "260eab01300656c4d1e388a6edae267b606ed78a64596e8d613aaf852b050660"
     },
     {
       "path": "fixtures/experts-v2/digest-vectors.json",
@@ -126,7 +126,7 @@
     }
   ],
   "local_candidate": "market-p1",
-  "worktree_head": "fa6613d2428658e695da96aab45a741f5c05a6f3",
+  "worktree_head": "05bbf1b59826ae67c33d4757ed6a34c6492478a7",
   "consumer": "agent-host",
   "consumer_generated": [
     {
@@ -137,7 +137,7 @@
     {
       "source": "sdks/jsonschema/experts-v2.schema.json",
       "path": "api/experts-v2.schema.json",
-      "sha256": "b13872f6659948c5b8065c1a44c7c18386825860bb779c66793c3ce66acc1c31"
+      "sha256": "51da7994beef1c2896f52182f2d1b271cb0c7f44c7dc417d73000a7a78841866"
     }
   ]
 }

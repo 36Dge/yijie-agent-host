@@ -4,9 +4,10 @@ package chatmodelsv2
 type ProfileId string
 
 const (
-	ProfileIdKimiK3MaxV1     ProfileId = "kimi-k3-max-v1"
-	ProfileIdKimiK31ProMaxV1 ProfileId = "kimi-k3-1-pro-max-v1"
-	ProfileIdMinimaxM3HighV1 ProfileId = "minimax-m3-high-v1"
+	ProfileIdKimiK3MaxV1      ProfileId = "kimi-k3-max-v1"
+	ProfileIdKimiK31ProHighV1 ProfileId = "kimi-k3-1-pro-high-v1"
+	ProfileIdKimiK31ProMaxV1  ProfileId = "kimi-k3-1-pro-max-v1"
+	ProfileIdMinimaxM3HighV1  ProfileId = "minimax-m3-high-v1"
 )
 
 type CanonicalId = string
@@ -59,8 +60,9 @@ type Error struct {
 type ActiveProfileId string
 
 const (
-	ActiveProfileIdKimiK31ProMaxV1 ActiveProfileId = "kimi-k3-1-pro-max-v1"
-	ActiveProfileIdMinimaxM3HighV1 ActiveProfileId = "minimax-m3-high-v1"
+	ActiveProfileIdKimiK31ProHighV1 ActiveProfileId = "kimi-k3-1-pro-high-v1"
+	ActiveProfileIdMinimaxM3HighV1  ActiveProfileId = "minimax-m3-high-v1"
+	ActiveProfileIdKimiK31ProMaxV1  ActiveProfileId = "kimi-k3-1-pro-max-v1"
 )
 
 type SelectionAvailability string
@@ -140,7 +142,8 @@ const (
 
 func Definitions() []ModelDefinition {
 	return []ModelDefinition{
-		{ProfileId: "kimi-k3-1-pro-max-v1", Label: "Kimi K3.1 Pro", Provider: "kimi", Model: "kimi-k3.1-pro", Effort: "max", ContextWindow: 1048576},
+		{ProfileId: "kimi-k3-1-pro-high-v1", Label: "Kimi K3.1 Pro", Provider: "kimi", Model: "kimi-k3.1-pro", Effort: "high", ContextWindow: 1048576},
 		{ProfileId: "minimax-m3-high-v1", Label: "MiniMax M3", Provider: "minimax", Model: "MiniMax-M3", Effort: "high", ContextWindow: 1000000},
+		{ProfileId: "kimi-k3-1-pro-max-v1", Label: "Kimi K3.1 Pro", Provider: "kimi", Model: "kimi-k3.1-pro", Effort: "max", ContextWindow: 1048576},
 	}
 }

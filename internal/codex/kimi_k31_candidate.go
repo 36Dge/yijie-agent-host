@@ -3,19 +3,26 @@ package codex
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 
 	legacy "github.com/36Dge/yijie-agent-host/internal/contracts/chatmodels"
 	models "github.com/36Dge/yijie-agent-host/internal/contracts/chatmodelsv2"
 )
 
+// Existing receipts and scheduled grants use this original max profile.
 const KimiK31ProfileID = "kimi-k3-1-pro-max-v1"
+const DefaultKimiK31ProfileID = string(models.ActiveProfileIdKimiK31ProHighV1)
 const kimiK31CatalogName = "yijie-chat-models-v2.json"
 const kimiK31ConfigName = "yijie-chat-models-v2.toml"
 
+func isKimiK31Profile(id string) bool {
+	return id == DefaultKimiK31ProfileID || id == KimiK31ProfileID
+}
+
 func kimiK31Profile(id string) (legacy.ModelDefinition, bool) {
 	for _, p := range models.Definitions() {
-		if string(p.ProfileId) == id && id == KimiK31ProfileID {
+		if string(p.ProfileId) == id && isKimiK31Profile(id) {
 			// Private Runtime configuration adapter; never emitted on the v1 wire.
 			return legacy.ModelDefinition{ProfileId: legacy.ProfileId(p.ProfileId), Label: p.Label, Provider: p.Provider, Model: p.Model, Effort: p.Effort, ContextWindow: p.ContextWindow}, true
 		}
@@ -28,6 +35,10 @@ func (m *Manager) ChatModelsV2Enabled() bool {
 func (m *Manager) ChatModelsV2Ready() bool { return m.ChatModelsV2Enabled() && m.Snapshot().Ready }
 
 func kimiK31Catalog() ([]byte, error) {
+	return kimiK31CatalogVersion(true)
+}
+
+func kimiK31CatalogVersion(highDefault bool) ([]byte, error) {
 	raw, err := kimiK31PriorSkillCatalog()
 	if err != nil {
 		return nil, err
@@ -36,10 +47,17 @@ func kimiK31Catalog() ([]byte, error) {
 	if err = json.Unmarshal(raw, &catalog); err != nil {
 		return nil, err
 	}
+	high, _ := kimiK31Profile(DefaultKimiK31ProfileID)
 	for _, value := range catalog["models"].([]any) {
 		// Codex renders its own explicit/implicit trigger and progressive-read
 		// guidance. Host must not duplicate those instructions in business prose.
-		value.(map[string]any)["include_skills_usage_instructions"] = true
+		entry := value.(map[string]any)
+		entry["include_skills_usage_instructions"] = true
+		if highDefault && entry["slug"] == high.Model {
+			entry["default_reasoning_level"] = high.Effort
+			level := map[string]any{"effort": high.Effort, "description": high.Effort}
+			entry["supported_reasoning_levels"] = append([]any{level}, entry["supported_reasoning_levels"].([]any)...)
+		}
 	}
 	return json.MarshalIndent(catalog, "", "  ")
 }
@@ -56,7 +74,8 @@ func kimiK31PriorSkillCatalog() ([]byte, error) {
 		return nil, err
 	}
 	entries := catalog["models"].([]any)
-	for i, p := range models.Definitions() {
+	for i, id := range []string{KimiK31ProfileID, "minimax-m3-high-v1"} {
+		p, _ := ModelProfile(id)
 		entry := entries[i].(map[string]any)
 		entry["slug"], entry["display_name"], entry["description"] = p.Model, p.Label, p.Label+" managed Responses profile"
 		entry["default_reasoning_level"], entry["context_window"], entry["max_context_window"] = p.Effort, p.ContextWindow, p.ContextWindow
@@ -67,6 +86,11 @@ func kimiK31PriorSkillCatalog() ([]byte, error) {
 // The comment is a managed-file writer boundary, not a Runtime option.
 // Retained r2 Host exact-byte validation rejects this newer writer revision.
 func kimiK31Config(home string) []byte {
+	high, _ := kimiK31Profile(DefaultKimiK31ProfileID)
+	return []byte(strings.Replace(string(kimiK31MaxConfig(home)), `model_reasoning_effort = "max"`, "model_reasoning_effort = "+strconv.Quote(high.Effort), 1))
+}
+
+func kimiK31MaxConfig(home string) []byte {
 	return append([]byte("# yijie-native-failure-history-writer-v1\n"), kimiK31PriorConfig(home)...)
 }
 
@@ -83,20 +107,16 @@ func prepareKimiK31LayerWithPredecessor(a *managedCodexHomeAuthority, allow bool
 	if err := validateKimiK31Predecessor(a, allow); err != nil {
 		return nil, err
 	}
-	catalog, err := kimiK31Catalog()
-	if err != nil {
-		return nil, err
-	}
 	config := kimiK31Config(a.path)
 	prior, err := kimiK31PriorSkillCatalog()
 	if err != nil {
 		return nil, err
 	}
-	cp, err := a.preflightManagedFile(kimiK31CatalogName, catalog, catalog, prior)
+	cp, err := preflightKimiCatalog(a, kimiK31CatalogName, kimiK31CatalogVersion, prior)
 	if err != nil {
 		return nil, err
 	}
-	fp, err := a.preflightManagedFile(kimiK31ConfigName, config, config, kimiK31PriorConfig(a.path))
+	fp, err := a.preflightManagedFile(kimiK31ConfigName, config, kimiK31MaxConfig(a.path), kimiK31PriorConfig(a.path))
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +130,21 @@ func prepareKimiK31LayerWithPredecessor(a *managedCodexHomeAuthority, allow bool
 	}
 	return nativeConfigArguments(config)
 }
+
+// Rebuild both exact managed recipes so existing homes upgrade without accepting
+// edited files. This also works after an interrupted upgrade of several layers.
+func preflightKimiCatalog(a *managedCodexHomeAuthority, name string, render func(bool) ([]byte, error), older ...[]byte) (managedFilePlan, error) {
+	current, err := render(true)
+	if err != nil {
+		return managedFilePlan{}, err
+	}
+	previous, err := render(false)
+	if err != nil {
+		return managedFilePlan{}, err
+	}
+	return a.preflightManagedFile(name, current, append(older, previous)...)
+}
+
 func (m *Manager) validateSelectedChatModelLayer(a *managedCodexHomeAuthority) error {
 	if !m.config.KimiK31Candidate {
 		return validateChatModelLayer(a)

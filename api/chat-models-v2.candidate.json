@@ -3,12 +3,12 @@
   "feature": "FEAT-164",
   "release": false,
   "mode": "immutable_local_candidate",
-  "source_commit": "62070251d0da84ce4c5eba0c7b25d9a48e5d5929",
+  "source_commit": "05bbf1b59826ae67c33d4757ed6a34c6492478a7",
   "source_lock_path": "compatibility/chat-models-v2/source.lock.json",
-  "source_lock_sha256": "2d0cb1d8e7ac71f5db28e5d43b8cd6d5504389b3bdfdccd884a9acbbc1905907",
+  "source_lock_sha256": "41ae2665dd409db57d950e8a869cb485af786101dda430635f239585f5dde5e8",
   "authority": {
     "schema_version": 1,
-    "contract_version": "0.2.0",
+    "contract_version": "0.3.0",
     "mode": "local_worktree_candidate",
     "release": false,
     "base_commit": "ea49217fd44c1b768289fc445fdf7d9256f99a13",
@@ -19,7 +19,7 @@
       },
       {
         "path": "jsonschema/chat/model-selection-v2.schema.json",
-        "sha256": "fa0ae10205dd9d0d2fead4366b67a03d21beda874f1fdb401e871390f72813af"
+        "sha256": "2f37739c99dea8d6194369c154d96f7ebb9604d68e12d7a62bb74bf8dfaed114"
       },
       {
         "path": "jsonschema/scheduled-tasks/draft-execution-v1.schema.json",
@@ -31,7 +31,7 @@
       },
       {
         "path": "openapi/chat-models-v2/chat-models-v2.yaml",
-        "sha256": "0593962a54386693c7ce1f86d108ac34d015f707569641b39c869b51db10e72f"
+        "sha256": "8b3adfd5196422b246956137c3a7480bfc672ff596af5cad5f2182ddf3267e31"
       },
       {
         "path": "openapi/runtime-permissions/runtime-permissions.yaml",
@@ -39,29 +39,29 @@
       },
       {
         "path": "scripts/generate-chat-models-v2.mjs",
-        "sha256": "9e8e320e11cca6411384ead93a515ddf7067657a2757cd5398dcb7339814824b"
+        "sha256": "e5ad2cb9810e507ec0b5c979a102d71014aa17dae24631f3bb70d07810d3243f"
       }
     ],
     "generated": [
       {
         "path": "sdks/go/openapi/chat-models-v2/types.gen.go",
-        "sha256": "be923ec69e9d4e70374b83ab2afa9d1c364bc57d0e052abd0e892d0fdce5b909"
+        "sha256": "21dbfbdf27aa01f76394aa883be13b9b3554bd145da90ef44dfbe58b48af02cb"
       },
       {
         "path": "sdks/rust/chat-models-v2/types.gen.rs",
-        "sha256": "310b7ebbe8331c584768b83b741b22817a6063dfa4ac8957ef261a9b1126e84d"
+        "sha256": "45361fb001e461cf12741ebe4862895aab5b92b6ebb958bd1c7c006812f2184a"
       },
       {
         "path": "sdks/typescript/src/jsonschema/chat-models-v2.gen.ts",
-        "sha256": "ce0a620662864253170b702199d9854875ac411572c71c5585e140c73d406818"
+        "sha256": "6d698464f86b47ae90a0c7b630c78c5e93d69e589bee6b7b74293adb2a8656cb"
       },
       {
         "path": "sdks/jsonschema/chat-models-v2.schema.json",
-        "sha256": "fa0ae10205dd9d0d2fead4366b67a03d21beda874f1fdb401e871390f72813af"
+        "sha256": "2f37739c99dea8d6194369c154d96f7ebb9604d68e12d7a62bb74bf8dfaed114"
       },
       {
         "path": "sdks/openapi/chat-models-v2.bundle.json",
-        "sha256": "5a057dbdfa4a36159952a325ea3481e01bbd86b55fa959e4348125072bd53da1"
+        "sha256": "284ced2f19e6c22fe830bdaa81082099196e4b9c869e6d3c737d690b3886c832"
       }
     ]
   },
@@ -70,13 +70,13 @@
       "repository": "yijie-agent-host",
       "source": "sdks/go/openapi/chat-models-v2/types.gen.go",
       "destination": "internal/contracts/chatmodelsv2/types.gen.go",
-      "sha256": "be923ec69e9d4e70374b83ab2afa9d1c364bc57d0e052abd0e892d0fdce5b909"
+      "sha256": "21dbfbdf27aa01f76394aa883be13b9b3554bd145da90ef44dfbe58b48af02cb"
     },
     {
       "repository": "yijie-agent-host",
       "source": "sdks/jsonschema/chat-models-v2.schema.json",
       "destination": "internal/contracts/chatmodelsv2/schema.json",
-      "sha256": "fa0ae10205dd9d0d2fead4366b67a03d21beda874f1fdb401e871390f72813af"
+      "sha256": "2f37739c99dea8d6194369c154d96f7ebb9604d68e12d7a62bb74bf8dfaed114"
     },
     {
       "repository": "yijie-agent-host",
@@ -88,19 +88,19 @@
       "repository": "yijie-desktop",
       "source": "sdks/rust/chat-models-v2/types.gen.rs",
       "destination": "src-tauri/src/chat/models_v2_generated.rs",
-      "sha256": "310b7ebbe8331c584768b83b741b22817a6063dfa4ac8957ef261a9b1126e84d"
+      "sha256": "45361fb001e461cf12741ebe4862895aab5b92b6ebb958bd1c7c006812f2184a"
     },
     {
       "repository": "yijie-desktop",
       "source": "sdks/typescript/src/jsonschema/chat-models-v2.gen.ts",
       "destination": "src/domain/chat-models-v2.generated.ts",
-      "sha256": "ce0a620662864253170b702199d9854875ac411572c71c5585e140c73d406818"
+      "sha256": "6d698464f86b47ae90a0c7b630c78c5e93d69e589bee6b7b74293adb2a8656cb"
     },
     {
       "repository": "yijie-desktop",
       "source": "sdks/jsonschema/chat-models-v2.schema.json",
       "destination": "contracts/chat-models-v2.schema.json",
-      "sha256": "fa0ae10205dd9d0d2fead4366b67a03d21beda874f1fdb401e871390f72813af"
+      "sha256": "2f37739c99dea8d6194369c154d96f7ebb9604d68e12d7a62bb74bf8dfaed114"
     },
     {
       "repository": "yijie-desktop",
