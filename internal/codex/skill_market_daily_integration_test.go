@@ -15,16 +15,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// The real product worker and the same native features used by daily Desktop,
-// with an ordinary local response. No connector is executed or supplier called.
-func TestFEAT174DailyMarketNewResumeAndColdChat(t *testing.T) {
-	manifest := os.Getenv("YIJIE_MARKET_BROKER_TEST_MANIFEST")
-	if manifest == "" {
-		t.Skip("requires the canonical product worker")
-	}
-	h := newNativeToolsHarness(t, func(_ *nativeToolsHarness, _ map[string]any, _ int64) map[string]any {
-		return feat164AuxText("Ordinary local Skill marketplace response.")
-	}, toolSearchConfig, func(c *Config) {
+func dailySkillMarkets(t *testing.T) func(*Config) {
+	return func(c *Config) {
 		c.NativeSkillMarketplaceEnabled = true
 		for _, name := range []string{"yijie-builtin", "yijie-user"} {
 			root := filepath.Join(c.CodexHome, "ordinary-markets", name)
@@ -37,6 +29,19 @@ func TestFEAT174DailyMarketNewResumeAndColdChat(t *testing.T) {
 			}
 			c.SkillMarketplaceRoots = append(c.SkillMarketplaceRoots, root)
 		}
+	}
+}
+
+// The real product worker and the same native features used by daily Desktop,
+// with an ordinary local response. No connector is executed or supplier called.
+func TestFEAT174DailyMarketNewResumeAndColdChat(t *testing.T) {
+	manifest := os.Getenv("YIJIE_MARKET_BROKER_TEST_MANIFEST")
+	if manifest == "" {
+		t.Skip("requires the canonical product worker")
+	}
+	h := newNativeToolsHarness(t, func(_ *nativeToolsHarness, _ map[string]any, _ int64) map[string]any {
+		return feat164AuxText("Ordinary local Skill marketplace response.")
+	}, toolSearchConfig, dailySkillMarkets(t), func(c *Config) {
 		c.Market = MarketConfig{Manifest: manifest, LibraryHome: filepath.Join(c.CodexHome, "market-worker/library-home"), HostInstanceID: uuid.NewString()}
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)

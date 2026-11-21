@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -106,6 +107,93 @@ func TestExecutionProgressNativeBudgetRuntime(t *testing.T) {
 		t.Fatal("native shared budget reminders/weights missing")
 	}
 	t.Log("native rollout budget: cached input excluded, weighted usage shared across two user turns, native failure terminal, business instructions once; 0 supplier requests")
+}
+
+func TestDailyReportFinalAnswerAfterLongResearch(t *testing.T) {
+	const document = "<!doctype html><title>城市比较</title><p>本地报告校验。</p>"
+	// Replay the observed weighted usage with ordinary local responses. Fold
+	// the research steps into one charge, then use the two recorded charges
+	// for writing the report and checking it. No supplier traffic or source data.
+	usage := func(input, cached, output int) map[string]any {
+		return map[string]any{"input_tokens": input, "input_tokens_details": map[string]any{"cached_tokens": cached},
+			"output_tokens": output, "total_tokens": input + output}
+	}
+	h := newNativeToolsProviderHarness(t, func(h *nativeToolsHarness, body map[string]any, n int64) (map[string]any, map[string]any) {
+		switch n {
+		case 1:
+			return feat164AuxTool("", "exec", "research", map[string]any{"input": "text('资料已整理');"}), usage(175376, 0, 14527)
+		case 2:
+			return feat164AuxTool("", "apply_patch", "write", map[string]any{"input": "*** Begin Patch\n*** Add File: report.html\n+" + document + "\n*** End Patch\n"}), usage(84851, 82688, 29962)
+		case 3:
+			if got, err := os.ReadFile(filepath.Join(h.cwd, "report.html")); err != nil || strings.TrimSpace(string(got)) != document {
+				t.Error("saved report did not match the requested document", err)
+			}
+			return feat164AuxTool("", "exec", "check", map[string]any{"input": "text(await tools.exec_command({cmd:'wc -c report.html'}));"}), usage(114921, 84736, 1199)
+		case 4:
+			if !strings.Contains(nativeToolsOutput(body, "check"), "report.html") {
+				t.Error("final response did not receive the file check")
+			}
+		default:
+			t.Errorf("unexpected provider request %d", n)
+		}
+		return feat164AuxText("报告已生成：[打开报告](report.html)。"), usage(20, 10, 10)
+	}, nil, toolSearchConfig, dailySkillMarkets(t))
+	h.manager.SetSkillSubmissionReady(true)
+	ctx := WithPermissionMode(WithModelProfile(context.Background(), KimiK31ProfileID), PermissionAsk)
+	thread, err := h.manager.StartThread(ctx, h.cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.turn(t, KimiK31ProfileID, thread.ID, "请生成一份 HTML 报告。")
+	if h.calls.Load() != 4 {
+		t.Fatalf("report completed before verification and handoff, requests=%d", h.calls.Load())
+	}
+}
+
+func TestDailySwitchModelAfterNativeBudgetStop(t *testing.T) {
+	const next = "minimax-m3-high-v1"
+	h := newNativeToolsHarness(t, func(_ *nativeToolsHarness, body map[string]any, n int64) map[string]any {
+		if n == 3 && body["model"] != MiniMaxModel {
+			t.Error("next turn used the previous model")
+		}
+		return feat164AuxText("本地校验已完成。")
+	}, toolSearchConfig, dailySkillMarkets(t), func(c *Config) { c.RolloutBudgetLimitTokens = 3 })
+	h.manager.SetSkillSubmissionReady(true)
+	ctx := WithPermissionMode(WithModelProfile(context.Background(), KimiK31ProfileID), PermissionAsk)
+	thread, err := h.manager.StartThread(ctx, h.cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.turn(t, KimiK31ProfileID, thread.ID, "核对第一项。")
+	input, _ := TextUserInput("核对第二项。")
+	failed, err := h.manager.StartTurnV2(ctx, thread.ID, []UserInput{input}, "max")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, _, err := h.notifications.waitForTurn(failed.ID, 30*time.Second); err != nil || status != "failed" {
+		t.Fatalf("expected native budget stop, got %s (%v)", status, err)
+	}
+	switched, err := h.manager.SwitchThread(WithModelProfile(ctx, next), thread.ID)
+	if err != nil || switched.ID != thread.ID || switched.ModelProvider != MiniMaxProviderID ||
+		switched.Model != MiniMaxModel || switched.ReasoningEffort != "high" || h.calls.Load() != 2 {
+		t.Fatalf("failed to switch the settled thread without sending a prompt: %v, %+v", err, switched)
+	}
+	h.turn(t, next, thread.ID, "核对下一项。")
+	raw, err := h.manager.ReadThread(ctx, thread.ID)
+	var history struct {
+		Turns []struct {
+			ID, Status string
+			Error      *struct{ CodexErrorInfo string }
+		}
+	}
+	if err != nil || json.Unmarshal(raw, &history) != nil || len(history.Turns) != 3 {
+		t.Fatal("original thread history unavailable", err)
+	}
+	prior := history.Turns[1]
+	if prior.ID != failed.ID || prior.Status != "failed" || prior.Error == nil || prior.Error.CodexErrorInfo != "sessionBudgetExceeded" ||
+		history.Turns[2].Status != "completed" || h.calls.Load() != 3 {
+		t.Fatal("failed history, follow-up, or request count changed")
+	}
 }
 
 func TestExecutionProgressRepeatedPlanRuntime(t *testing.T) {

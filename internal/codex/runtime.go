@@ -77,8 +77,8 @@ type Config struct {
 	ToolSearchEnabled              bool
 	CommandApprovalEnabled         bool
 	RuntimePermissionsEnabled      bool
-	// Native weighted budget for one loaded ordinary-chat root session tree.
-	// Zero leaves native budget configuration unchanged; it is not a money cap.
+	// Native weighted budget for a loaded ordinary-chat root session tree.
+	// modelWindowBudget selects the managed default; zero preserves native config.
 	RolloutBudgetLimitTokens      int64
 	PermissionVerificationBaseURL string
 	PermissionVerificationPolicy  string
@@ -107,7 +107,7 @@ func DefaultConfig() Config {
 		MaxMessageBytes:          defaultMaxMessageBytes,
 		WriteQueueDepth:          defaultWriteQueueDepth,
 		StderrTailBytes:          defaultStderrTailBytes,
-		RolloutBudgetLimitTokens: 250_000,
+		RolloutBudgetLimitTokens: modelWindowBudget,
 	}
 }
 
@@ -140,8 +140,8 @@ func (c Config) validate() error {
 	if c.NativeToolsEnabled && (!c.KimiK31Candidate || !c.RuntimePermissionsEnabled || !c.ChatModelsEnabled || c.DynamicToolsEnabled || c.FakeResponses.Enabled) {
 		return errors.New("native tool integration requires the managed local model profile")
 	}
-	if c.RolloutBudgetLimitTokens < 0 {
-		return errors.New("native rollout budget limit must not be negative")
+	if c.RolloutBudgetLimitTokens < modelWindowBudget {
+		return errors.New("invalid native rollout budget limit")
 	}
 	if err := c.Market.validate(); err != nil {
 		return err

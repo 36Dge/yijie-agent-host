@@ -9,7 +9,7 @@
     "openapi/user-input/user-input.yaml": "5c6fe2da9d8f175866fb7e737df830acca0b192d3186f323cc0337d3b91a5040",
     "scripts/generate-user-input.mjs": "f00196c64c96f41d7dc96d0d5bd3126925022582c453cabd8d383c377017107e",
     "compatibility/runtime-interaction-tools/types.openapi.json": "16af36b8fe31ea8571255b767f0b8294be6e338befff4e6e852b6bda99ccb0ec",
-    "compatibility/runtime-interaction-tools/source.lock.json": "bdaca132885bf1534beaad8abfc637b8df84ffecdf3e71490d14fc0f13bc55ba"
+    "compatibility/runtime-interaction-tools/source.lock.json": "a5609df05d91e074062281cd148d1409c7d3c0a158af28e7fd23a7fb097c9455"
   },
   "generated": {
     "sdks/openapi/user-input.resolved.json": "ac9dc4dbc715a55d2c909959fb7a86885596f9f45bdc7a86885704a19d064103",

@@ -7,7 +7,7 @@
   "sources": {
     "openapi/context-window/context-window.yaml": "a95d34e2728a2729c11ef6b1890c9f7eac1d9d7bd702fa5fdafed3f6a0f13c66",
     "scripts/generate-context-window.mjs": "bae2aaa66ba42152d5717cf66ff610d82916b5c309677fcaf792ad7cd38415fc",
-    "compatibility/runtime-interaction-tools/source.lock.json": "95c0425f66cde0a99f2ea155886f9da31063e541cedf5fda5161663da8505bdb",
+    "compatibility/runtime-interaction-tools/source.lock.json": "a5609df05d91e074062281cd148d1409c7d3c0a158af28e7fd23a7fb097c9455",
     "../yijie-codex/.yijie/build/interaction-tools-v1/038d498bda0d4cb8899e15ea81dfa777b6928adc0e389aebf5e20b3038332086/aarch64-apple-darwin/generated-json-schema/v2/ThreadTokenUsageUpdatedNotification.json": "0ab6f22fa3f6e8227a6d2f9d6241ed7cb45beb8bacc8a18a307aa7526d4f8bd1",
     "../yijie-codex/codex-rs/protocol/src/protocol.rs": "375808be883656cf1d1e2fe591696ac547b20f90362ac8f17ce61eb9031e4bc3",
     "../yijie-codex/codex-rs/core/src/session/mod.rs": "0a1045a7c54655df6743f2bab9275001e772c5b3e695dc8e07d63d1fd9d39a14",

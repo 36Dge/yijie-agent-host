@@ -36,6 +36,13 @@ func newNativeToolsHarness(t *testing.T, respond func(*nativeToolsHarness, map[s
 
 func newNativeToolsHarnessWithSetup(t *testing.T, respond func(*nativeToolsHarness, map[string]any, int64) map[string]any, setup func(*Manager), configure ...func(*Config)) *nativeToolsHarness {
 	t.Helper()
+	return newNativeToolsProviderHarness(t, func(h *nativeToolsHarness, body map[string]any, n int64) (map[string]any, map[string]any) {
+		return respond(h, body, n), map[string]any{"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
+	}, setup, configure...)
+}
+
+func newNativeToolsProviderHarness(t *testing.T, respond func(*nativeToolsHarness, map[string]any, int64) (map[string]any, map[string]any), setup func(*Manager), configure ...func(*Config)) *nativeToolsHarness {
+	t.Helper()
 	binary, manifest := integrationArtifactPaths(t)
 	root, err := os.MkdirTemp("", "feat169-native-")
 	if err != nil {
@@ -97,7 +104,7 @@ func newNativeToolsHarnessWithSetup(t *testing.T, respond func(*nativeToolsHarne
 				return
 			}
 		}
-		item := respond(h, body, n)
+		item, usage := respond(h, body, n)
 		id := fmt.Sprintf("native169_%d", n)
 		item["id"] = "item_" + id
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -105,7 +112,7 @@ func newNativeToolsHarnessWithSetup(t *testing.T, respond func(*nativeToolsHarne
 			map[string]any{"type": "response.created", "response": map[string]any{"id": id, "status": "in_progress", "output": []any{}}},
 			map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item},
 			map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item},
-			map[string]any{"type": "response.completed", "response": map[string]any{"id": id, "status": "completed", "output": []any{item}, "usage": map[string]any{"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}}},
+			map[string]any{"type": "response.completed", "response": map[string]any{"id": id, "status": "completed", "output": []any{item}, "usage": usage}},
 		} {
 			bytes, _ := json.Marshal(event)
 			fmt.Fprintf(w, "data: %s\n\n", bytes)

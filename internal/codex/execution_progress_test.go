@@ -57,6 +57,28 @@ func TestExecutionProgressRetrievalCapabilitiesMatchRoute(t *testing.T) {
 	}
 }
 
+func TestLongContextWorkBudgetReservesReportDelivery(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.RuntimePermissionsEnabled, cfg.ChatModelsEnabled, cfg.KimiK31Candidate = true, true, true
+	for _, id := range []string{KimiK31ProfileID, "minimax-m3-high-v1"} {
+		ctx := WithModelProfile(context.Background(), id)
+		profile, _ := ModelProfile(id)
+		budget := NewManager(cfg, nil).executionProgressConfig(ctx, nil)["features.rollout_budget"].(map[string]any)
+		limit := budget["limit_tokens"].(int64)
+		// Observed weighted usage through the saved report's first validation.
+		const atValidation = 1_651_820 - 1_444_096 + 45_688
+		if limit != int64(profile.ContextWindow) || limit <= atValidation {
+			t.Fatalf("%s: no allowance left for report delivery at %d (limit %d)", id, atValidation, limit)
+		}
+		explicit := cfg
+		explicit.RolloutBudgetLimitTokens = 25_000
+		got := NewManager(explicit, nil).executionProgressConfig(ctx, nil)["features.rollout_budget"].(map[string]any)
+		if got["limit_tokens"] != int64(25_000) {
+			t.Fatal("explicit work limit changed")
+		}
+	}
+}
+
 func TestExecutionProgressKeepsExpertRoleWithoutDuplicatingDeveloperPolicy(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.RuntimePermissionsEnabled, cfg.ChatModelsEnabled = true, true

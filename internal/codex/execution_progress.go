@@ -13,12 +13,14 @@ const executionBaseInstructions = "You are the local Yijie assistant. Follow the
 // of the current provider or selection; native tools/config declare capabilities.
 const retrievalCapabilityInstructions = " Retrieval capabilities are defined by the current tools and supplied evidence. Provider-hosted search, when supplied, runs within the model request; it does not imply callable query, open-page or find-in-page tools. Use only exposed operations according to their descriptions. Updating a plan or printing an intention does not retrieve evidence. If no applicable retrieval operation is available, state the limitation and finish with supported results."
 
+const modelWindowBudget int64 = -1
+
 // This is configuration projection into the existing Runtime mechanism, NOT
 // accounting. Codex owns its root-session-tree scope, weights, reminders and
 // SessionBudgetExceeded. Cached-input cost is not counted by this native budget.
 // Explicit Goals keep their own native goal.token_budget; no Goal is created.
 func (m *Manager) executionProgressConfig(ctx context.Context, config map[string]any) map[string]any {
-	if !m.config.RuntimePermissionsEnabled || !m.config.ChatModelsEnabled || isScheduledDraft(ctx) || m.config.RolloutBudgetLimitTokens <= 0 {
+	if !m.config.RuntimePermissionsEnabled || !m.config.ChatModelsEnabled || isScheduledDraft(ctx) || m.config.RolloutBudgetLimitTokens == 0 {
 		return config
 	}
 	if expert, ok := ctx.Value(expertInstructionsKey{}).(expertInstructions); ok && expert.role != "" {
@@ -42,6 +44,14 @@ func (m *Manager) executionProgressConfig(ctx context.Context, config map[string
 		}
 	}
 	limit := m.config.RolloutBudgetLimitTokens
+	if limit == modelWindowBudget {
+		// Size the shared work allowance for a paired long-context model. A
+		// large document is charged both when written and when read back.
+		limit = 250_000
+		if profile, ok := ModelProfile(ModelProfileID(ctx)); m.config.KimiK31Candidate && ok {
+			limit = int64(profile.ContextWindow)
+		}
+	}
 	reminders := []int64{}
 	for _, threshold := range []int64{limit / 2, limit / 5, limit / 10} {
 		if threshold > 0 && threshold < limit && (len(reminders) == 0 || reminders[len(reminders)-1] != threshold) {
