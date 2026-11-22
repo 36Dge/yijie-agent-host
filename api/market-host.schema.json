@@ -215,8 +215,16 @@
       "enum": [
         "approve_once",
         "reject",
-        "cancel"
-      ]
+        "cancel",
+        "approve_session",
+        "approve_always",
+        "native_full",
+        "native_auto",
+        "native_session",
+        "native_always",
+        "native_auto_reject"
+      ],
+      "description": "Per-call owner decision. approve_* are explicit human choices; native_* record the correlated Codex policy decision and are not renderer actions."
     },
     "NativeId": {
       "type": "string",
@@ -335,9 +343,70 @@
           "items": {
             "$ref": "#/$defs/ServiceBinding"
           }
+        },
+        "nativeApprovalVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "nativeApprovalAuthorityOperations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 58,
+          "items": {
+            "$ref": "#/$defs/CanonicalId"
+          },
+          "description": "One original Native installation/account authority operation per service in the same canonical order. Install, authorize, configure, disable and uninstall change this operation. A startup enable/probe changes the live installation revision but preserves this operation. Native resolves these identifiers from its existing management receipts."
         }
       },
-      "description": "Trusted immutable Native outbox intention. taskId is the existing PublicTask UUID, distinct from localSessionId and Host agentSessionId; null agentSessionId means creation. snapshot.turnOperationId is the actual turn operation, not the separate create submission operation. cwd is Native canonical authority, content blocks reuse existing v2 attachment handling and aggregate limits. Initial model expectedRevision=0 precedes Host record revision=1. Entire typed intention participates in Host HMAC; grant/context expiry and transport request IDs do not. No platform credential/configuration. Nonempty market selection currently requires permissionMode=ask; auto/full returns permission_mode_unavailable with recovery to request approval mode. Empty selection keeps the existing three permission modes."
+      "description": "Trusted immutable Native outbox intention. taskId is the existing PublicTask UUID, distinct from localSessionId and Host agentSessionId; null agentSessionId means creation. snapshot.turnOperationId is the actual turn operation, not the separate create submission operation. cwd is Native canonical authority, content blocks reuse existing v2 attachment handling and aggregate limits. Initial model expectedRevision=0 precedes Host record revision=1. Entire typed intention participates in Host HMAC; grant/context expiry and transport request IDs do not. No platform credential/configuration. Nonempty market selection currently requires permissionMode=ask; auto/full returns permission_mode_unavailable with recovery to request approval mode. Empty selection keeps the existing three permission modes.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "snapshot": {
+                "type": "object",
+                "properties": {
+                  "selection": {
+                    "type": "array",
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "selection"
+                ]
+              },
+              "permissionMode": {
+                "enum": [
+                  "auto",
+                  "full"
+                ]
+              }
+            },
+            "required": [
+              "snapshot",
+              "permissionMode"
+            ]
+          },
+          "then": {
+            "required": [
+              "nativeApprovalVersion"
+            ],
+            "properties": {
+              "nativeApprovalVersion": {
+                "const": 1
+              }
+            }
+          }
+        }
+      ],
+      "dependentRequired": {
+        "nativeApprovalVersion": [
+          "nativeApprovalAuthorityOperations"
+        ],
+        "nativeApprovalAuthorityOperations": [
+          "nativeApprovalVersion"
+        ]
+      }
     },
     "HelloPayload": {
       "type": "object",
@@ -390,6 +459,10 @@
         "ready": {
           "type": "boolean",
           "const": true
+        },
+        "nativeApprovalVersion": {
+          "type": "integer",
+          "const": 1
         }
       },
       "description": "Ready means the Native private authority handshake/control service is available. It does not assert model credentials, Runtime readiness, provider login or qualified tool execution; connector authorization must work independently of model-key availability."
@@ -689,6 +762,27 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 9007199254740991
+        },
+        "persistOptions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "session",
+              "always"
+            ]
+          }
+        },
+        "appliedPersist": {
+          "type": "string",
+          "enum": [
+            "session",
+            "always",
+            "unavailable"
+          ]
         }
       },
       "description": "Independent market approval projection. identity is obtained by trusted Broker query for the real tools/call; never synthesized from metadata/tool title/last Item. Approval state is not provider execution success. New web modes project paired deadlines from Broker. expiresAtUnixMs keeps execution deadline; pending UI/decision uses decisionExpiresAtUnixMs when present, otherwise legacy expiresAtUnixMs. No post-approval extension.",
@@ -744,7 +838,23 @@
           "$ref": "#/$defs/Decision"
         }
       },
-      "description": "Native-owned pipe only after current user decision authorization. Host resolves its real pending authority and exact Broker CallIdentity, validates scope/Turn/revision/expiry and records the one-time decision. No HTTP bearer-only approval route and no old Sorftime route fallback."
+      "description": "Native-owned pipe only after current user decision authorization. Host resolves its real pending authority and exact Broker CallIdentity, validates scope/Turn/revision/expiry and records the one-time decision. No HTTP bearer-only approval route and no old Sorftime route fallback.",
+      "not": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "native_auto",
+              "native_auto_reject",
+              "native_full",
+              "native_session",
+              "native_always"
+            ]
+          }
+        },
+        "required": [
+          "decision"
+        ]
+      }
     },
     "ApprovalSnapshot": {
       "type": "object",
@@ -1299,6 +1409,11 @@
         },
         "errorCode": {
           "$ref": "#/$defs/ReferencedErrorCode"
+        },
+        "nativeApprovalVersion": {
+          "type": "integer",
+          "const": 1,
+          "description": "This Worker supports registered-call native approval in Prepare. Missing means legacy approval for this binding. The Native client also requires the Host/Runtime capability before freezing the selected mode."
         }
       },
       "description": "Readiness is an observation from this worker actor. OAuth success alone is never qualification/enabled status. authorizationUrl appears only while awaiting_user, is an allowlisted provider public authorization URL with transient OAuth state/PKCE values, contains no platform token/userinfo, and must be opened only by Native system browser without logging or persistence. Bound credentials never leave Connectors. For non-OAuth credential setup, authorizationUrl may instead be the worker-owned http://127.0.0.1:<port>/credential/<canonical nonce> page, only while awaiting_user under the same operation/deadline. It accepts credentials directly within the Connectors boundary, never through Native/Host/renderer. Native may open only this exact loopback shape for a catalog credential-setup service. No query, userinfo, fragment, external assets or redirected form submission. It is ephemeral and never persisted."
@@ -1655,6 +1770,22 @@
         "decision": {
           "$ref": "#/$defs/Decision"
         }
+      },
+      "not": {
+        "properties": {
+          "decision": {
+            "enum": [
+              "native_auto",
+              "native_auto_reject",
+              "native_full",
+              "native_session",
+              "native_always"
+            ]
+          }
+        },
+        "required": [
+          "decision"
+        ]
       }
     },
     "NativeObserveRequest": {
@@ -1911,7 +2042,15 @@
                     "type": "object",
                     "properties": {
                       "decision": {
-                        "const": "approve_once"
+                        "enum": [
+                          "approve_once",
+                          "approve_session",
+                          "approve_always",
+                          "native_full",
+                          "native_auto",
+                          "native_session",
+                          "native_always"
+                        ]
                       }
                     }
                   }
@@ -2053,6 +2192,190 @@
         }
       },
       "description": "Append-only read-only Native decision evidence in the existing scoped conversation database. requested is durable user intent before delivery, acknowledged is an exact validated Host reply, unconfirmed is absence of a verified reply. None proves permit consumption, tool completion or business success. Contains no authority/capability/credential references or raw parameters; never queued, replayed or used to restore approval."
+    },
+    "RememberedToolRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "tool"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/ArgsDigest"
+        },
+        "tool": {
+          "$ref": "#/$defs/ToolName"
+        }
+      }
+    },
+    "RememberedToolRules": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "rules"
+      ],
+      "properties": {
+        "rules": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/RememberedToolRule"
+          }
+        },
+        "next": {
+          "$ref": "#/$defs/ArgsDigest"
+        }
+      }
+    },
+    "NativeRememberedRulesPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference"
+      ],
+      "properties": {
+        "reference": {
+          "$ref": "#/$defs/SelectionRef"
+        },
+        "revoke": {
+          "$ref": "#/$defs/ArgsDigest"
+        },
+        "after": {
+          "$ref": "#/$defs/ArgsDigest"
+        }
+      }
+    },
+    "RememberedRulesPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference",
+        "scope",
+        "hostInstanceId",
+        "serviceId",
+        "credentialRef",
+        "authorityOperationId"
+      ],
+      "properties": {
+        "reference": {
+          "$ref": "#/$defs/SelectionRef"
+        },
+        "revoke": {
+          "$ref": "#/$defs/ArgsDigest"
+        },
+        "after": {
+          "$ref": "#/$defs/ArgsDigest"
+        },
+        "scope": {
+          "$ref": "#/$defs/ScopeBinding"
+        },
+        "hostInstanceId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "serviceId": {
+          "$ref": "#/$defs/ServiceId"
+        },
+        "credentialRef": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "authorityOperationId": {
+          "$ref": "#/$defs/CanonicalId"
+        }
+      }
+    },
+    "NativeRememberedRulesRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "contextId",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "contextId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "payload": {
+          "$ref": "#/$defs/NativeRememberedRulesPayload"
+        }
+      }
+    },
+    "NativeRememberedRulesResponse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/RememberedToolRules"
+        }
+      }
+    },
+    "RememberedRulesRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "method",
+        "payload"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "method": {
+          "type": "string",
+          "const": "remembered_tool_rules"
+        },
+        "payload": {
+          "$ref": "#/$defs/RememberedRulesPayload"
+        }
+      }
+    },
+    "RememberedRulesResponse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "schemaVersion",
+        "requestId",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "requestId": {
+          "$ref": "#/$defs/CanonicalId"
+        },
+        "data": {
+          "$ref": "#/$defs/RememberedToolRules"
+        }
+      }
     },
     "Selection": {
       "type": "array",

@@ -17,12 +17,15 @@ const marketServerName = "yijie_market"
 
 type marketPreparedKey struct{}
 type MarketPrepared struct {
-	ImageRoute string
-	Lease      *broker.Lease
-	Config     map[string]any
-	Scope      broker.ScopeBinding
-	Snapshot   broker.SelectionSnapshot
-	Process    broker.ProcessBinding
+	NativeApprovalMode string
+	approvalAccounts   map[broker.SelectionRef]string
+	WebAllowed         bool
+	ImageRoute         string
+	Lease              *broker.Lease
+	Config             map[string]any
+	Scope              broker.ScopeBinding
+	Snapshot           broker.SelectionSnapshot
+	Process            broker.ProcessBinding
 }
 type marketTurnState struct {
 	imageCallRef  string
@@ -69,7 +72,7 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 	if submission.Validate() != nil || scope.Validate() != nil {
 		return nil, errors.New("invalid market submission")
 	}
-	if len(submission.Snapshot.Selection) > 0 && submission.PermissionMode != "ask" {
+	if len(submission.Snapshot.Selection) > 0 && submission.PermissionMode != "ask" && (submission.NativeApprovalVersion == nil || !m.NativeMarketApprovals()) {
 		return nil, errors.New("market permission mode unavailable")
 	}
 	owner, err := m.MarketOwner()
@@ -88,15 +91,41 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 	if len(submission.Snapshot.Selection) == 0 {
 		return p, nil
 	}
+	if model, ok := ModelProfile(string(submission.Intent.ProfileId)); ok && model.Provider == MiniMaxProviderID && m.config.NativeToolsEnabled {
+		if err := addNativeFunctionNamespaces(p.Config, "mcp__"+marketServerName); err != nil {
+			return nil, err
+		}
+	}
 	var nativeThread *broker.NativeId
 	if threadID != nil {
 		id := broker.NativeId(*threadID)
 		nativeThread = &id
 	}
+	// Both thread/start and thread/resume inherit the submitted reviewer. The
+	// turn itself applies the same native policy, sandbox and reviewer.
+	_, reviewer, _, err := permissionPolicy(PermissionMode(submission.PermissionMode))
+	if err != nil {
+		return nil, err
+	}
+	p.Config["approvals_reviewer"] = reviewer
+	var nativeMode *string
+	if submission.NativeApprovalVersion != nil {
+		if !m.NativeMarketApprovals() {
+			return nil, errors.New("native market approvals unavailable")
+		}
+		p.NativeApprovalMode = string(submission.PermissionMode)
+		p.WebAllowed = ExpertWebAllowed(ctx)
+		p.approvalAccounts = make(map[broker.SelectionRef]string, len(submission.Services))
+		for i, service := range submission.Services {
+			accountOperation := (*submission.NativeApprovalAuthorityOperations)[i]
+			p.approvalAccounts[service.Reference] = marketApprovalAccount(service.CredentialRef, accountOperation)
+		}
+		nativeMode = &p.NativeApprovalMode
+	}
 	webVersion, mcpTimeout := broker.WebRetrievalVersion, int64(broker.WebMcpToolTimeoutMs)
 	// This owner prepare must complete before Submit dispatches turn/start.
 	// Worker time at prepare is a conservative lower bound for the MCP timer.
-	lease, e := owner.Prepare(ctx, broker.PrepareRequest{SchemaVersion: 1, RequestId: broker.CanonicalId(uuid.NewString()), Method: "prepare", Payload: broker.PreparePayload{WebRetrievalVersion: &webVersion, McpToolTimeoutMs: &mcpTimeout, OperationId: broker.CanonicalId(uuid.NewString()), Context: broker.ContextBinding{Process: process, Scope: scope, AgentSessionId: broker.CanonicalId(sessionID), NativeThreadId: nativeThread}, Snapshot: submission.Snapshot, TtlMs: broker.RequestedTtlMs(broker.MaxLeaseTtlMs)}})
+	lease, e := owner.Prepare(ctx, broker.PrepareRequest{SchemaVersion: 1, RequestId: broker.CanonicalId(uuid.NewString()), Method: "prepare", Payload: broker.PreparePayload{NativeApprovalMode: nativeMode, WebRetrievalVersion: &webVersion, McpToolTimeoutMs: &mcpTimeout, OperationId: broker.CanonicalId(uuid.NewString()), Context: broker.ContextBinding{Process: process, Scope: scope, AgentSessionId: broker.CanonicalId(sessionID), NativeThreadId: nativeThread}, Snapshot: submission.Snapshot, TtlMs: broker.RequestedTtlMs(broker.MaxLeaseTtlMs)}})
 	if e != nil {
 		return nil, e
 	}
@@ -110,9 +139,8 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 }
 
 // Only the prepared owned proxy uses approve. It suppresses Codex's duplicate
-// pre-call prompt, not server elicitation: that native path uses its default
-// context and still waits under ask/on-request with reviewer=user. The Gateway
-// requires both that response and the exact owner decide_call before HTTP IO.
+// pre-call prompt. Gateway elicitation uses the frozen native policy, and
+// each business send requires its response and the exact owner decide_call.
 // Do not set tools={} here: native merging preserves explicit per-tool policy.
 func ownedMarketServer(gateway, capabilityRef string) map[string]any {
 	return map[string]any{"url": gateway + "/" + capabilityRef, "bearer_token_env_var": marketbroker.RuntimeCapabilityEnvironment, "enabled": true, "default_tools_approval_mode": "approve", "startup_timeout_sec": 30, "tool_timeout_sec": broker.WebMcpToolTimeoutMs / 1000, "supports_parallel_tool_calls": false}

@@ -127,39 +127,9 @@ func (m *Manager) builtinWebThreadConfig(ctx context.Context, config map[string]
 	}
 	config["mcp_servers"] = servers
 	if provider == MiniMaxProviderID {
-		profile, _, err := nativeToolsConfiguration()
-		if err != nil {
+		if err := addNativeFunctionNamespaces(config, "mcp__"+wire.ServerName); err != nil {
 			return nil, err
 		}
-		namespaces, exists := config["features.code_mode.function_namespaces"]
-		if !exists {
-			namespaces = profile["features"].(map[string]any)["code_mode"].(map[string]any)["function_namespaces"]
-		}
-		var values []any
-		switch list := namespaces.(type) {
-		case []any:
-			values = append(values, list...)
-		case []string:
-			for _, v := range list {
-				values = append(values, v)
-			}
-		default:
-			return nil, errors.New("native function namespace configuration unavailable")
-		}
-		values = append(values, "mcp__"+wire.ServerName)
-		seen := make(map[string]bool)
-		merged := make([]any, 0, len(values))
-		for _, value := range values {
-			name, ok := value.(string)
-			if !ok {
-				return nil, errors.New("invalid native namespace")
-			}
-			if !seen[name] {
-				seen[name] = true
-				merged = append(merged, name)
-			}
-		}
-		config["features.code_mode.function_namespaces"] = merged
 	}
 	return config, nil
 }

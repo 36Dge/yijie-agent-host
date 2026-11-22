@@ -379,3 +379,41 @@ func TestFEAT157MarketCancelledSubmissionDoesNotEnterRuntime(t *testing.T) {
 		t.Fatal("cancelled request created a dispatch receipt", err)
 	}
 }
+
+func TestMarketNativeDecisionMatchesOriginalSelectionAndCurrentOwner(t *testing.T) {
+	s, runtime, scope, home := marketService(t)
+	submission := marketSubmission(t, home)
+	ref := broker.SelectionRef{InstallationId: wire.CanonicalId(uuid.NewString()), Revision: 1, Generation: 1}
+	refs := selection.Selection{ref}
+	digest, err := selection.SelectionDigest(string(submission.Snapshot.TurnOperationId), refs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	submission.Snapshot.Selection = refs
+	submission.Snapshot.SelectionDigest = selection.SelectionDigestValue(digest)
+	submission.Services = []wire.ServiceBinding{{ServiceId: "sorftime", Reference: ref, CredentialRef: wire.CanonicalId(uuid.NewString())}}
+	receipt, err := s.SubmitMarket(context.Background(), registerMarket(t, s, scope, submission))
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := wire.MarketApproval{AgentSessionId: *receipt.AgentSessionId,
+		Identity: broker.CallIdentity{ServiceId: "sorftime", Reference: ref, NativeThreadId: *receipt.NativeThreadId, NativeTurnId: *receipt.NativeTurnId,
+			Binding: broker.CapabilityBinding{Context: broker.ContextBinding{Scope: scope, Process: runtime.process, AgentSessionId: *receipt.AgentSessionId},
+				TurnOperationId: receipt.TurnOperationId, SelectionDigest: receipt.SelectionDigest}}}
+	if !s.nativeMarketCallAllowed(context.Background(), view) {
+		t.Fatal("the current registered call should use its owner's decision")
+	}
+	next := view
+	next.Identity.Binding.TurnOperationId = wire.CanonicalId(uuid.NewString())
+	if s.nativeMarketCallAllowed(context.Background(), next) {
+		t.Fatal("different turn used the original submission")
+	}
+	fresh := scope
+	fresh.AuthorizationRevision++
+	if err := s.ValidateMarketScope(runtime.process.HostInstanceId, fresh, true); err != nil {
+		t.Fatal(err)
+	}
+	if s.nativeMarketCallAllowed(context.Background(), view) {
+		t.Fatal("superseded Native authority used the old call")
+	}
+}

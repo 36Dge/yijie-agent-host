@@ -313,17 +313,18 @@ func (v *ErrorCode) UnmarshalJSON(b []byte) error {
 }
 
 type ProviderStatus struct {
-	OperationId         CanonicalId         `json:"operationId"`
-	HostInstanceId      CanonicalId         `json:"hostInstanceId"`
-	Scope               ScopeBinding        `json:"scope"`
-	Binding             ProviderBinding     `json:"binding"`
-	OperationState      OperationState      `json:"operationState"`
-	AuthorizationStatus AuthorizationStatus `json:"authorizationStatus"`
-	ConnectionStatus    ConnectionStatus    `json:"connectionStatus"`
-	Qualification       Qualification       `json:"qualification"`
-	ExecutionAvailable  bool                `json:"executionAvailable"`
-	AuthorizationUrl    *string             `json:"authorizationUrl,omitempty"`
-	ErrorCode           *ErrorCode          `json:"errorCode,omitempty"`
+	OperationId           CanonicalId         `json:"operationId"`
+	HostInstanceId        CanonicalId         `json:"hostInstanceId"`
+	Scope                 ScopeBinding        `json:"scope"`
+	Binding               ProviderBinding     `json:"binding"`
+	OperationState        OperationState      `json:"operationState"`
+	AuthorizationStatus   AuthorizationStatus `json:"authorizationStatus"`
+	ConnectionStatus      ConnectionStatus    `json:"connectionStatus"`
+	Qualification         Qualification       `json:"qualification"`
+	ExecutionAvailable    bool                `json:"executionAvailable"`
+	AuthorizationUrl      *string             `json:"authorizationUrl,omitempty"`
+	ErrorCode             *ErrorCode          `json:"errorCode,omitempty"`
+	NativeApprovalVersion *int64              `json:"nativeApprovalVersion,omitempty"`
 }
 
 func (v ProviderStatus) Validate() error {
@@ -362,6 +363,11 @@ func (v ProviderStatus) Validate() error {
 	if v.ErrorCode != nil {
 		if err := (*v.ErrorCode).Validate(); err != nil {
 			return err
+		}
+	}
+	if v.NativeApprovalVersion != nil {
+		if (*v.NativeApprovalVersion) != 1 {
+			return errors.New("invalid broker constant")
 		}
 	}
 	if v.AuthorizationUrl != nil && v.OperationState != OperationStateAwaitingUser {
@@ -436,6 +442,9 @@ func (v *ProviderStatus) UnmarshalJSON(b []byte) error {
 		return errors.New("null broker field")
 	}
 	if x, ok := raw["errorCode"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["nativeApprovalVersion"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
 		return errors.New("null broker field")
 	}
 	var w wire
@@ -1352,7 +1361,7 @@ const TushareDailyToolName = "tushare_daily"
 const TushareDailyUpstreamToolName = "daily"
 const TushareDailyUpstreamInputSchemaSha256 = "ec10409543d1ae690de2b5da5893a0e69387cdd5a398f976fb04d187fc632ae1"
 const TushareDailyRisk = "read"
-const TushareDailyPermissionMode = "ask"
+const TushareDailyPermissionMode = "paired_native_or_legacy_ask"
 const TushareDailyResultRowsField = "rows"
 const TushareDailyInputSchemaJson = "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ts_code\",\"trade_date\"],\"properties\":{\"ts_code\":{\"type\":\"string\",\"minLength\":9,\"maxLength\":9,\"pattern\":\"^[0-9]{6}\\\\.(SH|SZ|BJ)$\",\"description\":\"One six-digit A-share instrument code with SH, SZ or BJ suffix. This checks syntax, not current listing existence. No lists, separators or whitespace.\"},\"trade_date\":{\"type\":\"string\",\"minLength\":8,\"maxLength\":8,\"pattern\":\"^(?:(?:[0-9]{3}[1-9]|[0-9]{2}[1-9][0-9]|[0-9][1-9][0-9]{2}|[1-9][0-9]{3})(?:(?:01|03|05|07|08|10|12)(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)(?:0[1-9]|[12][0-9]|30)|02(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:0[48]|[2468][048]|[13579][26])00)0229)$\",\"description\":\"Exactly one valid Gregorian date in YYYYMMDD, years 0001 through 9999, including leap-year validation. No date range.\"}},\"description\":\"Yijie-owned normalized input for the tushare-daily-v1 Gateway tool tushare_daily. Only these two strings are forwarded to exact upstream daily after validation and one-call approval; no fields, range, limit or other provider arguments are accepted. This is not the full upstream input schema.\"}"
 const TushareDailyOutputSchemaJson = "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"rows\"],\"properties\":{\"rows\":{\"type\":\"array\",\"maxItems\":1,\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"ts_code\",\"trade_date\",\"close\"],\"properties\":{\"ts_code\":{\"type\":\"string\",\"minLength\":9,\"maxLength\":9,\"pattern\":\"^[0-9]{6}\\\\.(SH|SZ|BJ)$\",\"description\":\"One six-digit A-share instrument code with SH, SZ or BJ suffix. This checks syntax, not current listing existence. No lists, separators or whitespace.\"},\"trade_date\":{\"type\":\"string\",\"minLength\":8,\"maxLength\":8,\"pattern\":\"^(?:(?:[0-9]{3}[1-9]|[0-9]{2}[1-9][0-9]|[0-9][1-9][0-9]{2}|[1-9][0-9]{3})(?:(?:01|03|05|07|08|10|12)(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)(?:0[1-9]|[12][0-9]|30)|02(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:0[48]|[2468][048]|[13579][26])00)0229)$\",\"description\":\"Exactly one valid Gregorian date in YYYYMMDD, years 0001 through 9999, including leap-year validation. No date range.\"},\"open\":{\"type\":\"number\"},\"high\":{\"type\":\"number\"},\"low\":{\"type\":\"number\"},\"close\":{\"type\":\"number\"},\"pre_close\":{\"type\":\"number\"},\"change\":{\"type\":\"number\"},\"pct_chg\":{\"type\":\"number\"},\"vol\":{\"type\":\"number\"},\"amount\":{\"type\":\"number\"}}}}}}"

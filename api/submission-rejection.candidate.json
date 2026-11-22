@@ -19,7 +19,7 @@
     },
     {
       "path": "compatibility/market-selection/wire.schema.json",
-      "sha256": "7651ee4d674c4fd23a7045ac6a80e77d96d1998c6cb873a47d03c850fab2b514"
+      "sha256": "2eef8d80e3d38896af087482d42ccd76b19bf79fa382e930efd723050aa90d62"
     },
     {
       "path": "scripts/generate-submission-rejection.mjs",

@@ -180,14 +180,21 @@ func (v *CallState) UnmarshalJSON(b []byte) error {
 type Decision string
 
 const (
-	DecisionApproveOnce Decision = "approve_once"
-	DecisionReject      Decision = "reject"
-	DecisionCancel      Decision = "cancel"
+	DecisionApproveOnce      Decision = "approve_once"
+	DecisionReject           Decision = "reject"
+	DecisionCancel           Decision = "cancel"
+	DecisionApproveSession   Decision = "approve_session"
+	DecisionApproveAlways    Decision = "approve_always"
+	DecisionNativeFull       Decision = "native_full"
+	DecisionNativeAuto       Decision = "native_auto"
+	DecisionNativeSession    Decision = "native_session"
+	DecisionNativeAlways     Decision = "native_always"
+	DecisionNativeAutoReject Decision = "native_auto_reject"
 )
 
 func (v Decision) Validate() error {
 	switch v {
-	case DecisionApproveOnce, DecisionReject, DecisionCancel:
+	case DecisionApproveOnce, DecisionReject, DecisionCancel, DecisionApproveSession, DecisionApproveAlways, DecisionNativeFull, DecisionNativeAuto, DecisionNativeSession, DecisionNativeAlways, DecisionNativeAutoReject:
 		return nil
 	default:
 		return errors.New("invalid broker enum")
@@ -1256,6 +1263,7 @@ type PreparePayload struct {
 	TtlMs               RequestedTtlMs    `json:"ttlMs"`
 	WebRetrievalVersion *string           `json:"webRetrievalVersion,omitempty"`
 	McpToolTimeoutMs    *int64            `json:"mcpToolTimeoutMs,omitempty"`
+	NativeApprovalMode  *string           `json:"nativeApprovalMode,omitempty"`
 }
 
 func (v PreparePayload) Validate() error {
@@ -1279,6 +1287,13 @@ func (v PreparePayload) Validate() error {
 	if v.McpToolTimeoutMs != nil {
 		if (*v.McpToolTimeoutMs) != 60000 {
 			return errors.New("invalid broker constant")
+		}
+	}
+	if v.NativeApprovalMode != nil {
+		switch string((*v.NativeApprovalMode)) {
+		case "ask", "auto", "full":
+		default:
+			return errors.New("invalid broker enum")
 		}
 	}
 	if (v.WebRetrievalVersion == nil) != (v.McpToolTimeoutMs == nil) {
@@ -1320,6 +1335,9 @@ func (v *PreparePayload) UnmarshalJSON(b []byte) error {
 		return errors.New("null broker field")
 	}
 	if x, ok := raw["mcpToolTimeoutMs"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["nativeApprovalMode"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
 		return errors.New("null broker field")
 	}
 	var w wire
@@ -2766,8 +2784,10 @@ func (v ElicitationMetadata) Validate() error {
 	if err := v.YijieMarketCallRef.Validate(); err != nil {
 		return err
 	}
-	if string(v.YijieKind) != "gateway_call_approval" {
-		return errors.New("invalid broker constant")
+	switch string(v.YijieKind) {
+	case "gateway_call_approval", "gateway_native_approval_v1":
+	default:
+		return errors.New("invalid broker enum")
 	}
 	return nil
 }
@@ -2920,7 +2940,7 @@ func (v GatewayCallReceipt) Validate() error {
 			return err
 		}
 	}
-	if v.AdmissionConsumed && (v.DecisionReceipt == nil || v.DecisionReceipt.Decision != DecisionApproveOnce) {
+	if v.AdmissionConsumed && (v.DecisionReceipt == nil || (v.DecisionReceipt.Decision == DecisionReject || v.DecisionReceipt.Decision == DecisionCancel || v.DecisionReceipt.Decision == DecisionNativeAutoReject)) {
 		return errors.New("consumed call requires its one-shot decision")
 	}
 	return nil
@@ -3202,6 +3222,105 @@ func (v *RenewScopeResponse) UnmarshalJSON(b []byte) error {
 		return errors.New("invalid broker object")
 	}
 	x := RenewScopeResponse(w)
+	if err := x.Validate(); err != nil {
+		return err
+	}
+	*v = x
+	return nil
+}
+
+type NativeApprovalEnvelope struct {
+	YijieMarketCallRef CanonicalId `json:"yijieMarketCallRef"`
+	YijieKind          string      `json:"yijieKind"`
+	YijieNativePhase   string      `json:"yijieNativePhase"`
+	YijieScope         *ArgsDigest `json:"yijieScope,omitempty"`
+	Persist            *[]string   `json:"persist,omitempty"`
+}
+
+func (v NativeApprovalEnvelope) Validate() error {
+	if err := v.YijieMarketCallRef.Validate(); err != nil {
+		return err
+	}
+	if string(v.YijieKind) != "gateway_native_approval_v1" {
+		return errors.New("invalid broker constant")
+	}
+	switch string(v.YijieNativePhase) {
+	case "inspect", "user", "stored_session", "stored_always", "not_stored", "native_full", "native_auto", "native_auto_reject", "native_session", "native_always":
+	default:
+		return errors.New("invalid broker enum")
+	}
+	if v.YijieScope != nil {
+		if err := (*v.YijieScope).Validate(); err != nil {
+			return err
+		}
+	}
+	if v.Persist != nil {
+		if (*v.Persist) == nil {
+			return errors.New("null broker collection")
+		}
+		if len((*v.Persist)) < 1 {
+			return errors.New("invalid broker collection")
+		}
+		if len((*v.Persist)) > 2 {
+			return errors.New("invalid broker collection")
+		}
+		for _, item := range *v.Persist {
+			switch string(item) {
+			case "session", "always":
+			default:
+				return errors.New("invalid broker enum")
+			}
+		}
+		for i, item := range *v.Persist {
+			for _, prior := range (*v.Persist)[:i] {
+				if item == prior {
+					return errors.New("duplicate broker collection item")
+				}
+			}
+		}
+	}
+	return nil
+}
+func (v *NativeApprovalEnvelope) UnmarshalJSON(b []byte) error {
+	type wire NativeApprovalEnvelope
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil || raw == nil {
+		return errors.New("invalid broker object")
+	}
+	if _, ok := raw["yijieMarketCallRef"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["yijieMarketCallRef"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["yijieKind"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["yijieKind"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["yijieNativePhase"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["yijieNativePhase"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["yijieScope"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if x, ok := raw["persist"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	var w wire
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&w); err != nil {
+		return errors.New("invalid broker object")
+	}
+	if err := d.Decode(new(any)); err != io.EOF {
+		return errors.New("invalid broker object")
+	}
+	x := NativeApprovalEnvelope(w)
 	if err := x.Validate(); err != nil {
 		return err
 	}

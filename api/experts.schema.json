@@ -240,9 +240,70 @@
           "items": {
             "$ref": "#/$defs/ProviderBinding"
           }
+        },
+        "nativeApprovalVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "nativeApprovalAuthorityOperations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 58,
+          "items": {
+            "$ref": "#/$defs/CanonicalId"
+          },
+          "description": "One original Native installation/account authority operation per service in the same canonical order. Install, authorize, configure, disable and uninstall change this operation. A startup enable/probe changes the live installation revision but preserves this operation. Native resolves these identifiers from its existing management receipts."
         }
       },
-      "description": "Trusted immutable Native outbox intention. taskId is the existing PublicTask UUID, distinct from localSessionId and Host agentSessionId; null agentSessionId means creation. snapshot.turnOperationId is the actual turn operation, not the separate create submission operation. cwd is Native canonical authority, content blocks reuse existing v2 attachment handling and aggregate limits. Initial model expectedRevision=0 precedes Host record revision=1. Entire typed intention participates in Host HMAC; grant/context expiry and transport request IDs do not. No platform credential/configuration. Nonempty market selection currently requires permissionMode=ask; auto/full returns permission_mode_unavailable with recovery to request approval mode. Empty selection keeps the existing three permission modes."
+      "description": "Trusted immutable Native outbox intention. taskId is the existing PublicTask UUID, distinct from localSessionId and Host agentSessionId; null agentSessionId means creation. snapshot.turnOperationId is the actual turn operation, not the separate create submission operation. cwd is Native canonical authority, content blocks reuse existing v2 attachment handling and aggregate limits. Initial model expectedRevision=0 precedes Host record revision=1. Entire typed intention participates in Host HMAC; grant/context expiry and transport request IDs do not. No platform credential/configuration. Nonempty market selection currently requires permissionMode=ask; auto/full returns permission_mode_unavailable with recovery to request approval mode. Empty selection keeps the existing three permission modes.",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "snapshot": {
+                "type": "object",
+                "properties": {
+                  "selection": {
+                    "type": "array",
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "selection"
+                ]
+              },
+              "permissionMode": {
+                "enum": [
+                  "auto",
+                  "full"
+                ]
+              }
+            },
+            "required": [
+              "snapshot",
+              "permissionMode"
+            ]
+          },
+          "then": {
+            "required": [
+              "nativeApprovalVersion"
+            ],
+            "properties": {
+              "nativeApprovalVersion": {
+                "const": 1
+              }
+            }
+          }
+        }
+      ],
+      "dependentRequired": {
+        "nativeApprovalVersion": [
+          "nativeApprovalAuthorityOperations"
+        ],
+        "nativeApprovalAuthorityOperations": [
+          "nativeApprovalVersion"
+        ]
+      }
     },
     "MarketReceipt": {
       "type": "object",

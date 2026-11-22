@@ -73,6 +73,11 @@ func WithMarketAuthority(hostInstanceID string) ServiceOption {
 
 func (s *Service) MarketEnabled() bool { return s.market != nil && s.store.marketWriter }
 
+func (s *Service) nativeMarketApprovals() bool {
+	rt, ok := s.runtime.(interface{ NativeMarketApprovals() bool })
+	return ok && rt.NativeMarketApprovals()
+}
+
 func (s *Service) MarketHello(input wire.HelloPayload) (wire.HelloResult, error) {
 	if !s.MarketEnabled() {
 		return wire.HelloResult{}, marketFail(wire.ErrorCodeNotReady)
@@ -90,7 +95,12 @@ func (s *Service) MarketHello(input wire.HelloPayload) (wire.HelloResult, error)
 	a.hello = &copy
 	// This acknowledges only the exclusive Native control identity. Runtime,
 	// model, provider and turn readiness are separately checked before execution.
-	return wire.HelloResult{HostInstanceId: input.HostInstanceId, NativeProcessEpoch: input.NativeProcessEpoch, OwnerUserId: input.OwnerUserId, TenantId: input.TenantId, Ready: true}, nil
+	var version *int64
+	if s.nativeMarketApprovals() {
+		v := int64(1)
+		version = &v
+	}
+	return wire.HelloResult{NativeApprovalVersion: version, HostInstanceId: input.HostInstanceId, NativeProcessEpoch: input.NativeProcessEpoch, OwnerUserId: input.OwnerUserId, TenantId: input.TenantId, Ready: true}, nil
 }
 
 func (a *marketAuthority) checkScope(instance wire.CanonicalId, scope wire.ScopeBinding, current bool) error {
@@ -149,7 +159,8 @@ func (s *Service) registerMarketGrant(input wire.GrantRegisterPayload, snapshot 
 	if !s.MarketEnabled() {
 		return wire.GrantRegistration{}, marketFail(wire.ErrorCodeNotReady)
 	}
-	if len(input.Submission.Snapshot.Selection) > 0 && input.Submission.PermissionMode != "ask" {
+	if len(input.Submission.Snapshot.Selection) > 0 && ((input.Submission.PermissionMode != "ask" && input.Submission.NativeApprovalVersion == nil) ||
+		(input.Submission.NativeApprovalVersion != nil && !s.nativeMarketApprovals())) {
 		return wire.GrantRegistration{}, marketFail(wire.ErrorCodePermissionModeUnavailable)
 	}
 	if input.Validate() != nil {

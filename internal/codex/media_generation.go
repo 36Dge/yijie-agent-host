@@ -33,17 +33,13 @@ func (m *Manager) mediaThreadConfig(ctx context.Context, config map[string]any, 
 	// Native JSON overrides support leaf keys. A partial features table would
 	// replace the existing profile and disable Code Mode and native transport.
 	config["features.image_generation"] = false
-	profile, _, err := nativeToolsConfiguration()
-	if err != nil {
+	var names []string
+	if provider == MiniMaxProviderID {
+		names = []string{"mcp__yijie_media", "mcp__yijie_artifacts"}
+	}
+	if err := addNativeFunctionNamespaces(config, names...); err != nil {
 		return nil, err
 	}
-	namespaces := append([]any(nil), profile["features"].(map[string]any)["code_mode"].(map[string]any)["function_namespaces"].([]any)...)
-	if provider == MiniMaxProviderID {
-		// MiniMax accepts functions. Reuse the existing native namespace adapter;
-		// Kimi retains normal MCP namespaces and deferred native tool search.
-		namespaces = append(namespaces, "mcp__yijie_media", "mcp__yijie_artifacts")
-	}
-	config["features.code_mode.function_namespaces"] = namespaces
 	servers, ok := config["mcp_servers"].(map[string]any)
 	if !ok {
 		servers = make(map[string]any)

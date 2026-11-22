@@ -49,6 +49,9 @@ func validateNativeProjectConfigWithMarkets(content []byte, roots []string) erro
 	// permission and executable settings remain in the exact managed -c layer.
 	// Native ConfigEdits owns project trust and skill enabled-state persistence.
 	for key := range config {
+		if key == "apps" && validNativeMarketConfig(config[key]) {
+			continue
+		}
 		if key != "projects" && key != "skills" && !(len(roots) == 2 && (key == "plugins" || key == "marketplaces")) {
 			return errors.New("native configuration contains an unowned setting")
 		}

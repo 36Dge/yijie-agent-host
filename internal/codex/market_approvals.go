@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 	"time"
 
 	broker "github.com/36Dge/yijie-agent-host/internal/contracts/marketbrokercontrol"
@@ -89,13 +90,25 @@ func (m *Manager) handleMarketElicitation(ctx context.Context, request serverReq
 	decline := func() (serverRequestResult, bool) {
 		return serverRequestResult{respond: true, value: map[string]any{"action": "decline", "content": nil, "_meta": nil}}, true
 	}
+	var envelope broker.NativeApprovalEnvelope
+	native := json.Unmarshal(p.Meta, &envelope) == nil && envelope.Validate() == nil
 	var meta broker.ElicitationMetadata
-	if !m.MarketEnabled() || !request.exactEnvelope || len(request.params) > broker.MaxFrameBytes || p.Mode != "form" || p.Schema.Type != "object" || p.Schema.Properties == nil || len(p.Schema.Properties) != 0 || len(p.Schema.Required) != 0 || json.Unmarshal(p.Meta, &meta) != nil {
+	if native {
+		meta.YijieMarketCallRef = envelope.YijieMarketCallRef
+		meta.YijieKind = envelope.YijieKind
+	} else if json.Unmarshal(p.Meta, &meta) != nil || meta.YijieKind != "gateway_call_approval" {
+		return decline()
+	}
+	if !m.MarketEnabled() || !request.exactEnvelope || len(request.params) > broker.MaxFrameBytes || p.Mode != "form" || p.Schema.Type != "object" || p.Schema.Properties == nil || len(p.Schema.Properties) != 0 || len(p.Schema.Required) != 0 {
 		return decline()
 	}
 	m.market.mu.Lock()
 	state := m.market.turns[p.ThreadID]
 	if state == nil || state.closed || state.turn != p.TurnID || state.prepared.Lease == nil {
+		m.market.mu.Unlock()
+		return decline()
+	}
+	if native != (state.prepared.NativeApprovalMode != "") {
 		m.market.mu.Unlock()
 		return decline()
 	}
@@ -106,7 +119,14 @@ func (m *Manager) handleMarketElicitation(ctx context.Context, request serverReq
 	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 	pending, err := owner.PendingCall(bounded, broker.PendingCallRequest{SchemaVersion: 1, RequestId: broker.CanonicalId(uuid.NewString()), Method: "pending_call", Payload: broker.PendingCallPayload{Binding: lease.Binding, NativeThreadId: broker.NativeId(p.ThreadID), NativeTurnId: broker.NativeId(p.TurnID), CallRef: meta.YijieMarketCallRef}})
 	cancel()
-	if err != nil || pending.Data.State != broker.CallStatePending || pending.Data.RemainingTtlMs <= 0 || !reflect.DeepEqual(pending.Data.Identity.Binding, lease.Binding) {
+	if err != nil || pending.Data.RemainingTtlMs <= 0 || !reflect.DeepEqual(pending.Data.Identity.Binding, lease.Binding) ||
+		pending.Data.Identity.CallRef != meta.YijieMarketCallRef || string(pending.Data.Identity.NativeThreadId) != p.ThreadID || string(pending.Data.Identity.NativeTurnId) != p.TurnID {
+		return decline()
+	}
+	if native && (envelope.YijieNativePhase == "stored_session" || envelope.YijieNativePhase == "stored_always" || envelope.YijieNativePhase == "not_stored") {
+		return m.recordMarketPersistence(envelope, pending.Data, p.ThreadID, state.prepared.approvalAccounts[pending.Data.Identity.Reference])
+	}
+	if pending.Data.State != broker.CallStatePending {
 		return decline()
 	}
 	entry := &runtimeApprovalCallback{view: RuntimeApproval{ID: uuid.NewString(), Kind: "mcp_market", Summary: pending.Data.Review.Title, Reason: pending.Data.Review.Summary, Status: "pending"}, threadID: p.ThreadID, turnID: p.TurnID, requestKey: request.idKey, resolve: make(chan string, 1), written: make(chan struct{})}
@@ -118,6 +138,28 @@ func (m *Manager) handleMarketElicitation(ctx context.Context, request serverReq
 	}
 	if view.Validate() != nil || marketDecisionExpiry(view) <= time.Now().UnixMilli() {
 		return decline()
+	}
+	if native {
+		if string(view.Identity.ServiceId) == "kimi-web" && !state.prepared.WebAllowed {
+			return decline()
+		}
+		key, arguments := nativeMarketScope(view, state.prepared.approvalAccounts[view.Identity.Reference])
+		if envelope.YijieNativePhase == "inspect" {
+			if _, err := authorizeImageMethod(view, state.prepared.ImageRoute); m.config.BuiltinMediaEnabled && err != nil {
+				return decline()
+			}
+			return marketNativeReply("accept", map[string]any{"scope": key, "title": view.Review.Title, "tool": nativeMarketToolName(view),
+				"arguments": arguments, "remainingMs": min(int64(pending.Data.RemainingTtlMs), marketDecisionExpiry(view)-time.Now().UnixMilli())})
+		}
+		if !sameMarketScopeKey(envelope.YijieScope, key) {
+			return decline()
+		}
+		if envelope.YijieNativePhase == "user" && envelope.Persist != nil {
+			if state.prepared.NativeApprovalMode != "ask" || key == nil {
+				return decline()
+			}
+			view.PersistOptions = envelope.Persist
+		}
 	}
 	if m.config.BuiltinMediaEnabled {
 		create, err := authorizeImageMethod(view, state.prepared.ImageRoute)
@@ -136,6 +178,9 @@ func (m *Manager) handleMarketElicitation(ctx context.Context, request serverReq
 				return decline()
 			}
 		}
+	}
+	if native && envelope.YijieNativePhase != "user" {
+		return m.applyNativeMarketDecision(ctx, owner, state, envelope, view)
 	}
 	entry.market = &marketApprovalCallback{view: view, scope: scope}
 	if err = m.addRuntimeApproval(entry); err != nil {
@@ -162,13 +207,22 @@ func (m *Manager) handleMarketElicitation(ctx context.Context, request serverReq
 		case decision := <-entry.resolve:
 			action := "decline"
 			var content any
-			if decision == "approve_once" {
+			var responseMeta any
+			if decision == "approve_session" || decision == "approve_always" {
+				action = "accept"
+				content = map[string]any{}
+				persist := "session"
+				if decision == "approve_always" {
+					persist = "always"
+				}
+				responseMeta = map[string]string{"persist": persist}
+			} else if decision == "approve_once" {
 				action = "accept"
 				content = map[string]any{}
 			} else if decision == "cancel" {
 				action = "cancel"
 			}
-			return serverRequestResult{respond: true, value: map[string]any{"action": action, "content": content, "_meta": nil}, onResponseWritten: func(e error) { m.finishRuntimeApproval(entry, e) }}, true
+			return serverRequestResult{respond: true, value: map[string]any{"action": action, "content": content, "_meta": responseMeta}, onResponseWritten: func(e error) { m.finishRuntimeApproval(entry, e) }}, true
 		}
 	}
 }
@@ -205,6 +259,22 @@ func (m *Manager) DecideMarketApproval(ctx context.Context, thread string, input
 		return wire.MarketApproval{}, errors.New("market approval not found")
 	}
 	value := entry.market
+	switch input.Decision {
+	case broker.DecisionApproveOnce, broker.DecisionCancel, broker.DecisionReject:
+	case broker.DecisionApproveSession, broker.DecisionApproveAlways:
+		scope := "session"
+		if input.Decision == broker.DecisionApproveAlways {
+			scope = "always"
+		}
+		if value.view.PersistOptions == nil || !slices.Contains(*value.view.PersistOptions, scope) {
+			c.mu.Unlock()
+			return wire.MarketApproval{}, errors.New("market scope was not offered")
+		}
+	default:
+		c.mu.Unlock()
+		return wire.MarketApproval{}, errors.New("not a user decision")
+	}
+
 	if value.view.DecisionId != nil {
 		if *value.view.DecisionId != input.DecisionId || value.view.Decision == nil || *value.view.Decision != input.Decision || value.operation != string(input.OperationId) {
 			c.mu.Unlock()
@@ -254,12 +324,7 @@ func (m *Manager) DecideMarketApproval(ctx context.Context, thread string, input
 		c.mu.Unlock()
 		return wire.MarketApproval{}, errors.New("market callback already ended")
 	}
-	native := "reject"
-	if input.Decision == broker.DecisionApproveOnce {
-		native = "approve_once"
-	} else if input.Decision == broker.DecisionCancel {
-		native = "cancel"
-	}
+	native := string(input.Decision)
 	entry.decision = native
 	entry.resolve <- native
 	c.mu.Unlock()

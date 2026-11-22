@@ -251,7 +251,7 @@ func (m *Manager) finishRuntimeApproval(entry *runtimeApprovalCallback, err erro
 		entry.writtenErr = err
 		if err != nil {
 			entry.view.Status = "unavailable"
-		} else if entry.decision == "approve_once" || entry.decision == ApproveSimilar {
+		} else if entry.decision == "approve_once" || entry.decision == ApproveSimilar || (entry.market != nil && (entry.decision == "approve_always" || entry.decision == "approve_session")) {
 			entry.view.Status = "approved"
 		} else if entry.decision == "cancel" {
 			entry.view.Status = "cancelled"

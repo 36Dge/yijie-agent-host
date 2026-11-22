@@ -657,9 +657,6 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		for key, value := range prepared.Config {
 			params.Config[key] = value
 		}
-		if len(prepared.Snapshot.Selection) > 0 {
-			params.Config["approvals_reviewer"] = "user"
-		}
 	}
 	params.BaseInstructions, err = m.expertBaseInstructions(ctx, params.BaseInstructions)
 	if err != nil {
@@ -761,9 +758,6 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 		}
 		for key, value := range prepared.Config {
 			params.Config[key] = value
-		}
-		if len(prepared.Snapshot.Selection) > 0 {
-			params.Config["approvals_reviewer"] = "user"
 		}
 	}
 	params.BaseInstructions, err = m.expertBaseInstructions(ctx, params.BaseInstructions)

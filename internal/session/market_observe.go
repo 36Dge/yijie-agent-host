@@ -73,7 +73,7 @@ func (s *Service) DecideMarketApproval(ctx context.Context, input wire.ApprovalD
 	// The retired connector may still be present in a frozen selection. Its
 	// pending web call must honor the same verified offline expert policy.
 	// Completed historical decision receipts keep their original replay path.
-	if input.Decision == "approve_once" {
+	if input.Decision == "approve_once" || input.Decision == "approve_session" || input.Decision == "approve_always" {
 		if lister, available := s.runtime.(interface {
 			ListMarketApprovals(string) []wire.MarketApproval
 		}); available {
@@ -149,4 +149,73 @@ func (s *Service) ReadMarketTools(ctx context.Context, id, turnID string) (wire.
 		return out, nil
 	}
 	return wire.ToolSnapshot{}, marketFail(wire.ErrorCodeSessionNotFound)
+}
+
+// The Worker checks the live (possibly renewed) deadline. Recheck the current
+// Native owner/revision and original session here without extending a lease.
+func (s *Service) nativeMarketCallAllowed(ctx context.Context, v wire.MarketApproval) bool {
+	if !s.MarketEnabled() {
+		return false
+	}
+	b := v.Identity.Binding
+	scope := b.Context.Scope
+	s.market.mu.Lock()
+	valid := s.market.checkScope(b.Context.Process.HostInstanceId, scope, false) == nil && s.market.revision == int64(scope.AuthorizationRevision)
+	s.market.mu.Unlock()
+	if !valid {
+		return false
+	}
+	record, err := s.marketRecord(string(v.AgentSessionId))
+	if err != nil || record.CodexThreadID != string(v.Identity.NativeThreadId) {
+		return false
+	}
+	// The intent is recorded before turn/start. Its native IDs may still be
+	// arriving; the manager has already matched the active Runtime turn itself.
+	entry, err := s.store.readMarketOperation(string(b.TurnOperationId))
+	if err != nil || entry.ScopeHash != record.MarketScopeHash {
+		return false
+	}
+	r := entry.Receipt
+	if r.TaskId != wire.CanonicalId(record.TaskID) || r.AgentSessionId == nil || *r.AgentSessionId != v.AgentSessionId ||
+		r.TurnOperationId != b.TurnOperationId || r.SelectionDigest != b.SelectionDigest ||
+		r.HostInstanceId != b.Context.Process.HostInstanceId || r.RuntimeGeneration == nil || *r.RuntimeGeneration != b.Context.Process.RuntimeGeneration ||
+		(r.NativeThreadId != nil && *r.NativeThreadId != v.Identity.NativeThreadId) || (r.NativeTurnId != nil && *r.NativeTurnId != v.Identity.NativeTurnId) {
+		return false
+	}
+	if string(v.Identity.ServiceId) == "kimi-web" {
+		resolved, err := s.contextForStoredExpert(ctx, record.AgentSessionID)
+		return err == nil && codex.ExpertWebAllowed(resolved)
+	}
+	return true
+}
+
+func (s *Service) bindNativeMarketAuthorization() {
+	if rt, ok := s.runtime.(interface {
+		SetNativeMarketAuthorization(func(context.Context, wire.MarketApproval) bool)
+	}); ok {
+		rt.SetNativeMarketAuthorization(s.nativeMarketCallAllowed)
+	}
+}
+
+func (s *Service) RememberedMarketRules(ctx context.Context, p wire.RememberedRulesPayload) (wire.RememberedToolRules, error) {
+	var out wire.RememberedToolRules
+	if err := p.Validate(); err != nil {
+		return out, marketFail(wire.ErrorCodeInvalidRequest)
+	}
+	s.modelOperationMu.Lock()
+	defer s.modelOperationMu.Unlock()
+	if err := s.ValidateMarketScope(p.HostInstanceId, p.Scope, true); err != nil {
+		return out, err
+	}
+	rt, ok := s.runtime.(interface {
+		RememberedMarketRules(context.Context, wire.RememberedRulesPayload) (wire.RememberedToolRules, error)
+	})
+	if !ok {
+		return out, marketFail(wire.ErrorCodeNotReady)
+	}
+	out, err := rt.RememberedMarketRules(ctx, p)
+	if err != nil {
+		return out, marketFail(wire.ErrorCodeTemporarilyUnavailable)
+	}
+	return out, nil
 }

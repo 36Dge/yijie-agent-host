@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/marketbrokercontrol"
+	hostwire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeskillmarket"
 	"github.com/36Dge/yijie-agent-host/internal/marketbroker"
 	"github.com/google/uuid"
 )
@@ -32,11 +34,33 @@ func (c MarketConfig) validate() error {
 }
 
 type marketRuntimeState struct {
-	mu         sync.Mutex
-	owner      *marketbroker.Owner
-	process    wire.ProcessBinding
-	gatewayURL string
-	turns      map[string]*marketTurnState
+	ruleMu          sync.RWMutex
+	authorizeNative func(context.Context, hostwire.MarketApproval) bool
+	mu              sync.Mutex
+	owner           *marketbroker.Owner
+	process         wire.ProcessBinding
+	gatewayURL      string
+	turns           map[string]*marketTurnState
+}
+
+var pinnedNativeMarketApproval = sync.OnceValue(func() bool {
+	var patches []struct {
+		Path string `json:"path"`
+	}
+	if json.Unmarshal([]byte(native.RuntimePatchManifest), &patches) != nil {
+		return false
+	}
+	for _, p := range patches {
+		if p.Path == ".yijie/patches/chat-models/0032-native-market-approval.patch" {
+			return true
+		}
+	}
+	return false
+})
+
+// This is the checked native-skill Runtime family containing the market approval adapter.
+func (m *Manager) NativeMarketApprovals() bool {
+	return pinnedNativeMarketApproval() && m.config.NativeSkillMarketplaceEnabled && m.config.RuntimePermissionsEnabled && m.MarketEnabled()
 }
 
 func (m *Manager) MarketEnabled() bool { return m.config.Market.enabled() }

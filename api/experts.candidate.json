@@ -32,11 +32,11 @@
     },
     {
       "path": "compatibility/market-broker-control/wire.schema.json",
-      "sha256": "13c913883d274c316c14fe023e9b481801a845c3cbc02f70f07082529cdd23d9"
+      "sha256": "febc685e951a5b66d3aee4c461ec4055006eab7d15d52e40ac5e98ee2310a76d"
     },
     {
       "path": "compatibility/market-selection/wire.schema.json",
-      "sha256": "7651ee4d674c4fd23a7045ac6a80e77d96d1998c6cb873a47d03c850fab2b514"
+      "sha256": "2eef8d80e3d38896af087482d42ccd76b19bf79fa382e930efd723050aa90d62"
     },
     {
       "path": "openapi/runtime-permissions-v2/runtime-permissions-v2.yaml",
@@ -44,7 +44,7 @@
     },
     {
       "path": "compatibility/market-host/wire.schema.json",
-      "sha256": "7b4eb82773e17e42bd914ec440971c4e21f6277c4fe9c496c0a083ba4e8e7601"
+      "sha256": "b9cdab3ac70993d96c4e43208fd3f96f13a6ac20069a03fec233ffc94e049e8e"
     },
     {
       "path": "jsonschema/chat/model-selection-v1.schema.json",
@@ -56,7 +56,7 @@
     },
     {
       "path": "compatibility/market-provider/wire.schema.json",
-      "sha256": "a677189764e431d331c974b690ec93eb9c323116c609548d4962173aef3249da"
+      "sha256": "c20fa38e630cc506e17270ae81a41ccf2fa8110a208e700fd7e00b9cf5e4fdde"
     },
     {
       "path": "scripts/experts-source.mjs",
@@ -90,7 +90,7 @@
     },
     {
       "path": "sdks/jsonschema/experts.schema.json",
-      "sha256": "82f57df07ea5686016432faf22755b47b7fead895bc307a24b571e13ee8cb53e"
+      "sha256": "52542a6ee887cebe1b42de6f6f9cd3859986599b0a391ad5b77d708e7e80a286"
     },
     {
       "path": "sdks/go/experts/bundle_schemas.gen.go",
@@ -140,7 +140,7 @@
     {
       "source": "sdks/jsonschema/experts.schema.json",
       "path": "api/experts.schema.json",
-      "sha256": "82f57df07ea5686016432faf22755b47b7fead895bc307a24b571e13ee8cb53e"
+      "sha256": "52542a6ee887cebe1b42de6f6f9cd3859986599b0a391ad5b77d708e7e80a286"
     },
     {
       "source": "jsonschema/skills/skill-bundle-manifest-v3.schema.json",

@@ -31,6 +31,48 @@ func nativeToolsConfiguration() (map[string]any, map[string]any, error) {
 	return profile.Config, profile.Models, nil
 }
 
+// Configure the Runtime's native adapter for models that require plain functions.
+// Preserve namespaces already contributed by the other owned MCP integrations.
+func addNativeFunctionNamespaces(config map[string]any, names ...string) error {
+	const key = "features.code_mode.function_namespaces"
+	configured, exists := config[key]
+	if !exists {
+		profile, _, err := nativeToolsConfiguration()
+		if err != nil {
+			return err
+		}
+		configured = profile["features"].(map[string]any)["code_mode"].(map[string]any)["function_namespaces"]
+	}
+	var values []any
+	switch list := configured.(type) {
+	case []any:
+		values = append(values, list...)
+	case []string:
+		for _, name := range list {
+			values = append(values, name)
+		}
+	default:
+		return errors.New("native function namespace configuration unavailable")
+	}
+	for _, name := range names {
+		values = append(values, name)
+	}
+	seen := make(map[string]bool)
+	merged := make([]any, 0, len(values))
+	for _, value := range values {
+		name, ok := value.(string)
+		if !ok {
+			return errors.New("invalid native namespace")
+		}
+		if !seen[name] {
+			seen[name] = true
+			merged = append(merged, name)
+		}
+	}
+	config[key] = merged
+	return nil
+}
+
 // Preserve canonical integer types when crossing JSON -> TOML. Rust's native
 // FeatureToml deliberately rejects a floating-point thread count such as 4.0.
 func nativeToolsIntegerValues(value any) (any, error) {

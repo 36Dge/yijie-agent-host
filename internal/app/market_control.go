@@ -50,6 +50,19 @@ func routeMarketControl(ctx context.Context, service MarketControlService, frame
 		return nil, requestID, errMarketControlRequest
 	}
 	switch method {
+	case "remembered_tool_rules":
+		var request wire.RememberedRulesRequest
+		if json.Unmarshal(frame, &request) != nil {
+			return nil, requestID, errMarketControlRequest
+		}
+		rules, ok := service.(interface {
+			RememberedMarketRules(context.Context, wire.RememberedRulesPayload) (wire.RememberedToolRules, error)
+		})
+		if !ok {
+			return nil, requestID, errMarketControlRequest
+		}
+		data, err := rules.RememberedMarketRules(ctx, request.Payload)
+		return wire.RememberedRulesResponse{SchemaVersion: 1, RequestId: request.RequestId, Data: data}, requestID, err
 	case "renew_market_scope":
 		var request broker.RenewScopeRequest
 		if json.Unmarshal(frame, &request) != nil {

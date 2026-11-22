@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contract_version": "0.3.0",
+  "contract_version": "0.4.0",
   "feature": "FEAT-164",
   "mode": "local_worktree_candidate",
   "release": false,
@@ -8,11 +8,11 @@
   "sources": [
     {
       "path": "compatibility/market-selection-v2/wire.schema.json",
-      "sha256": "886b7f4937162422ea4d945b65a1e15d9a14fbcd0e378216c964a88c368ddea2"
+      "sha256": "da692b4d38e249dbd4ed5ec50805196d61bfa9f916be9c80732815efda42f6fa"
     },
     {
       "path": "compatibility/market-selection-v2/native-ipc.json",
-      "sha256": "fbf34c272fd0dcee2c031ec6d486b2852242320a3b950132434770aa90dc4056"
+      "sha256": "598894d7c54ac8b51e52041436c20bb9a5dcbcf7ff511dee23a0ac8906988085"
     },
     {
       "path": "openapi/market-connectors/market-connectors.yaml",
@@ -28,7 +28,7 @@
     },
     {
       "path": "scripts/market-selection-v2-source.mjs",
-      "sha256": "faaeecf84c5900f51fc5d967140d01f4c773809b7fcf2e8ed46a46e50eaf58a5"
+      "sha256": "221b38a9a11576d9d812346e1ee78349756413e18393142d0016ddba622d7db1"
     },
     {
       "path": "scripts/generate-market-selection-v2.mjs",
@@ -46,19 +46,19 @@
   "generated": [
     {
       "path": "sdks/rust/market-selection-v2/types.gen.rs",
-      "sha256": "46f54b763cf9acf4e9271def9b0c5ce7423698fa02c2e28aaaf855b9053b2315"
+      "sha256": "8c845ddfc9ff28d5943cb2f4e89d8794c822b525f2207da86010f2c4806ce397"
     },
     {
       "path": "sdks/typescript/src/domain/market-selection-v2.generated.ts",
-      "sha256": "d548bacfb6e28e3fa8b1e4b0da6d36eda205e98e96406ee50a6d396ca2337d3c"
+      "sha256": "3d46adc5ad51d931c161287fb10d637743f21bba0cf7c5a90bdfc36553fc56fa"
     },
     {
       "path": "sdks/typescript/src/api/generated/market-selection-v2-validator.gen.js",
-      "sha256": "f092a5ba8c407f5591b3462d49df94ead8cabd243a51cf93a03a2a0dae221c82"
+      "sha256": "16fb3c762a1745bea770ff2a461019ad76ea5d6e5e3e4060f18f868414457c04"
     },
     {
       "path": "sdks/jsonschema/market-selection-v2.schema.json",
-      "sha256": "cf5dc84181b18803adfa4eabb9d5f8687760a62460287aa7022d43009ba9dd7f"
+      "sha256": "9dc320a1f94f0ee49a10a435ac10e45c592e5ec44f911697c0a266e8954c5bb4"
     },
     {
       "path": "sdks/go/market-selection-v2/digest.gen.go",
@@ -74,7 +74,7 @@
     }
   ],
   "local_candidate": "market-p1",
-  "worktree_head": "a1101880f60726c056bf859bb61389e299df6e66",
+  "worktree_head": "f2de6f9282dc67934684e93c2e81da005b24a75a",
   "consumer": "agent-host",
   "consumer_generated": []
 }

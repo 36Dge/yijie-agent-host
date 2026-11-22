@@ -343,6 +343,7 @@ func NewService(runtime Runtime, store *Store, events *EventHub, logger *slog.Lo
 			option(service)
 		}
 	}
+	service.bindNativeMarketAuthorization()
 	return service
 }
 
