@@ -144,6 +144,15 @@ func (o *Owner) BindTurn(ctx context.Context, request wire.BindTurnRequest) (wir
 	})
 }
 
+func (o *Owner) RenewScope(ctx context.Context, process wire.ProcessBinding, request wire.RenewScopeRequest) (wire.RenewScopeResponse, error) {
+	if request.Payload.HostInstanceId != process.HostInstanceId {
+		return wire.RenewScopeResponse{}, ErrBinding
+	}
+	return requestResponse[wire.RenewScopeResponse](ctx, o, request, request.RequestId, process, false, func(response wire.RenewScopeResponse) bool {
+		return response.Data == request.Payload
+	})
+}
+
 func (o *Owner) Revoke(ctx context.Context, request wire.RevokeRequest) (wire.RevokeResponse, error) {
 	return requestResponse[wire.RevokeResponse](ctx, o, request, request.RequestId, request.Payload.Binding.Context.Process, false, func(response wire.RevokeResponse) bool {
 		return reflect.DeepEqual(response.Data.Binding, request.Payload.Binding)

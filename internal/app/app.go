@@ -385,6 +385,7 @@ func loadConfigWithDirectoryAuthority(validateDirectory directoryAuthorityValida
 		return Config{}, err
 	}
 	runtimeConfig.NativeSkillMarketplaceEnabled = skillFeature.NativeMarketEnabled
+	runtimeConfig.LegacySkillCatalogEnabled = !skillFeature.NativeMarketEnabled && skillFeature.Enabled()
 	if skillFeature.NativeMarketEnabled {
 		if pathsOverlap(skillFeature.NativeMarketRoot, hostHome) || pathsOverlap(skillFeature.NativeMarketRoot, runtimeConfig.CodexHome) {
 			return Config{}, errors.New("native Skill source and runtime/state roots overlap")

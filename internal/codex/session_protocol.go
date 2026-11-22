@@ -299,6 +299,14 @@ func (m *Manager) publicationInstructions(ctx context.Context) string {
 	return instructions
 }
 
+func (m *Manager) threadDeveloperInstructions(ctx context.Context) string {
+	instructions := m.publicationInstructions(ctx) + m.imageToolInstructions(ctx) + m.documentInstructions()
+	if (m.config.NativeSkillMarketplaceEnabled || m.config.LegacySkillCatalogEnabled) && !isScheduledDraft(ctx) {
+		instructions += "\n\n" + explicitSkillUseInstructions
+	}
+	return instructions
+}
+
 // Called under threadOperation. A newly paired client can take over a loaded
 // legacy thread at the next turn boundary without modifying previous turns.
 func (m *Manager) pairPublicationTurn(ctx context.Context, threadID string) error {
@@ -621,7 +629,7 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		Cwd:                   cwd,
 		ApprovalPolicy:        m.sessionApprovalPolicy(),
 		Sandbox:               SessionSandbox,
-		DeveloperInstructions: m.publicationInstructions(ctx) + m.imageToolInstructions(ctx) + m.documentInstructions(),
+		DeveloperInstructions: m.threadDeveloperInstructions(ctx),
 		Ephemeral:             false,
 	}
 	if m.config.RuntimePermissionsEnabled {
@@ -723,13 +731,15 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 		Config                map[string]any `json:"config,omitempty"`
 	}
 	params := resumeParams{ThreadID: threadID}
+	if m.config.CommandApprovalEnabled || m.config.RuntimePermissionsEnabled || m.config.LegacySkillCatalogEnabled {
+		developerInstructions := m.threadDeveloperInstructions(ctx)
+		params.DeveloperInstructions = &developerInstructions
+	}
 	if m.config.CommandApprovalEnabled || m.config.RuntimePermissionsEnabled {
 		approvalPolicy := m.sessionApprovalPolicy()
 		sandbox := SessionSandbox
-		developerInstructions := m.publicationInstructions(ctx) + m.imageToolInstructions(ctx) + m.documentInstructions()
 		params.ApprovalPolicy = &approvalPolicy
 		params.Sandbox = &sandbox
-		params.DeveloperInstructions = &developerInstructions
 		if m.config.RuntimePermissionsEnabled {
 			baseInstructions := executionBaseInstructions
 			params.BaseInstructions = &baseInstructions

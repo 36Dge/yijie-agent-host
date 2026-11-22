@@ -11,6 +11,7 @@ import (
 
 	builtinweb "github.com/36Dge/yijie-agent-host/internal/contracts/builtinweb"
 	expert "github.com/36Dge/yijie-agent-host/internal/contracts/experts"
+	broker "github.com/36Dge/yijie-agent-host/internal/contracts/marketbrokercontrol"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
 	provider "github.com/36Dge/yijie-agent-host/internal/contracts/marketprovider"
 	"github.com/36Dge/yijie-agent-host/internal/session"
@@ -21,6 +22,7 @@ import (
 type MarketControlService interface {
 	MarketEnabled() bool
 	MarketHello(wire.HelloPayload) (wire.HelloResult, error)
+	RenewMarketScope(context.Context, broker.RenewScopeRequest) (broker.RenewScopeResponse, error)
 	RegisterMarketGrant(wire.GrantRegisterPayload) (wire.GrantRegistration, error)
 	RevokeMarketAuthority(context.Context, wire.RevokeAuthorityPayload) (wire.RevokeAuthorityResult, error)
 	DecideMarketApproval(context.Context, wire.ApprovalDecidePayload) (wire.MarketApproval, error)
@@ -48,6 +50,13 @@ func routeMarketControl(ctx context.Context, service MarketControlService, frame
 		return nil, requestID, errMarketControlRequest
 	}
 	switch method {
+	case "renew_market_scope":
+		var request broker.RenewScopeRequest
+		if json.Unmarshal(frame, &request) != nil {
+			return nil, requestID, errMarketControlRequest
+		}
+		response, err := service.RenewMarketScope(ctx, request)
+		return response, requestID, err
 	case "web_capability_install", "web_capability_clear", "web_turn_revoke", "web_call_cancel":
 		web, ok := service.(builtinWebControlService)
 		if !ok || builtinweb.Validate("WebControlRequest", frame) != nil {

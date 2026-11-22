@@ -71,6 +71,7 @@ type Config struct {
 	BuiltinVideoEnabled            bool
 	NativeToolsEnabled             bool
 	DocumentRuntimeEnabled         bool
+	LegacySkillCatalogEnabled      bool
 	NativeSkillMarketplaceEnabled  bool
 	SkillMarketplaceRoots          []string
 	InteractionToolsEnabled        bool

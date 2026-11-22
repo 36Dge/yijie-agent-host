@@ -220,7 +220,7 @@ func (m *Manager) DecideMarketApproval(ctx context.Context, thread string, input
 			return wire.MarketApproval{}, ctx.Err()
 		}
 	}
-	if value.deciding || value.view.State != wire.ApprovalStatePending || value.view.Revision != input.ExpectedRevision || value.view.Identity.CallRef != input.CallRef || value.view.AgentSessionId != input.AgentSessionId || value.scope.OwnerUserId != input.Scope.OwnerUserId || value.scope.TenantId != input.Scope.TenantId || value.scope.NativeProcessEpoch != input.Scope.NativeProcessEpoch || time.Now().UnixMilli() >= marketDecisionExpiry(value.view) || c.activeTurns[thread] != entry.turnID {
+	if value.deciding || value.view.State != wire.ApprovalStatePending || value.view.Revision != input.ExpectedRevision || value.view.Identity.CallRef != input.CallRef || value.view.AgentSessionId != input.AgentSessionId || value.scope.OwnerUserId != input.Scope.OwnerUserId || value.scope.TenantId != input.Scope.TenantId || value.scope.NativeProcessEpoch != input.Scope.NativeProcessEpoch || value.scope.AuthorizationRevision != input.Scope.AuthorizationRevision || time.Now().UnixMilli() >= marketDecisionExpiry(value.view) || c.activeTurns[thread] != entry.turnID {
 		c.mu.Unlock()
 		return wire.MarketApproval{}, errors.New("market approval unavailable")
 	}

@@ -1,9 +1,24 @@
 package codex
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 )
+
+func TestExplicitSkillUseGuidanceScope(t *testing.T) {
+	chat := context.Background()
+	draft := WithScheduledDraft(chat, "workspace")
+	for _, cfg := range []Config{{NativeSkillMarketplaceEnabled: true}, {LegacySkillCatalogEnabled: true}, {}} {
+		manager := NewManager(cfg, nil)
+		want := cfg.NativeSkillMarketplaceEnabled || cfg.LegacySkillCatalogEnabled
+		if strings.Contains(manager.threadDeveloperInstructions(chat), explicitSkillUseInstructions) != want ||
+			strings.Contains(manager.threadDeveloperInstructions(draft), explicitSkillUseInstructions) {
+			t.Fatal("skill feedback must be scoped to ordinary chats with a managed skill catalog")
+		}
+	}
+}
 
 func TestFEAT174MarketIsolationUsesTheCompleteNativeProfile(t *testing.T) {
 	features := map[string]any{"hooks": false, "plugins": true, "apps": false, "tool_suggest": false, "shell_snapshot": false, "multi_agent": false, "js_repl": false, "memories": true, "tool_call_mcp_elicitation": true, "multi_agent_v2": map[string]any{"enabled": true, "inherit_mcp_servers": false}, "code_mode": map[string]any{"enabled": true}}

@@ -853,6 +853,26 @@ func TestFEAT174NativeExplicitSkillAndColdResume(t *testing.T) {
 	if !bytes.Contains(explicit, []byte("ORDINARY_SKILL_BODY_174")) {
 		t.Fatal("native explicit input did not load skill body")
 	}
+	requireSkillUseGuidance := func(body []byte) {
+		t.Helper()
+		var request struct {
+			Input []struct {
+				Role    string
+				Content json.RawMessage
+			}
+		}
+		if err := json.Unmarshal(body, &request); err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range request.Input {
+			if item.Role == "developer" && bytes.Contains(item.Content, []byte("explicitly invokes a skill in the current turn")) &&
+				bytes.Contains(item.Content, []byte("specific missing inputs")) {
+				return
+			}
+		}
+		t.Fatal("the native model request did not carry the explicit skill availability guidance as developer instructions")
+	}
+	requireSkillUseGuidance(explicit)
 	// A new native thread receives metadata for implicit discovery, not every
 	// Skill body. The native policy opt-out remains excluded from that catalog.
 	optoutFiles := sourceFiles{"SKILL.md": ordinaryMarkdown("ordinary-explicit-only"), "agents/openai.yaml": []byte("policy:\n  allow_implicit_invocation: false\n")}
@@ -932,6 +952,7 @@ func TestFEAT174NativeExplicitSkillAndColdResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	cold := turn(next, "Continue with the same selected skill.", inputs)
+	requireSkillUseGuidance(cold)
 	if !bytes.Contains(cold, []byte("ORDINARY_SKILL_BODY_174")) {
 		t.Fatal("cold explicit selection body unavailable")
 	}

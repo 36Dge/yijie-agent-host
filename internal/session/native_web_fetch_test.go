@@ -16,6 +16,7 @@ func TestWebFetchReadingDetails(t *testing.T) {
 		{"page", `{"url":"https://example.org/article","title":"Reading guide","markdown":"A paragraph in the document.","truncated":false}`, "已读取网页正文。", "Reading guide", false},
 		{"partial", `{"url":"https://example.org/article","title":"","markdown":"A paragraph in the document.","truncated":true}`, "已读取部分正文，网页内容较长。", "", false},
 		{"no content", `{"error":{"code":"no_content","message":"网页未返回可用正文。"}}`, "网页未返回可用正文。", "", true},
+		{"URL blocked", `{"error":{"code":"url_blocked","message":"网页读取服务的安全策略拒绝了此网址。"}}`, "网页读取服务的安全策略拒绝了此网址。", "", true},
 		{"upstream", `{"error":{"code":"upstream_unavailable","message":"网页检索服务暂不可用。"}}`, "网页检索服务暂不可用。", "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

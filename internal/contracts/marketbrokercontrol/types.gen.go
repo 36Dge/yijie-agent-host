@@ -3023,10 +3023,197 @@ func (v *GatewayCallReceipt) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+type RenewScopePayload struct {
+	HostInstanceId CanonicalId  `json:"hostInstanceId"`
+	Scope          ScopeBinding `json:"scope"`
+	Sequence       Revision     `json:"sequence"`
+}
+
+func (v RenewScopePayload) Validate() error {
+	if err := v.HostInstanceId.Validate(); err != nil {
+		return err
+	}
+	if err := v.Scope.Validate(); err != nil {
+		return err
+	}
+	if err := v.Sequence.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *RenewScopePayload) UnmarshalJSON(b []byte) error {
+	type wire RenewScopePayload
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil || raw == nil {
+		return errors.New("invalid broker object")
+	}
+	if _, ok := raw["hostInstanceId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["hostInstanceId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["scope"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["scope"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["sequence"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["sequence"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	var w wire
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&w); err != nil {
+		return errors.New("invalid broker object")
+	}
+	if err := d.Decode(new(any)); err != io.EOF {
+		return errors.New("invalid broker object")
+	}
+	x := RenewScopePayload(w)
+	if err := x.Validate(); err != nil {
+		return err
+	}
+	*v = x
+	return nil
+}
+
+type RenewScopeRequest struct {
+	SchemaVersion int64             `json:"schemaVersion"`
+	RequestId     CanonicalId       `json:"requestId"`
+	Method        string            `json:"method"`
+	Payload       RenewScopePayload `json:"payload"`
+}
+
+func (v RenewScopeRequest) Validate() error {
+	if v.SchemaVersion != 1 {
+		return errors.New("invalid broker constant")
+	}
+	if err := v.RequestId.Validate(); err != nil {
+		return err
+	}
+	if string(v.Method) != "renew_market_scope" {
+		return errors.New("invalid broker constant")
+	}
+	if err := v.Payload.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *RenewScopeRequest) UnmarshalJSON(b []byte) error {
+	type wire RenewScopeRequest
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil || raw == nil {
+		return errors.New("invalid broker object")
+	}
+	if _, ok := raw["schemaVersion"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["schemaVersion"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["requestId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["requestId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["method"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["method"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["payload"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["payload"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	var w wire
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	if err := d.Decode(&w); err != nil {
+		return errors.New("invalid broker object")
+	}
+	if err := d.Decode(new(any)); err != io.EOF {
+		return errors.New("invalid broker object")
+	}
+	x := RenewScopeRequest(w)
+	if err := x.Validate(); err != nil {
+		return err
+	}
+	*v = x
+	return nil
+}
+
+type RenewScopeResponse struct {
+	SchemaVersion int64             `json:"schemaVersion"`
+	RequestId     CanonicalId       `json:"requestId"`
+	Data          RenewScopePayload `json:"data"`
+}
+
+func (v RenewScopeResponse) Validate() error {
+	if v.SchemaVersion != 1 {
+		return errors.New("invalid broker constant")
+	}
+	if err := v.RequestId.Validate(); err != nil {
+		return err
+	}
+	if err := v.Data.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+func (v *RenewScopeResponse) UnmarshalJSON(b []byte) error {
+	type wire RenewScopeResponse
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil || raw == nil {
+		return errors.New("invalid broker object")
+	}
+	if _, ok := raw["schemaVersion"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["schemaVersion"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["requestId"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["requestId"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	if _, ok := raw["data"]; !ok {
+		return errors.New("missing broker field")
+	}
+	if x, ok := raw["data"]; ok && bytes.Equal(bytes.TrimSpace(x), []byte("null")) {
+		return errors.New("null broker field")
+	}
+	var w wire
+	d := json.NewDecoder(bytes.NewReader(b))
+	if err := d.Decode(&w); err != nil {
+		return errors.New("invalid broker object")
+	}
+	if err := d.Decode(new(any)); err != io.EOF {
+		return errors.New("invalid broker object")
+	}
+	x := RenewScopeResponse(w)
+	if err := x.Validate(); err != nil {
+		return err
+	}
+	*v = x
+	return nil
+}
+
 const GatewayResultKey = "yijie.market.call"
 const GatewayResultDefinition = "GatewayCallReceipt"
 const GatewayResultMaxMetadataBytes = 4096
 const GatewayResultMaxResultEnvelopeBytes = 73728
+const GatewayResultTurnStopKey = "yijie.market.turnStop"
 
 // DecodeRequest chooses only a declared method, then runs its closed generated decoder.
 func DecodeRequest(b []byte) (any, error) {
@@ -3051,6 +3238,12 @@ func DecodeRequest(b []byte) (any, error) {
 		return v, nil
 	case "bind_turn":
 		var v BindTurnRequest
+		if err := json.Unmarshal(b, &v); err != nil {
+			return nil, err
+		}
+		return v, nil
+	case "renew_market_scope":
+		var v RenewScopeRequest
 		if err := json.Unmarshal(b, &v); err != nil {
 			return nil, err
 		}
@@ -3115,6 +3308,15 @@ const GatewayErrorAdmissionStoppedMessage = "本次连接器调用在进入外�
 const GatewayErrorExecutionUnverifiedOutcome = "unknown"
 const GatewayErrorExecutionUnverifiedCode = "temporarily_unavailable"
 const GatewayErrorExecutionUnverifiedMessage = "本次连接器调用未取得可验证的结果，无法确认外部请求是否已发送或完成。不能据此判断没有数据或已执行；不会自动重试。"
+const GatewayErrorLeaseExpiredOutcome = "not_sent"
+const GatewayErrorLeaseExpiredCode = "lease_expired"
+const GatewayErrorLeaseExpiredMessage = "本轮市场连接器授权已到期，外部请求未发送。本轮请停止调用所有市场工具，包括更换参数、工具或查询额度。请向用户说明原因，并用已有结果继续。"
+const GatewayErrorLeaseRevokedOutcome = "not_sent"
+const GatewayErrorLeaseRevokedCode = "lease_revoked"
+const GatewayErrorLeaseRevokedMessage = "本轮市场连接器授权已撤销，外部请求未发送。本轮请停止调用所有市场工具，包括更换参数、工具或查询额度。请向用户说明原因，并用已有结果继续。"
+const GatewayErrorApprovalExpiredOutcome = "not_sent"
+const GatewayErrorApprovalExpiredCode = "call_expired"
+const GatewayErrorApprovalExpiredMessage = "本次市场工具的单次审批已到期，外部请求未发送。请告知用户，本次操作需重新批准，请勿自行重试。"
 const KimiModelCredentialEnvironmentKey = "YIJIE_MARKET_KIMI_MODEL_KEY_FD"
 const KimiModelCredentialDescriptor = 3
 const KimiModelCredentialPreamble = "yijie-kimi-model-key-v1\n"

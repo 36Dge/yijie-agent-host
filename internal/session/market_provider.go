@@ -2,7 +2,9 @@ package session
 
 import (
 	"context"
+	"errors"
 
+	broker "github.com/36Dge/yijie-agent-host/internal/contracts/marketbrokercontrol"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
 	provider "github.com/36Dge/yijie-agent-host/internal/contracts/marketprovider"
 	"github.com/36Dge/yijie-agent-host/internal/marketbroker"
@@ -10,6 +12,41 @@ import (
 
 type marketOwnerRuntime interface {
 	MarketOwner() (*marketbroker.Owner, error)
+}
+
+// Called only on the same private Native pipe as hello and approval_decide.
+// Forward to the already owned generation. A heartbeat never starts a worker.
+func (s *Service) RenewMarketScope(ctx context.Context, request broker.RenewScopeRequest) (broker.RenewScopeResponse, error) {
+	if err := request.Validate(); err != nil {
+		return broker.RenewScopeResponse{}, marketFail(wire.ErrorCodeInvalidRequest)
+	}
+	if err := s.ValidateMarketScope(request.Payload.HostInstanceId, request.Payload.Scope, true); err != nil {
+		return broker.RenewScopeResponse{}, err
+	}
+	rt, ok := s.runtime.(interface {
+		marketOwnerRuntime
+		MarketProcess() (broker.ProcessBinding, error)
+	})
+	if !ok {
+		return broker.RenewScopeResponse{}, marketFail(wire.ErrorCodeNotReady)
+	}
+	process, err := rt.MarketProcess()
+	if err != nil {
+		return broker.RenewScopeResponse{}, marketFail(wire.ErrorCodeNotReady)
+	}
+	owner, err := rt.MarketOwner()
+	if err != nil {
+		return broker.RenewScopeResponse{}, marketFail(wire.ErrorCodeNotReady)
+	}
+	reply, err := owner.RenewScope(ctx, process, request)
+	var remote *marketbroker.RemoteError
+	if errors.As(err, &remote) {
+		code := wire.ErrorCode(remote.Code())
+		if code.Validate() == nil {
+			return reply, marketFail(code)
+		}
+	}
+	return reply, err
 }
 
 // Provider controls are callable only from the owned Native adapter. A platform

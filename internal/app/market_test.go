@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	broker "github.com/36Dge/yijie-agent-host/internal/contracts/marketbrokercontrol"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/markethost"
 	provider "github.com/36Dge/yijie-agent-host/internal/contracts/marketprovider"
 	rejection "github.com/36Dge/yijie-agent-host/internal/contracts/submissionrejection"
@@ -39,6 +40,25 @@ func (f *marketAdapterFixture) MarketHello(v wire.HelloPayload) (wire.HelloResul
 	f.hello++
 	return wire.HelloResult{HostInstanceId: v.HostInstanceId, NativeProcessEpoch: v.NativeProcessEpoch, OwnerUserId: v.OwnerUserId, TenantId: v.TenantId, Ready: true}, nil
 }
+func (f *marketAdapterFixture) RenewMarketScope(_ context.Context, r broker.RenewScopeRequest) (broker.RenewScopeResponse, error) {
+	return broker.RenewScopeResponse{SchemaVersion: 1, RequestId: r.RequestId, Data: r.Payload}, nil
+}
+
+func TestMarketScopeRenewalRoutesOnNativeControl(t *testing.T) {
+	request := broker.RenewScopeRequest{SchemaVersion: 1, RequestId: marketID(1), Method: "renew_market_scope", Payload: broker.RenewScopePayload{HostInstanceId: marketID(2), Sequence: 1, Scope: broker.ScopeBinding{OwnerUserId: marketID(3), TenantId: marketID(4), NativeProcessEpoch: marketID(5), AuthorizationRevision: 1, AuthorizationExpiresAtUnixMs: 1_800_000_300_000}}}
+	frame, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply, id, err := routeMarketControl(context.Background(), &marketAdapterFixture{enabled: true}, frame)
+	if err != nil || id == nil || *id != request.RequestId {
+		t.Fatal("private renewal not routed", err)
+	}
+	if got, ok := reply.(broker.RenewScopeResponse); !ok || got.Data != request.Payload {
+		t.Fatal("renewal response not correlated")
+	}
+}
+
 func (f *marketAdapterFixture) RegisterMarketGrant(wire.GrantRegisterPayload) (wire.GrantRegistration, error) {
 	return wire.GrantRegistration{}, nil
 }
