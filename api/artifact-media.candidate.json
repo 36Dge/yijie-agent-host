@@ -13,12 +13,16 @@
       "sha256": "7106841e9a32272a12127fbcd43e14985b56fdcc87f1bd1ff15ffd6a5f9b666d"
     },
     {
+      "path": "jsonschema/artifact/workspace-publish-v1.schema.json",
+      "sha256": "856133cb78e9e1fdd3c6fabc4d1ccbace814e92070561a51f6416c15db8d414a"
+    },
+    {
       "path": "jsonschema/agent/session-event-v3.schema.json",
       "sha256": "87b1284056529bde8314e6cfa6ad1fb27ffefef50ea86033875fda795330939f"
     },
     {
       "path": "scripts/generate-artifact-media.mjs",
-      "sha256": "07e6cd9f8a5cfaa1f614295198dce934e56ec6859d9b539ce491bdafd57cc232"
+      "sha256": "cc55a074ccec5774108ffca65fdd535d9b549f319be8c47dcf3363d0ab0a8fa7"
     }
   ],
   "generated": [
@@ -45,6 +49,14 @@
     {
       "path": "sdks/typescript/src/jsonschema/artifact-media.gen.ts",
       "sha256": "646b9350d0dcc9619582d7497b17ddcc16b6223ddaa1fd8104ae91b04ed43c84"
+    },
+    {
+      "path": "sdks/go/artifactmedia/publish.gen.go",
+      "sha256": "7dc190bf9a494267c8b91d0564037b53901b339390c707ac85764a2b535713e1"
+    },
+    {
+      "path": "sdks/rust/artifactmedia/publish.gen.rs",
+      "sha256": "20bc0297ea4a4bb670fa6a1fe83db4e99d5c6b79e38c2f6525ec325c114b6178"
     }
   ]
 }

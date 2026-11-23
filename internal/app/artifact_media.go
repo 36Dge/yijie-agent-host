@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/artifactmedia"
 	"github.com/36Dge/yijie-agent-host/internal/session"
 	"io"
@@ -69,13 +70,18 @@ func (h *sessionHandler) publishArtifact(w http.ResponseWriter, r *http.Request)
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192))
 	decoder.DisallowUnknownFields()
 	var request wire.PublishRequest
-	if decoder.Decode(&request) != nil || decoder.Decode(new(any)) != io.EOF {
+	if decoder.Decode(&request) != nil || decoder.Decode(new(any)) != io.EOF || request.Input.DisplayName == "" {
+		w.Header().Set(wire.PublishReasonHeader, string(wire.ReasonInvalidRequest))
 		w.WriteHeader(400)
 		_, _ = w.Write([]byte(`{"error":"invalid_request"}`))
 		return
 	}
 	result, err := service.PublishArtifact(r.Context(), request)
 	if err != nil {
+		var reason wire.PublishReason
+		if errors.As(err, &reason) && reason.Known() {
+			w.Header().Set(wire.PublishReasonHeader, string(reason))
+		}
 		w.WriteHeader(409)
 		_, _ = w.Write([]byte(`{"error":"artifact_registration_unavailable"}`))
 		return

@@ -19,9 +19,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"golang.org/x/text/unicode/norm"
 )
 
 const (
@@ -500,6 +502,44 @@ func safeDisplayName(value string) bool {
 		}
 	}
 	return value != "." && value != ".."
+}
+
+// WorkspaceDisplayName resolves presentation metadata only. The caller supplies
+// the basename of the authorized file and has already admitted its extension.
+func WorkspaceDisplayName(hint, basename string) string {
+	extension := strings.ToLower(filepath.Ext(basename))
+	switch extension {
+	case ".htm":
+		extension = ".html"
+	case ".markdown":
+		extension = ".md"
+	case ".jpeg":
+		extension = ".jpg"
+	}
+	for _, candidate := range []string{hint, basename} {
+		if !utf8.ValidString(candidate) || strings.IndexFunc(candidate, unicode.IsControl) >= 0 {
+			continue
+		}
+		name := norm.NFC.String(strings.TrimSpace(candidate))
+		if safeDisplayName(name) && len(workspaceSaveName(name, extension)) <= 255 {
+			return name
+		}
+	}
+	return "artifact" + extension
+}
+
+// Mirror Native's suggested save name, including the suffix byte budget.
+func workspaceSaveName(name, extension string) string {
+	if dot := strings.LastIndexByte(name, '.'); dot > 0 {
+		suffix := strings.ToLower(name[dot:])
+		if suffix == extension || (extension == ".jpg" && suffix == ".jpeg") {
+			return name
+		}
+		if (extension == ".html" && suffix == ".htm") || (extension == ".md" && suffix == ".markdown") {
+			return name[:dot] + extension
+		}
+	}
+	return name + extension
 }
 
 func mediaAllowed(kind, mediaType string, content []byte) bool {

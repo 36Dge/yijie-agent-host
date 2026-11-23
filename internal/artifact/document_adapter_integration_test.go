@@ -5,12 +5,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	media "github.com/36Dge/yijie-agent-host/internal/contracts/artifactmedia"
 	wire "github.com/36Dge/yijie-agent-host/internal/contracts/documentruntime"
 	"github.com/36Dge/yijie-agent-host/internal/documents"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +28,18 @@ func TestDocumentRealAdapterReadOnlyToolsAndBinding(t *testing.T) {
 	host := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+token {
 			t.Error("missing existing Host bearer")
+		}
+		if r.URL.Path == "/internal/artifact-media/v1/publish" {
+			var input media.PublishRequest
+			if json.NewDecoder(r.Body).Decode(&input) != nil || input.ThreadId != testSession || input.TurnId != testArtifact || input.Input.DisplayName != filepath.Base(input.Input.RelativePath) {
+				t.Error("private publisher did not receive the existing two-field request")
+			}
+			if input.Input.RelativePath == "exports/modern.docx" {
+				w.Header().Set(media.PublishReasonHeader, string(media.ReasonReaderUnavailable))
+			}
+			w.WriteHeader(http.StatusConflict)
+			_, _ = io.WriteString(w, `{"error":"artifact_registration_unavailable"}`)
+			return
 		}
 		if r.URL.Path != "/internal/document-runtime/v1/environment" {
 			t.Error("unexpected route", r.URL.Path)
@@ -104,6 +118,12 @@ func TestDocumentRealAdapterReadOnlyToolsAndBinding(t *testing.T) {
 		tool := raw.(map[string]any)
 		name := tool["name"].(string)
 		names[name] = true
+		if name == "publish_artifact" {
+			required := tool["inputSchema"].(map[string]any)["required"].([]any)
+			if len(required) != 1 || required[0] != "relative_path" {
+				t.Fatal("model-facing input still requires a name", required)
+			}
+		}
 		if name != "publish_artifact" && tool["annotations"].(map[string]any)["readOnlyHint"] != true {
 			t.Fatal("document query not readonly")
 		}
@@ -114,5 +134,14 @@ func TestDocumentRealAdapterReadOnlyToolsAndBinding(t *testing.T) {
 	result := request("tools/call", map[string]any{"name": "load_document_environment", "arguments": map[string]any{"format": "docx"}, "_meta": map[string]any{"threadId": testSession, "x-codex-turn-metadata": map[string]any{"turn_id": testArtifact}}})
 	if result["isError"] == true || calls != 1 {
 		t.Fatal("document environment bridge failed", result, calls)
+	}
+	for path, message := range map[string]string{
+		"exports/modern.docx": "当前聊天暂时无法接收此类文档",
+		"exports/legacy.docx": "产物登记结果未确认",
+	} {
+		out := request("tools/call", map[string]any{"name": "publish_artifact", "arguments": map[string]any{"relative_path": path}, "_meta": map[string]any{"threadId": testSession, "x-codex-turn-metadata": map[string]any{"turn_id": testArtifact}}})
+		if out["isError"] != true || !strings.Contains(out["content"].([]any)[0].(map[string]any)["text"].(string), message) {
+			t.Fatal("publisher error feedback", path, out)
+		}
 	}
 }

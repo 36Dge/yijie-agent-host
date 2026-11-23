@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.yijie.ai/artifact/workspace-publish-v1.schema.json",
+  "title": "WorkspacePublishInput",
+  "description": "将本轮工作区内已生成的文件登记为聊天产物。通常只传 relative_path，例如 {\"relative_path\":\"exports/报告.docx\"}。display_name 为可选的另存文件名建议。staged 表示暂存，用 get_artifact_status 查询同一 ID，committed 才确认聊天已接收。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["relative_path"],
+  "properties": {
+    "relative_path": {
+      "type": "string", "minLength": 1, "maxLength": 1024,
+      "x-yijie-max-utf8-bytes": 1024,
+      "description": "相对于当前工作区的原始文件路径，含真实扩展名。"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "可选。要在聊天中使用的文件名，例如 季度报告.docx。省略或名称不可用时采用文件原名。"
+    }
+  },
+  "examples": [
+    {"relative_path": "exports/报告.docx"},
+    {"relative_path": "qrcode.png", "display_name": "二维码.png"},
+    {"relative_path": "qrcode.png", "display_name": "二维码（https://example.com）"}
+  ],
+  "x-reason-header": "X-Yijie-Artifact-Reason",
+  "x-error-reasons": {
+    "invalid_request": "登记参数无效。请提供当前工作区的相对文件路径。",
+    "scope_unavailable": "当前轮次无法登记文件。请确认当前会话仍在执行。",
+    "workspace_file_unavailable": "未能读取当前工作区中的文件，请核对相对路径。",
+    "unsupported_type": "此文件类型暂不支持登记。",
+    "invalid_content": "文件内容为空或未通过对应格式的校验，请检查原文件。",
+    "file_too_large": "文件超过该类型的单文件大小限制。",
+    "reader_unavailable": "当前聊天暂时无法接收此类文档，工作区原文件已保留。",
+    "registration_conflict": "此路径已登记，内容或有效文件名与已有产物不同。",
+    "registration_limit": "产物数量或暂存空间已达到限制。",
+    "unavailable": "产物登记结果未确认。若已有产物 ID，请查询同一 ID 的状态。"
+  }
+}

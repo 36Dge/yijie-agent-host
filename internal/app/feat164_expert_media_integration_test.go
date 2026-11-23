@@ -138,7 +138,11 @@ func runFEAT164ExpertMedia(t *testing.T, media bool, previewProfile string) {
 			if n == 2 {
 				name = "drawing.svg"
 			}
-			args, _ := json.Marshal(map[string]any{"relative_path": name, "display_name": name})
+			publish := map[string]string{"relative_path": name}
+			if n == 2 {
+				publish["display_name"] = "二维码（https://example.com）"
+			}
+			args, _ := json.Marshal(publish)
 			item = map[string]any{"id": fmt.Sprintf("item_%d", n), "type": "function_call", "call_id": fmt.Sprintf("call_%d", n), "name": toolName, "arguments": string(args)}
 			if toolNamespace != "" {
 				item["namespace"] = toolNamespace
@@ -325,21 +329,19 @@ func runFEAT164ExpertMedia(t *testing.T, media bool, previewProfile string) {
 	if ref == nil {
 		t.Fatal("reviewed expert missing")
 	}
-	if previewProfile != "" {
-		resolved, err := resources.ResolveExpert(*ref)
-		if err != nil {
-			t.Fatal(err)
-		}
-		ctx, err := codex.WithExpertWebPolicy(context.Background(), string(ref.ExpertId), string(ref.Version), string(ref.RoleSha256))
-		if err != nil {
-			t.Fatal(err)
-		}
-		ctx, err = codex.WithExpertInstructions(ctx, resolved.Role, resolved.Index)
-		if err != nil {
-			t.Fatal(err)
-		}
-		expectNativeSearch.Store(codex.ExpertWebAllowed(ctx))
+	resolved, err := resources.ResolveExpert(*ref)
+	if err != nil {
+		t.Fatal(err)
 	}
+	policy, err := codex.WithExpertWebPolicy(context.Background(), string(ref.ExpertId), string(ref.Version), string(ref.RoleSha256))
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err = codex.WithExpertInstructions(policy, resolved.Role, resolved.Index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectNativeSearch.Store(codex.ExpertWebAllowed(policy))
 	id := func() market.CanonicalId { return market.CanonicalId(uuid.NewString()) }
 	scope := market.ScopeBinding{OwnerUserId: id(), TenantId: id(), NativeProcessEpoch: id(), AuthorizationRevision: 1, AuthorizationExpiresAtUnixMs: broker.UnixMilliseconds(time.Now().Add(2 * time.Minute).UnixMilli())}
 	if _, err = service.MarketHello(market.HelloPayload{HostInstanceId: market.CanonicalId(instance), OwnerUserId: scope.OwnerUserId, TenantId: scope.TenantId, NativeProcessEpoch: scope.NativeProcessEpoch}); err != nil {

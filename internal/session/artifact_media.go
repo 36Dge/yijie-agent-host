@@ -152,23 +152,23 @@ func (s *Service) clearMediaRegistrations(prefix string) {
 
 // Native thread/turn are supplied by the private MCP adapter, never tool arguments.
 func (s *Service) PublishArtifact(ctx context.Context, request wire.PublishRequest) (wire.PublishReceipt, error) {
-	fail := func() (wire.PublishReceipt, error) {
-		return wire.PublishReceipt{}, errors.New("artifact registration unavailable")
+	fail := func(reason wire.PublishReason) (wire.PublishReceipt, error) {
+		return wire.PublishReceipt{}, reason
 	}
 	if s.media == nil || s.artifacts == nil || ctx.Err() != nil {
-		return fail()
+		return fail(wire.ReasonUnavailable)
 	}
 	input := request.Input
-	if !utf8.ValidString(input.RelativePath) || len(input.RelativePath) > 1024 || !filepath.IsLocal(input.RelativePath) || path.Clean(input.RelativePath) != input.RelativePath || strings.ContainsAny(input.RelativePath, "\\\x00") || !validV4DisplayName(input.DisplayName, false) {
-		return fail()
-	}
 	record, err := s.store.GetByThread(request.ThreadId)
 	if err != nil || record.Purpose == purposeDraft || record.ActiveTurnID != request.TurnId || record.ActiveTurnID == "" || record.CleanupOperationID != "" {
-		return fail()
+		return fail(wire.ReasonScopeUnavailable)
+	}
+	if !utf8.ValidString(input.RelativePath) || len(input.RelativePath) > 1024 || !filepath.IsLocal(input.RelativePath) || path.Clean(input.RelativePath) != input.RelativePath || strings.ContainsAny(input.RelativePath, "\\\x00") {
+		return fail(wire.ReasonWorkspaceFileUnavailable)
 	}
 	root, err := os.OpenRoot(record.Cwd)
 	if err != nil {
-		return fail()
+		return fail(wire.ReasonWorkspaceFileUnavailable)
 	}
 	defer root.Close()
 	// Check every component with the rooted authority; never follow a link.
@@ -176,53 +176,63 @@ func (s *Service) PublishArtifact(ctx context.Context, request wire.PublishReque
 	for i := range parts {
 		info, e := root.Lstat(strings.Join(parts[:i+1], "/"))
 		if e != nil || info.Mode()&os.ModeSymlink != 0 {
-			return fail()
+			return fail(wire.ReasonWorkspaceFileUnavailable)
 		}
 	}
 	f, err := root.Open(input.RelativePath)
 	if err != nil {
-		return fail()
+		return fail(wire.ReasonWorkspaceFileUnavailable)
 	}
 	defer f.Close()
 	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 64<<20 {
-		return fail()
+	if err != nil || !info.Mode().IsRegular() {
+		return fail(wire.ReasonWorkspaceFileUnavailable)
+	}
+	kind, mime := artifactMediaType(input.RelativePath)
+	if kind == "" {
+		return fail(wire.ReasonUnsupportedType)
+	}
+	if info.Size() == 0 {
+		return fail(wire.ReasonInvalidContent)
+	}
+	if info.Size() > 64<<20 || kind == "image" && info.Size() > 20<<20 {
+		return fail(wire.ReasonFileTooLarge)
 	}
 	content, err := io.ReadAll(io.LimitReader(f, 64<<20+1))
 	if err != nil || int64(len(content)) != info.Size() || ctx.Err() != nil {
-		return fail()
+		return fail(wire.ReasonUnavailable)
 	}
-	kind, mime := artifactMediaType(input.RelativePath)
-	if kind == "" || kind == "image" && len(content) > 20<<20 {
-		return fail()
-	}
+	displayName := artifact.WorkspaceDisplayName(input.DisplayName, path.Base(input.RelativePath))
 	sum := fmt.Sprintf("%x", sha256.Sum256(content))
 	key := record.AgentSessionID + "/" + request.TurnId + "/" + input.RelativePath
 	turnKey := record.AgentSessionID + "/" + request.TurnId
-	manifestDigest, _ := json.Marshal([]string{sum, input.DisplayName, mime})
+	manifestDigest, _ := json.Marshal([]string{sum, displayName, mime})
 	s.terminalMu.Lock()
 	defer s.terminalMu.Unlock()
 	s.media.mu.Lock()
 	defer s.media.mu.Unlock()
+	current, err := s.store.Get(record.AgentSessionID)
+	if err != nil || current.ActiveTurnID != request.TurnId || current.CleanupOperationID != "" {
+		return fail(wire.ReasonScopeUnavailable)
+	}
+	if ctx.Err() != nil {
+		return fail(wire.ReasonUnavailable)
+	}
 	if previous, ok := s.media.registrations[key]; ok {
 		if previous.digest == string(manifestDigest) {
 			return previous.receipt, nil
 		}
-		return fail()
+		return fail(wire.ReasonRegistrationConflict)
 	}
 	if !wire.LegacyMediaAllowed(kind, mime) && s.media.subscribers[record.AgentSessionID] == 0 {
-		return fail()
+		return fail(wire.ReasonReaderUnavailable)
 	}
 	if len(s.media.registrations) >= 4096 || s.media.ordinals[turnKey] >= 12 {
-		return fail()
-	}
-	current, err := s.store.Get(record.AgentSessionID)
-	if err != nil || current.ActiveTurnID != request.TurnId || ctx.Err() != nil {
-		return fail()
+		return fail(wire.ReasonRegistrationLimit)
 	}
 	id, err := newUUID()
 	if err != nil {
-		return fail()
+		return fail(wire.ReasonUnavailable)
 	}
 	if !wire.LegacyMediaAllowed(kind, mime) {
 		s.media.orderMu.Lock()
@@ -231,17 +241,24 @@ func (s *Service) PublishArtifact(ctx context.Context, request wire.PublishReque
 	}
 	ordinal := s.media.ordinals[turnKey]
 	s.media.ordinals[turnKey]++
-	payload := EventPayload{ArtifactID: id, Kind: kind, Provenance: "tool", Status: "in_progress", Ordinal: &ordinal, DisplayName: input.DisplayName}
+	payload := EventPayload{ArtifactID: id, Kind: kind, Provenance: "tool", Status: "in_progress", Ordinal: &ordinal, DisplayName: displayName}
 	if err = s.publishMedia(record, Event{TurnID: request.TurnId, ItemID: "artifact-" + id, EventType: EventItemArtifactStarted, Payload: payload}); err != nil {
-		return fail()
+		return fail(wire.ReasonUnavailable)
 	}
-	if err = s.artifacts.Put(artifact.Manifest{SessionID: record.AgentSessionID, ArtifactID: id, Kind: kind, DisplayName: input.DisplayName, MediaType: mime, Content: content}); err != nil {
+	if err = s.artifacts.Put(artifact.Manifest{SessionID: record.AgentSessionID, ArtifactID: id, Kind: kind, DisplayName: displayName, MediaType: mime, Content: content}); err != nil {
 		retry := false
 		payload.Status = "failed"
 		payload.ErrorCode = artifactFailureCode(err)
 		payload.Retryable = &retry
 		_ = s.publishMedia(record, Event{TurnID: request.TurnId, ItemID: "artifact-" + id, EventType: EventItemArtifactFailed, Payload: payload})
-		return fail()
+		switch {
+		case errors.Is(err, artifact.ErrInvalid):
+			return fail(wire.ReasonInvalidContent)
+		case errors.Is(err, artifact.ErrLimitExceeded):
+			return fail(wire.ReasonRegistrationLimit)
+		default:
+			return fail(wire.ReasonUnavailable)
+		}
 	}
 	size := int64(len(content))
 	payload.Status = "ready"
@@ -250,7 +267,7 @@ func (s *Service) PublishArtifact(ctx context.Context, request wire.PublishReque
 	payload.SHA256 = sum
 	payload.ContentHref = "/v3/agent-sessions/" + record.AgentSessionID + "/artifacts/" + id + "/content"
 	if err = s.publishMedia(record, Event{TurnID: request.TurnId, ItemID: "artifact-" + id, EventType: EventItemArtifactCompleted, Payload: payload}); err != nil {
-		return fail()
+		return fail(wire.ReasonUnavailable)
 	}
 	receipt := wire.PublishReceipt{ArtifactId: id, Status: "staged"}
 	s.media.registrations[key] = mediaRegistration{string(manifestDigest), receipt}

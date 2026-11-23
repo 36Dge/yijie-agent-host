@@ -3,6 +3,9 @@
 mod wire {
     include!("types.gen.rs");
 }
+mod publish_wire {
+    include!("publish.gen.rs");
+}
 use axum::{
     Router,
     extract::{Request, State},
@@ -38,6 +41,89 @@ struct Gateway {
 fn unavailable() -> ErrorData {
     ErrorData::internal_error("产物登记不可用", None)
 }
+
+fn publish_error(reason: &str) -> CallToolResult {
+    CallToolResult::error(vec![Content::text(publish_wire::reason_message(reason))])
+}
+
+fn publish_input(args: JsonObject) -> Option<wire::PublishInput> {
+    if args.len() > 2
+        || args.values().any(|v| {
+            v.as_str()
+                .is_none_or(|s| s.len() > publish_wire::PUBLISH_BODY_BYTES)
+        })
+        || serde_json::to_vec(&args).ok()?.len() > publish_wire::PUBLISH_BODY_BYTES
+    {
+        return None;
+    }
+    let input: publish_wire::WorkspacePublishInput =
+        serde_json::from_value(serde_json::Value::Object(args)).ok()?;
+    let path = input.relative_path;
+    if path.is_empty() || path.len() > 1024 {
+        return None;
+    }
+    let basename = path.rsplit('/').next().unwrap_or_default();
+    let display_name = [input.display_name.as_deref().unwrap_or_default(), basename]
+        .into_iter()
+        .find(|name| !name.is_empty() && name.len() <= publish_wire::PRIVATE_NAME_BYTES)
+        .map(str::to_owned)
+        .unwrap_or_else(|| match basename.rsplit_once('.').map(|(_, ext)| ext) {
+            Some(ext)
+                if !ext.is_empty()
+                    && ext.len() + 9 <= publish_wire::PRIVATE_NAME_BYTES
+                    && ext.bytes().all(|b| b.is_ascii_alphanumeric()) =>
+            {
+                format!("artifact.{ext}")
+            }
+            _ => "artifact".into(),
+        });
+    Some(wire::PublishInput {
+        relative_path: path,
+        display_name,
+    })
+}
+
+#[cfg(test)]
+mod workspace_publish_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn model_arguments_fit_the_existing_private_request() {
+        for (args, expected) in [
+            (
+                json!({"relative_path":"exports/报告.docx"}),
+                Some("报告.docx"),
+            ),
+            (
+                json!({"relative_path":"q.png", "display_name":"百度（https://example.com）"}),
+                Some("百度（https://example.com）"),
+            ),
+            (
+                json!({"relative_path":"q.png", "display_name":"图".repeat(86)}),
+                Some("q.png"),
+            ),
+            (
+                json!({"relative_path":"报告.pptx", "display_name":""}),
+                Some("报告.pptx"),
+            ),
+            (json!({"relative_path":"q.png", "display_name":null}), None),
+        ] {
+            let args = args.as_object().unwrap().clone();
+            let path = args["relative_path"].as_str().unwrap().to_owned();
+            let input = publish_input(args);
+            assert_eq!(input.as_ref().map(|v| v.display_name.as_str()), expected);
+            if let Some(value) = input {
+                assert_eq!(value.relative_path, path);
+            }
+        }
+        assert_eq!(
+            publish_wire::reason_message("future_reason"),
+            publish_wire::reason_message("unavailable")
+        );
+    }
+}
+
 impl ServerHandler for Gateway {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
@@ -48,11 +134,28 @@ impl ServerHandler for Gateway {
         _: Option<PaginatedRequestParams>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        let source: serde_json::Value = serde_json::from_str(include_str!(
-            "../../api/schemas/artifact-media-v1.schema.json"
+        let mut schema: JsonObject = serde_json::from_str(include_str!(
+            "../../api/schemas/workspace-publish-v1.schema.json"
         ))
         .map_err(|_| unavailable())?;
-        let tool=Tool::new("publish_artifact","将本轮工作区中已生成的 HTML、SVG、MP4 或文件登记为易界聊天产物，以便内置预览和保存。只接受工作区相对路径；不能用于读取任意磁盘文件。先生成文件，再登记；返回 staged 表示宿主接收，界面持久化独立完成。",Arc::new(source["definitions"]["PublishInput"].as_object().ok_or_else(unavailable)?.clone())).with_annotations(ToolAnnotations::new().read_only(false).destructive(false).idempotent(true).open_world(false));
+        let description = schema
+            .get("description")
+            .and_then(|v| v.as_str())
+            .ok_or_else(unavailable)?
+            .to_owned();
+        schema.retain(|key, _| {
+            matches!(
+                key.as_str(),
+                "type" | "properties" | "required" | "additionalProperties" | "examples"
+            )
+        });
+        let tool = Tool::new("publish_artifact", description, Arc::new(schema)).with_annotations(
+            ToolAnnotations::new()
+                .read_only(false)
+                .destructive(false)
+                .idempotent(true)
+                .open_world(false),
+        );
         let mut tools = vec![tool];
         {
             let schema: serde_json::Value = serde_json::from_str(include_str!(
@@ -116,10 +219,9 @@ impl ServerHandler for Gateway {
         if request.name != "publish_artifact" {
             return Err(unavailable());
         }
-        let input: wire::PublishInput = serde_json::from_value(serde_json::Value::Object(
-            request.arguments.ok_or_else(unavailable)?,
-        ))
-        .map_err(|_| unavailable())?;
+        let Some(input) = request.arguments.and_then(publish_input) else {
+            return Ok(publish_error("invalid_request"));
+        };
         let thread = context
             .meta
             .0
@@ -147,16 +249,40 @@ impl ServerHandler for Gateway {
             .bearer_auth(&self.config.host_token)
             .json(&input)
             .send();
-        let response = tokio::select! {_=context.ct.cancelled()=>return Err(unavailable()),r=send=>r.map_err(|_|unavailable())?};
+        let mut response = tokio::select! {
+            _ = context.ct.cancelled() => return Err(unavailable()),
+            result = send => match result {
+                Ok(response) => response,
+                Err(_) => return Ok(publish_error("unavailable")),
+            }
+        };
         if !response.status().is_success() {
-            return Ok(CallToolResult::error(vec![Content::text(
-                "文件未登记。请确认文件已在当前工作区生成、类型受支持且未超出大小限制。",
-            )]));
+            let reason = response
+                .headers()
+                .get(publish_wire::PUBLISH_REASON_HEADER)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default();
+            return Ok(publish_error(reason));
         }
         if response.content_length().is_some_and(|n| n > 4096) {
-            return Err(unavailable());
+            return Ok(publish_error("unavailable"));
         }
-        let receipt: wire::PublishReceipt = response.json().await.map_err(|_| unavailable())?;
+        let mut bytes = Vec::new();
+        loop {
+            match response.chunk().await {
+                Ok(Some(chunk)) if bytes.len() + chunk.len() <= 4096 => {
+                    bytes.extend_from_slice(&chunk)
+                }
+                Ok(None) => break,
+                _ => return Ok(publish_error("unavailable")),
+            }
+        }
+        let Ok(receipt) = serde_json::from_slice::<wire::PublishReceipt>(&bytes) else {
+            return Ok(publish_error("unavailable"));
+        };
+        if receipt.status != "staged" || receipt.artifact_id.is_empty() {
+            return Ok(publish_error("unavailable"));
+        }
         Ok(CallToolResult::success(vec![Content::text(
             serde_json::to_string(&receipt).map_err(|_| unavailable())?,
         )]))

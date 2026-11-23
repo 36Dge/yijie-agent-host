@@ -45,8 +45,10 @@ func TestFEAT165NormalFilesRegistrationACKAndLegacyIsolation(t *testing.T) {
 	request := func(name string) wire.PublishRequest {
 		return wire.PublishRequest{ThreadId: testThreadID, TurnId: testTurnID, Input: wire.PublishInput{RelativePath: name, DisplayName: name}}
 	}
-	if _, err = service.PublishArtifact(context.Background(), request("sample.md")); err == nil {
-		t.Fatal("extended file admitted without its reader")
+	for _, name := range []string{"sample.md", "sample.docx", "sample.pptx"} {
+		if _, err = service.PublishArtifact(context.Background(), request(name)); err != wire.ReasonReaderUnavailable {
+			t.Fatalf("%s without its v12 reader: %v", name, err)
+		}
 	}
 	_, _, _, cancel, err := service.SubscribeFileMediaEvents(testSessionID, "", 0)
 	if err != nil {
