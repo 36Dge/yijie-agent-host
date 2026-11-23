@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
 // Stage 1 deliberately stops before turn/start: it exercises the real pinned
@@ -13,6 +15,17 @@ func TestPinnedRuntimePermissionConfigurationIntegration(t *testing.T) {
 	binary, manifest := integrationArtifactPaths(t)
 	config := integrationConfig(binary, manifest, integrationPrivateTempDir(t), "configuration-only-placeholder")
 	config.RuntimePermissionsEnabled = true
+	artifact, err := VerifyArtifact(context.Background(), binary, manifest, config.StartupTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ChatModelsEnabled, config.KimiK31Candidate = artifact.SupportsKimiK31(), artifact.SupportsKimiK31()
+	config.InteractionToolsEnabled, config.NativeToolsEnabled = artifact.supportsInteractionTools(), artifact.supportsNativeTools()
+	config.HostImagesEnabled = artifact.supportsHostImages() && !config.NativeToolsEnabled
+	if config.KimiK31Candidate {
+		config.KimiAPIKey = "unused-local-configuration-key"
+	}
+
 	manager := NewManager(config, nil)
 	if err := manager.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -112,4 +125,39 @@ func TestPinnedRuntimeManualReviewPolicyConfigurationIntegration(t *testing.T) {
 		t.Fatal("native reviewer configuration differs")
 	}
 	t.Log("retained Runtime accepted auto_review.policy and thread/start; provider calls=0; actual denial/takeover NOT RUN")
+}
+
+// The workspace file is created by the actual bundled Runtime through an
+// ordinary conversation. The programmatic local model only requests the tool.
+func TestDailyNativePermissionsApplyToOrdinaryFile(t *testing.T) {
+	h := newNativeToolsHarness(t, func(_ *nativeToolsHarness, _ map[string]any, n int64) map[string]any {
+		if n == 1 {
+			return feat164AuxTool("", "apply_patch", "ordinary_patch", map[string]any{"input": "*** Begin Patch\n*** Add File: parity-note.txt\n+approved workspace note\n*** End Patch\n"})
+		}
+		return feat164AuxText("已完成普通文件操作。")
+	}, func(c *Config) { c.InteractionToolsEnabled = true })
+	ctx := WithPermissionMode(WithModelProfile(context.Background(), "minimax-m3-high-v1"), PermissionFull)
+	thread, err := h.manager.StartThread(ctx, h.cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := TextUserInput("请在本轮工作目录写入一条普通笔记。")
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := h.manager.StartTurnV2(ctx, thread.ID, []UserInput{input}, "high")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, _, err := h.notifications.waitForTurn(turn.ID, 25*time.Second)
+	if err != nil || status != "completed" {
+		t.Fatalf("turn %s: %v", status, err)
+	}
+	body, err := os.ReadFile(filepath.Join(h.cwd, "parity-note.txt"))
+	if err != nil || string(body) != "approved workspace note\n" || len(h.manager.ListRuntimeApprovals(thread.ID)) != 0 {
+		t.Fatalf("file or native approval result differs: %v", err)
+	}
+	if _, err := h.manager.ResumeThread(WithPermissionMode(ctx, PermissionAuto), thread.ID); err != nil {
+		t.Fatal(err)
+	}
 }

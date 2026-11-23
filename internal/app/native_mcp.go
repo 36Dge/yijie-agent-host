@@ -7,6 +7,7 @@ import (
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
 	choices "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeapprovalsv3"
+	native "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeapprovalsv4"
 	contract "github.com/36Dge/yijie-agent-host/internal/contracts/runtimepermissionsv2"
 	"github.com/36Dge/yijie-agent-host/internal/session"
 	"github.com/google/uuid"
@@ -14,7 +15,7 @@ import (
 
 func registerNativeMcpPermissions(mux *http.ServeMux, h *sessionHandler, service permissionSessionService) {
 	register := func(path string, handler http.HandlerFunc) { mux.Handle(path, h.authorize(handler)) }
-	list := func(w http.ResponseWriter, r *http.Request, includeChoices bool) {
+	list := func(w http.ResponseWriter, r *http.Request, version int) {
 		values, err := service.ListRuntimeApprovals(r.PathValue("agent_session_id"))
 		if err != nil {
 			writeSessionError(w, err)
@@ -24,19 +25,37 @@ func registerNativeMcpPermissions(mux *http.ServeMux, h *sessionHandler, service
 		prefixes := make(map[string][]string)
 		for _, value := range values {
 			response.Requests = append(response.Requests, approvalResponseV2(value))
-			if includeChoices && value.Kind == "command" && value.Status == "pending" && len(value.CommandPrefix) != 0 {
+			if version >= 3 && value.Kind == "command" && value.Status == "pending" && len(value.CommandPrefix) != 0 {
 				prefixes[value.ID] = value.CommandPrefix
 			}
 		}
 		w.Header().Set("Cache-Control", "no-store")
-		if includeChoices {
+		if version == 4 {
+			includePresentation := r.URL.Query().Get("includePresentation") == "true"
+			offered := map[string][]native.NativeApprovalOption{}
+			for _, v := range values {
+				if v.Status == "pending" && len(v.NativeChoices) > 0 {
+					if includePresentation {
+						offered[v.ID] = v.NativeChoices
+						continue
+					}
+					for _, choice := range v.NativeChoices {
+						offered[v.ID] = append(offered[v.ID], native.NativeApprovalOption{Id: choice.Id, Label: choice.Label})
+					}
+				}
+			}
+			writeJSON(w, http.StatusOK, native.NativeApprovalSnapshot{Requests: response.Requests, CommandPrefixes: prefixes, NativeChoices: offered})
+			return
+		}
+		if version == 3 {
 			writeJSON(w, http.StatusOK, choices.RuntimeApprovalChoices{Requests: response.Requests, CommandPrefixes: prefixes})
 			return
 		}
 		writeJSON(w, http.StatusOK, response)
 	}
-	register("GET /v2/agent-sessions/{agent_session_id}/runtime-approvals", func(w http.ResponseWriter, r *http.Request) { list(w, r, false) })
-	register("GET /v3/agent-sessions/{agent_session_id}/runtime-approvals", func(w http.ResponseWriter, r *http.Request) { list(w, r, true) })
+	register("GET /v2/agent-sessions/{agent_session_id}/runtime-approvals", func(w http.ResponseWriter, r *http.Request) { list(w, r, 2) })
+	register("GET /v3/agent-sessions/{agent_session_id}/runtime-approvals", func(w http.ResponseWriter, r *http.Request) { list(w, r, 3) })
+	register("GET /v4/agent-sessions/{agent_session_id}/runtime-approvals", func(w http.ResponseWriter, r *http.Request) { list(w, r, 4) })
 	decide := func(w http.ResponseWriter, r *http.Request, decision string) {
 		value, err := service.DecideRuntimeApproval(r.Context(), r.PathValue("agent_session_id"), r.PathValue("approval_id"), decision)
 		if err != nil {
@@ -61,6 +80,14 @@ func registerNativeMcpPermissions(mux *http.ServeMux, h *sessionHandler, service
 			return
 		}
 		decide(w, r, string(request.Decision))
+	})
+	register("POST /v4/agent-sessions/{agent_session_id}/runtime-approvals/{approval_id}", func(w http.ResponseWriter, r *http.Request) {
+		var value native.NativeApprovalDecision
+		if err := decodeRequest(w, r, &value); err != nil || !codex.IsNativeApprovalHandle(value.Decision) {
+			writeSessionError(w, session.ErrInvalidArgument)
+			return
+		}
+		decide(w, r, value.Decision)
 	})
 	if prepare, ok := h.service.(interface {
 		PrepareMcpPermissionScope(context.Context, codex.PermissionMode) (bool, bool, error)

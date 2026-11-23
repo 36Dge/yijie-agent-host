@@ -356,7 +356,7 @@ func TestMarketApprovalThroughProductRoutesAndRestart(t *testing.T) {
 		var history wire.ToolSnapshot
 		peer.request(t, base+"/turns/"+string(*receipt.NativeTurnId)+"/tools?source=history", nil, &history)
 		want := 1
-		if expected == broker.DecisionReject || expected == broker.DecisionCancel || expected == broker.DecisionNativeAutoReject {
+		if expected == broker.DecisionReject || expected == broker.DecisionCancel || expected == broker.DecisionNativeAutoReject || expected == broker.DecisionNativeRuntimeReject {
 			want = 0
 		}
 		sent := approvalBusinessCount(t) - before
@@ -373,13 +373,14 @@ func TestMarketApprovalThroughProductRoutesAndRestart(t *testing.T) {
 	const mini = wire.ProfileId("minimax-m3-high-v1")
 	const kimi = wire.ProfileId(codex.KimiK31ProfileID)
 	if stage == "initial" {
+		run("NATIVE_READ", kimi, "ask", "", broker.DecisionNativeRuntime, nil)
 		first := run("ONCE", kimi, "ask", broker.DecisionApproveOnce, broker.DecisionApproveOnce, nil)
 		next := run("SESSION", kimi, "ask", broker.DecisionApproveSession, broker.DecisionApproveSession, &first)
 		run("SESSION_HIT", kimi, "ask", "", broker.DecisionNativeSession, &next)
 		run("ALWAYS", mini, "ask", broker.DecisionApproveAlways, broker.DecisionApproveAlways, nil)
 		list := rules(nil)
-		if len(list) != 1 || list[0].Tool != "local_sample" {
-			t.Fatal("missing confirmed local_sample rule")
+		if len(list) != 1 || list[0].Tool != "local_record_sample" {
+			t.Fatal("missing confirmed local marker rule")
 		}
 		if err := os.WriteFile(filepath.Join(root, "expected-rule"), []byte(list[0].Key), 0600); err != nil {
 			t.Fatal(err)
@@ -393,7 +394,7 @@ func TestMarketApprovalThroughProductRoutesAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	list := rules(nil)
-	if len(list) != 1 || string(list[0].Key) != string(expectedKey) || list[0].Tool != "local_sample" || approvalBusinessCount(t) != before {
+	if len(list) != 1 || string(list[0].Key) != string(expectedKey) || list[0].Tool != "local_record_sample" || approvalBusinessCount(t) != before {
 		t.Fatal("restart did not retain the exact rule")
 	}
 	run("AFTER_RESTART", mini, "ask", "", broker.DecisionNativeAlways, nil)

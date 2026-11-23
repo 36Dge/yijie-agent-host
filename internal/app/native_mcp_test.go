@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/36Dge/yijie-agent-host/internal/codex"
+	options "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeapprovalsv4"
 	"github.com/36Dge/yijie-agent-host/internal/session"
 	"github.com/getkin/kin-openapi/openapi3"
 )
@@ -22,10 +23,11 @@ type mcpRouteService struct {
 type prefixRouteService struct {
 	mcpRouteService
 	selected string
+	choices  []options.NativeApprovalOption
 }
 
-func (*prefixRouteService) ListRuntimeApprovals(string) ([]codex.RuntimeApproval, error) {
-	return []codex.RuntimeApproval{{ID: "01440000-0000-4000-8000-000000000002", Kind: "command", Summary: "git status --short", Status: "pending", CommandPrefix: []string{"git", "status"}}}, nil
+func (s *prefixRouteService) ListRuntimeApprovals(string) ([]codex.RuntimeApproval, error) {
+	return []codex.RuntimeApproval{{ID: "01440000-0000-4000-8000-000000000002", Kind: "command", Summary: "git status --short", Status: "pending", CommandPrefix: []string{"git", "status"}, NativeChoices: s.choices}}, nil
 }
 func (s *prefixRouteService) DecideRuntimeApproval(_ context.Context, sessionID, id, decision string) (codex.RuntimeApproval, error) {
 	rows, _ := s.ListRuntimeApprovals(sessionID)
@@ -38,7 +40,8 @@ func (s *prefixRouteService) DecideRuntimeApproval(_ context.Context, sessionID,
 	return rows[0], nil
 }
 func TestCommandChoiceRoutesShareTheOriginalCallback(t *testing.T) {
-	service := &prefixRouteService{}
+	kind, detail := options.CommandPrefix, `["git","status"]`
+	service := &prefixRouteService{choices: []options.NativeApprovalOption{{Id: "native_0", Label: "允许并保存命令前缀 " + detail, Kind: &kind, Detail: &detail}}}
 	mux := http.NewServeMux()
 	registerRuntimePermissions(mux, &sessionHandler{service: service, apiToken: "local-test"}, true)
 	call := func(method, path, body string) *httptest.ResponseRecorder {
@@ -54,12 +57,32 @@ func TestCommandChoiceRoutesShareTheOriginalCallback(t *testing.T) {
 	if v2.Code != 200 || v3.Code != 200 || strings.Contains(v2.Body.String(), "commandPrefixes") || !strings.Contains(v3.Body.String(), `"01440000-0000-4000-8000-000000000002":["git","status"]`) {
 		t.Fatal("v3 option missing or sent to a v2 reader")
 	}
-	path += "/01440000-0000-4000-8000-000000000002"
-	if w := call("POST", "/v2"+path, `{"decision":"approve_similar"}`); w.Code != 400 || service.selected != "" {
+	decisionPath := path + "/01440000-0000-4000-8000-000000000002"
+	if w := call("POST", "/v2"+decisionPath, `{"decision":"approve_similar"}`); w.Code != 400 || service.selected != "" {
 		t.Fatal("v2 accepted an unsupported choice")
 	}
-	if w := call("POST", "/v3"+path, `{"decision":"approve_similar"}`); w.Code != 200 || service.selected != codex.ApproveSimilar || !strings.Contains(w.Body.String(), `"status":"approved"`) {
+	if w := call("POST", "/v3"+decisionPath, `{"decision":"approve_similar"}`); w.Code != 200 || service.selected != codex.ApproveSimilar || !strings.Contains(w.Body.String(), `"status":"approved"`) {
 		t.Fatal("v3 did not return the original callback receipt")
+	}
+	for _, query := range []string{"", "?includePresentation=true"} {
+		response := call("GET", "/v4"+path+query, "")
+		var snapshot options.NativeApprovalSnapshot
+		if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &snapshot) != nil {
+			t.Fatal("v4 snapshot failed")
+		}
+		labels := snapshot.NativeChoices["01440000-0000-4000-8000-000000000002"]
+		if len(labels) != 1 || labels[0].Id != "native_0" || labels[0].Label != service.choices[0].Label {
+			t.Fatal("original decision handle changed")
+		}
+		if query == "" && (labels[0].Kind != nil || labels[0].Detail != nil) {
+			t.Fatal("unexpected fields for earlier clients")
+		}
+		if query != "" && (labels[0].Kind == nil || *labels[0].Kind != kind || labels[0].Detail == nil || *labels[0].Detail != detail) {
+			t.Fatal("native action presentation missing")
+		}
+	}
+	if w := call("POST", "/v4"+decisionPath, `{"decision":"native_0"}`); w.Code != 200 || service.selected != "native_0" {
+		t.Fatal("original native handle did not reach callback")
 	}
 }
 

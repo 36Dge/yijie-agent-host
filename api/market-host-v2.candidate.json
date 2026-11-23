@@ -8,7 +8,7 @@
   "sources": [
     {
       "path": "compatibility/market-host-v2/wire.schema.json",
-      "sha256": "76b188f9674247e39b9a1c861d529ba03d4f2f86afaa8da095010ba49aacf0d3"
+      "sha256": "58810c7e385a5acc1c087fab542a53ebc084cdb060b549bd04c8d80a19e31b51"
     },
     {
       "path": "compatibility/market-host-v2/transport.json",
@@ -28,7 +28,7 @@
     },
     {
       "path": "compatibility/market-broker-control/wire.schema.json",
-      "sha256": "febc685e951a5b66d3aee4c461ec4055006eab7d15d52e40ac5e98ee2310a76d"
+      "sha256": "a3dded4b1b0378b0a0f87e3f3c3e16ceb77109f9f3294e3c40a00297fb523cc3"
     },
     {
       "path": "openapi/runtime-permissions-v2/runtime-permissions-v2.yaml",
@@ -86,15 +86,15 @@
     },
     {
       "path": "sdks/jsonschema/market-host-v2.schema.json",
-      "sha256": "0603f74d85c43e71de3ed209c360bbfd6a25c8d5f66a9bc9e4d8ca78373d8975"
+      "sha256": "754be1c67c4b44366a517e4853ab78a716fc83851212fd0812f02b84455fadf8"
     },
     {
       "path": "sdks/typescript/src/domain/market-host-v2-native.generated.ts",
-      "sha256": "a410944ae40df59e0a293b1b38f0700114804e39c5804c6b14702e1706655373"
+      "sha256": "593928fd8f68bd0a70baa7a132630cff82ef7df517293b03e3ebe8681d5fd6aa"
     },
     {
       "path": "sdks/typescript/src/api/generated/market-host-v2-native-validator.gen.js",
-      "sha256": "f38a7581cc17660a1084b2c941cc4605e1cf03899b53602dab6f26e88de5f3a4"
+      "sha256": "902e28b6a0395691f6f2f0ff1c5b6c4fe92ef03e5166237f941ad1c19dc3d012"
     },
     {
       "path": "sdks/typescript/src/api/generated/market-host-v2-native-validator.gen.d.ts",
@@ -102,11 +102,11 @@
     },
     {
       "path": "sdks/jsonschema/market-host-v2-native.schema.json",
-      "sha256": "10fd57b931b63652363fdda914cdc0916a4b939de76038d05277d5122f4ba972"
+      "sha256": "43b082b2d1338dcdbe3736e120e51c47212f234bd854ebf08c51069f60128dac"
     }
   ],
   "local_candidate": "market-p1",
-  "worktree_head": "e2f107e0652768813c89d9339f930ebac146b76e",
+  "worktree_head": "1fe3b17bb6f1bc4be48f6988035639606e972c9c",
   "consumer": "agent-host",
   "consumer_generated": [
     {
@@ -117,7 +117,7 @@
     {
       "source": "sdks/jsonschema/market-host-v2.schema.json",
       "path": "api/market-host-v2.schema.json",
-      "sha256": "0603f74d85c43e71de3ed209c360bbfd6a25c8d5f66a9bc9e4d8ca78373d8975"
+      "sha256": "754be1c67c4b44366a517e4853ab78a716fc83851212fd0812f02b84455fadf8"
     }
   ]
 }

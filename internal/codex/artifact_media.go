@@ -26,7 +26,7 @@ func (m *Manager) artifactThreadConfig(config map[string]any) map[string]any {
 	if !ok {
 		servers = make(map[string]any)
 	}
-	servers["yijie_artifacts"] = map[string]any{"url": m.artifactMCPURL, "bearer_token_env_var": ArtifactMCPTokenEnv, "enabled": true, "default_tools_approval_mode": "auto", "startup_timeout_sec": 10, "tool_timeout_sec": 35, "supports_parallel_tool_calls": false}
+	servers["yijie_artifacts"] = map[string]any{"url": m.artifactMCPURL, "bearer_token_env_var": ArtifactMCPTokenEnv, "enabled": true, "startup_timeout_sec": 10, "tool_timeout_sec": 35, "supports_parallel_tool_calls": false}
 	config["mcp_servers"] = servers
 	return config
 }

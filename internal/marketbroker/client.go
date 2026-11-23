@@ -165,6 +165,13 @@ func (o *Owner) Status(ctx context.Context, request wire.StatusRequest) (wire.St
 	})
 }
 
+func (o *Owner) RegisterNativeCall(ctx context.Context, request wire.RegisterNativeCallRequest) (wire.RegisterNativeCallResponse, error) {
+	return requestResponse[wire.RegisterNativeCallResponse](ctx, o, request, request.RequestId, request.Payload.Binding.Context.Process, false, func(response wire.RegisterNativeCallResponse) bool {
+		id := response.Data.Identity
+		return reflect.DeepEqual(id.Binding, request.Payload.Binding) && id.NativeThreadId == request.Payload.NativeThreadId && id.NativeTurnId == request.Payload.NativeTurnId && id.ToolName == request.Payload.Registration.ToolName
+	})
+}
+
 func (o *Owner) PendingCall(ctx context.Context, request wire.PendingCallRequest) (wire.PendingCallResponse, error) {
 	return requestResponse[wire.PendingCallResponse](ctx, o, request, request.RequestId, request.Payload.Binding.Context.Process, false, func(response wire.PendingCallResponse) bool {
 		return reflect.DeepEqual(response.Data.Identity.Binding, request.Payload.Binding) && response.Data.Identity.NativeThreadId == request.Payload.NativeThreadId && response.Data.Identity.NativeTurnId == request.Payload.NativeTurnId && response.Data.Identity.CallRef == request.Payload.CallRef

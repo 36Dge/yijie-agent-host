@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -97,6 +98,15 @@ func safeRuntimeApproval(value codex.RuntimeApproval) codex.RuntimeApproval {
 	value.Summary = clean(value.Summary)
 	value.Scope = clean(value.Scope)
 	value.Reason = clean(value.Reason)
+	value.NativeChoices = slices.Clone(value.NativeChoices)
+	for i := range value.NativeChoices {
+		choice := &value.NativeChoices[i]
+		choice.Label = clean(choice.Label)
+		if choice.Detail != nil {
+			detail := clean(*choice.Detail)
+			choice.Detail = &detail
+		}
+	}
 	if len(value.CommandPrefix) > 0 {
 		review := strings.Join(value.CommandPrefix, " ")
 		if clean(review) != review || strings.ContainsAny(review, "\r\n\t") {

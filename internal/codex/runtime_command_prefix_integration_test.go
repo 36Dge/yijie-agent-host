@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	options "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeapprovalsv4"
 )
 
 // A local Responses provider requests ordinary echo commands. The pinned
@@ -30,33 +32,36 @@ func TestRuntimeCommandPrefixNativeRoundTrip(t *testing.T) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		label := labels[(n-1)/2]
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		prompt := nativeToolsUserText(body)
+		label := ""
+		for _, candidate := range labels {
+			if strings.Contains(prompt, "请输出示例文字 "+candidate) {
+				label = candidate
+				break
+			}
+		}
+		if label == "" {
+			t.Error("expected the ordinary test prompt")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		result := nativeToolsOutput(body, "call_"+label)
 		var item map[string]any
-		if n%2 == 1 {
+		if result == "" {
 			args, _ := json.Marshal(map[string]any{"cmd": "echo approval-example " + label, "sandbox_permissions": "require_escalated", "justification": "允许输出这条示例文字吗？", "prefix_rule": []string{"echo", "approval-example"}})
 			item = map[string]any{"type": "function_call", "name": "exec_command", "id": "item_" + label, "call_id": "call_" + label, "arguments": string(args)}
 		} else {
-			var body struct {
-				Input []struct {
-					Type   string `json:"type"`
-					CallID string `json:"call_id"`
-					Output string `json:"output"`
-				} `json:"input"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				t.Error(err)
-			}
-			var result string
-			for _, entry := range body.Input {
-				if entry.Type == "function_call_output" && entry.CallID == "call_"+label {
-					result = entry.Output
-				}
-			}
 			if label == "reject" {
 				if !strings.Contains(strings.ToLower(result), "reject") {
 					t.Errorf("command refusal was not returned: %q", result)
 				}
-			} else if !strings.Contains(result, "\napproval-example "+label) {
+			} else if !strings.Contains(result, "approval-example "+label) {
 				t.Errorf("native command output missing for %s: %q", label, result)
 			}
 			item = map[string]any{"type": "message", "role": "assistant", "id": "msg_" + label, "status": "completed", "phase": "final_answer", "content": []any{map[string]any{"type": "output_text", "text": "示例已结束。"}}}
@@ -76,6 +81,11 @@ func TestRuntimeCommandPrefixNativeRoundTrip(t *testing.T) {
 	defer server.Close()
 	config := integrationConfig(binary, manifest, home, "loopback-minimax")
 	config.ChatModelsEnabled, config.KimiK31Candidate, config.RuntimePermissionsEnabled = true, true, true
+	artifact, err := VerifyArtifact(context.Background(), binary, manifest, config.StartupTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.InteractionToolsEnabled, config.NativeToolsEnabled = artifact.supportsInteractionTools(), artifact.supportsNativeTools()
 	config.KimiAPIKey, config.PermissionVerificationBaseURL = "loopback-kimi", server.URL+"/v1"
 	manager := NewManager(config, nil)
 	notifications := newIntegrationNotifications()
@@ -87,6 +97,7 @@ func TestRuntimeCommandPrefixNativeRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := WithPermissionMode(WithModelProfile(context.Background(), KimiK31ProfileID), PermissionAsk)
+	profile, _ := ModelProfile(KimiK31ProfileID)
 	thread, err := manager.StartThread(ctx, cwd)
 	if err != nil {
 		t.Fatal(err)
@@ -116,10 +127,11 @@ func TestRuntimeCommandPrefixNativeRoundTrip(t *testing.T) {
 			}
 		}
 		input, _ := TextUserInput("请输出示例文字 " + label)
-		turn, err := manager.StartTurnV2(ctx, thread.ID, []UserInput{input}, "max")
+		turn, err := manager.StartTurnV2(ctx, thread.ID, []UserInput{input}, profile.Effort)
 		if err != nil {
 			t.Fatal(err)
 		}
+		expectedTurn := "completed"
 		if i < 3 {
 			var pending *RuntimeApproval
 			for deadline := time.Now().Add(12 * time.Second); time.Now().Before(deadline) && pending == nil; {
@@ -136,18 +148,55 @@ func TestRuntimeCommandPrefixNativeRoundTrip(t *testing.T) {
 			if pending == nil || !slices.Equal(pending.CommandPrefix, []string{"echo", "approval-example"}) {
 				t.Fatalf("turn %s: expected a native command prefix, got %+v", label, pending)
 			}
-			decision := []string{"approve_once", "reject", ApproveSimilar}[i]
-			receipt, err := manager.DecideRuntimeApproval(ctx, thread.ID, pending.ID, decision)
-			expectedStatus := "approved"
-			if decision == "reject" {
-				expectedStatus = "rejected"
+			desired := []options.NativeApprovalOptionKind{options.AllowOnce, options.Decline, options.CommandPrefix}[i]
+			var choice, cancelChoice options.NativeApprovalOption
+			for _, candidate := range pending.NativeChoices {
+				if candidate.Kind == nil {
+					t.Fatal("missing native choice kind")
+				}
+				if *candidate.Kind == desired {
+					choice = candidate
+				}
+				if *candidate.Kind == options.Cancel {
+					cancelChoice = candidate
+				}
 			}
+			if choice.Id == "" && desired == options.Decline {
+				choice = cancelChoice
+			}
+			if choice.Id == "" {
+				t.Fatalf("%s not offered: %+v", desired, pending.NativeChoices)
+			}
+			if desired == options.CommandPrefix {
+				if choice.Detail == nil || *choice.Detail != `["echo","approval-example"]` {
+					t.Fatal("wrong native scope")
+				}
+				if file := os.Getenv("YIJIE_APPROVAL_MENU_EVIDENCE"); file != "" {
+					snapshot := map[string]any{"id": pending.ID, "kind": pending.Kind, "summary": pending.Summary, "reason": pending.Reason, "scope": pending.Scope, "status": pending.Status, "nativeChoices": pending.NativeChoices}
+					raw, err := json.MarshalIndent(snapshot, "", "  ")
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err = os.WriteFile(file, raw, 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			receipt, err := manager.DecideRuntimeApproval(ctx, thread.ID, pending.ID, choice.Id)
+			expectedStatus := "approved"
+			if *choice.Kind == options.Decline {
+				expectedStatus = "rejected"
+			} else if *choice.Kind == options.Cancel {
+				expectedStatus = "cancelled"
+				expectedTurn = "interrupted"
+			}
+			t.Logf("native approval choice %s delivered for %s", *choice.Kind, label)
 			if err != nil || receipt.Status != expectedStatus || len(receipt.CommandPrefix) != 0 {
 				t.Fatalf("turn %s: unexpected receipt: %+v %v", label, receipt, err)
 			}
 		}
 		status, _, err := notifications.waitForTurn(turn.ID, 15*time.Second)
-		if err != nil || status != "completed" {
+		if err != nil || status != expectedTurn {
 			t.Fatalf("turn %s: %s %v", label, status, err)
 		}
 	}

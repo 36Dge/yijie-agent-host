@@ -40,6 +40,7 @@ type marketRuntimeState struct {
 	owner           *marketbroker.Owner
 	process         wire.ProcessBinding
 	gatewayURL      string
+	nativeDispatch  bool
 	turns           map[string]*marketTurnState
 }
 
@@ -52,6 +53,19 @@ var pinnedNativeMarketApproval = sync.OnceValue(func() bool {
 	}
 	for _, p := range patches {
 		if p.Path == ".yijie/patches/chat-models/0032-native-market-approval.patch" {
+			return true
+		}
+	}
+	return false
+})
+
+var pinnedNativeMarketDispatch = sync.OnceValue(func() bool {
+	var patches []struct{ Path string }
+	if json.Unmarshal([]byte(native.RuntimePatchManifest), &patches) != nil {
+		return false
+	}
+	for _, p := range patches {
+		if p.Path == ".yijie/patches/chat-models/0033-native-mcp-call-receipt.patch" {
 			return true
 		}
 	}
@@ -136,6 +150,7 @@ func (m *Manager) StartMarketBroker(ctx context.Context) error {
 		return err
 	}
 	m.market.process, m.market.gatewayURL = process, string(response.Data.GatewayUrl)
+	m.market.nativeDispatch = response.Data.NativeDispatchVersion != nil && *response.Data.NativeDispatchVersion == 2
 	return nil
 }
 

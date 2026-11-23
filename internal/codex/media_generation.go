@@ -46,19 +46,14 @@ func (m *Manager) mediaThreadConfig(ctx context.Context, config map[string]any, 
 	}
 	if m.mediaMCPURL != "" && !isScheduledDraft(ctx) && ImageRoute(ctx) == "builtin" {
 		enabledTools := []string{media.ToolName}
-		toolPolicy := map[string]any{media.ToolName: map[string]any{"approval_mode": media.ToolApprovalMode}}
 		if m.config.BuiltinVideoEnabled {
-			for _, name := range []string{video.GenerateToolName, video.GetToolName} {
-				enabledTools = append(enabledTools, name)
-				toolPolicy[name] = map[string]any{"approval_mode": video.ToolApprovalMode}
-			}
+			enabledTools = append(enabledTools, video.GenerateToolName, video.GetToolName)
 		}
 		servers["yijie_media"] = map[string]any{
 			"url": m.mediaMCPURL, "bearer_token_env_var": MediaMCPTokenEnv,
 			"enabled": true, "enabled_tools": enabledTools,
-			"default_tools_approval_mode": "auto", "startup_timeout_sec": 10,
-			"tools":            toolPolicy,
-			"tool_timeout_sec": media.ToolTimeoutSeconds, "supports_parallel_tool_calls": false,
+			"startup_timeout_sec": 10,
+			"tool_timeout_sec":    media.ToolTimeoutSeconds, "supports_parallel_tool_calls": false,
 		}
 	} else {
 		servers["yijie_media"] = map[string]any{"url": "http://127.0.0.1:1/disabled-media", "enabled": false}

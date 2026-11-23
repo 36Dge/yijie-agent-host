@@ -180,7 +180,7 @@ func TestMarketProxyNativeElicitationAndResultMetadata(t *testing.T) {
 			return serverRequestResult{}
 		}
 	})
-	proxy := ownedMarketServer(server.URL, "ordinary-fixture")
+	proxy := ownedMarketServer(server.URL, "ordinary-fixture", false)
 	delete(proxy, "bearer_token_env_var") // This in-process protocol peer has no account or capability bearer.
 	ctx := WithMarketPrepared(feat164AuxCtx(), &MarketPrepared{Config: map[string]any{"mcp_servers": map[string]any{marketServerName: proxy}, "features.tool_call_mcp_elicitation": true}})
 	thread, err := h.manager.StartThread(ctx, h.cwd)

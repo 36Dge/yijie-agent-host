@@ -253,6 +253,47 @@ func (m *Manager) sessionApprovalPolicy() string {
 	return SessionApprovalPolicy
 }
 
+type turnPermissions struct {
+	ApprovalPolicy    *string `json:"approvalPolicy,omitempty"`
+	ApprovalsReviewer *string `json:"approvalsReviewer,omitempty"`
+	SandboxPolicy     any     `json:"sandboxPolicy,omitempty"`
+}
+
+func (m *Manager) turnPermissions(ctx context.Context) (turnPermissions, error) {
+	if mode, ok := ctx.Value(permissionContextKey{}).(PermissionMode); ok {
+		if err := m.ValidatePermissionMode(mode); err != nil {
+			return turnPermissions{}, err
+		}
+		policy, reviewer, sandbox, err := permissionPolicy(mode)
+		return turnPermissions{&policy, &reviewer, sandbox}, err
+	}
+	if m.config.CommandApprovalEnabled {
+		policy := m.sessionApprovalPolicy()
+		return turnPermissions{ApprovalPolicy: &policy, SandboxPolicy: sessionTurnSandboxPolicy()}, nil
+	}
+	return turnPermissions{}, nil
+}
+
+func (m *Manager) threadPermissions(ctx context.Context) (policy, sandbox, reviewer *string, err error) {
+	mode, selected := ctx.Value(permissionContextKey{}).(PermissionMode)
+	if !selected {
+		if m.config.CommandApprovalEnabled || m.config.RuntimePermissionsEnabled {
+			p, s := m.sessionApprovalPolicy(), SessionSandbox
+			return &p, &s, nil, nil
+		}
+		return nil, nil, nil, nil
+	}
+	perms, err := m.turnPermissions(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	preset := "workspace-write"
+	if mode == PermissionFull {
+		preset = "danger-full-access"
+	}
+	return perms.ApprovalPolicy, &preset, perms.ApprovalsReviewer, nil
+}
+
 type publicationContextKey struct{}
 
 type publicationMode uint8
@@ -390,6 +431,9 @@ func (m *Manager) handleServerRequest(ctx context.Context, request serverRequest
 			return result
 		}
 		if result, handled := m.handleMarketElicitation(ctx, request); handled {
+			return result
+		}
+		if result, handled := m.handleNativeMcpConfirmation(ctx, request); handled {
 			return result
 		}
 		// Retired native providers cannot mint new approvals or reuse historical ones.
@@ -617,6 +661,7 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		ModelProvider         string            `json:"modelProvider"`
 		Cwd                   string            `json:"cwd"`
 		ApprovalPolicy        string            `json:"approvalPolicy"`
+		ApprovalsReviewer     *string           `json:"approvalsReviewer,omitempty"`
 		Sandbox               string            `json:"sandbox"`
 		DeveloperInstructions string            `json:"developerInstructions"`
 		BaseInstructions      *string           `json:"baseInstructions,omitempty"`
@@ -631,6 +676,13 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		Sandbox:               SessionSandbox,
 		DeveloperInstructions: m.threadDeveloperInstructions(ctx),
 		Ephemeral:             false,
+	}
+	policy, sandbox, reviewer, err := m.threadPermissions(ctx)
+	if err != nil {
+		return ThreadInfo{}, err
+	}
+	if policy != nil {
+		params.ApprovalPolicy, params.Sandbox, params.ApprovalsReviewer = *policy, *sandbox, reviewer
 	}
 	if m.config.RuntimePermissionsEnabled {
 		instructions := executionBaseInstructions
@@ -722,6 +774,7 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 		ModelProvider         string         `json:"modelProvider,omitempty"`
 		ThreadID              string         `json:"threadId"`
 		ApprovalPolicy        *string        `json:"approvalPolicy,omitempty"`
+		ApprovalsReviewer     *string        `json:"approvalsReviewer,omitempty"`
 		Sandbox               *string        `json:"sandbox,omitempty"`
 		DeveloperInstructions *string        `json:"developerInstructions,omitempty"`
 		BaseInstructions      *string        `json:"baseInstructions,omitempty"`
@@ -732,16 +785,15 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 		developerInstructions := m.threadDeveloperInstructions(ctx)
 		params.DeveloperInstructions = &developerInstructions
 	}
-	if m.config.CommandApprovalEnabled || m.config.RuntimePermissionsEnabled {
-		approvalPolicy := m.sessionApprovalPolicy()
-		sandbox := SessionSandbox
-		params.ApprovalPolicy = &approvalPolicy
-		params.Sandbox = &sandbox
-		if m.config.RuntimePermissionsEnabled {
-			baseInstructions := executionBaseInstructions
-			params.BaseInstructions = &baseInstructions
-			params.Config = m.permissionVerificationConfig()
-		}
+	var err error
+	params.ApprovalPolicy, params.Sandbox, params.ApprovalsReviewer, err = m.threadPermissions(ctx)
+	if err != nil {
+		return ThreadInfo{}, err
+	}
+	if m.config.RuntimePermissionsEnabled {
+		baseInstructions := executionBaseInstructions
+		params.BaseInstructions = &baseInstructions
+		params.Config = m.permissionVerificationConfig()
 	}
 	selected, err := m.modelForContext(ctx)
 	if err != nil {
@@ -866,11 +918,10 @@ func (m *Manager) StartTurn(
 		return TurnInfo{}, errors.New("reasoning effort must be none or high")
 	}
 	params := struct {
-		ThreadID       string                 `json:"threadId"`
-		Input          []any                  `json:"input"`
-		Effort         string                 `json:"effort"`
-		ApprovalPolicy *string                `json:"approvalPolicy,omitempty"`
-		SandboxPolicy  *readOnlySandboxPolicy `json:"sandboxPolicy,omitempty"`
+		ThreadID string `json:"threadId"`
+		Input    []any  `json:"input"`
+		Effort   string `json:"effort"`
+		turnPermissions
 	}{
 		ThreadID: threadID,
 		Input: []any{map[string]any{
@@ -879,12 +930,11 @@ func (m *Manager) StartTurn(
 		}},
 		Effort: reasoningEffort,
 	}
-	if m.config.CommandApprovalEnabled {
-		approvalPolicy := m.sessionApprovalPolicy()
-		sandboxPolicy := sessionTurnSandboxPolicy()
-		params.ApprovalPolicy = &approvalPolicy
-		params.SandboxPolicy = &sandboxPolicy
+	permissions, err := m.turnPermissions(ctx)
+	if err != nil {
+		return TurnInfo{}, err
 	}
+	params.turnPermissions = permissions
 	var response turnStartResponse
 	if err := m.request(ctx, RuntimeMethodTurnStart, params, &response); err != nil {
 		return TurnInfo{}, err
@@ -946,34 +996,19 @@ func (m *Manager) StartTurnV2(
 		return m.startDraftTurnLocked(ctx, threadID, wireInputs)
 	}
 	params := struct {
-		ClientUserMessageID string  `json:"clientUserMessageId,omitempty"`
-		ThreadID            string  `json:"threadId"`
-		Input               []any   `json:"input"`
-		Effort              string  `json:"effort"`
-		ApprovalPolicy      *string `json:"approvalPolicy,omitempty"`
-		SandboxPolicy       any     `json:"sandboxPolicy,omitempty"`
-		ApprovalsReviewer   *string `json:"approvalsReviewer,omitempty"`
+		ClientUserMessageID string `json:"clientUserMessageId,omitempty"`
+		ThreadID            string `json:"threadId"`
+		Input               []any  `json:"input"`
+		Effort              string `json:"effort"`
+		turnPermissions
 	}{
 		ThreadID: threadID, Input: wireInputs, Effort: reasoningEffort, ClientUserMessageID: clientUserMessageID(ctx),
 	}
-	if m.config.CommandApprovalEnabled {
-		approvalPolicy := m.sessionApprovalPolicy()
-		sandboxPolicy := sessionTurnSandboxPolicy()
-		params.ApprovalPolicy = &approvalPolicy
-		params.SandboxPolicy = &sandboxPolicy
+	permissions, err := m.turnPermissions(ctx)
+	if err != nil {
+		return TurnInfo{}, err
 	}
-	if mode, ok := ctx.Value(permissionContextKey{}).(PermissionMode); ok {
-		if err := m.ValidatePermissionMode(mode); err != nil {
-			return TurnInfo{}, err
-		}
-		policy, reviewer, sandbox, err := permissionPolicy(mode)
-		if err != nil {
-			return TurnInfo{}, err
-		}
-		params.ApprovalPolicy = &policy
-		params.ApprovalsReviewer = &reviewer
-		params.SandboxPolicy = sandbox
-	}
+	params.turnPermissions = permissions
 	var response turnStartResponse
 	if err := m.request(ctx, RuntimeMethodTurnStart, params, &response); err != nil {
 		return TurnInfo{}, err

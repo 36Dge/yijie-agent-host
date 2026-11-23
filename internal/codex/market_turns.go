@@ -18,6 +18,7 @@ const marketServerName = "yijie_market"
 type marketPreparedKey struct{}
 type MarketPrepared struct {
 	NativeApprovalMode string
+	NativeDispatch     bool
 	approvalAccounts   map[broker.SelectionRef]string
 	WebAllowed         bool
 	ImageRoute         string
@@ -32,6 +33,7 @@ type marketTurnState struct {
 	prepared      *MarketPrepared
 	thread, turn  string
 	bindOperation broker.CanonicalId
+	bindReady     chan struct{}
 	terminal      map[string]bool
 	closed        bool
 }
@@ -122,10 +124,22 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 		}
 		nativeMode = &p.NativeApprovalMode
 	}
+	var dispatchVersion *int64
+	if nativeMode != nil && pinnedNativeMarketDispatch() {
+		m.market.mu.Lock()
+		supported := m.market.nativeDispatch
+		m.market.mu.Unlock()
+		if !supported {
+			return nil, errors.New("market worker lacks native MCP dispatch receipts")
+		}
+		version := int64(2)
+		dispatchVersion = &version
+		p.NativeDispatch = true
+	}
 	webVersion, mcpTimeout := broker.WebRetrievalVersion, int64(broker.WebMcpToolTimeoutMs)
 	// This owner prepare must complete before Submit dispatches turn/start.
 	// Worker time at prepare is a conservative lower bound for the MCP timer.
-	lease, e := owner.Prepare(ctx, broker.PrepareRequest{SchemaVersion: 1, RequestId: broker.CanonicalId(uuid.NewString()), Method: "prepare", Payload: broker.PreparePayload{NativeApprovalMode: nativeMode, WebRetrievalVersion: &webVersion, McpToolTimeoutMs: &mcpTimeout, OperationId: broker.CanonicalId(uuid.NewString()), Context: broker.ContextBinding{Process: process, Scope: scope, AgentSessionId: broker.CanonicalId(sessionID), NativeThreadId: nativeThread}, Snapshot: submission.Snapshot, TtlMs: broker.RequestedTtlMs(broker.MaxLeaseTtlMs)}})
+	lease, e := owner.Prepare(ctx, broker.PrepareRequest{SchemaVersion: 1, RequestId: broker.CanonicalId(uuid.NewString()), Method: "prepare", Payload: broker.PreparePayload{NativeDispatchVersion: dispatchVersion, NativeApprovalMode: nativeMode, WebRetrievalVersion: &webVersion, McpToolTimeoutMs: &mcpTimeout, OperationId: broker.CanonicalId(uuid.NewString()), Context: broker.ContextBinding{Process: process, Scope: scope, AgentSessionId: broker.CanonicalId(sessionID), NativeThreadId: nativeThread}, Snapshot: submission.Snapshot, TtlMs: broker.RequestedTtlMs(broker.MaxLeaseTtlMs)}})
 	if e != nil {
 		return nil, e
 	}
@@ -134,16 +148,23 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 	m.market.mu.Lock()
 	gateway := m.market.gatewayURL
 	m.market.mu.Unlock()
-	servers[marketServerName] = ownedMarketServer(gateway, string(lease.Data.Binding.CapabilityRef))
+	servers[marketServerName] = ownedMarketServer(gateway, string(lease.Data.Binding.CapabilityRef), p.NativeDispatch)
 	return p, nil
 }
 
-// Only the prepared owned proxy uses approve. It suppresses Codex's duplicate
-// pre-call prompt. Gateway elicitation uses the frozen native policy, and
-// each business send requires its response and the exact owner decide_call.
-// Do not set tools={} here: native merging preserves explicit per-tool policy.
-func ownedMarketServer(gateway, capabilityRef string) map[string]any {
-	return map[string]any{"url": gateway + "/" + capabilityRef, "bearer_token_env_var": marketbroker.RuntimeCapabilityEnvironment, "enabled": true, "default_tools_approval_mode": "approve", "startup_timeout_sec": 30, "tool_timeout_sec": broker.WebMcpToolTimeoutMs / 1000, "supports_parallel_tool_calls": false}
+// V2 uses the ordinary native MCP policy. Legacy peers prompt inside tools/call
+// and require the old pre-call override to avoid a second prompt.
+func ownedMarketServer(gateway, capabilityRef string, nativeDispatch bool) map[string]any {
+	server := map[string]any{
+		"url": gateway + "/" + capabilityRef, "bearer_token_env_var": marketbroker.RuntimeCapabilityEnvironment,
+		"enabled": true, "startup_timeout_sec": 30, "tool_timeout_sec": broker.WebMcpToolTimeoutMs / 1000, "supports_parallel_tool_calls": false,
+	}
+	if nativeDispatch {
+		server["http_headers"] = map[string]any{"X-Yijie-Native-Dispatch": "2"}
+	} else {
+		server["default_tools_approval_mode"] = "approve"
+	}
+	return server
 }
 
 // Called only after validated Native submission and successful worker admission.
@@ -175,7 +196,7 @@ func (m *Manager) BeginMarketTurn(thread string, p *MarketPrepared) error {
 	if len(m.market.turns) >= 512 && m.market.turns[thread] == nil {
 		return errors.New("market thread capacity unavailable")
 	}
-	m.market.turns[thread] = &marketTurnState{prepared: p, thread: thread, bindOperation: broker.CanonicalId(uuid.NewString()), terminal: make(map[string]bool)}
+	m.market.turns[thread] = &marketTurnState{prepared: p, thread: thread, bindOperation: broker.CanonicalId(uuid.NewString()), terminal: make(map[string]bool), bindReady: make(chan struct{})}
 	return nil
 }
 
@@ -194,6 +215,9 @@ func (m *Manager) BindMarketTurn(ctx context.Context, thread, turn string) error
 	}
 	if state.closed {
 		return errors.New("market turn is revoked")
+	}
+	if state.bindReady != nil {
+		defer close(state.bindReady)
 	}
 	state.turn = turn
 	if state.prepared.Lease != nil {

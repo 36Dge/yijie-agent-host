@@ -68,12 +68,8 @@ func TestVideoMCPConfigurationKeepsNativePolicyAndRollback(t *testing.T) {
 			if len(tools) != want || tools[0] != media.ToolName || server["supports_parallel_tool_calls"] != false || server["tool_timeout_sec"] != media.ToolTimeoutSeconds {
 				t.Fatal("native policy mismatch", server)
 			}
-			if enabled {
-				for _, name := range []string{"generate_video", "get_video_result"} {
-					if server["tools"].(map[string]any)[name].(map[string]any)["approval_mode"] != "approve" {
-						t.Fatal("missing exact tool policy")
-					}
-				}
+			if _, forced := server["tools"]; forced {
+				t.Fatal("media selection overrode the native tool policy")
 			}
 			config, err = m.mediaThreadConfig(WithScheduledDraft(context.Background(), "/ordinary-workspace"), map[string]any{}, provider)
 			if err != nil || config["mcp_servers"].(map[string]any)["yijie_media"].(map[string]any)["enabled"] != false {

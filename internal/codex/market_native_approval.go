@@ -18,8 +18,8 @@ func marketNativeReply(action string, content any) (serverRequestResult, bool) {
 	return serverRequestResult{respond: true, value: map[string]any{"action": action, "content": content, "_meta": nil}}, true
 }
 
-// Only the worker can qualify a real installed tool as read-only. Runtime
-// config stores the resulting opaque principal/installation-specific app key.
+// Scope native choices to the verified installation and account. The operation
+// risk is presentation data; yijie-Codex selects the reviewer and outcome.
 func nativeMarketScope(view wire.MarketApproval, account string) (*string, map[string]any) {
 	args := map[string]any{}
 	if view.Review.ArgumentsJson != nil {
@@ -29,7 +29,7 @@ func nativeMarketScope(view wire.MarketApproval, account string) (*string, map[s
 			return nil, map[string]any{}
 		}
 	}
-	if view.Review.Risk != "read" || account == "" {
+	if account == "" {
 		return nil, args
 	}
 	id := view.Identity
@@ -39,10 +39,11 @@ func nativeMarketScope(view wire.MarketApproval, account string) (*string, map[s
 	}
 	if raw, ok := args["url"].(string); ok {
 		u, err := url.ParseRequestURI(raw)
-		if err != nil || u.Host == "" || u.User != nil {
-			return nil, args
+		if err == nil && u.Host != "" && u.User == nil {
+			target = strings.ToLower(u.Scheme + "://" + u.Host)
+		} else {
+			target = "url:" + marketScopeDigest([]any{raw})
 		}
-		target = strings.ToLower(u.Scheme + "://" + u.Host)
 	}
 	// Tool-specific version for the fixed product tools lacking an upstream digest.
 	schema := "native-market-read-v1"
@@ -95,19 +96,22 @@ func (m *Manager) applyNativeMarketDecision(ctx context.Context, owner *marketbr
 	envelope broker.NativeApprovalEnvelope, view wire.MarketApproval) (serverRequestResult, bool) {
 	mode := state.prepared.NativeApprovalMode
 	decision := broker.Decision(envelope.YijieNativePhase)
-	if view.Review.Risk != "read" || envelope.YijieScope == nil || envelope.Persist != nil {
+	if envelope.YijieScope == nil || envelope.Persist != nil {
 		return marketNativeReply("decline", nil)
 	}
 	var allowed bool
 	switch decision {
+	case broker.DecisionNativeRuntime, broker.DecisionNativeRuntimeReject:
+		allowed = state.prepared.NativeDispatch
 	case broker.DecisionNativeAuto, broker.DecisionNativeAutoReject:
-		allowed = mode == "auto"
+		allowed = state.prepared.NativeDispatch || mode == "auto"
 	case broker.DecisionNativeFull:
 		allowed = mode == "full"
 	case broker.DecisionNativeSession, broker.DecisionNativeAlways:
-		allowed = mode == "ask"
+		allowed = state.prepared.NativeDispatch || mode == "ask"
 	}
-	if !allowed {
+	if !allowed || (envelope.DispatchRef != nil && !state.prepared.NativeDispatch) ||
+		(state.prepared.NativeDispatch && (decision != broker.DecisionNativeRuntimeReject && decision != broker.DecisionNativeAutoReject) != (envelope.DispatchRef != nil)) {
 		return marketNativeReply("decline", nil)
 	}
 	m.market.ruleMu.RLock()
@@ -129,10 +133,13 @@ func (m *Manager) applyNativeMarketDecision(ctx context.Context, owner *marketbr
 	// This is a policy receipt, never a manufactured click or reusable grant.
 	ref := view.Identity.CallRef
 	reply, err := owner.DecideCall(ctx, broker.DecideCallRequest{SchemaVersion: 1, RequestId: ref, Method: "decide_call", Payload: broker.DecideCallPayload{
-		OperationId: ref, Identity: view.Identity, ExpectedRevision: view.Revision, ApprovalRef: ref, DecisionId: ref, Decision: decision}})
+		OperationId: ref, NativeDispatchRef: envelope.DispatchRef, Identity: view.Identity, ExpectedRevision: view.Revision, ApprovalRef: ref, DecisionId: ref, Decision: decision}})
 	if err != nil || !reflect.DeepEqual(reply.Data.Identity, view.Identity) || reply.Data.Decision == nil || *reply.Data.Decision != decision ||
 		reply.Data.DecisionId == nil || *reply.Data.DecisionId != ref {
 		return marketNativeReply("decline", nil)
+	}
+	if state.prepared.NativeDispatch && (decision == broker.DecisionNativeAutoReject || decision == broker.DecisionNativeRuntimeReject) {
+		return deniedMarketReply(reply.Data, ref)
 	}
 	return marketNativeReply("accept", map[string]any{})
 }

@@ -225,7 +225,9 @@
         "native_auto",
         "native_session",
         "native_always",
-        "native_auto_reject"
+        "native_auto_reject",
+        "native_runtime",
+        "native_runtime_reject"
       ],
       "description": "Per-call owner decision. approve_* are explicit human choices; native_* record the correlated Codex policy decision and are not renderer actions."
     },
@@ -850,7 +852,9 @@
               "native_auto_reject",
               "native_full",
               "native_session",
-              "native_always"
+              "native_always",
+              "native_runtime",
+              "native_runtime_reject"
             ]
           }
         },
@@ -1782,7 +1786,9 @@
               "native_auto_reject",
               "native_full",
               "native_session",
-              "native_always"
+              "native_always",
+              "native_runtime",
+              "native_runtime_reject"
             ]
           }
         },

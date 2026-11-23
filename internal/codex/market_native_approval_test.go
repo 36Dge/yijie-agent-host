@@ -58,8 +58,8 @@ func TestMarketNativeGrantSurvivesRestartWithinItsInstallation(t *testing.T) {
 		t.Fatal("native persistent tool config rejected")
 	}
 	view.Review.Risk = "write"
-	if key, _ := nativeMarketScope(view, "checked-account"); key != nil {
-		t.Fatal("unqualified write offered reusable consent")
+	if key, _ := nativeMarketScope(view, "checked-account"); key == nil {
+		t.Fatal("native decision did not receive a scoped key for the writable tool")
 	}
 }
 

@@ -111,19 +111,20 @@ func (m *Manager) builtinWebThreadConfig(ctx context.Context, config map[string]
 	if builtin.url == "" || disabled {
 		servers[wire.ServerName] = map[string]any{"url": "http://127.0.0.1:1/disabled-web", "enabled": false}
 	} else {
-		toolPolicy := make(map[string]any)
+		server := map[string]any{
+			"url": builtin.url, "bearer_token_env_var": BuiltinWebMCPTokenEnv, "enabled": true,
+			"enabled_tools": wire.ToolNames[:], "startup_timeout_sec": wire.StartupTimeoutSeconds, "tool_timeout_sec": wire.ToolTimeoutSeconds,
+		}
+		explicit := map[string]any{}
 		for _, name := range wire.ToolNames {
-			mode := wire.ApprovalMode
-			if explicit := m.config.BuiltinWebApprovals[name]; explicit != "" {
-				mode = explicit
+			if mode := m.config.BuiltinWebApprovals[name]; mode != "" {
+				explicit[name] = map[string]any{"approval_mode": mode}
 			}
-			toolPolicy[name] = map[string]any{"approval_mode": mode}
 		}
-		servers[wire.ServerName] = map[string]any{
-			"url": builtin.url, "bearer_token_env_var": BuiltinWebMCPTokenEnv,
-			"enabled": true, "enabled_tools": wire.ToolNames[:], "default_tools_approval_mode": wire.ApprovalMode,
-			"tools": toolPolicy, "startup_timeout_sec": wire.StartupTimeoutSeconds, "tool_timeout_sec": wire.ToolTimeoutSeconds,
+		if len(explicit) > 0 {
+			server["tools"] = explicit
 		}
+		servers[wire.ServerName] = server
 	}
 	config["mcp_servers"] = servers
 	if provider == MiniMaxProviderID {
@@ -203,8 +204,11 @@ func (m *Manager) handleBuiltinWebElicitation(ctx context.Context, request serve
 	handler := m.builtinWeb.elicitation
 	ready := m.status.Ready && !m.shutdownRequested
 	m.mu.Unlock()
-	if !ready || handler == nil {
+	if !ready {
 		return decline()
+	}
+	if handler == nil {
+		return serverRequestResult{}, false
 	}
 	response := handler(ctx, append(json.RawMessage(nil), request.id...), p)
 	// S1 projects one request only. Persistent approval choices remain native

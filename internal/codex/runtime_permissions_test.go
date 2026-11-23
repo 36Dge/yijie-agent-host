@@ -80,7 +80,7 @@ func TestRuntimeApprovalCallbackRoundTrip(t *testing.T) {
 			defer cancel()
 			response := make(chan serverRequestResult, 1)
 			go func() {
-				response <- m.handleServerRequest(ctx, serverRequest{method: RuntimeMethodCommandApproval, idKey: "n:1", params: json.RawMessage(`{"threadId":"task-one","turnId":"turn-one","itemId":"item-one","command":"printf hello","cwd":"/workspace","reason":"Read the sample output"}`)})
+				response <- m.handleServerRequest(ctx, serverRequest{method: RuntimeMethodCommandApproval, idKey: "n:1", params: json.RawMessage(`{"threadId":"task-one","turnId":"turn-one","itemId":"item-one","command":"printf hello","cwd":"/workspace","reason":"Read the sample output","availableDecisions":["accept","decline"]}`)})
 			}()
 			var views []RuntimeApproval
 			for len(views) == 0 {

@@ -32,7 +32,7 @@
     },
     {
       "path": "compatibility/market-broker-control/wire.schema.json",
-      "sha256": "febc685e951a5b66d3aee4c461ec4055006eab7d15d52e40ac5e98ee2310a76d"
+      "sha256": "a3dded4b1b0378b0a0f87e3f3c3e16ceb77109f9f3294e3c40a00297fb523cc3"
     },
     {
       "path": "compatibility/market-selection-v2/wire.schema.json",
@@ -44,7 +44,7 @@
     },
     {
       "path": "compatibility/market-host-v2/wire.schema.json",
-      "sha256": "76b188f9674247e39b9a1c861d529ba03d4f2f86afaa8da095010ba49aacf0d3"
+      "sha256": "58810c7e385a5acc1c087fab542a53ebc084cdb060b549bd04c8d80a19e31b51"
     },
     {
       "path": "jsonschema/chat/model-selection-v2.schema.json",
@@ -126,7 +126,7 @@
     }
   ],
   "local_candidate": "market-p1",
-  "worktree_head": "e2f107e0652768813c89d9339f930ebac146b76e",
+  "worktree_head": "1fe3b17bb6f1bc4be48f6988035639606e972c9c",
   "consumer": "agent-host",
   "consumer_generated": [
     {

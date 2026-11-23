@@ -90,6 +90,19 @@ func (m *Manager) handleMarketElicitation(ctx context.Context, request serverReq
 	decline := func() (serverRequestResult, bool) {
 		return serverRequestResult{respond: true, value: map[string]any{"action": "decline", "content": nil, "_meta": nil}}, true
 	}
+	var nativeType struct {
+		Kind string `json:"codex_approval_kind"`
+	}
+	if json.Unmarshal(p.Meta, &nativeType) == nil && nativeType.Kind == "mcp_tool_call" {
+		return serverRequestResult{}, false
+	}
+	var registration broker.NativeCallRegistration
+	if json.Unmarshal(p.Meta, &registration) == nil && registration.Validate() == nil {
+		if !request.exactEnvelope || len(request.params) > broker.MaxFrameBytes || p.Mode != "form" || p.Schema.Type != "object" || p.Schema.Properties == nil || len(p.Schema.Properties) != 0 || len(p.Schema.Required) != 0 {
+			return decline()
+		}
+		return m.registerRuntimeMarketCall(ctx, p.ThreadID, p.TurnID, registration)
+	}
 	var envelope broker.NativeApprovalEnvelope
 	native := json.Unmarshal(p.Meta, &envelope) == nil && envelope.Validate() == nil
 	var meta broker.ElicitationMetadata
@@ -119,12 +132,23 @@ func (m *Manager) handleMarketElicitation(ctx context.Context, request serverReq
 	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 	pending, err := owner.PendingCall(bounded, broker.PendingCallRequest{SchemaVersion: 1, RequestId: broker.CanonicalId(uuid.NewString()), Method: "pending_call", Payload: broker.PendingCallPayload{Binding: lease.Binding, NativeThreadId: broker.NativeId(p.ThreadID), NativeTurnId: broker.NativeId(p.TurnID), CallRef: meta.YijieMarketCallRef}})
 	cancel()
-	if err != nil || pending.Data.RemainingTtlMs <= 0 || !reflect.DeepEqual(pending.Data.Identity.Binding, lease.Binding) ||
+	if err != nil || !reflect.DeepEqual(pending.Data.Identity.Binding, lease.Binding) ||
 		pending.Data.Identity.CallRef != meta.YijieMarketCallRef || string(pending.Data.Identity.NativeThreadId) != p.ThreadID || string(pending.Data.Identity.NativeTurnId) != p.TurnID {
+		return decline()
+	}
+	if pending.Data.RemainingTtlMs <= 0 {
+		// A denied call has zero execution TTL. Its already-final refusal can
+		// still be observed by the matching native Item, never dispatched.
+		if native && state.prepared.NativeDispatch && (pending.Data.State == broker.CallStateRejected || pending.Data.State == broker.CallStateCancelled) {
+			return m.finishAnsweredMarketCall(ctx, owner, state, pending.Data, envelope)
+		}
 		return decline()
 	}
 	if native && (envelope.YijieNativePhase == "stored_session" || envelope.YijieNativePhase == "stored_always" || envelope.YijieNativePhase == "not_stored") {
 		return m.recordMarketPersistence(envelope, pending.Data, p.ThreadID, state.prepared.approvalAccounts[pending.Data.Identity.Reference])
+	}
+	if native && state.prepared.NativeDispatch && terminalDispatchPhase(envelope.YijieNativePhase) && pending.Data.State != broker.CallStatePending {
+		return m.finishAnsweredMarketCall(ctx, owner, state, pending.Data, envelope)
 	}
 	if pending.Data.State != broker.CallStatePending {
 		return decline()
@@ -155,7 +179,7 @@ func (m *Manager) handleMarketElicitation(ctx context.Context, request serverReq
 			return decline()
 		}
 		if envelope.YijieNativePhase == "user" && envelope.Persist != nil {
-			if state.prepared.NativeApprovalMode != "ask" || key == nil {
+			if (!state.prepared.NativeDispatch && state.prepared.NativeApprovalMode != "ask") || key == nil {
 				return decline()
 			}
 			view.PersistOptions = envelope.Persist
@@ -169,7 +193,7 @@ func (m *Manager) handleMarketElicitation(ctx context.Context, request serverReq
 		if create {
 			m.market.mu.Lock()
 			live := m.market.turns[p.ThreadID]
-			allowed := live == state && !live.closed && live.turn == p.TurnID && live.imageCallRef == ""
+			allowed := live == state && !live.closed && live.turn == p.TurnID && (live.imageCallRef == "" || live.imageCallRef == string(meta.YijieMarketCallRef))
 			if allowed {
 				live.imageCallRef = string(meta.YijieMarketCallRef)
 			}

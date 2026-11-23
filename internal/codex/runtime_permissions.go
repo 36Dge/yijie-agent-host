@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	options "github.com/36Dge/yijie-agent-host/internal/contracts/runtimeapprovalsv4"
 	"github.com/google/uuid"
 )
 
@@ -64,6 +65,7 @@ func (m *Manager) ValidatePermissionMode(mode PermissionMode) error {
 }
 
 type RuntimeApproval struct {
+	NativeChoices                            []options.NativeApprovalOption
 	ID, Kind, Summary, Scope, Reason, Status string
 	Mcp                                      *McpApprovalScope
 	CommandPrefix                            []string
@@ -119,6 +121,8 @@ func offeredCommandPrefix(proposed, available json.RawMessage) []string {
 }
 
 type runtimeApprovalCallback struct {
+	options                                []nativeOption
+	selectedStatus                         string
 	ownerThreadID                          string
 	market                                 *marketApprovalCallback
 	view                                   RuntimeApproval
@@ -171,11 +175,11 @@ func (m *Manager) addRuntimeApproval(entry *runtimeApprovalCallback) error {
 }
 
 func (m *Manager) DecideRuntimeApproval(ctx context.Context, threadID, id, decision string) (RuntimeApproval, error) {
-	if decision != "approve_once" && decision != "reject" && decision != "cancel" && decision != ApproveSimilar {
+	if decision != "approve_once" && decision != "reject" && decision != "cancel" && decision != ApproveSimilar && !IsNativeApprovalHandle(decision) {
 		return RuntimeApproval{}, errors.New("invalid approval decision")
 	}
 	var authority *managedCodexHomeAuthority
-	if decision == ApproveSimilar {
+	if decision == ApproveSimilar || IsNativeApprovalHandle(decision) {
 		m.mu.Lock()
 		if !m.shutdownRequested {
 			authority = m.codexHomeAuthority
@@ -195,7 +199,7 @@ func (m *Manager) DecideRuntimeApproval(ctx context.Context, threadID, id, decis
 		c.mu.Unlock()
 		return RuntimeApproval{}, errors.New("runtime approval not found")
 	}
-	if decision == "cancel" && entry.view.Kind != "mcp" {
+	if decision == "cancel" && entry.decision == "" && entry.view.Kind != "mcp" && entry.options == nil {
 		c.mu.Unlock()
 		return RuntimeApproval{}, errors.New("invalid approval decision")
 	}
@@ -209,8 +213,16 @@ func (m *Manager) DecideRuntimeApproval(ctx context.Context, threadID, id, decis
 			c.mu.Unlock()
 			return RuntimeApproval{}, errors.New("runtime approval is unavailable")
 		}
-		if decision == ApproveSimilar {
-			if entry.view.Kind != "command" || len(entry.view.CommandPrefix) == 0 || authority == nil {
+		selected := entry.option(decision)
+		if (entry.options != nil || IsNativeApprovalHandle(decision)) && selected == nil {
+			c.mu.Unlock()
+			return RuntimeApproval{}, errors.New("choice was not offered by the native callback")
+		}
+		if selected != nil {
+			entry.selectedStatus = selected.status
+		}
+		if decision == ApproveSimilar || (selected != nil && selected.commandRule) {
+			if entry.view.Kind != "command" || (selected == nil && len(entry.view.CommandPrefix) == 0) || authority == nil {
 				c.mu.Unlock()
 				return RuntimeApproval{}, errors.New("command prefix was not offered")
 			}
@@ -251,6 +263,8 @@ func (m *Manager) finishRuntimeApproval(entry *runtimeApprovalCallback, err erro
 		entry.writtenErr = err
 		if err != nil {
 			entry.view.Status = "unavailable"
+		} else if entry.selectedStatus != "" {
+			entry.view.Status = entry.selectedStatus
 		} else if entry.decision == "approve_once" || entry.decision == ApproveSimilar || (entry.market != nil && (entry.decision == "approve_always" || entry.decision == "approve_session")) {
 			entry.view.Status = "approved"
 		} else if entry.decision == "cancel" {
@@ -263,6 +277,8 @@ func (m *Manager) finishRuntimeApproval(entry *runtimeApprovalCallback, err erro
 		}
 		entry.permissions = nil
 		entry.view.CommandPrefix = nil
+		entry.view.NativeChoices = nil
+		entry.options = nil
 		entry.guardian = nil
 		close(entry.written)
 	})
@@ -286,6 +302,7 @@ func (m *Manager) handleRuntimePermissionRequest(ctx context.Context, request se
 		Network               json.RawMessage `json:"networkApprovalContext"`
 		ProposedPrefix        json.RawMessage `json:"proposedExecpolicyAmendment"`
 		AvailableDecisions    json.RawMessage `json:"availableDecisions"`
+		NetworkRules          json.RawMessage `json:"proposedNetworkPolicyAmendments"`
 		AdditionalPermissions json.RawMessage `json:"additionalPermissions"`
 	}
 	invalid := func() (serverRequestResult, bool) {
@@ -294,20 +311,9 @@ func (m *Manager) handleRuntimePermissionRequest(ctx context.Context, request se
 	if json.Unmarshal(request.params, &p) != nil || p.ThreadID == "" || p.TurnID == "" || p.ItemID == "" {
 		return invalid()
 	}
-	ownerThreadID := p.ThreadID
-	if m.config.NativeToolsEnabled {
-		owner, err := m.nativeApprovalOwner(ctx, p.ThreadID, p.TurnID)
-		if err != nil {
-			return invalid()
-		}
-		ownerThreadID = owner
-	} else {
-		m.permissionCallbacks.mu.Lock()
-		active := m.permissionCallbacks.activeTurns[p.ThreadID] == p.TurnID
-		m.permissionCallbacks.mu.Unlock()
-		if !active {
-			return invalid()
-		}
+	ownerThreadID, err := m.approvalCallbackOwner(ctx, p.ThreadID, p.TurnID)
+	if err != nil {
+		return invalid()
 	}
 	entry := &runtimeApprovalCallback{view: RuntimeApproval{ID: uuid.NewString(), Kind: kind, Summary: p.Command, Scope: p.Cwd, Reason: p.Reason, Status: "pending"}, threadID: p.ThreadID, turnID: p.TurnID, requestKey: request.idKey, permissions: p.Permissions, resolve: make(chan string, 1), written: make(chan struct{})}
 	entry.ownerThreadID = ownerThreadID
@@ -335,6 +341,18 @@ func (m *Manager) handleRuntimePermissionRequest(ctx context.Context, request se
 	if len(p.Network) > 0 && string(p.Network) != "null" {
 		entry.view.Scope += "\n" + string(p.Network)
 	}
+	switch kind {
+	case "command":
+		offers, ok := commandOptions(p.AvailableDecisions, p.Network, p.ProposedPrefix, p.NetworkRules, p.AdditionalPermissions)
+		if !ok {
+			return invalid()
+		}
+		entry.setOptions(offers)
+	case "file_change":
+		entry.setOptions(fileOptions())
+	case "permissions":
+		entry.setOptions(permissionOptions(p.Permissions))
+	}
 	if ownerThreadID != p.ThreadID {
 		entry.view.Summary = "子任务：" + entry.view.Summary
 	}
@@ -347,7 +365,9 @@ func (m *Manager) handleRuntimePermissionRequest(ctx context.Context, request se
 		return serverRequestResult{}, true
 	case decision := <-entry.resolve:
 		var value any
-		if kind == "permissions" {
+		if choice := m.callbackOption(entry, decision); choice != nil {
+			value = choice.response
+		} else if kind == "permissions" {
 			permissions := json.RawMessage(`{}`)
 			if decision == "approve_once" {
 				permissions = p.Permissions
