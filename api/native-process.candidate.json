@@ -17,6 +17,6 @@
     "scripts/generate-native-process.mjs": "bbaee3cfdb1b65565b49b6510602247ddf67301de0f0d62e7a7280ebdb1d9810",
     "scripts/sync-native-process.mjs": "bafcae5ea602dfcf012084919518de9b889e2127f19c2f9a2ae63d75231b284a",
     "docs/native-search-sources-v4.md": "810d6257d140a655715030f918650513b5c17da0de317a257353faca2dbcbe1c",
-    "docs/native-trace-v6.md": "ee3768a0e64e800c32fd259bc7af94b73f29f06f88660d54aa12185b94d5b011"
+    "docs/native-trace-v6.md": "ebb01e9f47189450f12745a2a6ade807b1f4dc6dae47a782b9548e856b27dff1"
   }
 }

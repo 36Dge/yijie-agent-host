@@ -184,6 +184,10 @@ func projectNativeToolDisplay(wire nativeWireItem, out *native.NativeItem) {
 			}
 		}
 	}
+	if action := mcpObjectTitle(wire, out, title); action != "" {
+		title = nativeString(action)
+		provenance = native.NativeToolDisplayProvenance("registeredTool")
+	}
 	if label == nil && title == nil {
 		return
 	}

@@ -17,7 +17,11 @@ func fetchSite(raw json.RawMessage) string {
 	if len(raw) > nativeTextLimit || web.Validate("FetchArguments", raw) != nil || json.Unmarshal(raw, &args) != nil {
 		return ""
 	}
-	page, err := url.Parse(args.Url)
+	return displayableSite(args.Url)
+}
+
+func displayableSite(address string) string {
+	page, err := url.Parse(address)
 	if err != nil || page.User != nil || !safeNativeSourceURL((&url.URL{Scheme: page.Scheme, Host: page.Host}).String()) {
 		return ""
 	}

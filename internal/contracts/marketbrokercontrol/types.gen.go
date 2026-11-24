@@ -3638,6 +3638,7 @@ func (v *RegisterNativeCallResponse) UnmarshalJSON(b []byte) error {
 }
 
 const GatewayResultKey = "yijie.market.call"
+const GatewayResultMethodKey = "yijie.market.method"
 const GatewayResultDefinition = "GatewayCallReceipt"
 const GatewayResultMaxMetadataBytes = 4096
 const GatewayResultMaxResultEnvelopeBytes = 73728
