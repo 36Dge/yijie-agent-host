@@ -685,7 +685,7 @@ func (m *Manager) StartThread(ctx context.Context, cwd string) (ThreadInfo, erro
 		params.ApprovalPolicy, params.Sandbox, params.ApprovalsReviewer = *policy, *sandbox, reviewer
 	}
 	if m.config.RuntimePermissionsEnabled {
-		instructions := executionBaseInstructions
+		instructions := currentExecutionBaseInstructions(ctx)
 		params.BaseInstructions = &instructions
 		params.Config = m.permissionVerificationConfig()
 	}
@@ -791,7 +791,7 @@ func (m *Manager) resumeThread(ctx context.Context, threadID string) (ThreadInfo
 		return ThreadInfo{}, err
 	}
 	if m.config.RuntimePermissionsEnabled {
-		baseInstructions := executionBaseInstructions
+		baseInstructions := currentExecutionBaseInstructions(ctx)
 		params.BaseInstructions = &baseInstructions
 		params.Config = m.permissionVerificationConfig()
 	}

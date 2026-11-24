@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
+	"strings"
 	"time"
 
 	broker "github.com/36Dge/yijie-agent-host/internal/contracts/marketbrokercontrol"
@@ -20,6 +22,7 @@ type MarketPrepared struct {
 	NativeApprovalMode string
 	NativeDispatch     bool
 	approvalAccounts   map[broker.SelectionRef]string
+	selectionGuidance  string
 	WebAllowed         bool
 	ImageRoute         string
 	Lease              *broker.Lease
@@ -44,6 +47,33 @@ func WithMarketPrepared(ctx context.Context, p *MarketPrepared) context.Context 
 func marketPreparedFrom(ctx context.Context) *MarketPrepared {
 	p, _ := ctx.Value(marketPreparedKey{}).(*MarketPrepared)
 	return p
+}
+
+// Native validates service IDs and their exact correspondence with the frozen
+// selection. Only these public IDs belong in the model-facing projection.
+func selectedConnectorInstructions(services []host.ServiceBinding) string {
+	if len(services) == 0 {
+		return "\n\nNo market connector is selected for this turn. Earlier connector selections are historical."
+	}
+	ids := make([]string, 0, len(services))
+	for _, service := range services {
+		ids = append(ids, string(service.ServiceId))
+	}
+	slices.Sort(ids)
+	return "\n\nThe user explicitly selected these connector services for this turn: " + strings.Join(slices.Compact(ids), ", ") + ". " +
+		"Match each requested step to the selected services using their current yijie_market tool descriptions. Discover relevant tools when deferred. " +
+		"For a matching step, call the selected service first, even when the message does not repeat its name. With multiple selections, use each relevant service for the step it serves; pick one for overlapping capabilities unless the task needs multiple sources. " +
+		"Use the connector result for subsequent steps such as formatting a file or verifying the output. Ordinary tools remain available for other steps. " +
+		"If a matching operation is unavailable, denied or fails, explain the observed limitation and ask before substituting local code, installing a package or switching providers for that step. Verify the status of an uncertain write before retrying. Respect native approvals and cancellation. Only report a service action from its actual result."
+}
+
+// Native resume can retain older developer messages. The current base override
+// reaches each model request, including calls on a resumed or switched thread.
+func currentExecutionBaseInstructions(ctx context.Context) string {
+	if prepared := marketPreparedFrom(ctx); prepared != nil {
+		return executionBaseInstructions + prepared.selectionGuidance
+	}
+	return executionBaseInstructions
 }
 
 func (m *Manager) MarketProcess() (broker.ProcessBinding, error) {
@@ -91,6 +121,7 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 	}
 	p := &MarketPrepared{ImageRoute: ImageRoute(ctx), Config: map[string]any{"mcp_servers": servers}, Scope: scope, Snapshot: submission.Snapshot, Process: process}
 	if len(submission.Snapshot.Selection) == 0 {
+		p.selectionGuidance = selectedConnectorInstructions(nil)
 		return p, nil
 	}
 	if model, ok := ModelProfile(string(submission.Intent.ProfileId)); ok && model.Provider == MiniMaxProviderID && m.config.NativeToolsEnabled {
@@ -144,6 +175,7 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 		return nil, e
 	}
 	p.Lease = &lease.Data
+	p.selectionGuidance = selectedConnectorInstructions(submission.Services)
 	applySelectedRetrievalConfig(p.Config, submission)
 	m.market.mu.Lock()
 	gateway := m.market.gatewayURL
@@ -386,7 +418,7 @@ func (m *Manager) ClearMarketConfiguration(ctx context.Context, thread, cwd stri
 	if err != nil {
 		return nil, err
 	}
-	return &MarketPrepared{Config: map[string]any{"mcp_servers": servers}}, nil
+	return &MarketPrepared{Config: map[string]any{"mcp_servers": servers}, selectionGuidance: selectedConnectorInstructions(nil)}, nil
 }
 func (m *Manager) DiscardMarketPrepared(ctx context.Context, prepared *MarketPrepared) error {
 	if prepared == nil || prepared.Lease == nil {

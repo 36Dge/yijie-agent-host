@@ -83,7 +83,11 @@ func TestFEAT162SelectedRetrievalRuntime(t *testing.T) {
 		// only the Host constant would miss stale instructions on an old thread.
 		instructions, _ := body["instructions"].(string)
 		input, _ := json.Marshal(body["input"])
-		if instructions != executionBaseInstructions || !strings.Contains(string(input), webRetrievalInstructions) {
+		currentSelection := "No market connector is selected for this turn."
+		if expectSelected.Load() {
+			currentSelection = "selected these connector services for this turn: kimi-web."
+		}
+		if !strings.HasPrefix(instructions, executionBaseInstructions) || !strings.Contains(instructions, currentSelection) || !strings.Contains(string(input), webRetrievalInstructions) {
 			t.Error("retrieval/no-shell-fallback/failure policy lost before provider request")
 		}
 		if !strings.Contains(tools, "exec_command") && !strings.Contains(tools, "shell_command") {
@@ -226,4 +230,75 @@ func TestFEAT162SelectedRetrievalRuntime(t *testing.T) {
 		t.Fatal("loopback request count", requests.Load())
 	}
 	t.Log("7 loopback model requests; real worker three-tool discovery; start/resume/clear/model switch; current retrieval policy propagated; local tools preserved; stale refs rejected; 0 supplier calls")
+}
+
+// Exercise the actual model request for an existing conversation. The normal
+// loopback model only acknowledges the request; service usage is a separate fact.
+func TestSelectedConnectorRoutingAcrossTurns(t *testing.T) {
+	const userText = "请整理商品数据，把结果网址做成二维码，最后排版成 PDF。"
+	const expertRole = "Use the ordinary local reference index when relevant."
+	cases := []struct {
+		services []host.ServiceBinding
+		want     string
+		expert   bool
+	}{
+		{nil, "", false}, // An existing ordinary conversation before its first selection.
+		{[]host.ServiceBinding{{ServiceId: "sorftime"}, {ServiceId: "caoliao"}}, "caoliao, sorftime", false},
+		{[]host.ServiceBinding{{ServiceId: "caoliao"}}, "caoliao", true},
+		{[]host.ServiceBinding{}, "", false},
+	}
+	h := newNativeToolsHarness(t, func(_ *nativeToolsHarness, body map[string]any, n int64) map[string]any {
+		if n > int64(len(cases)) {
+			t.Error("unexpected extra model request")
+			return feat164AuxText("完成")
+		}
+		step := cases[n-1]
+		base, _ := body["instructions"].(string)
+		switch {
+		case step.services == nil:
+			if base != executionBaseInstructions {
+				t.Error("ordinary conversation gained a selection")
+			}
+		case step.want == "":
+			if !strings.Contains(base, "No market connector is selected for this turn.") || strings.Contains(base, "caoliao") {
+				t.Error("cleared selection survived in the current instructions")
+			}
+		default:
+			if !strings.Contains(base, "selected these connector services for this turn: "+step.want+".") ||
+				!strings.Contains(base, "call the selected service first") || !strings.Contains(base, "use each relevant service for the step it serves") ||
+				!strings.Contains(base, "If a matching operation is unavailable, denied or fails") || strings.Contains(base, "sorftime") != (len(step.services) == 2) {
+				t.Error("current connector intent or fallback policy differs")
+			}
+		}
+		if strings.Contains(base, expertRole) != step.expert {
+			t.Error("expert context and connector selection did not compose independently")
+		}
+		if nativeToolsUserText(body) != userText {
+			t.Error("connector metadata changed the user message")
+		}
+		return feat164AuxText("完成")
+	}, toolSearchConfig)
+	var thread ThreadInfo
+	for i, step := range cases {
+		ctx := WithPermissionMode(WithModelProfile(context.Background(), "minimax-m3-high-v1"), PermissionAsk)
+		if step.services != nil {
+			ctx = WithMarketPrepared(ctx, &MarketPrepared{selectionGuidance: selectedConnectorInstructions(step.services)})
+		}
+		var err error
+		if step.expert {
+			ctx, err = WithExpertInstructions(ctx, expertRole, "ordinary reference")
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if i == 0 {
+			thread, err = h.manager.StartThread(ctx, h.cwd)
+		} else {
+			thread, err = h.manager.SwitchThread(ctx, thread.ID)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		h.turn(t, "minimax-m3-high-v1", thread.ID, userText)
+	}
 }
