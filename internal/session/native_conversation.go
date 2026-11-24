@@ -379,19 +379,20 @@ func (s *Service) publishDisplayEvent(event Event) error {
 
 func (s *Service) publishNativeNotification(method string, raw json.RawMessage) {
 	var p struct {
-		ThreadID      string                  `json:"threadId"`
-		TurnID        string                  `json:"turnId"`
-		ItemID        string                  `json:"itemId"`
-		Item          json.RawMessage         `json:"item"`
-		Turn          nativeWireTurn          `json:"turn"`
-		Delta         string                  `json:"delta"`
-		PreviewOffset *int                    `json:"offset"`
-		ContentIndex  *int                    `json:"contentIndex"`
-		SummaryIndex  *int                    `json:"summaryIndex"`
-		Plan          []native.NativePlanStep `json:"plan"`
-		Explanation   *string                 `json:"explanation"`
-		Message       string                  `json:"message"`
-		WillRetry     *bool                   `json:"willRetry"`
+		ThreadID      string                           `json:"threadId"`
+		TurnID        string                           `json:"turnId"`
+		ItemID        string                           `json:"itemId"`
+		Item          json.RawMessage                  `json:"item"`
+		Turn          nativeWireTurn                   `json:"turn"`
+		Delta         string                           `json:"delta"`
+		PreviewOffset *int                             `json:"offset"`
+		SearchTitles  []native.NativeSearchSourceTitle `json:"webSearchSourceTitles"`
+		ContentIndex  *int                             `json:"contentIndex"`
+		SummaryIndex  *int                             `json:"summaryIndex"`
+		Plan          []native.NativePlanStep          `json:"plan"`
+		Explanation   *string                          `json:"explanation"`
+		Message       string                           `json:"message"`
+		WillRetry     *bool                            `json:"willRetry"`
 		Error         struct {
 			Message string `json:"message"`
 		} `json:"error"`
@@ -433,6 +434,16 @@ func (s *Service) publishNativeNotification(method string, raw json.RawMessage) 
 		} else {
 			n.Item = &item
 			n.ItemId = &item.Id
+			if method == RuntimeNotificationItemCompleted && item.Publication != nil {
+				var carrier struct {
+					Publication struct {
+						Titles []native.NativeSearchSourceTitle `json:"webSearchSourceTitles"`
+					} `json:"publication"`
+				}
+				if json.Unmarshal(p.Item, &carrier) == nil {
+					n.WebSearchSourceTitles = projectNativeSearchTitles(carrier.Publication.Titles)
+				}
+			}
 		}
 	case RuntimeNotificationTurnStarted, RuntimeNotificationTurnCompleted:
 		if p.Turn.ID == "" || len(p.Turn.ID) > 512 {
@@ -441,6 +452,9 @@ func (s *Service) publishNativeNotification(method string, raw json.RawMessage) 
 			n.TurnId = &p.Turn.ID
 			turn := s.projectNativeTurn(p.Turn, record.Cwd, s.rawReasoning)
 			n.Turn = &turn
+			if method == RuntimeNotificationTurnCompleted {
+				n.WebSearchSourceTitles = projectNativeSearchTitles(p.SearchTitles)
+			}
 		}
 	case RuntimeNotificationPublicPreviewDelta:
 		if p.ItemID == "" || p.TurnID == "" || p.PreviewOffset == nil || *p.PreviewOffset < 0 ||

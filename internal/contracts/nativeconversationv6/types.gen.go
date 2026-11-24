@@ -788,13 +788,28 @@ func (e StreamNativeConversationProcessParamsXYijiePublication) Valid() bool {
 
 // Defines values for StreamNativeConversationProcessParamsXYijiePublicationPreview.
 const (
-	N1 StreamNativeConversationProcessParamsXYijiePublicationPreview = "1"
+	StreamNativeConversationProcessParamsXYijiePublicationPreviewN1 StreamNativeConversationProcessParamsXYijiePublicationPreview = "1"
 )
 
 // Valid indicates whether the value is a known member of the StreamNativeConversationProcessParamsXYijiePublicationPreview enum.
 func (e StreamNativeConversationProcessParamsXYijiePublicationPreview) Valid() bool {
 	switch e {
-	case N1:
+	case StreamNativeConversationProcessParamsXYijiePublicationPreviewN1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StreamNativeConversationProcessParamsXYijieWebSourceTitles.
+const (
+	StreamNativeConversationProcessParamsXYijieWebSourceTitlesN1 StreamNativeConversationProcessParamsXYijieWebSourceTitles = "1"
+)
+
+// Valid indicates whether the value is a known member of the StreamNativeConversationProcessParamsXYijieWebSourceTitles enum.
+func (e StreamNativeConversationProcessParamsXYijieWebSourceTitles) Valid() bool {
+	switch e {
+	case StreamNativeConversationProcessParamsXYijieWebSourceTitlesN1:
 		return true
 	default:
 		return false
@@ -1019,11 +1034,15 @@ type NativeNotification struct {
 	Plan         *[]NativePlanStep              `json:"plan,omitempty"`
 
 	// PreviewOffset Only for item/agentMessage/previewDelta. UTF-8 byte offset in the bounded, cleaned public body. Offset zero starts a preview. The formal item snapshot wins; previews carry no phase or execution authority.
-	PreviewOffset *int                     `json:"previewOffset,omitempty"`
-	Source        NativeNotificationSource `json:"source"`
-	ThreadId      string                   `json:"threadId"`
-	Turn          *NativeTurn              `json:"turn,omitempty"`
-	TurnId        *string                  `json:"turnId,omitempty"`
+	PreviewOffset         *int                       `json:"previewOffset,omitempty"`
+	Source                NativeNotificationSource   `json:"source"`
+	ThreadId              string                     `json:"threadId"`
+	Turn                  *NativeTurn                `json:"turn,omitempty"`
+	TurnId                *string                    `json:"turnId,omitempty"`
+	WebSearchSourceTitles *[]NativeSearchSourceTitle `json:"webSearchSourceTitles,omitempty"`
+
+	// WebSearchSourceTitlesDeferred When true, resolve titles through the authorized native thread snapshot for this turn. Provided only to subscribers that opt into web search source titles.
+	WebSearchSourceTitlesDeferred *bool `json:"webSearchSourceTitlesDeferred,omitempty"`
 
 	// WillRetry Native retry intent only. Omitted/null means unknown, never false; does not drive client execution.
 	WillRetry *bool `json:"willRetry,omitempty"`
@@ -1043,6 +1062,13 @@ type NativePlanStep struct {
 
 // NativePlanStepStatus defines model for NativePlanStep.Status.
 type NativePlanStepStatus string
+
+// NativeSearchSourceTitle defines model for NativeSearchSourceTitle.
+type NativeSearchSourceTitle struct {
+	SearchItemId string `json:"searchItemId"`
+	Title        string `json:"title"`
+	Url          string `json:"url"`
+}
 
 // NativeThreadSnapshot defines model for NativeThreadSnapshot.
 type NativeThreadSnapshot struct {
@@ -1140,7 +1166,10 @@ type StreamNativeConversationProcessParams struct {
 
 	// XYijiePublicationPreview Together with publication 2, opt into a dedicated replay cursor including transient public text previews. The Host echoes this header only for a paired Runtime.
 	XYijiePublicationPreview *StreamNativeConversationProcessParamsXYijiePublicationPreview `json:"X-Yijie-Publication-Preview,omitempty"`
-	LastEventID              *string                                                        `json:"Last-Event-ID,omitempty"`
+
+	// XYijieWebSourceTitles Accept source title updates keyed by the original search item and URL.
+	XYijieWebSourceTitles *StreamNativeConversationProcessParamsXYijieWebSourceTitles `json:"X-Yijie-Web-Source-Titles,omitempty"`
+	LastEventID           *string                                                     `json:"Last-Event-ID,omitempty"`
 }
 
 // StreamNativeConversationProcessParamsXYijieSearchReceipt defines parameters for StreamNativeConversationProcess.
@@ -1151,6 +1180,9 @@ type StreamNativeConversationProcessParamsXYijiePublication string
 
 // StreamNativeConversationProcessParamsXYijiePublicationPreview defines parameters for StreamNativeConversationProcess.
 type StreamNativeConversationProcessParamsXYijiePublicationPreview string
+
+// StreamNativeConversationProcessParamsXYijieWebSourceTitles defines parameters for StreamNativeConversationProcess.
+type StreamNativeConversationProcessParamsXYijieWebSourceTitles string
 
 // ReadNativeThreadProcessParams defines parameters for ReadNativeThreadProcess.
 type ReadNativeThreadProcessParams struct {
@@ -1376,15 +1408,26 @@ func NewStreamNativeConversationProcessRequest(server string, agentSessionId ope
 			req.Header.Set("X-Yijie-Publication-Preview", headerParam2)
 		}
 
-		if params.LastEventID != nil {
+		if params.XYijieWebSourceTitles != nil {
 			var headerParam3 string
 
-			headerParam3, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			headerParam3, err = runtime.StyleParamWithOptions("simple", false, "X-Yijie-Web-Source-Titles", *params.XYijieWebSourceTitles, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
 			if err != nil {
 				return nil, err
 			}
 
-			req.Header.Set("Last-Event-ID", headerParam3)
+			req.Header.Set("X-Yijie-Web-Source-Titles", headerParam3)
+		}
+
+		if params.LastEventID != nil {
+			var headerParam4 string
+
+			headerParam4, err = runtime.StyleParamWithOptions("simple", false, "Last-Event-ID", *params.LastEventID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Last-Event-ID", headerParam4)
 		}
 
 	}

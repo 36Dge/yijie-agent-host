@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Yijie Native Conversation Trace v6",
-    "version": "0.10.0",
-    "description": "Canonical provider search sources, distinct from assistant citations. Native lifecycle and permissions unchanged. Legacy history v1/v2/v3 and SSE v7/v8/v10 retain their projections. FEAT-169 adds native fileChange and subAgentActivity display facts; requires paired local consumers, without rewriting existing records. Public message publication v2 is negotiated with X-Yijie-Publication. Unnegotiated readers receive the original shape."
+    "version": "0.11.0",
+    "description": "Canonical provider search sources, distinct from assistant citations. Native lifecycle and permissions unchanged. Legacy history v1/v2/v3 and SSE v7/v8/v10 retain their projections. FEAT-169 adds native fileChange and subAgentActivity display facts; requires paired local consumers, without rewriting existing records. Public message publication v2 is negotiated with X-Yijie-Publication. Unnegotiated readers receive the original shape. X-Yijie-Web-Source-Titles: 1 opts the native event reader into late search title metadata on completed notifications."
   },
   "servers": [
     {
@@ -232,6 +232,18 @@
               ]
             },
             "description": "Together with publication 2, opt into a dedicated replay cursor including transient public text previews. The Host echoes this header only for a paired Runtime."
+          },
+          {
+            "name": "X-Yijie-Web-Source-Titles",
+            "in": "header",
+            "required": false,
+            "description": "Accept source title updates keyed by the original search item and URL.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            }
           }
         ]
       }
@@ -536,6 +548,17 @@
             "minimum": 0,
             "maximum": 262144,
             "description": "Only for item/agentMessage/previewDelta. UTF-8 byte offset in the bounded, cleaned public body. Offset zero starts a preview. The formal item snapshot wins; previews carry no phase or execution authority."
+          },
+          "webSearchSourceTitles": {
+            "type": "array",
+            "maxItems": 4096,
+            "items": {
+              "$ref": "#/components/schemas/NativeSearchSourceTitle"
+            }
+          },
+          "webSearchSourceTitlesDeferred": {
+            "type": "boolean",
+            "description": "When true, resolve titles through the authorized native thread snapshot for this turn. Provided only to subscribers that opt into web search source titles."
           }
         }
       },
@@ -1126,6 +1149,32 @@
           }
         },
         "description": "Published by the negotiated Runtime. order is the original turn observation order. afterItemId anchors a delayed message. Undelivered text is never an agentMessage or an execution terminal."
+      },
+      "NativeSearchSourceTitle": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "searchItemId",
+          "url",
+          "title"
+        ],
+        "properties": {
+          "searchItemId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "pattern": "^https?://"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        }
       }
     }
   }

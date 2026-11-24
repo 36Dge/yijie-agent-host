@@ -1799,6 +1799,11 @@ type eventSubscriber func(string, string, uint64) (string, []session.Event, <-ch
 
 func (h *sessionHandler) streamEvents(w http.ResponseWriter, r *http.Request, subscribe eventSubscriber) {
 	writeEvent := func(event session.Event) error {
+		if event.SchemaVersion != 13 || len(r.Header.Values("X-Yijie-Web-Source-Titles")) != 1 || r.Header.Get("X-Yijie-Web-Source-Titles") != "1" {
+			event = session.StripNativeSearchTitles(event)
+		} else {
+			event = session.BoundNativeSearchTitles(event, 1<<20)
+		}
 		if r.Header.Get("X-Yijie-Search-Receipt") != "2" {
 			event = session.StripSearchReceipt(event)
 		}

@@ -56,6 +56,54 @@ func safeNativeSourceURL(value string) bool {
 	return true
 }
 
+// Late titles use the same URL policy and title limits as ordinary search sources.
+func projectNativeSearchTitles(rows []native.NativeSearchSourceTitle) *[]native.NativeSearchSourceTitle {
+	var titles []native.NativeSearchSourceTitle
+	for _, row := range rows[:min(len(rows), 4096)] {
+		if row.SearchItemId == "" || len(row.SearchItemId) > 512 || !safeNativeSourceURL(row.Url) {
+			continue
+		}
+		title, _ := safeNativeText(redactV5CommandText(row.Title), 512)
+		if strings.TrimSpace(title) == "" {
+			continue
+		}
+		row.Title = title
+		titles = append(titles, row)
+	}
+	if len(titles) == 0 {
+		return nil
+	}
+	return &titles
+}
+
+// Older strict readers must receive their negotiated notification shape.
+func StripNativeSearchTitles(event Event) Event {
+	if n := event.Payload.Native; n != nil && (n.WebSearchSourceTitles != nil || n.WebSearchSourceTitlesDeferred != nil) {
+		copy := *n
+		copy.WebSearchSourceTitles = nil
+		copy.WebSearchSourceTitlesDeferred = nil
+		event.Payload.Native = &copy
+	}
+	return event
+}
+
+// Keep the native SSE byte limit. The authoritative thread snapshot retains
+// every eligible title when a complete notification would exceed the frame.
+func BoundNativeSearchTitles(event Event, maxBytes int) Event {
+	n := event.Payload.Native
+	if n == nil || n.WebSearchSourceTitles == nil {
+		return event
+	}
+	if data, err := json.Marshal(event); err == nil && len(data) > maxBytes {
+		copy := *n
+		deferred := true
+		copy.WebSearchSourceTitles = nil
+		copy.WebSearchSourceTitlesDeferred = &deferred
+		event.Payload.Native = &copy
+	}
+	return event
+}
+
 func projectNativeWebSearch(wire nativeWireItem, out *native.NativeItem) {
 	var action struct {
 		Type    string   `json:"type"`
