@@ -179,8 +179,8 @@ func projectNativeMcp(wire nativeWireItem, out *native.NativeItem, searchDetails
 	if wire.DurationMS != nil && *wire.DurationMS >= 0 {
 		out.DurationMs = wire.DurationMS
 	}
-	if wire.Server == web.ServerName && wire.Tool == string(web.KimiWebSearchPro) {
-		display.SearchReceipt = deepSearchFact(wire.Result)
+	if wire.Server == web.ServerName && (wire.Tool == string(web.KimiWebSearchPro) || wire.Tool == string(web.KimiWebFetch)) {
+		display.SearchReceipt = webOperationFact(wire.Result, wire.Tool)
 	}
 	if (searchDetails || display.SearchReceipt != nil) && wire.Server == web.ServerName && wire.Tool == string(web.KimiWebSearchPro) {
 		projectDeepWebSearch(wire, out, diagnostic)

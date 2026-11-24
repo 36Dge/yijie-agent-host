@@ -58,14 +58,18 @@ func (s *Service) AdmitBuiltinWebV2(ctx context.Context, q wire.WebAdmissionRequ
 	return wire.WebAdmissionReceiptV2{ScopeId: scope, RootThreadId: rec.RootThreadId, RootTurnId: rec.RootTurnId, OperationId: rec.OperationId, DeadlineUnixMs: rec.DeadlineUnixMs}, nil
 }
 
-func deepSearchFact(raw json.RawMessage) *native.DeepSearchReceipt {
+func webOperationFact(raw json.RawMessage, tool string) *native.DeepSearchReceipt {
 	var envelope struct {
 		Meta map[string]json.RawMessage `json:"_meta"`
 	}
 	if len(raw) > maxRetainedEventDataBytes || json.Unmarshal(raw, &envelope) != nil {
 		return nil
 	}
-	f := envelope.Meta["ai.yijie/deep-search-receipt"]
+	key := "ai.yijie/deep-search-receipt"
+	if tool == "kimi_web_fetch" {
+		key = "ai.yijie/fetch-receipt"
+	}
+	f := envelope.Meta[key]
 	if len(f) == 0 || len(f) > 512 || wire.Validate("DeepSearchReceipt", f) != nil {
 		return nil
 	}

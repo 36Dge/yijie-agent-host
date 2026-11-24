@@ -259,6 +259,7 @@ func integrationMiniMaxKey() (string, error) {
 }
 
 type integrationNotifications struct {
+	observe   func(string, json.RawMessage)
 	mu        sync.Mutex
 	all       []string
 	methods   map[string][]string
@@ -284,6 +285,9 @@ func (n *integrationNotifications) handle(method string, params json.RawMessage)
 	}
 	n.mu.Lock()
 	n.all = append(n.all, method)
+	if n.observe != nil {
+		n.observe(method, params)
+	}
 	n.mu.Unlock()
 	select {
 	case n.wake <- struct{}{}:
