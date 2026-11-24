@@ -235,17 +235,22 @@ func TestFEAT162SelectedRetrievalRuntime(t *testing.T) {
 // Exercise the actual model request for an existing conversation. The normal
 // loopback model only acknowledges the request; service usage is a separate fact.
 func TestSelectedConnectorRoutingAcrossTurns(t *testing.T) {
-	const userText = "请整理商品数据，把结果网址做成二维码，最后排版成 PDF。"
+	const task = "请整理商品数据，把结果网址做成二维码，最后排版成 PDF。"
+	const usage = "我如何使用这个连接器"
+	const weiboReply = "微博连接器可以查询微博关注列表。"
 	const expertRole = "Use the ordinary local reference index when relevant."
 	cases := []struct {
 		services []host.ServiceBinding
 		want     string
+		prompt   string
 		expert   bool
 	}{
-		{nil, "", false}, // An existing ordinary conversation before its first selection.
-		{[]host.ServiceBinding{{ServiceId: "sorftime"}, {ServiceId: "caoliao"}}, "caoliao, sorftime", false},
-		{[]host.ServiceBinding{{ServiceId: "caoliao"}}, "caoliao", true},
-		{[]host.ServiceBinding{}, "", false},
+		{nil, "", task, false}, // An existing ordinary conversation before its first selection.
+		{[]host.ServiceBinding{{ServiceId: "weibo"}}, "weibo", "微博连接器有什么用途？", false},
+		{[]host.ServiceBinding{{ServiceId: "tushareMcp"}}, "tushareMcp", usage, false},
+		{[]host.ServiceBinding{{ServiceId: "sorftime"}, {ServiceId: "caoliao"}}, "caoliao, sorftime", task, false},
+		{[]host.ServiceBinding{{ServiceId: "caoliao"}}, "caoliao", task, true},
+		{[]host.ServiceBinding{}, "", task, false},
 	}
 	h := newNativeToolsHarness(t, func(_ *nativeToolsHarness, body map[string]any, n int64) map[string]any {
 		if n > int64(len(cases)) {
@@ -269,12 +274,62 @@ func TestSelectedConnectorRoutingAcrossTurns(t *testing.T) {
 				!strings.Contains(base, "If a matching operation is unavailable, denied or fails") || strings.Contains(base, "sorftime") != (len(step.services) == 2) {
 				t.Error("current connector intent or fallback policy differs")
 			}
+			if !strings.Contains(base, "explicit mentions in the latest user message") || !strings.Contains(base, "take precedence over connector references in conversation history") {
+				t.Error("composer selections must have the semantics of explicit user mentions")
+			}
+			if len(step.services) == 1 && !strings.Contains(base, "这个连接器” refers to "+step.want+".") {
+				t.Errorf("the current singular connector reference does not identify %s", step.want)
+			}
+			if len(step.services) > 1 && !strings.Contains(base, "ask which selected service") {
+				t.Error("ambiguous singular reference among multiple services was not handled")
+			}
 		}
 		if strings.Contains(base, expertRole) != step.expert {
 			t.Error("expert context and connector selection did not compose independently")
 		}
-		if nativeToolsUserText(body) != userText {
+		if nativeToolsUserText(body) != step.prompt {
 			t.Error("connector metadata changed the user message")
+		}
+		// Check the model input after the previous assistant reply. An updated
+		// top-level instructions field alone did not resolve a live follow-up.
+		var latestMention, mentionAtUserMessage string
+		for _, raw := range body["input"].([]any) {
+			item, _ := raw.(map[string]any)
+			switch item["role"] {
+			case "assistant":
+				latestMention = ""
+			case "developer":
+				parts, _ := item["content"].([]any)
+				for _, part := range parts {
+					content, _ := part.(map[string]any)
+					value, _ := content["text"].(string)
+					if strings.HasPrefix(value, "本条用户消息选用的连接器：") {
+						latestMention = value
+					}
+				}
+			case "user":
+				mentionAtUserMessage = latestMention
+			}
+		}
+		wantMention := ""
+		if step.services != nil {
+			names := step.want
+			if names == "" {
+				names = "无"
+			}
+			wantMention = "本条用户消息选用的连接器：" + names + "。"
+		}
+		if (wantMention == "" && mentionAtUserMessage != "") || !strings.HasPrefix(mentionAtUserMessage, wantMention) {
+			t.Errorf("connector context immediately available to the current message = %q, want %q", mentionAtUserMessage, wantMention)
+		}
+		if step.want == "weibo" {
+			return feat164AuxText(weiboReply)
+		}
+		if step.want == "tushareMcp" {
+			history, _ := json.Marshal(body["input"])
+			if !strings.Contains(string(history), weiboReply) || strings.Contains(base, "weibo") {
+				t.Error("the previous reply must be in history and only the new selection in current instructions")
+			}
 		}
 		return feat164AuxText("完成")
 	}, toolSearchConfig)
@@ -282,7 +337,7 @@ func TestSelectedConnectorRoutingAcrossTurns(t *testing.T) {
 	for i, step := range cases {
 		ctx := WithPermissionMode(WithModelProfile(context.Background(), "minimax-m3-high-v1"), PermissionAsk)
 		if step.services != nil {
-			ctx = WithMarketPrepared(ctx, &MarketPrepared{selectionGuidance: selectedConnectorInstructions(step.services)})
+			ctx = WithMarketPrepared(ctx, &MarketPrepared{selectedServiceIDs: selectedConnectorIDs(step.services)})
 		}
 		var err error
 		if step.expert {
@@ -299,6 +354,16 @@ func TestSelectedConnectorRoutingAcrossTurns(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		h.turn(t, "minimax-m3-high-v1", thread.ID, userText)
+		input, err := TextUserInput(step.prompt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		turn, err := h.manager.StartTurnV2(ctx, thread.ID, []UserInput{input}, "high")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if state, _, err := h.notifications.waitForTurn(turn.ID, 20*time.Second); err != nil || state != "completed" {
+			t.Fatal("connector turn", state, err)
+		}
 	}
 }

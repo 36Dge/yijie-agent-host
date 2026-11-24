@@ -22,7 +22,7 @@ type MarketPrepared struct {
 	NativeApprovalMode string
 	NativeDispatch     bool
 	approvalAccounts   map[broker.SelectionRef]string
-	selectionGuidance  string
+	selectedServiceIDs []string // nil outside a submitted selection, empty on explicit clear
 	WebAllowed         bool
 	ImageRoute         string
 	Lease              *broker.Lease
@@ -51,18 +51,28 @@ func marketPreparedFrom(ctx context.Context) *MarketPrepared {
 
 // Native validates service IDs and their exact correspondence with the frozen
 // selection. Only these public IDs belong in the model-facing projection.
-func selectedConnectorInstructions(services []host.ServiceBinding) string {
-	if len(services) == 0 {
-		return "\n\nNo market connector is selected for this turn. Earlier connector selections are historical."
-	}
+func selectedConnectorIDs(services []host.ServiceBinding) []string {
 	ids := make([]string, 0, len(services))
 	for _, service := range services {
 		ids = append(ids, string(service.ServiceId))
 	}
 	slices.Sort(ids)
-	return "\n\nThe user explicitly selected these connector services for this turn: " + strings.Join(slices.Compact(ids), ", ") + ". " +
+	return slices.Compact(ids)
+}
+
+func selectedConnectorInstructions(ids []string) string {
+	if len(ids) == 0 {
+		return "\n\nNo market connector is selected for this turn. Earlier connector selections are historical."
+	}
+	referent := "Resolve references among these services using the current request and their capabilities. If a singular reference is still ambiguous, ask which selected service the user means."
+	if len(ids) == 1 {
+		referent = "In the latest message, “this connector” or “这个连接器” refers to " + ids[0] + "."
+	}
+	return "\n\nThe user explicitly selected these connector services for this turn: " + strings.Join(ids, ", ") + ". " +
+		"Treat these selections as explicit mentions in the latest user message. They take precedence over connector references in conversation history. " + referent + " " +
+		"For questions about a connector's identity, capabilities or usage, name the relevant selected services and explain their currently exposed tools. A request for usage instructions alone does not request a business operation. " +
 		"Match each requested step to the selected services using their current yijie_market tool descriptions. Discover relevant tools when deferred. " +
-		"For a matching step, call the selected service first, even when the message does not repeat its name. With multiple selections, use each relevant service for the step it serves; pick one for overlapping capabilities unless the task needs multiple sources. " +
+		"For a matching action or data request, call the selected service first, even when the message does not repeat its name. With multiple selections, use each relevant service for the step it serves; pick one for overlapping capabilities unless the task needs multiple sources. " +
 		"Use the connector result for subsequent steps such as formatting a file or verifying the output. Ordinary tools remain available for other steps. " +
 		"If a matching operation is unavailable, denied or fails, explain the observed limitation and ask before substituting local code, installing a package or switching providers for that step. Verify the status of an uncertain write before retrying. Respect native approvals and cancellation. Only report a service action from its actual result."
 }
@@ -70,10 +80,30 @@ func selectedConnectorInstructions(services []host.ServiceBinding) string {
 // Native resume can retain older developer messages. The current base override
 // reaches each model request, including calls on a resumed or switched thread.
 func currentExecutionBaseInstructions(ctx context.Context) string {
-	if prepared := marketPreparedFrom(ctx); prepared != nil {
-		return executionBaseInstructions + prepared.selectionGuidance
+	if prepared := marketPreparedFrom(ctx); prepared != nil && prepared.selectedServiceIDs != nil {
+		return executionBaseInstructions + selectedConnectorInstructions(prepared.selectedServiceIDs)
 	}
 	return executionBaseInstructions
+}
+
+// Record the composer's explicit mentions next to this turn's input. A developer
+// item leaves the typed user message, its native ID and its size limit intact.
+// The caller holds threadOperation through this request and turn/start. Each
+// subsequent market submission records its own selection, including a clear.
+func (m *Manager) recordConnectorMentions(ctx context.Context, threadID string, ids []string) error {
+	names := strings.Join(ids, ", ")
+	if len(ids) == 0 {
+		names = "无"
+	}
+	mention := "本条用户消息选用的连接器：" + names + "。"
+	if len(ids) == 1 {
+		mention += " 用户在本条消息里明确提及了 " + ids[0] + "。其中的“这个连接器”指 " + ids[0] + "。"
+	}
+	item := map[string]any{
+		"type": "message", "role": "developer",
+		"content": []map[string]string{{"type": "input_text", "text": mention}},
+	}
+	return m.request(ctx, "thread/inject_items", map[string]any{"threadId": threadID, "items": []any{item}}, &struct{}{})
 }
 
 func (m *Manager) MarketProcess() (broker.ProcessBinding, error) {
@@ -119,9 +149,8 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 	if err != nil {
 		return nil, err
 	}
-	p := &MarketPrepared{ImageRoute: ImageRoute(ctx), Config: map[string]any{"mcp_servers": servers}, Scope: scope, Snapshot: submission.Snapshot, Process: process}
+	p := &MarketPrepared{ImageRoute: ImageRoute(ctx), Config: map[string]any{"mcp_servers": servers}, Scope: scope, Snapshot: submission.Snapshot, Process: process, selectedServiceIDs: selectedConnectorIDs(submission.Services)}
 	if len(submission.Snapshot.Selection) == 0 {
-		p.selectionGuidance = selectedConnectorInstructions(nil)
 		return p, nil
 	}
 	if model, ok := ModelProfile(string(submission.Intent.ProfileId)); ok && model.Provider == MiniMaxProviderID && m.config.NativeToolsEnabled {
@@ -175,7 +204,6 @@ func (m *Manager) PrepareMarket(ctx context.Context, scope broker.ScopeBinding, 
 		return nil, e
 	}
 	p.Lease = &lease.Data
-	p.selectionGuidance = selectedConnectorInstructions(submission.Services)
 	applySelectedRetrievalConfig(p.Config, submission)
 	m.market.mu.Lock()
 	gateway := m.market.gatewayURL
@@ -418,7 +446,7 @@ func (m *Manager) ClearMarketConfiguration(ctx context.Context, thread, cwd stri
 	if err != nil {
 		return nil, err
 	}
-	return &MarketPrepared{Config: map[string]any{"mcp_servers": servers}, selectionGuidance: selectedConnectorInstructions(nil)}, nil
+	return &MarketPrepared{Config: map[string]any{"mcp_servers": servers}, selectedServiceIDs: []string{}}, nil
 }
 func (m *Manager) DiscardMarketPrepared(ctx context.Context, prepared *MarketPrepared) error {
 	if prepared == nil || prepared.Lease == nil {
