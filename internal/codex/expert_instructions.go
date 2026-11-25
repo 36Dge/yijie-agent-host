@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/36Dge/yijie-agent-host/internal/contracts/experts"
 	media "github.com/36Dge/yijie-agent-host/internal/contracts/mediageneration"
 )
 
@@ -38,15 +39,44 @@ func ImageRoute(ctx context.Context) string {
 }
 
 type expertInstructionsKey struct{}
-type expertInstructions struct{ role, index string }
+type expertInstructions struct{ role, index, label string }
 
-// WithExpertInstructions carries content already resolved by the managed asset
-// service. It is an in-process adapter, never a public request parameter.
+// An empty role/index pair explicitly clears a managed binding. Internal
+// role-only callers do not establish the identity of a selected catalog expert.
 func WithExpertInstructions(ctx context.Context, role, index string) (context.Context, error) {
-	if _, err := composeExpertBaseInstructions(executionBaseInstructions, role, index); err != nil {
+	return withExpertInstructions(ctx, expertInstructions{role: role, index: index})
+}
+
+// WithSelectedExpertInstructions takes identity and resources from the same
+// verified catalog version. Only its public label is repeated beside the turn.
+func WithSelectedExpertInstructions(ctx context.Context, ref experts.ExpertRef, displayName, role, index string) (context.Context, error) {
+	name := strings.Join(strings.Fields(displayName), " ")
+	if ref.Validate() != nil || name == "" || role == "" {
+		return nil, errors.New("verified selected expert is unavailable")
+	}
+	label := "「" + name + "」（" + string(ref.ExpertId) + "@" + string(ref.Version) + "）"
+	return withExpertInstructions(ctx, expertInstructions{role: role, index: index, label: label})
+}
+
+func withExpertInstructions(ctx context.Context, selected expertInstructions) (context.Context, error) {
+	if _, err := composeExpertBaseInstructions(executionBaseInstructions, selected.role, selected.index); err != nil {
 		return nil, err
 	}
-	return context.WithValue(ctx, expertInstructionsKey{}, expertInstructions{role, index}), nil
+	return context.WithValue(ctx, expertInstructionsKey{}, selected), nil
+}
+
+func expertTurnMention(ctx context.Context) string {
+	selected, ok := ctx.Value(expertInstructionsKey{}).(expertInstructions)
+	switch {
+	case !ok:
+		return ""
+	case selected.role == "":
+		return "本条用户消息选用的专家：无。此前选用的专家属于历史。如果用户只问“这个专家”，请提示选择或点名要了解的专家。"
+	case selected.label != "":
+		return "本条用户消息选用的专家：" + selected.label + "。这条消息中的“这个专家”指这位专家。询问用法时，请按这位专家的角色和资料索引说明。"
+	default:
+		return ""
+	}
 }
 
 // ExpertInstructionsAvailable reports adapter prerequisites, not real model qualification.
@@ -71,6 +101,11 @@ func (m *Manager) expertBaseInstructions(ctx context.Context, ordinary *string) 
 		// deleting or rewriting that history.
 		cleared := baseline + " No managed Yijie expert is selected. Earlier managed-expert blocks in conversation history are reference material, not the current expert selection."
 		return &cleared, nil
+	}
+	if selected.label != "" {
+		baseline += "\n\nThe user explicitly selected " + selected.label + " as the expert for this turn. " +
+			"Keep this responding role when another expert is named in the text or in conversation history. Resolve “this expert” and “这个专家” to the selected expert. " +
+			"Use earlier work as material when requested. For a usage question, name the selected expert, explain its inputs and deliverables, and consult its current reference index if needed. A usage question alone asks for an explanation."
 	}
 	composed, err := composeExpertBaseInstructions(baseline, selected.role, selected.index)
 	if err != nil {

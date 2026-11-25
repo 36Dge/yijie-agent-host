@@ -53,9 +53,10 @@ func (s *Service) loadCurrentCatalog() (catalog, error) {
 // It is not a wire DTO and must not be logged, persisted in receipts or exposed
 // through the renderer. Knowledge bodies are validated but never inlined here.
 type ResolvedExpert struct {
-	Reference expertwire.ExpertRef
-	Role      string
-	Index     string
+	Reference   expertwire.ExpertRef
+	DisplayName string
+	Role        string
+	Index       string
 }
 
 // ResolveExpert resolves exact immutable identity, not caller-supplied paths or
@@ -129,7 +130,7 @@ func (s *Service) resolveExpertLocked(skill ManifestSkill, reference expertwire.
 	if err != nil || len(rawIndex) > 32<<10 {
 		return ResolvedExpert{}, errorWithCode(CodeArchiveTooLarge, errors.New("expert resource index exceeds context limit"))
 	}
-	return ResolvedExpert{Reference: reference, Role: role, Index: string(rawIndex)}, nil
+	return ResolvedExpert{Reference: reference, DisplayName: skill.DisplayName, Role: role, Index: string(rawIndex)}, nil
 }
 
 func readExpertResource(root *os.Root, receipt installReceipt, path, expectedDigest string, size, limit int64) (string, error) {

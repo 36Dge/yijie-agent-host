@@ -50,7 +50,7 @@ func (*marketSessionRuntime) ExpertInstructionsAvailable() bool { return true }
 
 func (r *feat158Resources) ResolveExpert(ref expert.ExpertRef) (skills.ResolvedExpert, error) {
 	r.calls++
-	return skills.ResolvedExpert{Reference: ref, Role: "Benign fixture role never stored in adapter receipts.", Index: "[{\"Path\":\"/ordinary-reference.txt\"}]"}, nil
+	return skills.ResolvedExpert{Reference: ref, DisplayName: "资料整理专家", Role: "Benign fixture role never stored in adapter receipts.", Index: "[{\"Path\":\"/ordinary-reference.txt\"}]"}, nil
 }
 func feat158Ref() *expert.ExpertRef {
 	return &expert.ExpertRef{ExpertId: "reference-expert", Version: "0.1.0", ArchiveSha256: expert.Digest(strings.Repeat("a", 64)), RoleSha256: expert.Digest(strings.Repeat("b", 64)), KnowledgeManifestSha256: expert.Digest(strings.Repeat("c", 64))}

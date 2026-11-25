@@ -102,7 +102,8 @@ func TestFEAT158ExpertResourcesUseManagedInstallWithoutGlobalProjection(t *testi
 	}
 	reference := feat158ReferenceFor(t, manifest.Skills[0])
 	resolved, err := service.ResolveExpert(reference)
-	if err != nil || resolved.Role != feat158Role || !strings.Contains(resolved.Index, "Reference notes") ||
+	if err != nil || resolved.Reference != reference || resolved.DisplayName != manifest.Skills[0].DisplayName ||
+		resolved.Role != feat158Role || !strings.Contains(resolved.Index, "Reference notes") ||
 		!strings.Contains(resolved.Index, "references/notes.md") || strings.Contains(resolved.Index, feat158Reference) {
 		t.Fatal("expert resolution did not produce exact role plus index without knowledge body")
 	}

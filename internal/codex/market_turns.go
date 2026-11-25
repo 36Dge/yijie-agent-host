@@ -86,11 +86,10 @@ func currentExecutionBaseInstructions(ctx context.Context) string {
 	return executionBaseInstructions
 }
 
-// Record the composer's explicit mentions next to this turn's input. A developer
-// item leaves the typed user message, its native ID and its size limit intact.
-// The caller holds threadOperation through this request and turn/start. Each
-// subsequent market submission records its own selection, including a clear.
-func (m *Manager) recordConnectorMentions(ctx context.Context, threadID string, ids []string) error {
+func connectorTurnMention(ids []string) string {
+	if ids == nil {
+		return ""
+	}
 	names := strings.Join(ids, ", ")
 	if len(ids) == 0 {
 		names = "无"
@@ -99,11 +98,29 @@ func (m *Manager) recordConnectorMentions(ctx context.Context, threadID string, 
 	if len(ids) == 1 {
 		mention += " 用户在本条消息里明确提及了 " + ids[0] + "。其中的“这个连接器”指 " + ids[0] + "。"
 	}
-	item := map[string]any{
-		"type": "message", "role": "developer",
-		"content": []map[string]string{{"type": "input_text", "text": mention}},
+	return mention
+}
+
+// Append both composer selections in one native request. The caller holds
+// threadOperation through turn/start with the original typed user message.
+func (m *Manager) recordTurnMentions(ctx context.Context, threadID string) error {
+	var ids []string
+	if prepared := marketPreparedFrom(ctx); prepared != nil {
+		ids = prepared.selectedServiceIDs
 	}
-	return m.request(ctx, "thread/inject_items", map[string]any{"threadId": threadID, "items": []any{item}}, &struct{}{})
+	var items []map[string]any
+	for _, mention := range []string{connectorTurnMention(ids), expertTurnMention(ctx)} {
+		if mention != "" {
+			items = append(items, map[string]any{
+				"type": "message", "role": "developer",
+				"content": []map[string]string{{"type": "input_text", "text": mention}},
+			})
+		}
+	}
+	if len(items) == 0 {
+		return nil
+	}
+	return m.request(ctx, "thread/inject_items", map[string]any{"threadId": threadID, "items": items}, &struct{}{})
 }
 
 func (m *Manager) MarketProcess() (broker.ProcessBinding, error) {

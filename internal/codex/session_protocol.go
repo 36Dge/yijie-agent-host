@@ -1009,10 +1009,8 @@ func (m *Manager) StartTurnV2(
 		return TurnInfo{}, err
 	}
 	params.turnPermissions = permissions
-	if prepared := marketPreparedFrom(ctx); prepared != nil && prepared.selectedServiceIDs != nil {
-		if err := m.recordConnectorMentions(ctx, threadID, prepared.selectedServiceIDs); err != nil {
-			return TurnInfo{}, err
-		}
+	if err := m.recordTurnMentions(ctx, threadID); err != nil {
+		return TurnInfo{}, err
 	}
 	var response turnStartResponse
 	if err := m.request(ctx, RuntimeMethodTurnStart, params, &response); err != nil {

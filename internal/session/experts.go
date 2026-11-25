@@ -73,7 +73,7 @@ func (s *Service) contextForExpert(ctx context.Context, ref *expert.ExpertRef) (
 		return nil, expertFail(expert.ErrorCodeOperationPending)
 	}
 	resolved, e := s.expertResources.ResolveExpert(*ref)
-	if e != nil {
+	if e != nil || resolved.Reference != *ref {
 		return nil, expertFail(expert.ErrorCodeResourceUnavailable)
 	}
 	ctx, e = codex.WithExpertImageRoute(ctx, string(ref.ExpertId), string(ref.Version), string(ref.RoleSha256))
@@ -87,7 +87,7 @@ func (s *Service) contextForExpert(ctx context.Context, ref *expert.ExpertRef) (
 	if e != nil {
 		return nil, expertFail(expert.ErrorCodeQualificationRequired)
 	}
-	return codex.WithExpertInstructions(ctx, resolved.Role, resolved.Index)
+	return codex.WithSelectedExpertInstructions(ctx, resolved.Reference, resolved.DisplayName, resolved.Role, resolved.Index)
 }
 func (s *Service) contextForStoredExpert(ctx context.Context, sessionID string) (context.Context, error) {
 	b, e := s.store.expertBinding(sessionID)
